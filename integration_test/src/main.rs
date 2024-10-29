@@ -30,7 +30,7 @@ fn main() {
         
         // Tenter de parser le paquet
         match ParsedPacket::try_from(packet) {
-            Ok(parsed_packet) => println!("{:?}", parsed_packet),
+            Ok(parsed_packet) => println!("{}", parsed_packet),
             Err(e) => eprintln!("Error parsing packet: {:?}", e),
         }
     }

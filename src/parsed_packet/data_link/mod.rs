@@ -24,3 +24,19 @@ impl TryFrom<&[u8]> for DataLink {
         })
     }
 }
+
+use std::fmt;
+
+impl fmt::Display for DataLink {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "\n    DataLink {{\n       Destination MAC: {},\n       Source MAC: {},\n       Ethertype: 0x{:04X},\n       Payload Length: {}\n    }}",
+            self.destination_mac,
+            self.source_mac,
+            self.ethertype,
+            self.payload.as_ref().map_or(0, |p| p.len())
+        )
+    }
+}
+

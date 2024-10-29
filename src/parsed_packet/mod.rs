@@ -25,3 +25,17 @@ impl TryFrom<&[u8]> for ParsedPacket {
     }
 }
 
+use std::fmt;
+
+impl fmt::Display for ParsedPacket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ParsedPacket {{\n  Data Link Layer: {},\n  Packet Size: {}\n}}",
+            self.data_link,
+            self.size
+        )
+    }
+}
+
+
