@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 
 fn main() {
     // Sélectionner l'interface réseau 'enp0s31f6'
-    let interface_name = "enxfeaa81e86d1e";
+    let interface_name = "wlp6s0";
     let interfaces = datalink::interfaces();
     let interface = interfaces.into_iter()
         .find(|iface: &NetworkInterface| iface.name == interface_name)
@@ -27,7 +27,7 @@ fn main() {
                 continue;
             }
         };
-        
+        println!("Received packet: {:2X?}", packet);
         // Tenter de parser le paquet
         match ParsedPacket::try_from(packet) {
             Ok(parsed_packet) => println!("{}", parsed_packet),

@@ -6,31 +6,54 @@ use std::{
 use thiserror::Error;
 use serde::{Serialize, Deserialize};
 
+const MAC_LEN: usize = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct MacAddress([u8; 6]);
+pub struct MacAddress([u8; MAC_LEN]);
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Oui {
+    ASUSTek,
+    Siemens,
+    Sagemcom,
+    Unknown,
+}
+
+impl Oui {
+    fn from_bytes(bytes: &[u8]) -> Self {
+        match bytes {
+            [0x2C, 0xFD, 0xA1, ..] => Oui::ASUSTek,
+            [0xE0, 0xDC, 0xA0, ..] => Oui::Siemens,
+            [0xB0, 0x5B, 0x99, ..] => Oui::Sagemcom,
+            _ => Oui::Unknown,
+        }
+    }
+}
 
 impl TryFrom<&[u8]> for MacAddress {
     type Error = MacParseError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        if bytes.len() != 6 {
-            return Err(MacParseError::InvalidLength {
-                actual: bytes.len(),
-            });
-        }
+        validate_mac_length(bytes)?;
         let mut addr = [0u8; 6];
         addr.copy_from_slice(bytes);
         Ok(Self(addr))
     }
 }
 
+fn validate_mac_length(packets: &[u8]) -> Result<(), MacParseError> {
+    if packets.len() != 6 {
+        return Err(MacParseError::InvalidLength {
+            actual: packets.len(),
+        });
+    }
+    Ok(())
+}
+
 #[derive(Error, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum MacParseError {
     #[error("Invalid MAC address length: expected 6 bytes, found {actual} bytes")]
     InvalidLength { actual: usize },
-    #[error("Failed to parse MAC address from provided bytes")]
-    InvalidFormat,
 }
 
 impl Display for MacAddress {
@@ -43,9 +66,48 @@ impl Display for MacAddress {
     }
 }
 
+impl MacAddress {
+    pub fn get_oui(&self) -> Oui {
+        Oui::from_bytes(&self.0[0..3])
+    }
+    
+    pub fn display_with_oui(&self) -> String {
+        match self.get_oui() {
+            Oui::Unknown => format!(
+                "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
+            ),
+            oui => format!(
+                "{:?}:{:02x}:{:02x}:{:02x}",
+                oui, self.0[3], self.0[4], self.0[5]
+            ),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_mac_address_with_known_oui() {
+        // Adresse MAC avec OUI correspondant à ASUSTek
+        let bytes = [0x2C, 0xFD, 0xA1, 0x3C, 0x4D, 0x5E];
+        let mac = MacAddress::try_from(&bytes[..]).expect("Conversion should succeed");
+
+        // Affichage attendu : "ASUSTek:3c:4d:5e"
+        assert_eq!(mac.display_with_oui(), "ASUSTek:3c:4d:5e");
+    }
+
+    #[test]
+    fn display_mac_address_with_unknown_oui() {
+        // Adresse MAC avec OUI inconnu
+        let bytes = [0xAA, 0xBB, 0xCC, 0x3C, 0x4D, 0x5E];
+        let mac = MacAddress::try_from(&bytes[..]).expect("Conversion should succeed");
+
+        // Affichage attendu : "aa:bb:cc:3c:4d:5e"
+        assert_eq!(mac.display_with_oui(), "aa:bb:cc:3c:4d:5e");
+    }
 
     #[test]
     fn valid_mac_address_conversion() {

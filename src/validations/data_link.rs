@@ -7,9 +7,3 @@ pub fn validate_data_link_length(packets: &[u8]) -> Result<(), DataLinkError> {
     Ok(())
 }
 
-pub fn validate_mac_length(packets: &[u8]) -> Result<(), MacAddressError> {
-    if packets.len() < 6 {
-        return Err(MacAddressError::MacAddressTooShort(packets.len() as u8));
-    }
-    Ok(())
-}

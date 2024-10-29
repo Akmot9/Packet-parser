@@ -17,7 +17,7 @@ impl TryFrom<&[u8]> for ParsedPacket {
     fn try_from(packets: &[u8]) -> Result<Self, Self::Error> {
         validate_packet_length(packets)?;
         
-        let data_link: DataLink = DataLink::try_from(&packets[14..])?;
+        let data_link: DataLink = DataLink::try_from(&packets[0..])?;
         Ok(ParsedPacket {
             data_link,
             size: packets.len(),
