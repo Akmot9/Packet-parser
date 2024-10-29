@@ -3,46 +3,31 @@ use std::{
     convert::TryFrom,
     fmt::{Display, Formatter},
 };
+use oui::*;
 use thiserror::Error;
 use serde::{Serialize, Deserialize};
+
+mod oui;
 
 const MAC_LEN: usize = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MacAddress([u8; MAC_LEN]);
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Oui {
-    ASUSTek,
-    Siemens,
-    Sagemcom,
-    Unknown,
-}
-
-impl Oui {
-    fn from_bytes(bytes: &[u8]) -> Self {
-        match bytes {
-            [0x2C, 0xFD, 0xA1, ..] => Oui::ASUSTek,
-            [0xE0, 0xDC, 0xA0, ..] => Oui::Siemens,
-            [0xB0, 0x5B, 0x99, ..] => Oui::Sagemcom,
-            _ => Oui::Unknown,
-        }
-    }
-}
 
 impl TryFrom<&[u8]> for MacAddress {
     type Error = MacParseError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         validate_mac_length(bytes)?;
-        let mut addr = [0u8; 6];
+        let mut addr = [0u8; MAC_LEN];
         addr.copy_from_slice(bytes);
         Ok(Self(addr))
     }
 }
 
 fn validate_mac_length(packets: &[u8]) -> Result<(), MacParseError> {
-    if packets.len() != 6 {
+    if packets.len() != MAC_LEN {
         return Err(MacParseError::InvalidLength {
             actual: packets.len(),
         });
