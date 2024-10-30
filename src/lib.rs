@@ -1,8 +1,5 @@
 pub mod parsed_packet;
 
-mod errors;
-mod validations;
-
 pub use parsed_packet::ParsedPacket;
 
 // struct ParsedPacket {
@@ -28,16 +25,13 @@ pub use parsed_packet::ParsedPacket;
 //     protocole: String,
 //     port_source: u16,
 //     port_destination: u16,
-//     payload: Application,       
+//     payload: Application,
 // }
 
 // struct Application {
 //     protocole: String,
 //     payload: Vec<u8>,
 // }
-
-
-
 
 // pub fn parse_packet(packet: &[u8]) {
 //     println!("Packet received: {:02X?}", packet);

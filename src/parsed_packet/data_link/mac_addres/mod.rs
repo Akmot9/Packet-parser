@@ -3,17 +3,34 @@ use std::{
     convert::TryFrom,
     fmt::{Display, Formatter},
 };
-use oui::*;
-use thiserror::Error;
-use serde::{Serialize, Deserialize};
-
 mod oui;
+use oui::*;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 const MAC_LEN: usize = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MacAddress([u8; MAC_LEN]);
 
+impl MacAddress {
+    pub fn get_oui(&self) -> Oui {
+        Oui::from_bytes(&self.0[0..3])
+    }
+
+    pub fn display_with_oui(&self) -> String {
+        match self.get_oui() {
+            Oui::Unknown => format!(
+                "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
+            ),
+            oui => format!(
+                "{:?}:{:02x}:{:02x}:{:02x}",
+                oui, self.0[3], self.0[4], self.0[5]
+            ),
+        }
+    }
+}
 
 impl TryFrom<&[u8]> for MacAddress {
     type Error = MacParseError;
@@ -48,25 +65,6 @@ impl Display for MacAddress {
             "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
             self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
         )
-    }
-}
-
-impl MacAddress {
-    pub fn get_oui(&self) -> Oui {
-        Oui::from_bytes(&self.0[0..3])
-    }
-    
-    pub fn display_with_oui(&self) -> String {
-        match self.get_oui() {
-            Oui::Unknown => format!(
-                "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
-            ),
-            oui => format!(
-                "{:?}:{:02x}:{:02x}:{:02x}",
-                oui, self.0[3], self.0[4], self.0[5]
-            ),
-        }
     }
 }
 
@@ -113,7 +111,9 @@ mod tests {
         // Vérification que l'erreur retournée correspond à InvalidLength avec la taille effective
         assert_eq!(
             result,
-            Err(MacParseError::InvalidLength { actual: bytes.len() })
+            Err(MacParseError::InvalidLength {
+                actual: bytes.len()
+            })
         );
     }
 
@@ -145,7 +145,9 @@ mod tests {
         // Vérification que l'erreur retournée correspond à InvalidLength avec la taille effective
         assert_eq!(
             result,
-            Err(MacParseError::InvalidLength { actual: bytes.len() })
+            Err(MacParseError::InvalidLength {
+                actual: bytes.len()
+            })
         );
     }
 }

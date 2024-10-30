@@ -1,4 +1,3 @@
-use crate::{errors::data_link::DataLinkError, validations::data_link::validate_data_link_length};
 mod mac_addres;
 use mac_addres::MacAddress;
 
@@ -15,7 +14,7 @@ pub struct DataLink {
 
 impl TryFrom<&[u8]> for DataLink {
     type Error = DataLinkError;
-    
+
     fn try_from(packets: &[u8]) -> Result<Self, Self::Error> {
         validate_data_link_length(packets)?;
 
@@ -23,9 +22,26 @@ impl TryFrom<&[u8]> for DataLink {
             destination_mac: MacAddress::try_from(&packets[0..6]).unwrap(),
             source_mac: MacAddress::try_from(&packets[6..12]).unwrap(),
             ethertype: Ethertype::from(u16::from_be_bytes([packets[12], packets[13]])),
-            payload: None
+            payload: None,
         })
     }
+}
+
+const DATALINK_HEADER_LEN: usize = 14;
+
+pub fn validate_data_link_length(packets: &[u8]) -> Result<(), DataLinkError> {
+    if packets.len() < DATALINK_HEADER_LEN {
+        return Err(DataLinkError::DataLinkTooShort(packets.len() as u8));
+    }
+    Ok(())
+}
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum DataLinkError {
+    #[error("Data link too short: {0} bytes")]
+    DataLinkTooShort(u8),
 }
 
 use std::fmt;
@@ -42,4 +58,3 @@ impl fmt::Display for DataLink {
         )
     }
 }
-

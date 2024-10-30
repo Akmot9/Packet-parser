@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 
 fn main() {
     // Sélectionner l'interface réseau 'enp0s31f6'
-    let interface_name = "wlp6s0";
+    let interface_name = "enxfeaa81e86d1e"; //enxfeaa81e86d1e
     let interfaces = datalink::interfaces();
     let interface = interfaces.into_iter()
         .find(|iface: &NetworkInterface| iface.name == interface_name)

@@ -1,7 +1,4 @@
 // ethertype.rs
-
-use std::fmt::{self, Formatter, UpperHex};
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ethertype(pub u16);
 
@@ -19,13 +16,6 @@ impl Ethertype {
             0x88CC => "LLDP",
             _ => "Unknown",
         }
-    }
-}
-
-// Implémente UpperHex pour que Ethertype puisse être affiché en hexadécimal
-impl UpperHex for Ethertype {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        UpperHex::fmt(&self.0, f)
     }
 }
 
