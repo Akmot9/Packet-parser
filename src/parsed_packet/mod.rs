@@ -1,7 +1,7 @@
-mod application;
 mod data_link;
 mod network;
 mod transport;
+mod application;
 
 use std::convert::TryFrom;
 
@@ -9,21 +9,21 @@ use application::Application;
 use data_link::{DataLink, DataLinkError};
 
 #[derive(Debug)]
-pub struct ParsedPacket {
-    data_link: DataLink,
+pub struct ParsedPacket<'a> {
+    data_link: DataLink<'a>, // Ajoutez la durée de vie ici
     _network: Option<Network>,
     _transport: Option<Transport>,
     _application: Option<Application>,
     size: usize,
 }
 
-impl TryFrom<&[u8]> for ParsedPacket {
+impl<'a> TryFrom<&'a [u8]> for ParsedPacket<'a> {
     type Error = ParsedPacketError;
 
-    fn try_from(packets: &[u8]) -> Result<Self, Self::Error> {
+    fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
         validate_packet_length(packets)?;
 
-        let data_link: DataLink = DataLink::try_from(&packets[0..])?;
+        let data_link = DataLink::try_from(packets)?; // Utilisation cohérente de la durée de vie
         Ok(ParsedPacket {
             data_link,
             size: packets.len(),
@@ -61,7 +61,7 @@ impl From<DataLinkError> for ParsedPacketError {
 
 use std::fmt;
 
-impl fmt::Display for ParsedPacket {
+impl<'a> fmt::Display for ParsedPacket<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

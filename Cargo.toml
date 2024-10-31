@@ -8,3 +8,9 @@ thiserror = "1.0.65"
 
 serde = { version = "1.0", features = ["derive"] }
 
+[dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
+
+[[bench]]
+name = "parsed_packet_benchmark"
+harness = false
