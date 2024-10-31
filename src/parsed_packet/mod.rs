@@ -1,11 +1,19 @@
 mod data_link;
+mod network;
+mod transport;
+mod application;
+
 use std::convert::TryFrom;
 
+use application::Application;
 use data_link::{DataLink, DataLinkError};
 
 #[derive(Debug)]
 pub struct ParsedPacket {
     data_link: DataLink,
+    _network: Option<Network>,
+    _transport: Option<Transport>,
+    _application: Option<Application>,
     size: usize,
 }
 
@@ -19,6 +27,9 @@ impl TryFrom<&[u8]> for ParsedPacket {
         Ok(ParsedPacket {
             data_link,
             size: packets.len(),
+            _network: None,
+            _transport: None,
+            _application: None,
         })
     }
 }
@@ -30,7 +41,9 @@ fn validate_packet_length(packets: &[u8]) -> Result<(), ParsedPacketError> {
     Ok(())
 }
 
+use network::Network;
 use thiserror::Error;
+use transport::Transport;
 #[derive(Error, Debug)]
 pub enum ParsedPacketError {
     #[error("Packet too short: {0} bytes")]
