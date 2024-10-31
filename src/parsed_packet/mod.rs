@@ -1,7 +1,7 @@
+mod application;
 mod data_link;
 mod network;
 mod transport;
-mod application;
 
 use std::convert::TryFrom;
 
