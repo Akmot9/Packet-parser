@@ -11,8 +11,8 @@ use data_link::{DataLink, DataLinkError};
 #[derive(Debug)]
 pub struct ParsedPacket<'a> {
     data_link: DataLink<'a>, // Ajoutez la durée de vie ici
-    _network: Option<Network>,
-    _transport: Option<Transport>,
+    network: Option<Network<'a>>,
+    _transport: Option<Transport<'a>>,
     _application: Option<Application>,
     size: usize,
 }
@@ -24,10 +24,11 @@ impl<'a> TryFrom<&'a [u8]> for ParsedPacket<'a> {
         validate_packet_length(packets)?;
 
         let data_link = DataLink::try_from(packets)?; // Utilisation cohérente de la durée de vie
+        let _network = Network::try_from(data_link.payload);
         Ok(ParsedPacket {
             data_link,
             size: packets.len(),
-            _network: None,
+            network: None,
             _transport: None,
             _application: None,
         })

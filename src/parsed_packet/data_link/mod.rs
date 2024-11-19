@@ -9,7 +9,7 @@ pub struct DataLink<'a> {
     destination_mac: MacAddress,
     source_mac: MacAddress,
     ethertype: Ethertype,
-    payload: &'a [u8],
+    pub payload: &'a [u8],
 }
 
 impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {

@@ -1,2 +1,4 @@
 #[derive(Debug)]
-pub struct Application;
+pub struct Application {
+    application_protocol: String
+}
