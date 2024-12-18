@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-thiserror = "1.0.65"
+thiserror = "2.0.8"
 
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0.216", features = ["derive"] }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
