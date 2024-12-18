@@ -1,8 +1,11 @@
+// parsed_packet/data_link/mod.rs
+
 mod mac_addres;
 use mac_addres::MacAddress;
 
 mod ethertype;
 use ethertype::Ethertype;
+use crate::errors::data_link::DataLinkError;
 
 #[derive(Debug)]
 pub struct DataLink<'a> {
@@ -36,13 +39,6 @@ pub fn validate_data_link_length(packets: &[u8]) -> Result<(), DataLinkError> {
     Ok(())
 }
 
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum DataLinkError {
-    #[error("Data link too short: {0} bytes")]
-    DataLinkTooShort(u8),
-}
 
 use std::fmt;
 

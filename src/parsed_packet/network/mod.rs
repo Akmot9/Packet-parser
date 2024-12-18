@@ -14,7 +14,10 @@ impl<'a> TryFrom<&'a [u8]> for Network<'a> {
 
     fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
         Ok(Network {
-            
+            ip_destination: IpAddress,
+            ip_source: IpAddress,
+            transport_type: todo!(),
+            payload: todo!(),
         })
     }
 }
