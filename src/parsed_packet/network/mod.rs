@@ -6,7 +6,7 @@ pub struct Network<'a> {
     ip_destination: IpAddress,
     ip_source: IpAddress,
     transport_type: &'a str,
-    payload: &'a [u8]
+    payload: &'a [u8],
 }
 
 impl<'a> TryFrom<&'a [u8]> for Network<'a> {
@@ -29,7 +29,3 @@ pub enum NetworkError {
     #[error("Data link too short: {0} bytes")]
     NetworkTooShort(u8),
 }
-
-
-
-
