@@ -23,7 +23,7 @@ version = "0.1.0"
 dependencies = [
  "packet_parser",
  "pnet",
- "thiserror 2.0.8",
+ "thiserror",
 ]
 
 [[package]]
@@ -58,7 +58,8 @@ name = "packet_parser"
 version = "0.1.0"
 dependencies = [
  "serde",
- "thiserror 1.0.65",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]
@@ -201,18 +202,18 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "serde"
-version = "1.0.214"
+version = "1.0.216"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f55c3193aca71c12ad7890f1785d2b73e1b9f63a0bbc353c08ef26fe03fc56b5"
+checksum = "0b9781016e935a97e8beecf0c933758c97a5520d32930e460142b4cd80c6338e"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.214"
+version = "1.0.216"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de523f781f095e28fa605cdce0f8307e451cc0fd14e2eb4cd2e98a355b147766"
+checksum = "46f859dbbf73865c6627ed570e78961cd3ac92407a2d117204c49232485da55e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -232,31 +233,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.65"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d11abd9594d9b38965ef50805c5e469ca9cc6f197f883f717e0269a3057b3d5"
-dependencies = [
- "thiserror-impl 1.0.65",
-]
-
-[[package]]
-name = "thiserror"
 version = "2.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08f5383f3e0071702bf93ab5ee99b52d26936be9dedd9413067cbdcddcb6141a"
 dependencies = [
- "thiserror-impl 2.0.8",
-]
-
-[[package]]
-name = "thiserror-impl"
-version = "1.0.65"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae71770322cbd277e69d762a16c444af02aa0575ac0d174f0b9562d3b37f8602"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
+ "thiserror-impl",
 ]
 
 [[package]]
@@ -275,6 +256,12 @@ name = "unicode-ident"
 version = "1.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e91b56cd4cadaeb79bbf1a5645f6b4f8dc5bde8834ad5894a8db35fda9efa1fe"
+
+[[package]]
+name = "uuid"
+version = "1.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8c5f0a0af699448548ad1a2fbf920fb4bee257eae39953ba95cb84891a0446a"
 
 [[package]]
 name = "winapi"

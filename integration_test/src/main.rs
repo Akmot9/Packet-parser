@@ -42,7 +42,7 @@ fn main() -> Result<(), PacketCaptureError> {
     let interface = find_interface(interface_name)?;
 
     // Créer un canal pour recevoir les paquets
-    let (tx, mut rx) = create_channel(&interface)?;
+    let (_tx, mut rx) = create_channel(&interface)?;
 
     loop {
         // Recevoir un paquet

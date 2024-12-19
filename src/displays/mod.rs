@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::parsed_packet::ParsedPacket;
+use crate::ParsedPacket;
 mod data_link;
 
 impl<'a> fmt::Display for ParsedPacket<'a> {

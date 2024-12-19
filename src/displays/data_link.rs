@@ -6,10 +6,11 @@ impl<'a> fmt::Display for DataLink<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "\n    DataLink {{\n       Destination MAC: {},\n       Source MAC: {},\n       Ethertype: {},\n       Payload Length: {}\n    }}",
+            "\n    DataLink {{\n       Destination MAC: {},\n       Source MAC: {},\n       Ethertype: {},\n       Parsed payload: {:?},\n       Payload Length: {}\n    }}",
             self.destination_mac.display_with_oui(),
             self.source_mac.display_with_oui(),
             self.ethertype,
+            self.parsed_payload,
             self.payload.len()
         )
     }
