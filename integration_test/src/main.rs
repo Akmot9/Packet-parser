@@ -1,6 +1,6 @@
 use pnet::datalink::{self, NetworkInterface};
 use pnet::datalink::Channel::Ethernet;
-use packet_parser::parsed_packet::ParsedPacket;
+use packet_parser::ParsedPacket;
 use std::convert::TryFrom;
 use thiserror::Error;
 
