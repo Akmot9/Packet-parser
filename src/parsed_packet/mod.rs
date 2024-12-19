@@ -13,7 +13,7 @@ use transport::Transport;
 use crate::{errors::ParsedPacketError, valildations::validate_packet_length};
 
 #[derive(Debug)]
-pub struct ParsedPacket<'a> {
+pub(crate) struct ParsedPacket<'a> {
     pub data_link: DataLink<'a>,
     _network: Option<Network<'a>>,
     _transport: Option<Transport<'a>>,

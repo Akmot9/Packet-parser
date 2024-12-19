@@ -1,6 +1,7 @@
 // errors/mod.rs
 
 pub(crate) mod data_link;
+pub(crate) mod network;
 
 use data_link::DataLinkError;
 use thiserror::Error;

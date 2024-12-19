@@ -1,5 +1,6 @@
 mod ipaddress;
 use ipaddress::IpAddress;
+use crate::errors::network::NetworkError;
 
 #[derive(Debug)]
 pub struct Network<'a> {
@@ -22,10 +23,3 @@ impl<'a> TryFrom<&'a [u8]> for Network<'a> {
     }
 }
 
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum NetworkError {
-    #[error("Data link too short: {0} bytes")]
-    NetworkTooShort(u8),
-}

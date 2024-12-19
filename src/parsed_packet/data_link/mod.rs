@@ -7,8 +7,8 @@ mod ethertype;
 use crate::{errors::data_link::DataLinkError, valildations::data_link::validate_data_link_length};
 use ethertype::Ethertype;
 
-mod data_link_protocols;
-use data_link_protocols::DataLinkProtocol;
+mod protocols;
+use protocols::DataLinkProtocol;
 
 #[derive(Debug)]
 pub(crate) struct DataLink<'a> {
