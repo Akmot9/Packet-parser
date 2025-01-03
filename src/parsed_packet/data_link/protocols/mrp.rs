@@ -1,7 +1,7 @@
 use std::fmt;
 use uuid::Uuid;
 
-use crate::parsed_packet::data_link::mac_addres::MacAddress;
+use crate::{errors::data_link::protocol::MRPParseError, parsed_packet::data_link::mac_addres::MacAddress};
 
 #[derive(Debug, PartialEq)]
 pub struct MRPData {
@@ -47,38 +47,45 @@ pub struct MRPOptionData {
     pub ed1_manufacturer_data: u16,
 }
 
-pub fn parse_mrp_data(data: &[u8]) -> Option<MRPData> {
-    if data.len() < 2 {
-        //print(!("Insufficient data for version");
-        return None;
-    }
+use std::convert::TryFrom;
 
-    let version = parse_u16(&data[0..2]);
-    //print(!("Parsed version: {:#06x}", version);
-    let mut offset = 2;
-    let mut tlv_headers = Vec::new();
+impl TryFrom<&[u8]> for MRPData {
+    type Error = MRPParseError;
 
-    while offset < data.len() {
-        if offset + 2 > data.len() {
-            //print(!("Insufficient data for TLV header");
-            return None;
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        if data.len() < 2 {
+            return Err(MRPParseError::InsufficientData {
+                required: 2,
+                found: data.len(),
+            });
         }
 
-        let tlv_type = data[offset];
-        let length = data[offset + 1] as usize;
+        let version = parse_u16(&data[0..2]);
+        let mut offset = 2;
+        let mut tlv_headers = Vec::new();
 
-        if offset + 2 + length > data.len() {
-            //print(!("Insufficient data for TLV value");
-            return None;
-        }
+        while offset < data.len() {
+            if offset + 2 > data.len() {
+                return Err(MRPParseError::InsufficientData {
+                    required: offset + 2,
+                    found: data.len(),
+                });
+            }
 
-        let tlv_data = &data[offset + 2..offset + 2 + length];
-        //print(!("Parsing TLV type: {:#04x}, length: {}", tlv_type, length);
+            let tlv_type = data[offset];
+            let length = data[offset + 1] as usize;
 
-        let tlv_header = match tlv_type {
-            0x02 => {
-                //print(!("Parsing MRPTest TLV");
-                MRPTLVHeader {
+            if offset + 2 + length > data.len() {
+                return Err(MRPParseError::InsufficientData {
+                    required: offset + 2 + length,
+                    found: data.len(),
+                });
+            }
+
+            let tlv_data = &data[offset + 2..offset + 2 + length];
+
+            let tlv_header = match tlv_type {
+                0x02 => MRPTLVHeader {
                     tlv_type,
                     length: length as u8,
                     data: MRPTLVData::MRPTest(MRPTestData {
@@ -89,22 +96,17 @@ pub fn parse_mrp_data(data: &[u8]) -> Option<MRPData> {
                         transition: parse_u16(&tlv_data[12..14]),
                         timestamp: parse_u32(&tlv_data[14..18]),
                     }),
-                }
-            }
-            0x01 => {
-                //print(!("Parsing MRPCommon TLV");
-                MRPTLVHeader {
+                },
+                0x01 => MRPTLVHeader {
                     tlv_type,
                     length: length as u8,
                     data: MRPTLVData::MRPCommon(MRPCommonData {
                         sequence_id: parse_u16(&tlv_data[0..2]),
-                        domain_uuid: Uuid::from_slice(&tlv_data[2..18]).ok()?,
+                        domain_uuid: Uuid::from_slice(&tlv_data[2..18])
+                            .map_err(|_| MRPParseError::InvalidUUID)?,
                     }),
-                }
-            }
-            0x7f => {
-                //print(!("Parsing MRPOption TLV");
-                MRPTLVHeader {
+                },
+                0x7f => MRPTLVHeader {
                     tlv_type,
                     length: length as u8,
                     data: MRPTLVData::MRPOption(MRPOptionData {
@@ -112,32 +114,26 @@ pub fn parse_mrp_data(data: &[u8]) -> Option<MRPData> {
                         ed1_type: tlv_data[3],
                         ed1_manufacturer_data: parse_u16(&tlv_data[4..6]),
                     }),
-                }
-            }
-            0x00 => {
-                //print(!("Parsing MRPEnd TLV");
-                MRPTLVHeader {
+                },
+                0x00 => MRPTLVHeader {
                     tlv_type,
                     length: 0,
                     data: MRPTLVData::MRPEnd,
+                },
+                _ => {
+                    return Err(MRPParseError::UnknownTLVType { tlv_type });
                 }
-            }
-            _ => {
-                //print(!("Unknown TLV type");
-                return None;
-            }
-        };
-        tlv_headers.push(tlv_header);
-        offset += 2 + length;
-        //print(!("Offset updated to: {}", offset);
+            };
+
+            tlv_headers.push(tlv_header);
+            offset += 2 + length;
+        }
+
+        Ok(MRPData {
+            version,
+            tlv_headers,
+        })
     }
-
-    //print(!("Parsed MRPData with {} TLV headers", tlv_headers.len());
-
-    Some(MRPData {
-        version,
-        tlv_headers,
-    })
 }
 
 pub fn parse_mac_address(data: &[u8]) -> MacAddress {
@@ -251,7 +247,7 @@ mod tests {
             0x7f, 0x06, 0x08, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
 
-        let mrp_data = parse_mrp_data(&payload).expect("Failed to parse MRP data");
+        let mrp_data = MRPData::try_from(payload.as_slice()).expect("Failed to parse MRP data");
         //print(!("{}", mrp_data);
 
         // Assertions pour vérifier que les données sont correctes
@@ -292,5 +288,28 @@ mod tests {
         } else {
             panic!("Expected MRPEnd data");
         }
+    }
+
+    #[test]
+    fn test_insufficient_data_error() {
+        let data = vec![0x00]; // Pas assez de données pour le header
+        let result = MRPData::try_from(&data[..]);
+        assert_eq!(
+            result,
+            Err(MRPParseError::InsufficientData {
+                required: 2,
+                found: 1
+            })
+        );
+    }
+
+    #[test]
+    fn test_unknown_tlv_type_error() {
+        let data = vec![0x00, 0x01, 0x99, 0x02, 0xaa, 0xbb];
+        let result = MRPData::try_from(&data[..]);
+        assert_eq!(
+            result,
+            Err(MRPParseError::UnknownTLVType { tlv_type: 0x99 })
+        );
     }
 }
