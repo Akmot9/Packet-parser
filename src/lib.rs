@@ -5,9 +5,17 @@ pub mod valildations;
 
 use std::convert::TryFrom;
 
-use parsed_packet::{application::Application, data_link::DataLink, network::Network, transport::Transport};
+use parsed_packet::{
+    application::Application, 
+    data_link::DataLink, 
+    network::Network, 
+    transport::Transport
+};
 
-use crate::{errors::ParsedPacketError, valildations::validate_packet_length};
+use crate::{
+    errors::ParsedPacketError, 
+    valildations::validate_packet_length
+};
 
 #[derive(Debug)]
 pub struct ParsedPacket<'a> {

@@ -1,6 +1,6 @@
 // parsed_packet/data_link/mod.rs
 
-mod mac_addres;
+pub mod mac_addres;
 use mac_addres::MacAddress;
 
 mod ethertype;

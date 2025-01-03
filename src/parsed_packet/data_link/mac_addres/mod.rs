@@ -1,17 +1,16 @@
-use core::fmt;
-use std::{
-    convert::TryFrom,
-    fmt::{Display, Formatter},
-};
+use std::convert::TryFrom;
 mod oui;
 use oui::*;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
-const MAC_LEN: usize = 6;
+use crate::{
+    errors::data_link::mac_addres::MacParseError, 
+    valildations::data_link::validate_mac_length};
+
+pub const MAC_LEN: usize = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct MacAddress([u8; MAC_LEN]);
+pub struct MacAddress(pub[u8; MAC_LEN]);
 
 impl MacAddress {
     pub fn get_oui(&self) -> Oui {
@@ -40,31 +39,6 @@ impl TryFrom<&[u8]> for MacAddress {
         let mut addr = [0u8; MAC_LEN];
         addr.copy_from_slice(bytes);
         Ok(Self(addr))
-    }
-}
-
-fn validate_mac_length(packets: &[u8]) -> Result<(), MacParseError> {
-    if packets.len() != MAC_LEN {
-        return Err(MacParseError::InvalidLength {
-            actual: packets.len(),
-        });
-    }
-    Ok(())
-}
-
-#[derive(Error, Debug, PartialEq, Eq, Clone, Copy)]
-pub enum MacParseError {
-    #[error("Invalid MAC address length: expected 6 bytes, found {actual} bytes")]
-    InvalidLength { actual: usize },
-}
-
-impl Display for MacAddress {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-            self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
-        )
     }
 }
 

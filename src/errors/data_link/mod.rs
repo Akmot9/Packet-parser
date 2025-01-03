@@ -1,6 +1,8 @@
 use thiserror::Error;
 mod protocol;
+pub mod mac_addres;
 use protocol::DataLinkProtocolError;
+
 
 #[derive(Error, Debug)]
 pub enum DataLinkError {
