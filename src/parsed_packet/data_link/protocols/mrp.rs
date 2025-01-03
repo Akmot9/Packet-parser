@@ -1,6 +1,8 @@
 use std::fmt;
 use uuid::Uuid;
 
+use crate::parsed_packet::data_link::mac_addres::MacAddress;
+
 #[derive(Debug, PartialEq)]
 pub struct MRPData {
     pub version: u16,
@@ -43,104 +45,6 @@ pub struct MRPOptionData {
     pub manufacturer_oui: [u8; 3],
     pub ed1_type: u8,
     pub ed1_manufacturer_data: u16,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct MacAddress([u8; 6]);
-
-impl From<&[u8]> for MacAddress {
-    fn from(bytes: &[u8]) -> Self {
-        let mut addr = [0u8; 6];
-        addr.copy_from_slice(bytes);
-        MacAddress(addr)
-    }
-}
-
-impl fmt::Display for MacAddress {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-            self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
-        )
-    }
-}
-
-impl fmt::Display for MRPData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "MRP Version: {:#06x}\n", self.version)?;
-        for header in &self.tlv_headers {
-            write!(f, "{}", header)?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for MRPTLVHeader {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "  TLV Type: {:#04x}, Length: {}\n  Data:\n{}",
-            self.tlv_type, self.length, self.data
-        )
-    }
-}
-
-impl fmt::Display for MRPTLVData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MRPTLVData::MRPTest(data) => write!(f, "{}", data),
-            MRPTLVData::MRPCommon(data) => write!(f, "{}", data),
-            MRPTLVData::MRPOption(data) => write!(f, "{}", data),
-            MRPTLVData::MRPEnd => write!(f, "  End of MRP Data\n"),
-        }
-    }
-}
-
-impl fmt::Display for MRPTestData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "    MRP Test Data:\n      Prio: {:#06x}\n      SA: {}\n      Port Role: {:#06x}\n      Ring State: {:#06x}\n      Transition: {:#06x}\n      Timestamp: {:#010x}\n",
-            self.prio, self.sa, self.port_role, self.ring_state, self.transition, self.timestamp
-        )
-    }
-}
-
-impl fmt::Display for MRPCommonData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "    MRP Common Data:\n      Sequence ID: {:#06x}\n      Domain UUID: {}\n",
-            self.sequence_id, self.domain_uuid
-        )
-    }
-}
-
-impl fmt::Display for MRPOptionData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "    MRP Option Data:\n      Manufacturer OUI: {:02x}:{:02x}:{:02x}\n      Ed1 Type: {:#04x}\n      Ed1 Manufacturer Data: {:#06x}\n",
-            self.manufacturer_oui[0],
-            self.manufacturer_oui[1],
-            self.manufacturer_oui[2],
-            self.ed1_type,
-            self.ed1_manufacturer_data
-        )
-    }
-}
-
-pub fn parse_mac_address(data: &[u8]) -> MacAddress {
-    MacAddress::from(data)
-}
-
-pub fn parse_u16(data: &[u8]) -> u16 {
-    u16::from_be_bytes([data[0], data[1]])
-}
-
-pub fn parse_u32(data: &[u8]) -> u32 {
-    u32::from_be_bytes([data[0], data[1], data[2], data[3]])
 }
 
 pub fn parse_mrp_data(data: &[u8]) -> Option<MRPData> {
@@ -236,6 +140,83 @@ pub fn parse_mrp_data(data: &[u8]) -> Option<MRPData> {
     })
 }
 
+pub fn parse_mac_address(data: &[u8]) -> MacAddress {
+    MacAddress::try_from(data).unwrap()
+}
+
+pub fn parse_u16(data: &[u8]) -> u16 {
+    u16::from_be_bytes([data[0], data[1]])
+}
+
+pub fn parse_u32(data: &[u8]) -> u32 {
+    u32::from_be_bytes([data[0], data[1], data[2], data[3]])
+}
+
+impl fmt::Display for MRPData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MRP Version: {:#06x}\n", self.version)?;
+        for header in &self.tlv_headers {
+            write!(f, "{}", header)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for MRPTLVHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "  TLV Type: {:#04x}, Length: {}\n  Data:\n{}",
+            self.tlv_type, self.length, self.data
+        )
+    }
+}
+
+impl fmt::Display for MRPTLVData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MRPTLVData::MRPTest(data) => write!(f, "{}", data),
+            MRPTLVData::MRPCommon(data) => write!(f, "{}", data),
+            MRPTLVData::MRPOption(data) => write!(f, "{}", data),
+            MRPTLVData::MRPEnd => write!(f, "  End of MRP Data\n"),
+        }
+    }
+}
+
+impl fmt::Display for MRPTestData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "    MRP Test Data:\n      Prio: {:#06x}\n      SA: {}\n      Port Role: {:#06x}\n      Ring State: {:#06x}\n      Transition: {:#06x}\n      Timestamp: {:#010x}\n",
+            self.prio, self.sa, self.port_role, self.ring_state, self.transition, self.timestamp
+        )
+    }
+}
+
+impl fmt::Display for MRPCommonData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "    MRP Common Data:\n      Sequence ID: {:#06x}\n      Domain UUID: {}\n",
+            self.sequence_id, self.domain_uuid
+        )
+    }
+}
+
+impl fmt::Display for MRPOptionData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "    MRP Option Data:\n      Manufacturer OUI: {:02x}:{:02x}:{:02x}\n      Ed1 Type: {:#04x}\n      Ed1 Manufacturer Data: {:#06x}\n",
+            self.manufacturer_oui[0],
+            self.manufacturer_oui[1],
+            self.manufacturer_oui[2],
+            self.ed1_type,
+            self.ed1_manufacturer_data
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,16 +245,15 @@ mod tests {
     #[test]
     fn test_parse_mrp_data() {
         let payload: Vec<u8> = vec![
-            0x00, 0x01, 0x02, 0x12, 0xa0, 0x00, 0x00, 0x0e, 0x8c, 0xe0, 0x2f, 0x22,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x19, 0xfa, 0x3f, 0xd4, 0x01, 0x12,
-            0x05, 0x7e, 0xc3, 0xd6, 0x87, 0xfe, 0x78, 0x9e, 0x03, 0xa1, 0xac, 0xdb,
-            0xe5, 0xbf, 0xcb, 0xbc, 0x27, 0xb6, 0x7f, 0x06, 0x08, 0x00, 0x06, 0x00,
-            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x01, 0x02, 0x12, 0xa0, 0x00, 0x00, 0x0e, 0x8c, 0xe0, 0x2f, 0x22, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x01, 0x19, 0xfa, 0x3f, 0xd4, 0x01, 0x12, 0x05, 0x7e, 0xc3, 0xd6,
+            0x87, 0xfe, 0x78, 0x9e, 0x03, 0xa1, 0xac, 0xdb, 0xe5, 0xbf, 0xcb, 0xbc, 0x27, 0xb6,
+            0x7f, 0x06, 0x08, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
 
         let mrp_data = parse_mrp_data(&payload).expect("Failed to parse MRP data");
         //print(!("{}", mrp_data);
-        
+
         // Assertions pour vérifier que les données sont correctes
         assert_eq!(mrp_data.version, 0x0001);
         assert_eq!(mrp_data.tlv_headers.len(), 4);
@@ -291,7 +271,10 @@ mod tests {
 
         if let MRPTLVData::MRPCommon(data) = &mrp_data.tlv_headers[1].data {
             assert_eq!(data.sequence_id, 0x057e);
-            assert_eq!(data.domain_uuid, Uuid::parse_str("c3d687fe-789e-03a1-acdb-e5bfcbbc27b6").unwrap());
+            assert_eq!(
+                data.domain_uuid,
+                Uuid::parse_str("c3d687fe-789e-03a1-acdb-e5bfcbbc27b6").unwrap()
+            );
         } else {
             panic!("Expected MRPCommon data");
         }

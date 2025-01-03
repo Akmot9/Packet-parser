@@ -4,13 +4,13 @@ use oui::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    errors::data_link::mac_addres::MacParseError, 
-    valildations::data_link::validate_mac_length};
+    errors::data_link::mac_addres::MacParseError, valildations::data_link::validate_mac_length,
+};
 
 pub const MAC_LEN: usize = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct MacAddress(pub[u8; MAC_LEN]);
+pub struct MacAddress(pub [u8; MAC_LEN]);
 
 impl MacAddress {
     pub fn get_oui(&self) -> Oui {

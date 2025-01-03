@@ -24,9 +24,9 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
 
     fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
         validate_data_link_length(packets)?;
-        
+
         let data_link_protocol = DataLinkProtocol::try_from(&packets[14..])?;
-        
+
         Ok(DataLink {
             destination_mac: MacAddress::try_from(&packets[0..6]).unwrap(),
             source_mac: MacAddress::try_from(&packets[6..12]).unwrap(),

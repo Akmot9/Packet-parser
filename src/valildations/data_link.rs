@@ -1,4 +1,7 @@
-use crate::{errors::data_link::{mac_addres::MacParseError, DataLinkError}, parsed_packet::data_link::mac_addres::MAC_LEN};
+use crate::{
+    errors::data_link::{mac_addres::MacParseError, DataLinkError},
+    parsed_packet::data_link::mac_addres::MAC_LEN,
+};
 
 const DATALINK_HEADER_LEN: usize = 14;
 

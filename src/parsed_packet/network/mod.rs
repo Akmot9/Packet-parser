@@ -1,6 +1,6 @@
 mod ipaddress;
-use ipaddress::IpAddress;
 use crate::errors::network::NetworkError;
+use ipaddress::IpAddress;
 
 #[derive(Debug)]
 pub struct Network<'a> {
@@ -22,4 +22,3 @@ impl<'a> TryFrom<&'a [u8]> for Network<'a> {
         })
     }
 }
-

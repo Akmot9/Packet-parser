@@ -1,14 +1,13 @@
-mod profinet;
 mod mrp;
+mod profinet;
 // use profinet::ProfinetPacket;
-
 
 use crate::errors::data_link::DataLinkError;
 #[derive(Debug)]
 pub enum DataLinkProtocol {
     ProfinetPacket,
     Mrp,
-    Unknown
+    Unknown,
 }
 
 impl TryFrom<&[u8]> for DataLinkProtocol {
@@ -22,4 +21,3 @@ impl TryFrom<&[u8]> for DataLinkProtocol {
         }
     }
 }
-
