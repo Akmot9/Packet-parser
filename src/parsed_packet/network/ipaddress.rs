@@ -1,2 +1,5 @@
 #[derive(Debug)]
-pub struct IpAddress;
+pub enum IpAddress {
+    Ipv4,
+    Ipv6
+}

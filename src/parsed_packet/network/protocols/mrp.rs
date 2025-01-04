@@ -1,7 +1,7 @@
 use std::fmt;
 use uuid::Uuid;
 
-use crate::{errors::data_link::protocol::MRPParseError, parsed_packet::data_link::mac_addres::MacAddress};
+use crate::{errors::network::MRPParseError, parsed_packet::data_link::mac_addres::MacAddress};
 
 #[derive(Debug, PartialEq)]
 pub struct MRPData {

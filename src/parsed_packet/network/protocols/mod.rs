@@ -1,23 +1,24 @@
+use crate::errors::network::protocol::NetworkProtocolError;
+
 mod mrp;
 mod profinet;
-// use profinet::ProfinetPacket;
+mod ipv4;
 
-use crate::errors::data_link::DataLinkError;
 #[derive(Debug)]
-pub enum DataLinkProtocol {
+pub enum Protocol {
     ProfinetPacket,
     Mrp,
     Unknown,
 }
 
-impl TryFrom<&[u8]> for DataLinkProtocol {
-    type Error = DataLinkError;
+impl TryFrom<&[u8]> for Protocol {
+    type Error = NetworkProtocolError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         match &value[..2] {
-            [0x88, 0x92] => Ok(DataLinkProtocol::ProfinetPacket),
-            [0x88, 0xAB] => Ok(DataLinkProtocol::Mrp),
-            _ => Ok(DataLinkProtocol::Unknown),
+            [0x88, 0x92] => Ok(Protocol::ProfinetPacket),
+            [0x88, 0xAB] => Ok(Protocol::Mrp),
+            _ => Ok(Protocol::Unknown),
         }
     }
 }
