@@ -56,6 +56,7 @@ pub mod errors;
 pub mod parsed_packet;
 pub mod valildations;
 
+use core::net;
 use std::convert::TryFrom;
 
 use parsed_packet::{
@@ -87,7 +88,7 @@ pub struct ParsedPacket<'a> {
     data_link: DataLink<'a>,
 
     /// Données de la couche réseau (par exemple, IPv4, IPv6).
-    _network: Option<Network<'a>>,
+    network: Option<Network<'a>>,
 
     /// Données de la couche transport (par exemple, TCP, UDP).
     _transport: Option<Transport<'a>>,
@@ -118,14 +119,14 @@ impl<'a> TryFrom<&'a [u8]> for ParsedPacket<'a> {
 
         // Étape 2 : Analyser la couche lien de données.
         let data_link = DataLink::try_from(packets)?;
-
+        let network = Some(Network::try_from(data_link.payload)?);
         // Les couches réseau, transport et application ne sont pas encore implémentées.
         Ok(ParsedPacket {
             data_link,
-            size: packets.len(),
-            _network: None,
+            network,
             _transport: None,
             _application: None,
+            size: packets.len(),
         })
     }
 }
