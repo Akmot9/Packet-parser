@@ -10,20 +10,20 @@ use crate::parsed_packet::application::protocols::{
 };
 
 
-/// `Layer7Info` represents the possible layer 7 information that can be parsed.
+/// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
 #[derive(Debug)]
 pub enum ApplicationProtocol {
-    DnsPacket(DnsPacket),
-    TlsPacket(TlsPacket),
-    DhcpPacket(DhcpPacket),
-    HttpRequest(HttpRequest),
-    ModbusPacket(ModbusPacket),
-    NtpPacket(NtpPacket),
-    BitcoinPacket(BitcoinPacket),
+    Dns(DnsPacket),
+    Tls(TlsPacket),
+    Dhcp(DhcpPacket),
+    Http(HttpRequest),
+    Modbus(ModbusPacket),
+    Ntp(NtpPacket),
+    Bitcoin(BitcoinPacket),
     None,
 }
 
-/// `Layer7Infos` contains information about the layer 7 protocol and its parsed data.
+/// The `Application` struct contains information about the layer 7 protocol and its parsed data.
 #[derive(Debug)]
 pub struct Application {
     pub application_protocol: String,
@@ -42,7 +42,7 @@ impl TryFrom<&[u8]> for Application {
         if let Ok(parsed_packet) = DnsPacket::try_from(packet) {
             return Ok(Application {
                 application_protocol: "DNS".to_string(),
-                layer_7_protocol_infos: Some(ApplicationProtocol::DnsPacket(parsed_packet)),
+                layer_7_protocol_infos: Some(ApplicationProtocol::Dns(parsed_packet)),
             });
         }
         // if let Ok(parsed_packet) = TlsPacket::try_from(packet) {

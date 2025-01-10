@@ -56,7 +56,7 @@ pub mod errors;
 pub mod parsed_packet;
 pub mod valildations;
 
-use core::net;
+
 use std::convert::TryFrom;
 
 use parsed_packet::{
