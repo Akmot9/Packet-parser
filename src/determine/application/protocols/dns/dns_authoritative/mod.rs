@@ -1,9 +1,11 @@
 use std::fmt;
 
-use crate::parsed_packet::application::protocols::dns::utils::{dns_class::DnsClass, dns_types::DnsType};
+use crate::parsed_packet::application::protocols::dns::utils::{
+    dns_class::DnsClass, dns_types::DnsType,
+};
 
 #[derive(Debug)]
-pub struct AdditionalRecord {
+pub struct AuthoritativeNameServer {
     name: String,           // Domain name
     answer_type: DnsType,   // Type of record
     answer_class: DnsClass, // Class of record
@@ -12,11 +14,11 @@ pub struct AdditionalRecord {
     address: Vec<u8>,       // Address or other data (variable length)
 }
 
-impl fmt::Display for AdditionalRecord {
+impl fmt::Display for AuthoritativeNameServer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "AdditionalRecord {{ name: {}, answer_type: {}, answer_class: {}, ttl: {}, data_length: {}, address: {:?} }}",
+            "AuthoritativeNameServer {{ name: {}, answer_type: {}, answer_class: {}, ttl: {}, data_length: {}, address: {:?} }}",
             self.name, self.answer_type, self.answer_class, self.ttl, self.data_length, self.address
         )
     }
