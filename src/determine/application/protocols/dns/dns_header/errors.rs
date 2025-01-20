@@ -1,5 +1,5 @@
 // dns_header/error.rs
-use crate::parsed_packet::application::protocols::dns::dns_header::dns_flags::errors::DnsFlagsError;
+use crate::determine::application::protocols::dns::dns_header::dns_flags::errors::DnsFlagsError;
 use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum DnsHeaderError {

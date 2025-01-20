@@ -1,7 +1,7 @@
 use thiserror::Error;
 
-use crate::parsed_packet::application::protocols::dns::dns_header::errors::DnsHeaderError;
-use crate::parsed_packet::application::protocols::dns::dns_queries::errors::DnsQueryParseError;
+use crate::determine::application::protocols::dns::dns_header::errors::DnsHeaderError;
+use crate::determine::application::protocols::dns::dns_queries::errors::DnsQueryParseError;
 
 #[derive(Debug, Error)]
 pub enum DnsPacketError {

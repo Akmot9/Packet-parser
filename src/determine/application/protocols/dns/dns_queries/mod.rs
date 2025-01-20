@@ -2,7 +2,7 @@ use std::fmt;
 
 use errors::DnsQueryParseError;
 
-use crate::parsed_packet::application::protocols::dns::utils::{
+use crate::determine::application::protocols::dns::utils::{
     dns_class::DnsClass, dns_types::DnsType,
 };
 
