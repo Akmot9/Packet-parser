@@ -1,6 +1,6 @@
-use errors::DnsFlagsError;
+use crate::errors::application::dns::dns_header::dns_flags::DnsFlagsError;
 
-pub(crate) mod errors;
+
 
 /// Verifies the consistency of DNS packet flags.
 ///

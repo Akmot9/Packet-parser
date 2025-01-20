@@ -10,9 +10,9 @@ use dns_answers::Answer;
 use dns_authoritative::AuthoritativeNameServer;
 use dns_header::DnsHeader;
 use dns_queries::DnsQueries;
-use errors::DnsPacketError;
+use crate::errors::application::dns::DnsPacketError;
 use std::fmt;
-mod errors;
+
 
 #[derive(Debug)]
 pub struct DnsPacket {
