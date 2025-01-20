@@ -1,3 +1,6 @@
+use crate::{errors::application::ntp::NtpPacketParseError, 
+    protocols::application::ntp::*};
+
 /// The `NtpPacket` struct represents a parsed NTP packet.
 #[derive(Debug)]
 pub struct NtpPacket {
@@ -72,146 +75,95 @@ fn check_root_delay_dispersion(_root_delay: u32, _root_dispersion: u32) -> Resul
     Ok(())
 }
 
-/// Parses an NTP packet from a given payload.
-///
-/// # Arguments
-///
-/// * `payload` - A byte slice representing the raw NTP packet data.
-///
-/// # Returns
-///
-/// * `Result<NtpPacket, bool>` - Returns `Ok(NtpPacket)` if parsing is successful,
-///   otherwise returns `Err(false)` indicating an invalid NTP packet.
-pub fn parse_ntp_packet(payload: &[u8]) -> Result<NtpPacket, bool> {
-    check_ntp_packet(payload)?;
+impl TryFrom<&[u8]> for NtpPacket {
+    type Error = NtpPacketParseError;
 
-    let li_vn_mode = payload[0];
-    let stratum = payload[1];
-    let poll = payload[2];
-    let precision = payload[3] as i8;
-    let root_delay = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
-    let root_dispersion = u32::from_be_bytes([payload[8], payload[9], payload[10], payload[11]]);
-    let reference_id = u32::from_be_bytes([payload[12], payload[13], payload[14], payload[15]]);
-    let reference_timestamp = u64::from_be_bytes([
-        payload[16],
-        payload[17],
-        payload[18],
-        payload[19],
-        payload[20],
-        payload[21],
-        payload[22],
-        payload[23],
-    ]);
-    let originate_timestamp = u64::from_be_bytes([
-        payload[24],
-        payload[25],
-        payload[26],
-        payload[27],
-        payload[28],
-        payload[29],
-        payload[30],
-        payload[31],
-    ]);
-    let receive_timestamp = u64::from_be_bytes([
-        payload[32],
-        payload[33],
-        payload[34],
-        payload[35],
-        payload[36],
-        payload[37],
-        payload[38],
-        payload[39],
-    ]);
-    let transmit_timestamp = u64::from_be_bytes([
-        payload[40],
-        payload[41],
-        payload[42],
-        payload[43],
-        payload[44],
-        payload[45],
-        payload[46],
-        payload[47],
-    ]);
+    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
+        validate_ntp_packet(payload)?;
 
-    check_stratum(stratum)?;
-    check_poll(poll)?;
-    check_root_delay_dispersion(root_delay, root_dispersion)?;
+        let li_vn_mode = extract_li_vn_mode(payload)?;
+        let stratum = extract_stratum(payload)?;
+        let poll = extract_poll(payload)?;
+        let precision = extract_precision(payload)?;
+        let root_delay = extract_root_delay(payload)?;
+        let root_dispersion = extract_root_dispersion(payload)?;
+        let reference_id = extract_reference_id(payload)?;
+        let reference_timestamp = extract_reference_timestamp(payload)?;
+        let originate_timestamp = extract_originate_timestamp(payload)?;
+        let receive_timestamp = extract_receive_timestamp(payload)?;
+        let transmit_timestamp = extract_transmit_timestamp(payload)?;
 
-    Ok(NtpPacket {
-        li_vn_mode,
-        stratum,
-        poll,
-        precision,
-        root_delay,
-        root_dispersion,
-        reference_id,
-        reference_timestamp,
-        originate_timestamp,
-        receive_timestamp,
-        transmit_timestamp,
-    })
+        Ok(NtpPacket {
+            li_vn_mode,
+            stratum,
+            poll,
+            precision,
+            root_delay,
+            root_dispersion,
+            reference_id,
+            reference_timestamp,
+            originate_timestamp,
+            receive_timestamp,
+            transmit_timestamp,
+        })
+    }
 }
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn test_parse_ntp_packet() {
-        // Test with a valid NTP packet
-        let ntp_payload = vec![
+    fn test_valid_ntp_packet() {
+        let payload = vec![
             0x1B, 0x00, 0x04, 0xFA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4E, 0x49,
             0x4E, 0x00, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00,
             0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0,
             0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
         ];
-        match parse_ntp_packet(&ntp_payload) {
-            Ok(packet) => {
-                assert_eq!(packet.li_vn_mode, 0x1B);
-                assert_eq!(packet.stratum, 0x00);
-                assert_eq!(packet.poll, 0x04);
-                assert_eq!(packet.precision, -6);
-                assert_eq!(packet.root_delay, 0x00000000);
-                assert_eq!(packet.root_dispersion, 0x00000000);
-                assert_eq!(packet.reference_id, 0x4E494E00);
-                assert_eq!(packet.reference_timestamp, 0xDCC00000E144C671);
-                assert_eq!(packet.originate_timestamp, 0xDCC00000E144C671);
-                assert_eq!(packet.receive_timestamp, 0xDCC00000E144C671);
-                assert_eq!(packet.transmit_timestamp, 0xDCC00000E144C671);
-            }
-            Err(_) => panic!("Expected NTP packet"),
-        }
+        let result = NtpPacket::try_from(payload.as_slice()).expect("Expected a valid NTP packet");
 
-        // Test with an invalid NTP packet (too short)
+        assert_eq!(result.li_vn_mode, 0x1B);
+        assert_eq!(result.stratum, 0x00);
+        assert_eq!(result.poll, 0x04);
+        assert_eq!(result.precision, -6);
+        assert_eq!(result.root_delay, 0x00000000);
+        assert_eq!(result.root_dispersion, 0x00000000);
+        assert_eq!(result.reference_id, 0x4E494E00);
+        assert_eq!(result.reference_timestamp, 0xDCC00000E144C671);
+        assert_eq!(result.originate_timestamp, 0xDCC00000E144C671);
+        assert_eq!(result.receive_timestamp, 0xDCC00000E144C671);
+        assert_eq!(result.transmit_timestamp, 0xDCC00000E144C671);
+    }
+    #[test]
+    fn test_invalid_ntp_packet_length() {
         let short_payload = vec![0x1B, 0x00, 0x04];
-        match parse_ntp_packet(&short_payload) {
-            Ok(_) => panic!("Expected non-NTP packet due to short payload"),
-            Err(is_ntp) => assert!(!is_ntp),
-        }
+        let result = NtpPacket::try_from(short_payload.as_slice());
+        assert!(matches!(result, Err(NtpPacketParseError::InvalidPacketLength)));
+    }
 
-        // Test with an invalid NTP packet (invalid version)
+    #[test]
+    fn test_invalid_ntp_version() {
         let invalid_version_payload = vec![
             0x7B, 0x00, 0x04, 0xFA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4E, 0x49,
             0x4E, 0x00, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00,
             0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0,
             0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
         ];
-        match parse_ntp_packet(&invalid_version_payload) {
-            Ok(_) => panic!("Expected non-NTP packet due to invalid version"),
-            Err(is_ntp) => assert!(!is_ntp),
-        }
+        let result = NtpPacket::try_from(invalid_version_payload.as_slice());
+        assert!(matches!(result, Err(NtpPacketParseError::InvalidVersion)));
+    }
 
-        // Test with an invalid NTP packet (invalid mode)
+    #[test]
+    fn test_invalid_ntp_mode() {
         let invalid_mode_payload = vec![
             0x18, 0x00, 0x04, 0xFA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4E, 0x49,
             0x4E, 0x00, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00,
             0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0,
             0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
         ];
-        match parse_ntp_packet(&invalid_mode_payload) {
-            Ok(_) => panic!("Expected non-NTP packet due to invalid mode"),
-            Err(is_ntp) => assert!(!is_ntp),
-        }
+        let result = NtpPacket::try_from(invalid_mode_payload.as_slice());
+        assert!(matches!(result, Err(NtpPacketParseError::InvalidMode)));
     }
 
     #[test]

@@ -1,6 +1,9 @@
 pub mod bitcoin;
+pub mod dhcp;
 pub mod dns;
 pub mod tls;
+pub mod http;
+pub mod ntp;
 
 /// Errors related to parsing an `Application`
 #[derive(Debug, thiserror::Error)]

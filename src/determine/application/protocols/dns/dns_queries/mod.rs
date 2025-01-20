@@ -1,11 +1,9 @@
 use std::fmt;
 
-
-use crate::{determine::application::protocols::dns::utils::{
-    dns_class::DnsClass, dns_types::DnsType,
-}, errors::application::dns::dns_queries::DnsQueryParseError};
-
-
+use crate::{
+    determine::application::protocols::dns::utils::{dns_class::DnsClass, dns_types::DnsType},
+    errors::application::dns::dns_queries::DnsQueryParseError,
+};
 
 #[derive(Debug, PartialEq)]
 pub struct DnsQueries {

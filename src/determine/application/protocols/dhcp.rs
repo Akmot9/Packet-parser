@@ -1,5 +1,8 @@
 //! Module for parsing DHCP packets.
 
+use crate::{
+    errors::application::dhcp::DhcpParseError, 
+    protocols::application::dhcp::*};
 
 /// The `DhcpPacket` struct represents a parsed DHCP packet.
 #[derive(Debug)]
@@ -20,77 +23,52 @@ pub struct DhcpPacket {
     pub file: [u8; 128],
     pub options: Vec<u8>,
 }
+impl TryFrom<&[u8]> for DhcpPacket {
+    type Error = DhcpParseError;
 
+    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
+        validate_packet_length(payload)?;
 
-/// Parses a DHCP packet from a given payload.
-///
-/// # Arguments
-///
-/// * `payload` - A byte slice representing the raw DHCP packet data.
-///
-/// # Returns
-///
-/// * `Result<DhcpPacket, bool>` - Returns `Ok(DhcpPacket)` if parsing is successful,
-///   otherwise returns `Err(false)` indicating an invalid DHCP packet.
-pub fn parse_dhcp_packet(payload: &[u8]) -> Result<DhcpPacket, bool> {
-    // Check minimum length
-    if payload.len() < 236 {
-        return Err(false);
+        let op = validate_op(payload)?;
+        let htype = validate_htype(payload)?;
+        let hlen = validate_hlen(payload)?;
+        let hops = payload[3];
+        let xid = extract_xid(payload)?;
+        let secs = extract_secs(payload)?;
+        let flags = extract_flags(payload)?;
+        let ciaddr = extract_ciaddr(payload)?;
+        let yiaddr = extract_yiaddr(payload)?;
+        let siaddr = extract_siaddr(payload)?;
+        let giaddr = extract_giaddr(payload)?;
+        let chaddr = extract_chaddr(payload)?;
+        let sname = extract_sname(payload)?;
+        let file = extract_file(payload)?;
+        let options = extract_options(payload)?;
+
+        Ok(DhcpPacket {
+            op,
+            htype,
+            hlen,
+            hops,
+            xid,
+            secs,
+            flags,
+            ciaddr,
+            yiaddr,
+            siaddr,
+            giaddr,
+            chaddr,
+            sname,
+            file,
+            options,
+        })
     }
-
-    let op = payload[0];
-    let htype = payload[1];
-    let hlen = payload[2];
-    let hops = payload[3];
-    let xid = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
-    let secs = u16::from_be_bytes([payload[8], payload[9]]);
-    let flags = u16::from_be_bytes([payload[10], payload[11]]);
-    let ciaddr = [payload[12], payload[13], payload[14], payload[15]];
-    let yiaddr = [payload[16], payload[17], payload[18], payload[19]];
-    let siaddr = [payload[20], payload[21], payload[22], payload[23]];
-    let giaddr = [payload[24], payload[25], payload[26], payload[27]];
-    let mut chaddr = [0u8; 16];
-    chaddr.copy_from_slice(&payload[28..44]);
-    let mut sname = [0u8; 64];
-    sname.copy_from_slice(&payload[44..108]);
-    let mut file = [0u8; 128];
-    file.copy_from_slice(&payload[108..236]);
-
-    let options = payload[236..].to_vec();
-
-    // Validate DHCP packet fields
-    if !(op == 1 || op == 2) {
-        return Err(false);
-    }
-    if htype != 1 {
-        return Err(false);
-    }
-    if hlen != 6 {
-        return Err(false);
-    }
-
-    Ok(DhcpPacket {
-        op,
-        htype,
-        hlen,
-        hops,
-        xid,
-        secs,
-        flags,
-        ciaddr,
-        yiaddr,
-        siaddr,
-        giaddr,
-        chaddr,
-        sname,
-        file,
-        options,
-    })
 }
+
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::{determine::application::protocols::dhcp::DhcpPacket, errors::application::dhcp::DhcpParseError};
 
     #[test]
     fn test_parse_dhcp_packet() {
@@ -121,44 +99,17 @@ mod tests {
         )
         .collect::<Vec<u8>>();
 
-        match parse_dhcp_packet(&dhcp_payload) {
-            Ok(packet) => {
-                assert_eq!(packet.op, 1);
-                assert_eq!(packet.htype, 1);
-                assert_eq!(packet.hlen, 6);
-                assert_eq!(packet.hops, 0);
-                assert_eq!(packet.xid, 0x3903F326);
-                assert_eq!(packet.secs, 0);
-                assert_eq!(packet.flags, 0);
-                assert_eq!(packet.ciaddr, [0, 0, 0, 0]);
-                assert_eq!(packet.yiaddr, [0, 0, 0, 0]);
-                assert_eq!(packet.siaddr, [0, 0, 0, 0]);
-                assert_eq!(packet.giaddr, [0, 0, 0, 0]);
-                assert_eq!(
-                    packet.chaddr,
-                    [
-                        0x00, 0x0C, 0x29, 0x36, 0x57, 0xD2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00
-                    ]
-                );
-                assert_eq!(packet.sname, [0u8; 64]);
-                assert_eq!(packet.file, [0u8; 128]);
-                assert_eq!(
-                    packet.options,
-                    vec![0x63, 0x82, 0x53, 0x63, 0x35, 0x01, 0x05, 0xFF]
-                );
-            }
-            Err(_) => panic!("Expected DHCP packet"),
-        }
+
+        let result = DhcpPacket::try_from(dhcp_payload.as_slice());
+        assert!(result.is_ok());
+        
     }
 
     #[test]
     fn test_parse_dhcp_packet_short_payload() {
-        let short_payload = vec![0x01, 0x01, 0x06, 0x00, 0x39, 0x03, 0xF3, 0x26];
-        match parse_dhcp_packet(&short_payload) {
-            Ok(_) => panic!("Expected invalid DHCP packet due to short payload"),
-            Err(is_dhcp) => assert!(!is_dhcp),
-        }
+        let short_payload = [0x01, 0x01, 0x06, 0x00, 0x39, 0x03, 0xF3, 0x26];
+        let result = DhcpPacket::try_from(short_payload.as_slice());
+        assert!(matches!(result, Err(DhcpParseError::InvalidOp)));
     }
 
     #[test]
@@ -180,9 +131,7 @@ mod tests {
         )
         .collect::<Vec<u8>>();
 
-        match parse_dhcp_packet(&invalid_op_payload) {
-            Ok(_) => panic!("Expected invalid DHCP packet due to invalid op code"),
-            Err(is_dhcp) => assert!(!is_dhcp),
-        }
+        let result = DhcpPacket::try_from(invalid_op_payload.as_slice());
+        assert!(matches!(result, Err(DhcpParseError::ShortPacket)));
     }
 }

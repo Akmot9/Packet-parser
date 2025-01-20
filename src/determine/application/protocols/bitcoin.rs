@@ -1,12 +1,8 @@
 use std::convert::TryFrom;
 
 use crate::protocols::application::bitcoin::{
-    extract_and_validate_command, 
-    extract_checksum, 
-    validate_magic_number, 
-    validate_payload_consistency, 
-    validate_payload_length,
-    extract_length
+    extract_and_validate_command, extract_checksum, extract_length, validate_magic_number,
+    validate_payload_consistency, validate_payload_length,
 };
 
 use crate::errors::application::bitcoin::BitcoinPacketError;

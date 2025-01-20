@@ -2,14 +2,15 @@ pub mod protocols;
 use crate::{
     determine::application::protocols::{
         bitcoin::BitcoinPacket,
-        dhcp::{parse_dhcp_packet, DhcpPacket},
+        dhcp::DhcpPacket,
         dns::DnsPacket,
-        http::{parse_http_request, HttpRequest},
-        modbus::{parse_modbus_packet, ModbusPacket},
-        ntp::{parse_ntp_packet, NtpPacket},
+        http::HttpRequest,
+        
+        ntp::NtpPacket,
         tls::TlsPacket,
-    }, 
-    errors::application::ApplicationParseError};
+    },
+    errors::application::ApplicationParseError,
+};
 
 /// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
 #[derive(Debug)]
@@ -18,7 +19,6 @@ pub enum ApplicationProtocol<'a> {
     Tls(TlsPacket),
     Dhcp(DhcpPacket),
     Http(HttpRequest),
-    Modbus(ModbusPacket),
     Ntp(NtpPacket),
     Bitcoin(BitcoinPacket),
 
@@ -34,10 +34,10 @@ pub struct Application<'a> {
     pub layer_7_protocol_infos: Option<ApplicationProtocol<'a>>,
 }
 
-impl <'a> TryFrom<&[u8]> for Application <'a> {
+impl<'a> TryFrom< &'a [u8]> for Application<'a> {
     type Error = ApplicationParseError;
 
-    fn try_from(packet: &[u8]) -> Result<Self, Self::Error> {
+    fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
         if packet.is_empty() {
             return Err(ApplicationParseError::EmptyPacket);
         }
@@ -66,11 +66,6 @@ impl <'a> TryFrom<&[u8]> for Application <'a> {
                     .map(ApplicationProtocol::Http)
                     .map_err(|_| ApplicationParseError::HttpParseError)
             }),
-            ("Modbus", |data| {
-                ModbusPacket::try_from(data)
-                    .map(ApplicationProtocol::Modbus)
-                    .map_err(|_| ApplicationParseError::ModbusParseError)
-            }),
             ("NTP", |data| {
                 NtpPacket::try_from(data)
                     .map(ApplicationProtocol::Ntp)
@@ -95,9 +90,7 @@ impl <'a> TryFrom<&[u8]> for Application <'a> {
         // If no parser matches, return a "None" protocol
         Ok(Application {
             application_protocol: "Unknown".to_string(),
-            layer_7_protocol_infos: Raw,
+            layer_7_protocol_infos: Some(ApplicationProtocol::Raw(packet)), // Utilisation correcte avec 'a
         })
     }
 }
-
-

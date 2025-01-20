@@ -8,5 +8,3 @@ pub enum NetworkProtocolError {
     #[error("Protocole inconnu.")]
     UnknownProtocol,
 }
-
-

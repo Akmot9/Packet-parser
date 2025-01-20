@@ -5,14 +5,13 @@ mod dns_header;
 mod dns_queries;
 pub mod utils;
 
+use crate::errors::application::dns::DnsPacketError;
 use dns_additional::AdditionalRecord;
 use dns_answers::Answer;
 use dns_authoritative::AuthoritativeNameServer;
 use dns_header::DnsHeader;
 use dns_queries::DnsQueries;
-use crate::errors::application::dns::DnsPacketError;
 use std::fmt;
-
 
 #[derive(Debug)]
 pub struct DnsPacket {

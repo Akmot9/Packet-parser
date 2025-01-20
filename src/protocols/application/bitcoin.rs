@@ -53,7 +53,10 @@ pub fn extract_checksum(payload: &[u8]) -> [u8; 4] {
 }
 
 /// Vérifie que la longueur du payload correspond à la longueur indiquée.
-pub fn validate_payload_consistency(payload: &[u8], expected_length: u32) -> Result<(), BitcoinPacketError> {
+pub fn validate_payload_consistency(
+    payload: &[u8],
+    expected_length: u32,
+) -> Result<(), BitcoinPacketError> {
     let actual_length = payload[24..].len();
     if actual_length != expected_length as usize {
         Err(BitcoinPacketError::LengthMismatch {

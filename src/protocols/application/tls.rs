@@ -1,4 +1,7 @@
-use crate::{determine::application::protocols::tls::{TlsContentType, TlsVersion}, errors::application::tls::TlsParseError};
+use crate::{
+    determine::application::protocols::tls::{TlsContentType, TlsVersion},
+    errors::application::tls::TlsParseError,
+};
 
 /// Checks if the payload length is at least 5 bytes
 pub fn check_minimum_length(payload: &[u8]) -> Result<(), TlsParseError> {

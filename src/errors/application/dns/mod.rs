@@ -1,8 +1,8 @@
 use dns_header::DnsHeaderError;
 use dns_queries::DnsQueryParseError;
 use thiserror::Error;
-pub mod dns_queries;
 pub mod dns_header;
+pub mod dns_queries;
 
 #[derive(Debug, Error)]
 pub enum DnsPacketError {

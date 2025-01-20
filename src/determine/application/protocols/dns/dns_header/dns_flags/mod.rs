@@ -1,7 +1,5 @@
 use crate::errors::application::dns::dns_header::dns_flags::DnsFlagsError;
 
-
-
 /// Verifies the consistency of DNS packet flags.
 ///
 /// DNS packet flags are used to control the behavior of DNS queries and responses.

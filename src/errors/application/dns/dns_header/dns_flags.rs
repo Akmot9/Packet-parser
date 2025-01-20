@@ -1,4 +1,3 @@
-
 // dns_flags/error.rs
 use thiserror::Error;
 
