@@ -7,7 +7,7 @@ use crate::{
         http::{parse_http_request, HttpRequest},
         modbus::{parse_modbus_packet, ModbusPacket},
         ntp::{parse_ntp_packet, NtpPacket},
-        tls::{parse_tls_packet, TlsPacket},
+        tls::TlsPacket,
     }, 
     errors::application::ApplicationParseError};
 

@@ -1,5 +1,6 @@
 pub mod bitcoin;
 pub mod dns;
+pub mod tls;
 
 /// Errors related to parsing an `Application`
 #[derive(Debug, thiserror::Error)]
