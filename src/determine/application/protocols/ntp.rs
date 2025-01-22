@@ -1,11 +1,61 @@
-use crate::{errors::application::ntp::NtpPacketParseError, 
-    protocols::application::ntp::*};
+use crate::{
+    errors::application::ntp::NtpPacketParseError, 
+    utils::application::ntp::*};
+
+/// # NTP Packet Parser
+///
+/// This module provides a way to determine whether a raw network packet is an
+/// NTP packet and extract relevant fields.
+///
+/// ## Reference
+/// - RFC 5905: [Network Time Protocol Version 4](https://datatracker.ietf.org/doc/html/rfc5905)
+///
+/// ## NTP Packet Structure
+///
+/// The following table describes the structure of an NTP packet:
+///
+/// | Field                  | Size (bytes) | Description |
+/// |------------------------|-------------|-------------|
+/// | `flags`                | 1           | Contains LI, Version, and Mode (first byte). |
+/// | `stratum`              | 1           | Stratum level of the local clock. |
+/// | `poll`                 | 1           | Maximum interval between successive messages. |
+/// | `precision`            | 1           | Precision of the local clock. |
+/// | `root_delay`           | 4           | Total round-trip delay to the primary reference source. |
+/// | `root_dispersion`      | 4           | Nominal error relative to the primary reference source. |
+/// | `reference_id`         | 4           | Reference identifier depending on the stratum level. |
+/// | `reference_timestamp`  | 8           | Time at which the local clock was last set or corrected. |
+/// | `originate_timestamp`  | 8           | Time at which the request departed the client for the server. |
+/// | `receive_timestamp`    | 8           | Time at which the request arrived at the server. |
+/// | `transmit_timestamp`   | 8           | Time at which the reply departed the server for the client. |
+///
+/// ## Usage
+///
+/// ```rust
+/// use ntp_parser::NtpPacket;
+///
+/// let packet: [u8; 48] = [
+///     0x3B, 0x00, 0x00, 0x00, // LI, Version, Mode | Stratum | Poll | Precision
+///     0x00, 0x00, 0x00, 0x00, // Root Delay
+///     0x00, 0x00, 0x00, 0x00, // Root Dispersion
+///     0x00, 0x00, 0x00, 0x00, // Reference ID
+///     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Reference Timestamp
+///     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Originate Timestamp
+///     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Receive Timestamp
+///     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // Transmit Timestamp
+/// ];
+///
+/// if let Some(ntp) = NtpPacket::from_bytes(&packet) {
+///     println!("Parsed NTP Packet: {:?}", ntp);
+/// } else {
+///     println!("Not a valid NTP packet.");
+/// }
+/// ```
 
 /// The `NtpPacket` struct represents a parsed NTP packet.
 #[derive(Debug)]
 pub struct NtpPacket {
-    /// The first byte containing LI, Version, et Mode.
-    pub li_vn_mode: u8,
+    /// The first byte containing LI, Version, and Mode.
+    pub flags: (u8, u8, u8),
     /// The stratum level of the local clock.
     pub stratum: u8,
     /// The maximum interval between successive messages.
@@ -27,7 +77,6 @@ pub struct NtpPacket {
     /// The time at which the reply departed the server for the client.
     pub transmit_timestamp: u64,
 }
-
 /// Checks if the first byte is consistent with an NTP packet
 fn check_ntp_packet(payload: &[u8]) -> Result<(), bool> {
     if payload.len() < 48 {
@@ -79,9 +128,10 @@ impl TryFrom<&[u8]> for NtpPacket {
     type Error = NtpPacketParseError;
 
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        validate_ntp_packet(payload)?;
+        // Check if payload has the minimum length required for an NTP packet
+        validate_ntp_packet_length(payload)?;
 
-        let li_vn_mode = extract_li_vn_mode(payload)?;
+        let flags = extract_flags(payload)?;
         let stratum = extract_stratum(payload)?;
         let poll = extract_poll(payload)?;
         let precision = extract_precision(payload)?;
@@ -94,7 +144,7 @@ impl TryFrom<&[u8]> for NtpPacket {
         let transmit_timestamp = extract_transmit_timestamp(payload)?;
 
         Ok(NtpPacket {
-            li_vn_mode,
+            flags,
             stratum,
             poll,
             precision,

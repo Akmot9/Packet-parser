@@ -1,6 +1,6 @@
 use crate::{
     errors::application::http::HttpRequestParseError, 
-    protocols::application::http::*};
+    utils::application::http::*};
 
 
 /// The `HttpRequest` struct represents a parsed HTTP request.

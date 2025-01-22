@@ -1,6 +1,6 @@
 use crate::{
     errors::application::tls::TlsParseError,
-    protocols::application::tls::{
+    utils::application::tls::{
         check_content_type, check_minimum_length, check_tls_version, extract_length,
         extract_payload, validate_payload_length,
     },

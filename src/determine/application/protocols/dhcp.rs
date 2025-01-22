@@ -2,7 +2,7 @@
 
 use crate::{
     errors::application::dhcp::DhcpParseError, 
-    protocols::application::dhcp::*};
+    utils::application::dhcp::*};
 
 /// The `DhcpPacket` struct represents a parsed DHCP packet.
 #[derive(Debug)]

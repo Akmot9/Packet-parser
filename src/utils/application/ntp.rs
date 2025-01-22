@@ -1,15 +1,14 @@
 use crate::errors::application::ntp::NtpPacketParseError;
 
-
-pub fn validate_ntp_packet(payload: &[u8]) -> Result<(), NtpPacketParseError> {
+pub fn validate_ntp_packet_length(payload: &[u8]) -> Result<(), NtpPacketParseError> {
     if payload.len() < 48 {
         return Err(NtpPacketParseError::InvalidPacketLength);
     }
     Ok(())
 }
 
-pub fn extract_li_vn_mode(payload: &[u8]) -> Result<u8, NtpPacketParseError> {
-    Ok(payload[0])
+pub fn extract_flags(payload: &[u8]) -> Result<(u8, u8, u8), NtpPacketParseError> {
+    Ok((payload[0],payload[0],payload[0]))
 }
 
 pub fn extract_stratum(payload: &[u8]) -> Result<u8, NtpPacketParseError> {

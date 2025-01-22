@@ -23,8 +23,8 @@ pub enum ApplicationParseError {
     #[error("Failed to parse HTTP request")]
     HttpParseError,
 
-    #[error("Failed to parse Modbus packet")]
-    ModbusParseError,
+    // #[error("Failed to parse Modbus packet")]
+    // ModbusParseError,
 
     #[error("Failed to parse NTP packet")]
     NtpParseError,
