@@ -1,7 +1,4 @@
-use crate::{
-    errors::application::http::HttpRequestParseError, 
-    utils::application::http::*};
-
+use crate::{checks::application::http::*, errors::application::http::HttpRequestParseError};
 
 /// The `HttpRequest` struct represents a parsed HTTP request.
 #[derive(Debug)]
@@ -17,7 +14,8 @@ impl TryFrom<&[u8]> for HttpRequest {
     type Error = HttpRequestParseError;
 
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        let payload_str = std::str::from_utf8(payload).map_err(|_| HttpRequestParseError::InvalidRequestLine)?;
+        let payload_str =
+            std::str::from_utf8(payload).map_err(|_| HttpRequestParseError::InvalidRequestLine)?;
         let mut lines = payload_str.split("\r\n");
 
         validate_http_request_line(&mut lines)?;
@@ -36,5 +34,3 @@ impl TryFrom<&[u8]> for HttpRequest {
         })
     }
 }
-
-

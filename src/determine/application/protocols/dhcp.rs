@@ -1,8 +1,6 @@
 //! Module for parsing DHCP packets.
 
-use crate::{
-    errors::application::dhcp::DhcpParseError, 
-    utils::application::dhcp::*};
+use crate::{checks::application::dhcp::*, errors::application::dhcp::DhcpParseError};
 
 /// The `DhcpPacket` struct represents a parsed DHCP packet.
 #[derive(Debug)]
@@ -65,14 +63,16 @@ impl TryFrom<&[u8]> for DhcpPacket {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::{determine::application::protocols::dhcp::DhcpPacket, errors::application::dhcp::DhcpParseError};
+    use crate::{
+        determine::application::protocols::dhcp::DhcpPacket,
+        errors::application::dhcp::DhcpParseError,
+    };
 
     #[test]
     fn test_parse_dhcp_packet() {
-        let dhcp_payload = [
+        let dhcp_payload = &[
             0x01, 0x01, 0x06, 0x00, // op, htype, hlen, hops
             0x39, 0x03, 0xF3, 0x26, // xid
             0x00, 0x00, // secs
@@ -99,10 +99,8 @@ mod tests {
         )
         .collect::<Vec<u8>>();
 
-
         let result = DhcpPacket::try_from(dhcp_payload.as_slice());
         assert!(result.is_ok());
-        
     }
 
     #[test]

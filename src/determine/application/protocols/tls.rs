@@ -1,9 +1,9 @@
 use crate::{
-    errors::application::tls::TlsParseError,
-    utils::application::tls::{
+    checks::application::tls::{
         check_content_type, check_minimum_length, check_tls_version, extract_length,
         extract_payload, validate_payload_length,
     },
+    errors::application::tls::TlsParseError,
 };
 
 /// The `TlsPacket` struct represents a parsed TLS packet.

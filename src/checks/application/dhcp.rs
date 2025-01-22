@@ -36,7 +36,9 @@ pub fn validate_hlen(payload: &[u8]) -> Result<u8, DhcpParseError> {
 }
 
 pub fn extract_xid(payload: &[u8]) -> Result<u32, DhcpParseError> {
-    Ok(u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]))
+    Ok(u32::from_be_bytes([
+        payload[4], payload[5], payload[6], payload[7],
+    ]))
 }
 
 pub fn extract_secs(payload: &[u8]) -> Result<u16, DhcpParseError> {

@@ -1,13 +1,8 @@
 pub mod protocols;
 use crate::{
     determine::application::protocols::{
-        bitcoin::BitcoinPacket,
-        dhcp::DhcpPacket,
-        dns::DnsPacket,
-        http::HttpRequest,
-        
-        ntp::NtpPacket,
-        tls::TlsPacket,
+        bitcoin::BitcoinPacket, dhcp::DhcpPacket, dns::DnsPacket, http::HttpRequest,
+        ntp::NtpPacket, tls::TlsPacket,
     },
     errors::application::ApplicationParseError,
 };
@@ -34,7 +29,7 @@ pub struct Application<'a> {
     pub layer_7_protocol_infos: Option<ApplicationProtocol<'a>>,
 }
 
-impl<'a> TryFrom< &'a [u8]> for Application<'a> {
+impl<'a> TryFrom<&'a [u8]> for Application<'a> {
     type Error = ApplicationParseError;
 
     fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
@@ -93,4 +88,24 @@ impl<'a> TryFrom< &'a [u8]> for Application<'a> {
             layer_7_protocol_infos: Some(ApplicationProtocol::Raw(packet)), // Utilisation correcte avec 'a
         })
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::determine::application::Application;
+    use std::convert::TryFrom;
+
+    #[test]
+    fn test_dns_packet_parsing() {
+        let dns_payload = vec![
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // DNS Header
+            0x03, 0x77, 0x77, 0x77, 0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f,
+            0x6d, 0x00, // Query Name: www.google.com
+        ];
+
+        let parsed = Application::try_from(dns_payload.as_slice()).unwrap();
+        assert_eq!(parsed.application_protocol, "DNS");
+    }    
+
 }

@@ -1,6 +1,4 @@
-use crate::{
-    errors::application::ntp::NtpPacketParseError, 
-    utils::application::ntp::*};
+use crate::{checks::application::ntp::*, errors::application::ntp::NtpPacketParseError};
 
 /// # NTP Packet Parser
 ///
@@ -9,6 +7,18 @@ use crate::{
 ///
 /// ## Reference
 /// - RFC 5905: [Network Time Protocol Version 4](https://datatracker.ietf.org/doc/html/rfc5905)
+///
+/// ## Overview
+///
+/// The parser verifies if a given raw network packet conforms to the **NTP packet format**.
+/// If the packet meets the expected structure and validation rules, it is parsed into an
+/// `NtpPacket` struct. Otherwise, an `NtpPacketParseError` is returned, detailing why
+/// the packet is not considered a valid NTP packet.
+///
+/// ## Return Values
+///
+/// - ✅ **Valid NTP Packet** → Returns an instance of [`NtpPacket`].
+/// - ❌ **Invalid Packet** → Returns an [`NtpPacketParseError`] explaining the validation failure.
 ///
 /// ## NTP Packet Structure
 ///
@@ -28,6 +38,16 @@ use crate::{
 /// | `receive_timestamp`    | 8           | Time at which the request arrived at the server. |
 /// | `transmit_timestamp`   | 8           | Time at which the reply departed the server for the client. |
 ///
+/// ## Validation Process
+///
+/// 1. The packet must be at least **48 bytes** long.
+/// 2. The **Version Number (VN)** in the first byte must be between `0` and `4`.
+/// 3. The **Mode field** (first byte) must be in `[1, 2, 3, 4, 5]` (Client, Server, Broadcast, etc.).
+/// 4. The **Stratum field** must be between `0` and `15` for valid servers.
+/// 5. The **Timestamps** must be logically consistent.
+///
+/// If any of these conditions are not met, an `NtpPacketParseError` is returned.
+///
 /// ## Usage
 ///
 /// ```rust
@@ -44,12 +64,24 @@ use crate::{
 ///     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // Transmit Timestamp
 /// ];
 ///
-/// if let Some(ntp) = NtpPacket::from_bytes(&packet) {
-///     println!("Parsed NTP Packet: {:?}", ntp);
-/// } else {
-///     println!("Not a valid NTP packet.");
+/// match NtpPacket::from_bytes(&packet) {
+///     Ok(ntp) => println!("Parsed NTP Packet: {:?}", ntp),
+///     Err(e) => println!("Invalid NTP packet: {:?}", e),
 /// }
 /// ```
+///
+/// ## Error Handling
+///
+/// The `NtpPacketParseError` provides an explanation of why a packet was rejected.
+/// Possible errors include:
+///
+/// - **`InvalidSize`** → The packet is too short.
+/// - **`InvalidVersion`** → The NTP version is out of range.
+/// - **`InvalidMode`** → The mode is not recognized.
+/// - **`InvalidStratum`** → The stratum field contains an invalid value.
+/// - **`InvalidTimestamps`** → The timestamps are inconsistent.
+///
+/// These errors help diagnose malformed or unexpected packets.
 
 /// The `NtpPacket` struct represents a parsed NTP packet.
 #[derive(Debug)]
@@ -77,6 +109,7 @@ pub struct NtpPacket {
     /// The time at which the reply departed the server for the client.
     pub transmit_timestamp: u64,
 }
+
 /// Checks if the first byte is consistent with an NTP packet
 fn check_ntp_packet(payload: &[u8]) -> Result<(), bool> {
     if payload.len() < 48 {
@@ -130,8 +163,8 @@ impl TryFrom<&[u8]> for NtpPacket {
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
         // Check if payload has the minimum length required for an NTP packet
         validate_ntp_packet_length(payload)?;
-
-        let flags = extract_flags(payload)?;
+        //
+        let flags: (u8, u8, u8) = extract_flags(payload)?;
         let stratum = extract_stratum(payload)?;
         let poll = extract_poll(payload)?;
         let precision = extract_precision(payload)?;
@@ -159,10 +192,10 @@ impl TryFrom<&[u8]> for NtpPacket {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::determine::application::NtpPacket;
+    use crate::errors::application::ntp::NtpPacketParseError;
     #[test]
     fn test_valid_ntp_packet() {
         let payload = vec![
@@ -173,7 +206,7 @@ mod tests {
         ];
         let result = NtpPacket::try_from(payload.as_slice()).expect("Expected a valid NTP packet");
 
-        assert_eq!(result.li_vn_mode, 0x1B);
+        assert_eq!(result.flags, 0x1B);
         assert_eq!(result.stratum, 0x00);
         assert_eq!(result.poll, 0x04);
         assert_eq!(result.precision, -6);
@@ -189,7 +222,10 @@ mod tests {
     fn test_invalid_ntp_packet_length() {
         let short_payload = vec![0x1B, 0x00, 0x04];
         let result = NtpPacket::try_from(short_payload.as_slice());
-        assert!(matches!(result, Err(NtpPacketParseError::InvalidPacketLength)));
+        assert!(matches!(
+            result,
+            Err(NtpPacketParseError::InvalidPacketLength)
+        ));
     }
 
     #[test]
