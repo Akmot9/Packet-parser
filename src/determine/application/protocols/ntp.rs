@@ -196,6 +196,7 @@ impl TryFrom<&[u8]> for NtpPacket {
 mod tests {
     use crate::determine::application::NtpPacket;
     use crate::errors::application::ntp::NtpPacketParseError;
+    use crate::determine::application::protocols::ntp::check_ntp_packet;
     #[test]
     fn test_valid_ntp_packet() {
         let payload = vec![
@@ -206,7 +207,7 @@ mod tests {
         ];
         let result = NtpPacket::try_from(payload.as_slice()).expect("Expected a valid NTP packet");
 
-        assert_eq!(result.flags, 0x1B);
+        assert_eq!(result.flags, (01, 10, 11));
         assert_eq!(result.stratum, 0x00);
         assert_eq!(result.poll, 0x04);
         assert_eq!(result.precision, -6);
