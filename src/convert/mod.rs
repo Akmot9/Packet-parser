@@ -1,4 +1,7 @@
-use std::fmt;
+
+use std::{fmt, fs::File};
+use pcap_file::pcap::{PcapPacket, PcapWriter};
+
 
 /// # PacketConverter
 /// Une crate pour convertir et afficher des paquets réseau en Rust.
@@ -13,6 +16,24 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Packet {
     pub data: Vec<u8>,
+}
+
+impl Packet {
+    pub fn packet_to_pcap(&self) -> Result<(), Box<dyn std::error::Error>>  {
+        let file = File::create("output.pcap")?;
+    
+    // Configurer le PacketWriter avec les paramètres par défaut
+    let writer = PcapWriter::new(file);
+
+    let orig_len = self.data.len() as u32;
+    let timestamp: std::time::Duration = std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH)?.into();
+    let paccket = PcapPacket::new(timestamp, orig_len, &self.data);
+    
+    // Ajouter les données du paquet
+    writer?.write_packet(&paccket)?;
+    
+    Ok(())
+    }
 }
 
 /// Implémentation du trait `From<&str>` pour convertir une chaîne hexadécimale en `Packet`.
