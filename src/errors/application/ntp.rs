@@ -5,10 +5,11 @@ use thiserror::Error;
 pub enum NtpPacketParseError {
     #[error("Invalid NTP packet length")]
     InvalidPacketLength,
-    #[error("Invalid NTP version")]
-    InvalidVersion,
-    #[error("Invalid NTP mode")]
-    InvalidMode,
+    #[error("Invalid NTP version: {version}")]
+    InvalidVersion { version: u8 },
+
+    #[error("Invalid NTP mode: {mode}")]
+    InvalidMode { mode: u8 },
     #[error("Invalid stratum")]
     InvalidStratum,
     #[error("Invalid poll interval")]

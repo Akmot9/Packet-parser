@@ -1,4 +1,6 @@
-use crate::{checks::application::ntp::*, errors::application::ntp::NtpPacketParseError};
+use crate::{
+    checks::application::ntp::*, 
+    errors::application::ntp::NtpPacketParseError};
 
 /// # NTP Packet Parser
 ///
@@ -137,6 +139,8 @@ fn check_ntp_packet(payload: &[u8]) -> Result<(), bool> {
 
     Ok(())
 }
+
+
 
 fn check_stratum(stratum: u8) -> Result<(), bool> {
     if stratum > 15 {

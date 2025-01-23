@@ -1,12 +1,13 @@
 use crate::errors::application::ntp::NtpPacketParseError;
 
-/// ## Validation Process
+/// ## NTP Validation Process
 ///
-/// 1. The packet must be at least **48 bytes** long.
+/// 1. The NTP packet must be at least **48 bytes** long.
 /// 2. The **Version Number (VN)** in the first byte must be between `0` and `4`.
 /// 3. The **Mode field** (first byte) must be in `[1, 2, 3, 4, 5]` (Client, Server, Broadcast, etc.).
 /// 4. The **Stratum field** must be between `0` and `15` for valid servers.
 /// 5. The **Timestamps** must be logically consistent.
+
 
 pub fn validate_ntp_packet_length(payload: &[u8]) -> Result<(), NtpPacketParseError> {
     if payload.len() < 48 {
@@ -16,7 +17,44 @@ pub fn validate_ntp_packet_length(payload: &[u8]) -> Result<(), NtpPacketParseEr
 }
 
 pub fn extract_flags(payload: &[u8]) -> Result<(u8, u8, u8), NtpPacketParseError> {
-    Ok((payload[0], payload[0], payload[0]))
+    // check the ntp flag coherence in the first byte then retun the flags if it is valid
+    let li_vn_mode = payload[0];
+
+    // Extract the version (bits 3-5)
+    let version = (li_vn_mode >> 3) & 0x07;
+
+    // Extract the mode (bits 6-8)
+    let mode = li_vn_mode & 0x07;
+
+    // Check if version is between 1 and 4
+    if !version.is_between(1, 4) {
+        return Err(NtpPacketParseError::InvalidVersion { version });
+    }
+
+    // Check if mode is between 1 and 5
+    if !mode.is_between(1, 5) {
+        return Err(NtpPacketParseError::InvalidMode { mode } );
+    }
+
+    // Extract Leap Indicator (LI)
+    let li = (li_vn_mode >> 6) & 0b11;
+
+    Ok((li, version, mode))
+}
+
+trait RangeExt<T> {
+    fn is_between(self, min: T, max: T) -> bool
+    where
+        T: PartialOrd<T>;
+}
+
+impl<T> RangeExt<T> for T {
+    fn is_between(self, min: T, max: T) -> bool
+    where
+        T: PartialOrd<T>,
+    {
+        self >= min && self <= max
+    }
 }
 
 pub fn extract_stratum(payload: &[u8]) -> Result<u8, NtpPacketParseError> {
