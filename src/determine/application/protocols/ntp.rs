@@ -211,7 +211,7 @@ mod tests {
         ];
         let result = NtpPacket::try_from(payload.as_slice()).expect("Expected a valid NTP packet");
 
-        assert_eq!(result.flags, (01, 10, 11));
+        assert_eq!(result.flags, (0, 3, 3));
         assert_eq!(result.stratum, 0x00);
         assert_eq!(result.poll, 0x04);
         assert_eq!(result.precision, -6);
@@ -242,7 +242,7 @@ mod tests {
             0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
         ];
         let result = NtpPacket::try_from(invalid_version_payload.as_slice());
-        assert!(matches!(result, Err(NtpPacketParseError::InvalidVersion)));
+        assert!(matches!(result, Err(NtpPacketParseError::InvalidVersion { .. })));
     }
 
     #[test]
@@ -254,7 +254,7 @@ mod tests {
             0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
         ];
         let result = NtpPacket::try_from(invalid_mode_payload.as_slice());
-        assert!(matches!(result, Err(NtpPacketParseError::InvalidMode)));
+        assert!(matches!(result, Err(NtpPacketParseError::InvalidMode { .. })));
     }
 
     #[test]

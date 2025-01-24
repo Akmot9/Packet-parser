@@ -104,8 +104,15 @@ mod tests {
             0x6d, 0x00, // Query Name: www.google.com
         ];
 
-        let parsed = Application::try_from(dns_payload.as_slice()).unwrap();
-        assert_eq!(parsed.application_protocol, "DNS");
+        match Application::try_from(dns_payload.as_slice()) {
+            Ok(parsed) => {
+                println!("Parsed application protocol: {:?}", parsed);
+                assert_eq!(parsed.application_protocol, "DNS");
+            }
+            Err(e) => {
+                panic!("Failed to parse DNS packet: {:?}", e);
+            }
+        }
     }    
 
 }
