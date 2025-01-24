@@ -1,5 +1,5 @@
 use crate::{
-    determine::application::protocols::tls::{TlsContentType, TlsVersion},
+    parse::application::protocols::tls::{TlsContentType, TlsVersion},
     errors::application::tls::TlsParseError,
 };
 

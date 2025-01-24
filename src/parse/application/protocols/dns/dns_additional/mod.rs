@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::determine::application::protocols::dns::utils::{
+use crate::parse::application::protocols::dns::utils::{
     dns_class::DnsClass, dns_types::DnsType,
 };
 

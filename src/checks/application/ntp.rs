@@ -8,9 +8,9 @@ use crate::errors::application::ntp::NtpPacketParseError;
 /// 4. The **Stratum field** must be between `0` and `15` for valid servers.
 /// 5. The **Timestamps** must be logically consistent.
 
-
+const MINIMUM_NTP_PACKET_LENGTH: usize = 48;
 pub fn validate_ntp_packet_length(payload: &[u8]) -> Result<(), NtpPacketParseError> {
-    if payload.len() < 48 {
+    if payload.len() < MINIMUM_NTP_PACKET_LENGTH {
         return Err(NtpPacketParseError::InvalidPacketLength);
     }
     Ok(())
@@ -68,7 +68,7 @@ pub fn extract_stratum(payload: &[u8]) -> Result<u8, NtpPacketParseError> {
 
 pub fn extract_poll(payload: &[u8]) -> Result<u8, NtpPacketParseError> {
     let poll = payload[2];
-    if poll > 17 {
+    if poll > 127 {
         Err(NtpPacketParseError::InvalidPoll)
     } else {
         Ok(poll)

@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::{
-    determine::application::protocols::dns::utils::{dns_class::DnsClass, dns_types::DnsType},
+    parse::application::protocols::dns::utils::{dns_class::DnsClass, dns_types::DnsType},
     errors::application::dns::dns_queries::DnsQueryParseError,
 };
 

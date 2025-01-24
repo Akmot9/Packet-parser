@@ -55,7 +55,7 @@ use crate::{
 /// ```rust
 /// use ntp_parser::NtpPacket;
 ///
-/// let packet: [u8; 48] = [
+/// let packet: &[u8] = &[
 ///     0x3B, 0x00, 0x00, 0x00, // LI, Version, Mode | Stratum | Poll | Precision
 ///     0x00, 0x00, 0x00, 0x00, // Root Delay
 ///     0x00, 0x00, 0x00, 0x00, // Root Dispersion
@@ -111,36 +111,6 @@ pub struct NtpPacket {
     /// The time at which the reply departed the server for the client.
     pub transmit_timestamp: u64,
 }
-
-/// Checks if the first byte is consistent with an NTP packet
-fn check_ntp_packet(payload: &[u8]) -> Result<(), bool> {
-    if payload.len() < 48 {
-        return Err(false);
-    }
-
-    // Extract the first byte
-    let li_vn_mode = payload[0];
-
-    // Extract the version (bits 3-5)
-    let version = (li_vn_mode >> 3) & 0x07;
-
-    // Extract the mode (bits 6-8)
-    let mode = li_vn_mode & 0x07;
-
-    // Check if version is between 1 and 4
-    if !(1..=4).contains(&version) {
-        return Err(false);
-    }
-
-    // Check if mode is between 1 and 5
-    if !(1..=5).contains(&mode) {
-        return Err(false);
-    }
-
-    Ok(())
-}
-
-
 
 fn check_stratum(stratum: u8) -> Result<(), bool> {
     if stratum > 15 {
@@ -198,9 +168,9 @@ impl TryFrom<&[u8]> for NtpPacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::determine::application::NtpPacket;
+    use crate::parse::application::NtpPacket;
     use crate::errors::application::ntp::NtpPacketParseError;
-    use crate::determine::application::protocols::ntp::check_ntp_packet;
+    use crate::parse::application::protocols::ntp::*;
     #[test]
     fn test_valid_ntp_packet() {
         let payload = vec![

@@ -66,7 +66,7 @@ impl TryFrom<&[u8]> for DhcpPacket {
 #[cfg(test)]
 mod tests {
     use crate::{
-        determine::application::protocols::dhcp::DhcpPacket,
+        parse::application::protocols::dhcp::DhcpPacket,
         errors::application::dhcp::DhcpParseError,
     };
 
@@ -107,6 +107,8 @@ mod tests {
     fn test_parse_dhcp_packet_short_payload() {
         let short_payload = [0x01, 0x01, 0x06, 0x00, 0x39, 0x03, 0xF3, 0x26];
         let result = DhcpPacket::try_from(short_payload.as_slice());
+        println!("Result: {:?}", result); // Affiche l'erreur pour voir ce qui est réellement retourné
+
         assert!(matches!(result, Err(DhcpParseError::InvalidOp)));
     }
 
