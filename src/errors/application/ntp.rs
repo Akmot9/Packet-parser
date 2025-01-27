@@ -7,7 +7,6 @@ pub enum NtpPacketParseError {
     InvalidPacketLength,
     #[error("Invalid NTP version: {version}")]
     InvalidVersion { version: u8 },
-
     #[error("Invalid NTP mode: {mode}")]
     InvalidMode { mode: u8 },
     #[error("Invalid stratum")]

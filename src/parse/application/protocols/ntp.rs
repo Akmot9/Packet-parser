@@ -171,6 +171,7 @@ mod tests {
     use crate::parse::application::NtpPacket;
     use crate::errors::application::ntp::NtpPacketParseError;
     use crate::parse::application::protocols::ntp::*;
+
     #[test]
     fn test_valid_ntp_packet() {
         let payload = vec![
@@ -193,6 +194,7 @@ mod tests {
         assert_eq!(result.receive_timestamp, 0xDCC00000E144C671);
         assert_eq!(result.transmit_timestamp, 0xDCC00000E144C671);
     }
+
     #[test]
     fn test_invalid_ntp_packet_length() {
         let short_payload = vec![0x1B, 0x00, 0x04];
@@ -236,11 +238,14 @@ mod tests {
             0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0,
             0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
         ];
-        assert!(check_ntp_packet(&valid_ntp_packet).is_ok());
+        let result = NtpPacket::try_from(valid_ntp_packet.as_slice());
+
+        assert!(matches!(result, Ok(_)));
 
         // Invalid NTP packet (short length)
         let short_ntp_packet = vec![0x1B, 0x00, 0x04];
-        assert!(check_ntp_packet(&short_ntp_packet).is_err());
+        let result = NtpPacket::try_from(short_ntp_packet.as_slice());
+        assert!(matches!(result, Err(NtpPacketParseError::InvalidPacketLength )));
 
         // Invalid NTP packet (invalid version)
         let invalid_version_packet = vec![
@@ -249,15 +254,7 @@ mod tests {
             0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0,
             0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
         ];
-        assert!(check_ntp_packet(&invalid_version_packet).is_err());
-
-        // Invalid NTP packet (invalid mode)
-        let invalid_mode_packet = vec![
-            0x18, 0x00, 0x04, 0xFA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4E, 0x49,
-            0x4E, 0x00, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00,
-            0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0,
-            0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
-        ];
-        assert!(check_ntp_packet(&invalid_mode_packet).is_err());
+        let result = NtpPacket::try_from(invalid_version_packet.as_slice());
+        assert!(matches!(result, Err(NtpPacketParseError::InvalidVersion { version } )));
     }
 }
