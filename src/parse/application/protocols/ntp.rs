@@ -1,11 +1,3 @@
-use std::net::Ipv4Addr;
-
-use chrono::{DateTime, Utc};
-
-use crate::{
-    checks::application::ntp::*, 
-    errors::application::ntp::NtpPacketParseError};
-
 /// # NTP Packet Parser
 ///
 /// This module provides a way to determine whether a raw network packet is an
@@ -88,6 +80,15 @@ use crate::{
 /// - **`InvalidTimestamps`** → The timestamps are inconsistent.
 ///
 /// These errors help diagnose malformed or unexpected packets.
+
+use std::net::Ipv4Addr;
+
+use chrono::{DateTime, Utc};
+
+use crate::{
+    checks::application::ntp::*, 
+    errors::application::ntp::NtpPacketParseError};
+
 
 /// The `NtpPacket` struct represents a parsed NTP packet.
 #[derive(Debug)]
@@ -238,7 +239,6 @@ mod tests {
         // Valid NTP packet
         let binding = hex::decode("d9000afa000000000001029000000000000000000000000000000000000000000000000000000000c50204eceed33c52");
 
-   
         let result = NtpPacket::try_from(binding.expect("REASON").as_slice());
 
         assert!(matches!(result, Ok(_)));
