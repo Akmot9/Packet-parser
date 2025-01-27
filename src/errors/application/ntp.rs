@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 /// Error types for NTP packet parsing.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum NtpPacketParseError {
     #[error("Invalid NTP packet length")]
     InvalidPacketLength,
@@ -21,4 +21,10 @@ pub enum NtpPacketParseError {
     TimestampConversionError { seconds: i64, nanos: u32 },
     #[error("NTP timestamps are not in ascending order: Originate ≤ Receive ≤ Transmit violated")]
     InconsistentTimestamps,
+    #[error("Invalid Reference ID: Stratum 0 should not have a Reference ID")]
+    InvalidReferenceIdForStratum0,
+    #[error("Invalid Reference ID: Stratum 1 should have ASCII characters")]
+    InvalidReferenceIdForStratum1,
+    #[error("Invalid Reference ID: Stratum ≥ 2 should have a valid IPv4 address")]
+    InvalidReferenceIdForHigherStratum,
 }

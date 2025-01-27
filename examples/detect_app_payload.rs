@@ -22,8 +22,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00, 0xE1,
         0x44, 0xC6, 0x71,
     ];
+    let binding = hex::decode("d9000afa000000000001029000000000000000000000000000000000000000000000000000000000c50204eceed33c52")?;
 
-    let ntp = NtpPacket::try_from(ntp_payload2)?;
+    let hex_dump = binding.as_slice();
+    
+    let ntp = NtpPacket::try_from(hex_dump)?;
 
     println!("{:#?}", ntp);
     println!("{}", ntp.transmit_timestamp);

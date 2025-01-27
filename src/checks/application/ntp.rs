@@ -1,6 +1,8 @@
+use std::net::Ipv4Addr;
+
 use chrono::{DateTime, TimeZone, Utc};
 
-use crate::errors::application::ntp::NtpPacketParseError;
+use crate::{errors::application::ntp::NtpPacketParseError, parse::application::protocols::ntp::Refid};
 
 /// ## NTP Validation Process
 ///
@@ -90,11 +92,57 @@ pub fn extract_root_dispersion(payload: &[u8]) -> Result<u32, NtpPacketParseErro
     ]))
 }
 
-pub fn extract_reference_id(payload: &[u8]) -> Result<u32, NtpPacketParseError> {
-    Ok(u32::from_be_bytes([
-        payload[0], payload[1], payload[2], payload[3],
-    ]))
+/// Extrait le Reference ID d’un paquet NTP en vérifiant le Stratum.
+pub fn extract_reference_id(stratum: u8, payload: &[u8]) -> Result<Refid, NtpPacketParseError> {
+    // println!("payload : {:02X?}", payload);
+    if payload.len() < 4 {
+        return Err(NtpPacketParseError::InvalidReferenceIdForHigherStratum);
+    }
+
+    let ref_id_bytes = [payload[0], payload[1], payload[2], payload[3]];
+    let ref_str = String::from_utf8_lossy(&ref_id_bytes).to_string();
+
+
+    match stratum {
+        0 => {
+            if ref_str == "\0\0\0\0" {
+                Ok(Refid::KissCode("NULL".to_string())) // Stratum 0 peut être "NULL"
+            } else if KISS_CODES.contains(&ref_str.trim()) {
+                Ok(Refid::KissCode(ref_str.trim().to_string()))
+            } else {
+                Err(NtpPacketParseError::InvalidReferenceIdForStratum0)
+            }
+        }
+        1 => {
+            if CLOCK_SOURCES.contains(&ref_str.trim()) {
+                Ok(Refid::ClockSource(ref_str.trim().to_string()))
+            } else {
+                Err(NtpPacketParseError::InvalidReferenceIdForStratum1)
+            }
+        }
+        2..=15 => {
+            let ip = Ipv4Addr::new(ref_id_bytes[0], ref_id_bytes[1], ref_id_bytes[2], ref_id_bytes[3]);
+            if ip.is_unspecified() || ip.is_multicast() {
+                Err(NtpPacketParseError::InvalidReferenceIdForHigherStratum)
+            } else {
+                Ok(Refid::Ipv4(ip))
+            }
+        }
+        _ => Err(NtpPacketParseError::InvalidReferenceIdForHigherStratum),
+    }
 }
+
+/// Liste des Kiss Codes valides
+const KISS_CODES: &[&str] = &[
+    "ACST", "AUTH", "AUTO", "BCST", "CRYP", "DENY", "DROP", "RSTR", "INIT",
+    "MCST", "NKEY", "NTSN", "RATE", "RMOT", "STEP",
+];
+
+/// Liste des Clock Sources valides pour Stratum 1
+const CLOCK_SOURCES: &[&str] = &[
+    "GOES", "GPS", "GAL", "PPS", "IRIG", "WWVB", "DCF", "HBG", "MSF", "JJY",
+    "LORC", "TDF", "CHU", "WWV", "WWVH", "NIST", "ACTS", "USNO", "PTB", "DFM",
+];
 
 const NTP_TO_UNIX_EPOCH: i64 = 2_208_988_800;
 
@@ -107,6 +155,9 @@ pub fn extract_timestamp(payload: &[u8]) -> Result<DateTime<Utc>, NtpPacketParse
     // Extraction des 4 derniers octets pour obtenir la fraction de seconde NTP.
     let ntp_fraction = u32::from_be_bytes(payload[4..8].try_into().unwrap());
 
+    if ntp_seconds == 0 && ntp_fraction == 0 {
+        return Ok(Utc.timestamp_opt(0, 0).unwrap()); // Retourne 1970-01-01 00:00:00 UTC
+    }
     // Conversion des secondes NTP en secondes UNIX (décalage de 1900 à 1970).
     let unix_seconds = ntp_seconds as i64 - NTP_TO_UNIX_EPOCH;
 
@@ -135,7 +186,8 @@ fn validate_epoch(payload: &[u8]) -> Result<(), NtpPacketParseError> {
     let ntp_seconds = u32::from_be_bytes(payload[0..4].try_into().unwrap());
 
     // Vérification si le timestamp est avant 1970
-    if (ntp_seconds as i64) < NTP_TO_UNIX_EPOCH {
+    if (ntp_seconds as i64) < 0 {
+        println!("Invalid timestamp: {}", ntp_seconds);
         return Err(NtpPacketParseError::InvalidTime);
     }
 
@@ -185,5 +237,44 @@ mod tests {
             result,
             Err(NtpPacketParseError::InconsistentTimestamps)
         ));
+    }
+    #[test]
+    fn test_stratum_1_valid_ascii() {
+        let stratum = 1;
+        let payload = b"GPS ";
+        let result = extract_reference_id(stratum, payload);
+        assert_eq!(result, Ok(Refid::ClockSource("GPS".to_string())));
+    }
+
+    #[test]
+    fn test_stratum_1_invalid_ascii() {
+        let stratum = 1;
+        let payload = [0x80, 0x00, 0x00, 0x00]; // Valeur non ASCII
+        let result = extract_reference_id(stratum, &payload);
+        assert!(matches!(result, Err(NtpPacketParseError::InvalidReferenceIdForStratum1)));
+    }
+
+    #[test]
+    fn test_stratum_2_valid_ipv4() {
+        let stratum = 2;
+        let payload = [8, 8, 8, 8]; // Adresse IPv4 valide (Google DNS)
+        let result = extract_reference_id(stratum, &payload);
+        assert_eq!(result, Ok(Refid::Ipv4(Ipv4Addr::new(8, 8, 8, 8))));
+    }
+
+    #[test]
+    fn test_stratum_2_invalid_ipv4() {
+        let stratum = 2;
+        let payload = [224, 0, 0, 1]; // Adresse multicast (invalide en NTP)
+        let result = extract_reference_id(stratum, &payload);
+        assert!(matches!(result, Err(NtpPacketParseError::InvalidReferenceIdForHigherStratum)));
+    }
+
+    #[test]
+    fn test_stratum_0_invalid() {
+        let stratum = 0;
+        let payload = [192, 168, 1, 1];
+        let result = extract_reference_id(stratum, &payload);
+        assert!(matches!(result, Err(NtpPacketParseError::InvalidReferenceIdForStratum0)));
     }
 }

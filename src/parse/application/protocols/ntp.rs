@@ -1,3 +1,5 @@
+use std::net::Ipv4Addr;
+
 use chrono::{DateTime, Utc};
 
 use crate::{
@@ -103,7 +105,7 @@ pub struct NtpPacket {
     /// The nominal error relative to the primary reference source.
     pub root_dispersion: u32,
     /// The reference identifier depending on the stratum level.
-    pub reference_id: u32,
+    pub reference_id: Refid,
     /// The time at which the local clock was last set or corrected.
     pub reference_timestamp: DateTime<Utc>,
     /// The time at which the request departed the client for the server.
@@ -112,6 +114,14 @@ pub struct NtpPacket {
     pub receive_timestamp: DateTime<Utc>,
     /// The time at which the reply departed the server for the client.
     pub transmit_timestamp: DateTime<Utc>,
+}
+
+/// Enum pour représenter un Reference ID NTP
+#[derive(Debug, PartialEq)]
+pub enum Refid {
+    Ipv4(Ipv4Addr),
+    KissCode(String),
+    ClockSource(String),
 }
 
 impl TryFrom<&[u8]> for NtpPacket {
@@ -127,7 +137,7 @@ impl TryFrom<&[u8]> for NtpPacket {
         let precision = extract_precision(&payload[3])?;
         let root_delay = extract_root_delay(&payload[4..8])?; // ✅ Correction ici !
         let root_dispersion = extract_root_dispersion(&payload[8..12])?;
-        let reference_id = extract_reference_id(&payload[12..16])?;
+        let reference_id = extract_reference_id(stratum, &payload[12..16])?;
         let reference_timestamp = extract_timestamp(&payload[16..24])?;
         let originate_timestamp = extract_timestamp(&payload[24..32])?;
         let receive_timestamp = extract_timestamp(&payload[32..40])?;
@@ -164,26 +174,28 @@ mod tests {
 
     #[test]
     fn test_valid_ntp_packet() {
-        let payload = vec![
-            0x1B, 0x00, 0x04, 0xFA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4E, 0x49,
-            0x4E, 0x00, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00,
-            0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0,
-            0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
-        ];
-        let result = NtpPacket::try_from(payload.as_slice()).expect("Expected a valid NTP packet");
+        let binding = hex::decode("d9000afa000000000001029000000000000000000000000000000000000000000000000000000000c50204eceed33c52");
+        
+        let result = NtpPacket::try_from(binding.expect("REASON").as_slice()).expect("Expected a valid NTP packet");
 
-        assert_eq!(result.flags, (0, 3, 3));
+        assert_eq!(result.flags, (3, 3, 1));
         assert_eq!(result.stratum, 0x00);
-        assert_eq!(result.poll, 0x04);
+        assert_eq!(result.poll, 10);
         assert_eq!(result.precision, -6);
         assert_eq!(result.root_delay, 0x00000000);
-        assert_eq!(result.root_dispersion, 0x00000000);
-        assert_eq!(result.reference_id, 0x4E494E00);
-        let expected_timestamp = Utc.datetime_from_str("2017-05-12T09:33:52.879955675Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
+        assert_eq!(result.root_dispersion, 66192);
+        assert_eq!(result.reference_id, Refid::KissCode("NULL".to_string()));
+        let expected_timestamp = Utc.datetime_from_str("1970-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
             .expect("Invalid datetime format");
         assert_eq!(result.reference_timestamp, expected_timestamp);
+        let expected_timestamp = Utc.datetime_from_str("1970-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
+        .expect("Invalid datetime format");
         assert_eq!(result.originate_timestamp, expected_timestamp);
+        let expected_timestamp = Utc.datetime_from_str("1970-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
+        .expect("Invalid datetime format");
         assert_eq!(result.receive_timestamp, expected_timestamp);
+        let expected_timestamp = Utc.datetime_from_str("2004-09-27T03:18:04.932910699Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
+        .expect("Invalid datetime format");
         assert_eq!(result.transmit_timestamp, expected_timestamp);
     }
 
@@ -224,13 +236,10 @@ mod tests {
     #[test]
     fn test_check_ntp_packet() {
         // Valid NTP packet
-        let valid_ntp_packet = vec![
-            0x1B, 0x00, 0x04, 0xFA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4E, 0x49,
-            0x4E, 0x00, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00,
-            0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0, 0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71, 0xDC, 0xC0,
-            0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
-        ];
-        let result = NtpPacket::try_from(valid_ntp_packet.as_slice());
+        let binding = hex::decode("d9000afa000000000001029000000000000000000000000000000000000000000000000000000000c50204eceed33c52");
+
+   
+        let result = NtpPacket::try_from(binding.expect("REASON").as_slice());
 
         assert!(matches!(result, Ok(_)));
 
