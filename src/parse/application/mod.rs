@@ -1,10 +1,10 @@
 pub mod protocols;
 use crate::{
+    errors::application::ApplicationParseError,
     parse::application::protocols::{
         bitcoin::BitcoinPacket, dhcp::DhcpPacket, dns::DnsPacket, http::HttpRequest,
         ntp::NtpPacket, tls::TlsPacket,
     },
-    errors::application::ApplicationParseError,
 };
 
 /// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
@@ -100,7 +100,6 @@ mod tests {
     fn test_dns_packet_parsing() {
         let dns_payload = hex::decode("3155810000010001000000001a546f72696b31362d5452312d38322d3132382d3139342d3130350573756f6d69036e65740000010001c00c000100010000271000045280c269").expect("Invalid hex string");
 
-
         match Application::try_from(dns_payload.as_slice()) {
             Ok(parsed) => {
                 println!("Parsed application protocol: {:?}", parsed);
@@ -110,6 +109,5 @@ mod tests {
                 panic!("Failed to parse DNS packet: {:?}", e);
             }
         }
-    }    
-
+    }
 }

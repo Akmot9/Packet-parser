@@ -1,8 +1,6 @@
 use std::fmt;
 
-use crate::parse::application::protocols::dns::utils::{
-    dns_class::DnsClass, dns_types::DnsType,
-};
+use crate::parse::application::protocols::dns::utils::{dns_class::DnsClass, dns_types::DnsType};
 
 #[derive(Debug)]
 pub struct AdditionalRecord {

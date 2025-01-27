@@ -66,8 +66,7 @@ impl TryFrom<&[u8]> for DhcpPacket {
 #[cfg(test)]
 mod tests {
     use crate::{
-        parse::application::protocols::dhcp::DhcpPacket,
-        errors::application::dhcp::DhcpParseError,
+        errors::application::dhcp::DhcpParseError, parse::application::protocols::dhcp::DhcpPacket,
     };
 
     #[test]

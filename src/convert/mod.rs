@@ -1,7 +1,5 @@
-
-use std::{fmt, fs::File};
 use pcap_file::pcap::{PcapPacket, PcapWriter};
-
+use std::{fmt, fs::File};
 
 /// # PacketConverter
 /// Une crate pour convertir et afficher des paquets réseau en Rust.
@@ -19,20 +17,22 @@ pub struct Packet {
 }
 
 impl Packet {
-    pub fn packet_to_pcap(&self) -> Result<(), Box<dyn std::error::Error>>  {
+    pub fn packet_to_pcap(&self) -> Result<(), Box<dyn std::error::Error>> {
         let file = File::create("output.pcap")?;
-    
-    // Configurer le PacketWriter avec les paramètres par défaut
-    let writer = PcapWriter::new(file);
 
-    let orig_len = self.data.len() as u32;
-    let timestamp: std::time::Duration = std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH)?.into();
-    let paccket = PcapPacket::new(timestamp, orig_len, &self.data);
-    
-    // Ajouter les données du paquet
-    writer?.write_packet(&paccket)?;
-    
-    Ok(())
+        // Configurer le PacketWriter avec les paramètres par défaut
+        let writer = PcapWriter::new(file);
+
+        let orig_len = self.data.len() as u32;
+        let timestamp: std::time::Duration = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)?
+            .into();
+        let paccket = PcapPacket::new(timestamp, orig_len, &self.data);
+
+        // Ajouter les données du paquet
+        writer?.write_packet(&paccket)?;
+
+        Ok(())
     }
 }
 
@@ -55,7 +55,10 @@ impl fmt::Display for Packet {
 /// Convertit un flux hexadécimal Wireshark en `Vec<u8>`.
 pub fn hex_stream_to_bytes(hex: &str) -> Vec<u8> {
     let mut bytes = Vec::new();
-    assert!(hex.len() % 2 == 0, "La chaîne hexadécimale doit avoir une longueur paire");
+    assert!(
+        hex.len() % 2 == 0,
+        "La chaîne hexadécimale doit avoir une longueur paire"
+    );
     for i in (0..hex.len()).step_by(2) {
         let byte_str = &hex[i..i + 2];
         let byte = u8::from_str_radix(byte_str, 16).expect("Valeur hex invalide");

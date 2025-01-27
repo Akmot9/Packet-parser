@@ -1,8 +1,6 @@
 use std::fmt;
 
-use crate::parse::application::protocols::dns::utils::{
-    dns_class::DnsClass, dns_types::DnsType,
-};
+use crate::parse::application::protocols::dns::utils::{dns_class::DnsClass, dns_types::DnsType};
 
 // more can be a list of this possible struct (those strcut may on may not be on the liste: "more"):
 #[derive(Debug)]

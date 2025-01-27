@@ -1,3 +1,5 @@
+use chrono::{DateTime, TimeZone, Utc};
+
 use crate::errors::application::ntp::NtpPacketParseError;
 
 /// ## NTP Validation Process
@@ -16,9 +18,8 @@ pub fn validate_ntp_packet_length(payload: &[u8]) -> Result<(), NtpPacketParseEr
     Ok(())
 }
 
-pub fn extract_flags(payload: &[u8]) -> Result<(u8, u8, u8), NtpPacketParseError> {
+pub fn extract_flags(li_vn_mode: &u8) -> Result<(u8, u8, u8), NtpPacketParseError> {
     // check the ntp flag coherence in the first byte then retun the flags if it is valid
-    let li_vn_mode = payload[0];
 
     // Extract the version (bits 3-5)
     let version = (li_vn_mode >> 3) & 0x07;
@@ -33,7 +34,7 @@ pub fn extract_flags(payload: &[u8]) -> Result<(u8, u8, u8), NtpPacketParseError
 
     // Check if mode is between 1 and 5
     if !mode.is_between(1, 5) {
-        return Err(NtpPacketParseError::InvalidMode { mode } );
+        return Err(NtpPacketParseError::InvalidMode { mode });
     }
 
     // Extract Leap Indicator (LI)
@@ -57,102 +58,132 @@ impl<T> RangeExt<T> for T {
     }
 }
 
-pub fn extract_stratum(payload: &[u8]) -> Result<u8, NtpPacketParseError> {
-    let stratum = payload[1];
-    if stratum > 15 {
+pub fn extract_stratum(stratum: &u8) -> Result<u8, NtpPacketParseError> {
+    if *stratum > 15 {
         Err(NtpPacketParseError::InvalidStratum)
     } else {
-        Ok(stratum)
+        Ok(*stratum)
     }
 }
 
-pub fn extract_poll(payload: &[u8]) -> Result<u8, NtpPacketParseError> {
-    let poll = payload[2];
-    if poll > 127 {
+pub fn extract_poll(poll: &u8) -> Result<u8, NtpPacketParseError> {
+    if *poll > 127 {
         Err(NtpPacketParseError::InvalidPoll)
     } else {
-        Ok(poll)
+        Ok(*poll)
     }
 }
 
-pub fn extract_precision(payload: &[u8]) -> Result<i8, NtpPacketParseError> {
-    Ok(payload[3] as i8)
+pub fn extract_precision(payload: &u8) -> Result<i8, NtpPacketParseError> {
+    Ok(*payload as i8)
 }
 
 pub fn extract_root_delay(payload: &[u8]) -> Result<u32, NtpPacketParseError> {
     Ok(u32::from_be_bytes([
-        payload[4], payload[5], payload[6], payload[7],
+        payload[0], payload[1], payload[2], payload[3],
     ]))
 }
 
 pub fn extract_root_dispersion(payload: &[u8]) -> Result<u32, NtpPacketParseError> {
     Ok(u32::from_be_bytes([
-        payload[8],
-        payload[9],
-        payload[10],
-        payload[11],
+        payload[0], payload[1], payload[2], payload[3],
     ]))
 }
 
 pub fn extract_reference_id(payload: &[u8]) -> Result<u32, NtpPacketParseError> {
     Ok(u32::from_be_bytes([
-        payload[12],
-        payload[13],
-        payload[14],
-        payload[15],
+        payload[0], payload[1], payload[2], payload[3],
     ]))
 }
 
-pub fn extract_reference_timestamp(payload: &[u8]) -> Result<u64, NtpPacketParseError> {
-    Ok(u64::from_be_bytes([
-        payload[16],
-        payload[17],
-        payload[18],
-        payload[19],
-        payload[20],
-        payload[21],
-        payload[22],
-        payload[23],
-    ]))
+const NTP_TO_UNIX_EPOCH: i64 = 2_208_988_800;
+
+/// Extracts the NTP transmit timestamp from an NTP packet and returns a `DateTime<Utc>`.
+pub fn extract_timestamp(payload: &[u8]) -> Result<DateTime<Utc>, NtpPacketParseError> {
+    validate_epoch(payload)?;
+    // Extraction des 4 premiers octets pour obtenir les secondes NTP.
+    let ntp_seconds = u32::from_be_bytes(payload[0..4].try_into().unwrap());
+
+    // Extraction des 4 derniers octets pour obtenir la fraction de seconde NTP.
+    let ntp_fraction = u32::from_be_bytes(payload[4..8].try_into().unwrap());
+
+    // Conversion des secondes NTP en secondes UNIX (décalage de 1900 à 1970).
+    let unix_seconds = ntp_seconds as i64 - NTP_TO_UNIX_EPOCH;
+
+    // Conversion de la fraction de seconde NTP en nanosecondes.
+    let nanos = ((ntp_fraction as u64) * 1_000_000_000) / (1 << 32);
+    let nanos = nanos as u32;
+    // Construction du `DateTime<Utc>` et validation de la date.
+    let datetime = Utc.timestamp_opt(unix_seconds, nanos).single().ok_or(
+        NtpPacketParseError::TimestampConversionError {
+            seconds: unix_seconds,
+            nanos,
+        },
+    )?;
+
+    Ok(datetime)
 }
 
-pub fn extract_originate_timestamp(payload: &[u8]) -> Result<u64, NtpPacketParseError> {
-    Ok(u64::from_be_bytes([
-        payload[24],
-        payload[25],
-        payload[26],
-        payload[27],
-        payload[28],
-        payload[29],
-        payload[30],
-        payload[31],
-    ]))
+fn validate_epoch(payload: &[u8]) -> Result<(), NtpPacketParseError> {
+    if payload.len() != 8 {
+        return Err(NtpPacketParseError::InvalidTimestampSize {
+            received: payload.len(),
+        });
+    }
+
+    // Extraction des 4 premiers octets pour obtenir les secondes NTP.
+    let ntp_seconds = u32::from_be_bytes(payload[0..4].try_into().unwrap());
+
+    // Vérification si le timestamp est avant 1970
+    if (ntp_seconds as i64) < NTP_TO_UNIX_EPOCH {
+        return Err(NtpPacketParseError::InvalidTime);
+    }
+
+    Ok(())
 }
 
-pub fn extract_receive_timestamp(payload: &[u8]) -> Result<u64, NtpPacketParseError> {
-    Ok(u64::from_be_bytes([
-        payload[32],
-        payload[33],
-        payload[34],
-        payload[35],
-        payload[36],
-        payload[37],
-        payload[38],
-        payload[39],
-    ]))
+pub fn validate_datetime_ordering(
+    reference: DateTime<Utc>,
+    originate: DateTime<Utc>,
+    receive: DateTime<Utc>,
+    transmit: DateTime<Utc>,
+) -> Result<(), NtpPacketParseError> {
+    if reference > originate || 
+    originate > receive || 
+    receive > transmit {
+        return Err(NtpPacketParseError::InconsistentTimestamps);
+    }
+
+    Ok(())
 }
 
-pub fn extract_transmit_timestamp(payload: &[u8]) -> Result<u64, NtpPacketParseError> {
-    Ok(u64::from_be_bytes([
-        payload[40],
-        payload[41],
-        payload[42],
-        payload[43],
-        payload[44],
-        payload[45],
-        payload[46],
-        payload[47],
-    ]))
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn test_valid_ordering() {
+        let reference = Utc.timestamp_opt(1_700_000_000, 0).unwrap();
+        let originate = Utc.timestamp_opt(1_700_000_001, 0).unwrap();
+        let receive = Utc.timestamp_opt(1_700_000_002, 0).unwrap();
+        let transmit = Utc.timestamp_opt(1_700_000_003, 0).unwrap();
+
+        let result = validate_datetime_ordering(reference, originate, receive, transmit);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_invalid_ordering() {
+        let reference = Utc.timestamp_opt(1_700_000_000, 0).unwrap();
+        let originate = Utc.timestamp_opt(1_700_000_005, 0).unwrap();
+        let receive = Utc.timestamp_opt(1_700_000_002, 0).unwrap(); // Problème ici (reçoit avant originate)
+        let transmit = Utc.timestamp_opt(1_700_000_003, 0).unwrap();
+
+        let result = validate_datetime_ordering(reference, originate, receive, transmit);
+        assert!(matches!(
+            result,
+            Err(NtpPacketParseError::InconsistentTimestamps)
+        ));
+    }
 }
-
-

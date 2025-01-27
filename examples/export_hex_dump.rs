@@ -1,4 +1,3 @@
-
 use packet_parser::convert::Packet;
 
 fn main() {

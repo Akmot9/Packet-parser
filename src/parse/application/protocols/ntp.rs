@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+
 use crate::{
     checks::application::ntp::*, 
     errors::application::ntp::NtpPacketParseError};
@@ -103,32 +105,13 @@ pub struct NtpPacket {
     /// The reference identifier depending on the stratum level.
     pub reference_id: u32,
     /// The time at which the local clock was last set or corrected.
-    pub reference_timestamp: u64,
+    pub reference_timestamp: DateTime<Utc>,
     /// The time at which the request departed the client for the server.
-    pub originate_timestamp: u64,
+    pub originate_timestamp: DateTime<Utc>,
     /// The time at which the request arrived at the server.
-    pub receive_timestamp: u64,
+    pub receive_timestamp: DateTime<Utc>,
     /// The time at which the reply departed the server for the client.
-    pub transmit_timestamp: u64,
-}
-
-fn check_stratum(stratum: u8) -> Result<(), bool> {
-    if stratum > 15 {
-        return Err(false);
-    }
-    Ok(())
-}
-
-fn check_poll(poll: u8) -> Result<(), bool> {
-    if poll > 17 {
-        return Err(false);
-    }
-    Ok(())
-}
-
-fn check_root_delay_dispersion(_root_delay: u32, _root_dispersion: u32) -> Result<(), bool> {
-    // These checks are removed because u32 cannot exceed its own bounds
-    Ok(())
+    pub transmit_timestamp: DateTime<Utc>,
 }
 
 impl TryFrom<&[u8]> for NtpPacket {
@@ -137,18 +120,24 @@ impl TryFrom<&[u8]> for NtpPacket {
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
         // Check if payload has the minimum length required for an NTP packet
         validate_ntp_packet_length(payload)?;
-        //
-        let flags: (u8, u8, u8) = extract_flags(payload)?;
-        let stratum = extract_stratum(payload)?;
-        let poll = extract_poll(payload)?;
-        let precision = extract_precision(payload)?;
-        let root_delay = extract_root_delay(payload)?;
-        let root_dispersion = extract_root_dispersion(payload)?;
-        let reference_id = extract_reference_id(payload)?;
-        let reference_timestamp = extract_reference_timestamp(payload)?;
-        let originate_timestamp = extract_originate_timestamp(payload)?;
-        let receive_timestamp = extract_receive_timestamp(payload)?;
-        let transmit_timestamp = extract_transmit_timestamp(payload)?;
+        
+        let flags = extract_flags(&payload[0])?;
+        let stratum = extract_stratum(&payload[1])?;
+        let poll = extract_poll(&payload[2])?;
+        let precision = extract_precision(&payload[3])?;
+        let root_delay = extract_root_delay(&payload[4..8])?; // ✅ Correction ici !
+        let root_dispersion = extract_root_dispersion(&payload[8..12])?;
+        let reference_id = extract_reference_id(&payload[12..16])?;
+        let reference_timestamp = extract_timestamp(&payload[16..24])?;
+        let originate_timestamp = extract_timestamp(&payload[24..32])?;
+        let receive_timestamp = extract_timestamp(&payload[32..40])?;
+        let transmit_timestamp = extract_timestamp(&payload[40..48])?;
+        
+        validate_datetime_ordering(
+            reference_timestamp,
+            originate_timestamp,
+            receive_timestamp,
+            transmit_timestamp)?;
 
         Ok(NtpPacket {
             flags,
@@ -171,6 +160,7 @@ mod tests {
     use crate::parse::application::NtpPacket;
     use crate::errors::application::ntp::NtpPacketParseError;
     use crate::parse::application::protocols::ntp::*;
+    use chrono::TimeZone;
 
     #[test]
     fn test_valid_ntp_packet() {
@@ -189,10 +179,12 @@ mod tests {
         assert_eq!(result.root_delay, 0x00000000);
         assert_eq!(result.root_dispersion, 0x00000000);
         assert_eq!(result.reference_id, 0x4E494E00);
-        assert_eq!(result.reference_timestamp, 0xDCC00000E144C671);
-        assert_eq!(result.originate_timestamp, 0xDCC00000E144C671);
-        assert_eq!(result.receive_timestamp, 0xDCC00000E144C671);
-        assert_eq!(result.transmit_timestamp, 0xDCC00000E144C671);
+        let expected_timestamp = Utc.datetime_from_str("2017-05-12T09:33:52.879955675Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
+            .expect("Invalid datetime format");
+        assert_eq!(result.reference_timestamp, expected_timestamp);
+        assert_eq!(result.originate_timestamp, expected_timestamp);
+        assert_eq!(result.receive_timestamp, expected_timestamp);
+        assert_eq!(result.transmit_timestamp, expected_timestamp);
     }
 
     #[test]

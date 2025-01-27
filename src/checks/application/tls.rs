@@ -1,6 +1,6 @@
 use crate::{
-    parse::application::protocols::tls::{TlsContentType, TlsVersion},
     errors::application::tls::TlsParseError,
+    parse::application::protocols::tls::{TlsContentType, TlsVersion},
 };
 
 /// Checks if the payload length is at least 5 bytes

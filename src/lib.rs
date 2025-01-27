@@ -1,5 +1,5 @@
 pub mod checks;
-pub mod parse;
-mod errors;
 pub mod convert;
+mod errors;
+pub mod parse;
 // raw packets are determined with checks that return the tryed struct or an error explaining why it failed
