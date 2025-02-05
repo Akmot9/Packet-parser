@@ -3,3 +3,6 @@
 *.lock
 /integration_test/target
 Cargo.lock
+/lock
+output.pcap
+*.pcap

@@ -1,21 +1,13 @@
 pub mod protocols;
 use crate::{
     errors::application::ApplicationParseError,
-    parse::application::protocols::{
-        bitcoin::BitcoinPacket, dhcp::DhcpPacket, dns::DnsPacket, http::HttpRequest,
-        ntp::NtpPacket, tls::TlsPacket,
-    },
+    parse::application::protocols::ntp::NtpPacket,
 };
 
 /// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
 #[derive(Debug)]
 pub enum ApplicationProtocol<'a> {
-    Dns(DnsPacket),
-    Tls(TlsPacket),
-    Dhcp(DhcpPacket),
-    Http(HttpRequest),
     Ntp(NtpPacket),
-    Bitcoin(BitcoinPacket),
 
     Raw(&'a [u8]),
 
@@ -41,36 +33,13 @@ impl<'a> TryFrom<&'a [u8]> for Application<'a> {
             &str,
             fn(&[u8]) -> Result<ApplicationProtocol, ApplicationParseError>,
         )] = &[
-            ("DNS", |data| {
-                DnsPacket::try_from(data)
-                    .map(ApplicationProtocol::Dns)
-                    .map_err(|_| ApplicationParseError::DnsParseError)
-            }),
-            ("TLS", |data| {
-                TlsPacket::try_from(data)
-                    .map(ApplicationProtocol::Tls)
-                    .map_err(|_| ApplicationParseError::TlsParseError)
-            }),
-            ("DHCP", |data| {
-                DhcpPacket::try_from(data)
-                    .map(ApplicationProtocol::Dhcp)
-                    .map_err(|_| ApplicationParseError::DhcpParseError)
-            }),
-            ("HTTP", |data| {
-                HttpRequest::try_from(data)
-                    .map(ApplicationProtocol::Http)
-                    .map_err(|_| ApplicationParseError::HttpParseError)
-            }),
+            
             ("NTP", |data| {
                 NtpPacket::try_from(data)
                     .map(ApplicationProtocol::Ntp)
                     .map_err(|_| ApplicationParseError::NtpParseError)
             }),
-            ("Bitcoin", |data| {
-                BitcoinPacket::try_from(data)
-                    .map(ApplicationProtocol::Bitcoin)
-                    .map_err(|_| ApplicationParseError::BitcoinParseError)
-            }),
+
         ];
 
         for (protocol_name, parser) in parsers {
