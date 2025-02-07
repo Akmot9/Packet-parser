@@ -4,12 +4,12 @@ pub mod mac_addres;
 use mac_addres::MacAddress;
 
 pub mod ethertype;
+
+use ethertype::Ethertype;
 use crate::{
     errors::data_link::DataLinkError, 
     checks::data_link::validate_data_link_length
 };
-
-use ethertype::Ethertype;
 
 #[derive(Debug)]
 pub struct DataLink<'a> {
@@ -27,11 +27,10 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
         validate_data_link_length(packets)?;
 
         Ok(DataLink {
-            destination_mac: MacAddress::try_from(&packets[0..6]).unwrap(),
-            source_mac: MacAddress::try_from(&packets[6..12]).unwrap(),
+            destination_mac: MacAddress::try_from(&packets[0..6])?,
+            source_mac: MacAddress::try_from(&packets[6..12])?,
             ethertype: Ethertype::from(u16::from_be_bytes([packets[12], packets[13]])),
             payload: &packets[14..],
-            
         })
     }
 }

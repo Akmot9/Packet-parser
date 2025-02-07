@@ -1,6 +1,6 @@
 use pnet::datalink::{self, NetworkInterface};
 use pnet::datalink::Channel::Ethernet;
-use packet_parser::ParsedPacket;
+use packet_parser::parse::data_link::DataLink;
 use std::convert::TryFrom;
 use thiserror::Error;
 
@@ -53,11 +53,11 @@ fn main() -> Result<(), PacketCaptureError> {
                 continue;
             }
         };
-
+        println("");
         println!("Received packet: {:2X?}", packet);
 
         // Tenter de parser le paquet
-        match ParsedPacket::try_from(packet) {
+        match DataLink::try_from(packet) {
             Ok(parsed_packet) => println!("{}", parsed_packet),
             Err(e) => eprintln!("Error parsing packet: {:?}", PacketCaptureError::PacketParseError(e.to_string())),
         }
