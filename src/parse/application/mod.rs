@@ -61,7 +61,7 @@ impl<'a> TryFrom<&'a [u8]> for Application<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+ 
     use crate::parse::application::Application;
     use std::convert::TryFrom;
 

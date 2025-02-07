@@ -1,7 +1,7 @@
 use core::fmt;
 use std::fmt::{Display, Formatter};
 
-use crate::parsed_packet::data_link::mac_addres::MacAddress;
+use crate::parse::data_link::mac_addres::MacAddress;
 
 impl Display for MacAddress {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
