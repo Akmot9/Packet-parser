@@ -183,11 +183,9 @@ mod tests {
         assert_eq!(result.root_delay, 0x00000000);
         assert_eq!(result.root_dispersion, 66192);
         assert_eq!(result.reference_id, Refid::KissCode("NULL".to_string()));
-
         let expected_timestamp = Utc
             .datetime_from_str("1970-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
             .expect("Invalid datetime format");
-        
         assert_eq!(result.reference_timestamp, expected_timestamp);
         let expected_timestamp = Utc
             .datetime_from_str("1970-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
