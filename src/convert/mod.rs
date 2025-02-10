@@ -1,5 +1,8 @@
 use pcap_file::pcap::{PcapPacket, PcapWriter};
-use std::{fmt, fs::File};
+use std::{
+    fmt::{self, Write},
+    fs::File,
+};
 
 /// # PacketConverter
 /// Une crate pour convertir et afficher des paquets réseau en Rust.
@@ -8,9 +11,7 @@ use std::{fmt, fs::File};
 /// - Conversion d'une chaîne hexadécimale en `Vec<u8>`
 /// - Conversion d'un `Vec<u8>` en chaîne hexadécimale
 /// - Affichage formaté des paquets réseau
-///
-
-/// Structure représentant un paquet réseau.
+///   Structure représentant un paquet réseau.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Packet {
     pub data: Vec<u8>,
@@ -24,13 +25,12 @@ impl Packet {
         let writer = PcapWriter::new(file);
 
         let orig_len = self.data.len() as u32;
-        let timestamp: std::time::Duration = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)?
-            .into();
-        let paccket = PcapPacket::new(timestamp, orig_len, &self.data);
+        let timestamp: std::time::Duration =
+            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH)?;
+        let packet = PcapPacket::new(timestamp, orig_len, &self.data);
 
         // Ajouter les données du paquet
-        writer?.write_packet(&paccket)?;
+        writer?.write_packet(&packet)?;
 
         Ok(())
     }
@@ -69,7 +69,11 @@ pub fn hex_stream_to_bytes(hex: &str) -> Vec<u8> {
 
 /// Convertit un slice `&[u8]` en une chaîne hexadécimale.
 pub fn bytes_to_hex_string(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{:02X}", byte)).collect()
+    let mut hex_string = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(&mut hex_string, "{:02X}", byte).unwrap();
+    }
+    hex_string
 }
 
 /// Retourne un tableau formaté de bytes sous forme de chaîne Rust.

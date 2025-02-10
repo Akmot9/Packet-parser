@@ -2,7 +2,6 @@
 
 pub(crate) mod application;
 pub(crate) mod data_link;
-pub(crate) mod network;
 
 use data_link::DataLinkError;
 use thiserror::Error;

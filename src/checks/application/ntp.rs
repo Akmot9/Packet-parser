@@ -2,7 +2,9 @@ use std::net::Ipv4Addr;
 
 use chrono::{DateTime, TimeZone, Utc};
 
-use crate::{errors::application::ntp::NtpPacketParseError, parse::application::protocols::ntp::Refid};
+use crate::{
+    errors::application::ntp::NtpPacketParseError, parse::application::protocols::ntp::Refid,
+};
 
 /// ## NTP Validation Process
 ///
@@ -11,7 +13,6 @@ use crate::{errors::application::ntp::NtpPacketParseError, parse::application::p
 /// 3. The **Mode field** (first byte) must be in `[1, 2, 3, 4, 5]` (Client, Server, Broadcast, etc.).
 /// 4. The **Stratum field** must be between `0` and `15` for valid servers.
 /// 5. The **Timestamps** must be logically consistent.
-
 const MINIMUM_NTP_PACKET_LENGTH: usize = 48;
 pub fn validate_ntp_packet_length(payload: &[u8]) -> Result<(), NtpPacketParseError> {
     if payload.len() < MINIMUM_NTP_PACKET_LENGTH {
@@ -46,17 +47,17 @@ pub fn extract_flags(li_vn_mode: &u8) -> Result<(u8, u8, u8), NtpPacketParseErro
 }
 
 trait RangeExt<T> {
-    fn is_between(self, min: T, max: T) -> bool
+    fn is_between(&self, min: T, max: T) -> bool
     where
         T: PartialOrd<T>;
 }
 
 impl<T> RangeExt<T> for T {
-    fn is_between(self, min: T, max: T) -> bool
+    fn is_between(&self, min: T, max: T) -> bool
     where
         T: PartialOrd<T>,
     {
-        self >= min && self <= max
+        *self >= min && *self <= max
     }
 }
 
@@ -102,7 +103,6 @@ pub fn extract_reference_id(stratum: u8, payload: &[u8]) -> Result<Refid, NtpPac
     let ref_id_bytes = [payload[0], payload[1], payload[2], payload[3]];
     let ref_str = String::from_utf8_lossy(&ref_id_bytes).to_string();
 
-
     match stratum {
         0 => {
             if ref_str == "\0\0\0\0" {
@@ -121,7 +121,12 @@ pub fn extract_reference_id(stratum: u8, payload: &[u8]) -> Result<Refid, NtpPac
             }
         }
         2..=15 => {
-            let ip = Ipv4Addr::new(ref_id_bytes[0], ref_id_bytes[1], ref_id_bytes[2], ref_id_bytes[3]);
+            let ip = Ipv4Addr::new(
+                ref_id_bytes[0],
+                ref_id_bytes[1],
+                ref_id_bytes[2],
+                ref_id_bytes[3],
+            );
             if ip.is_unspecified() || ip.is_multicast() {
                 Err(NtpPacketParseError::InvalidReferenceIdForHigherStratum)
             } else {
@@ -134,14 +139,14 @@ pub fn extract_reference_id(stratum: u8, payload: &[u8]) -> Result<Refid, NtpPac
 
 /// Liste des Kiss Codes valides
 const KISS_CODES: &[&str] = &[
-    "ACST", "AUTH", "AUTO", "BCST", "CRYP", "DENY", "DROP", "RSTR", "INIT",
-    "MCST", "NKEY", "NTSN", "RATE", "RMOT", "STEP",
+    "ACST", "AUTH", "AUTO", "BCST", "CRYP", "DENY", "DROP", "RSTR", "INIT", "MCST", "NKEY", "NTSN",
+    "RATE", "RMOT", "STEP",
 ];
 
 /// Liste des Clock Sources valides pour Stratum 1
 const CLOCK_SOURCES: &[&str] = &[
-    "GOES", "GPS", "GAL", "PPS", "IRIG", "WWVB", "DCF", "HBG", "MSF", "JJY",
-    "LORC", "TDF", "CHU", "WWV", "WWVH", "NIST", "ACTS", "USNO", "PTB", "DFM",
+    "GOES", "GPS", "GAL", "PPS", "IRIG", "WWVB", "DCF", "HBG", "MSF", "JJY", "LORC", "TDF", "CHU",
+    "WWV", "WWVH", "NIST", "ACTS", "USNO", "PTB", "DFM",
 ];
 
 const NTP_TO_UNIX_EPOCH: i64 = 2_208_988_800;
@@ -200,9 +205,7 @@ pub fn validate_datetime_ordering(
     receive: DateTime<Utc>,
     transmit: DateTime<Utc>,
 ) -> Result<(), NtpPacketParseError> {
-    if reference > originate || 
-    originate > receive || 
-    receive > transmit {
+    if reference > originate || originate > receive || receive > transmit {
         return Err(NtpPacketParseError::InconsistentTimestamps);
     }
 
@@ -251,7 +254,10 @@ mod tests {
         let stratum = 1;
         let payload = [0x80, 0x00, 0x00, 0x00]; // Valeur non ASCII
         let result = extract_reference_id(stratum, &payload);
-        assert!(matches!(result, Err(NtpPacketParseError::InvalidReferenceIdForStratum1)));
+        assert!(matches!(
+            result,
+            Err(NtpPacketParseError::InvalidReferenceIdForStratum1)
+        ));
     }
 
     #[test]
@@ -267,7 +273,10 @@ mod tests {
         let stratum = 2;
         let payload = [224, 0, 0, 1]; // Adresse multicast (invalide en NTP)
         let result = extract_reference_id(stratum, &payload);
-        assert!(matches!(result, Err(NtpPacketParseError::InvalidReferenceIdForHigherStratum)));
+        assert!(matches!(
+            result,
+            Err(NtpPacketParseError::InvalidReferenceIdForHigherStratum)
+        ));
     }
 
     #[test]
@@ -275,6 +284,9 @@ mod tests {
         let stratum = 0;
         let payload = [192, 168, 1, 1];
         let result = extract_reference_id(stratum, &payload);
-        assert!(matches!(result, Err(NtpPacketParseError::InvalidReferenceIdForStratum0)));
+        assert!(matches!(
+            result,
+            Err(NtpPacketParseError::InvalidReferenceIdForStratum0)
+        ));
     }
 }

@@ -3,10 +3,7 @@ mod oui;
 use oui::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    errors::data_link::mac_addres::MacParseError, 
-    checks::data_link::validate_mac_length,
-};
+use crate::{checks::data_link::validate_mac_length, errors::data_link::mac_addres::MacParseError};
 
 pub const MAC_LEN: usize = 6;
 

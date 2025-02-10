@@ -5,11 +5,8 @@ use mac_addres::MacAddress;
 
 pub mod ethertype;
 
+use crate::{checks::data_link::validate_data_link_length, errors::data_link::DataLinkError};
 use ethertype::Ethertype;
-use crate::{
-    errors::data_link::DataLinkError, 
-    checks::data_link::validate_data_link_length
-};
 
 #[derive(Debug)]
 pub struct DataLink<'a> {

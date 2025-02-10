@@ -35,7 +35,7 @@ pub enum NtpPacketParseError {
 
     #[error("Invalid Reference ID: Stratum 1 should have ASCII characters")]
     InvalidReferenceIdForStratum1,
-    
+
     #[error("Invalid Reference ID: Stratum ≥ 2 should have a valid IPv4 address")]
     InvalidReferenceIdForHigherStratum,
 }

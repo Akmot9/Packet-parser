@@ -1,9 +1,9 @@
 use std::fmt;
-pub mod mac_addres;
 pub mod ethertype;
+pub mod mac_addres;
 use crate::parse::data_link::DataLink;
 
-impl<'a> fmt::Display for DataLink<'a> {
+impl fmt::Display for DataLink<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

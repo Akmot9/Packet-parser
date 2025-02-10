@@ -1,7 +1,6 @@
 pub mod protocols;
 use crate::{
-    errors::application::ApplicationParseError,
-    parse::application::protocols::ntp::NtpPacket,
+    errors::application::ApplicationParseError, parse::application::protocols::ntp::NtpPacket,
 };
 
 /// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
@@ -29,26 +28,11 @@ impl<'a> TryFrom<&'a [u8]> for Application<'a> {
             return Err(ApplicationParseError::EmptyPacket);
         }
 
-        let parsers: &[(
-            &str,
-            fn(&[u8]) -> Result<ApplicationProtocol, ApplicationParseError>,
-        )] = &[
-            
-            ("NTP", |data| {
-                NtpPacket::try_from(data)
-                    .map(ApplicationProtocol::Ntp)
-                    .map_err(|_| ApplicationParseError::NtpParseError)
-            }),
-
-        ];
-
-        for (protocol_name, parser) in parsers {
-            if let Ok(parsed_protocol) = parser(packet) {
-                return Ok(Application {
-                    application_protocol: protocol_name.to_string(),
-                    layer_7_protocol_infos: Some(parsed_protocol),
-                });
-            }
+        if let Ok(ntp_packet) = NtpPacket::try_from(packet) {
+            return Ok(Application {
+                application_protocol: "NTP".to_string(),
+                layer_7_protocol_infos: Some(ApplicationProtocol::Ntp(ntp_packet)),
+            });
         }
 
         // If no parser matches, return a "None" protocol
@@ -61,18 +45,18 @@ impl<'a> TryFrom<&'a [u8]> for Application<'a> {
 
 #[cfg(test)]
 mod tests {
- 
+
     use crate::parse::application::Application;
     use std::convert::TryFrom;
 
     #[test]
-    fn test_dns_packet_parsing() {
-        let dns_payload = hex::decode("3155810000010001000000001a546f72696b31362d5452312d38322d3132382d3139342d3130350573756f6d69036e65740000010001c00c000100010000271000045280c269").expect("Invalid hex string");
+    fn test_ntp_packet_parsing() {
+        let ntp_payload = hex::decode("d9000afa000000000001029000000000000000000000000000000000000000000000000000000000c50204ecec42ee92").expect("Invalid hex string");
 
-        match Application::try_from(dns_payload.as_slice()) {
+        match Application::try_from(ntp_payload.as_slice()) {
             Ok(parsed) => {
                 println!("Parsed application protocol: {:?}", parsed);
-                assert_eq!(parsed.application_protocol, "DNS");
+                assert_eq!(parsed.application_protocol, "NTP");
             }
             Err(e) => {
                 panic!("Failed to parse DNS packet: {:?}", e);

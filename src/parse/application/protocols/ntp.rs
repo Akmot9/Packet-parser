@@ -43,13 +43,12 @@
 /// 3. The **Mode field** (first byte) must be in `[1, 2, 3, 4, 5]` (Client, Server, Broadcast, etc.).
 /// 4. The **Stratum field** must be between `0` and `15` for valid servers.
 /// 5. The **Timestamps** must be logically consistent.
-///
-/// If any of these conditions are not met, an `NtpPacketParseError` is returned.
+///    If any of these conditions are not met, an `NtpPacketParseError` is returned.
 ///
 /// ## Usage
 ///
 /// ```rust
-/// use ntp_parser::NtpPacket;
+/// use packet_parser::parse::application::protocols::ntp::NtpPacket;
 ///
 /// let packet: &[u8] = &[
 ///     0x3B, 0x00, 0x00, 0x00, // LI, Version, Mode | Stratum | Poll | Precision
@@ -62,7 +61,7 @@
 ///     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // Transmit Timestamp
 /// ];
 ///
-/// match NtpPacket::from_bytes(&packet) {
+/// match NtpPacket::try_from(packet) {
 ///     Ok(ntp) => println!("Parsed NTP Packet: {:?}", ntp),
 ///     Err(e) => println!("Invalid NTP packet: {:?}", e),
 /// }
@@ -80,15 +79,11 @@
 /// - **`InvalidTimestamps`** → The timestamps are inconsistent.
 ///
 /// These errors help diagnose malformed or unexpected packets.
-
 use std::net::Ipv4Addr;
 
 use chrono::{DateTime, Utc};
 
-use crate::{
-    checks::application::ntp::*, 
-    errors::application::ntp::NtpPacketParseError};
-
+use crate::{checks::application::ntp::*, errors::application::ntp::NtpPacketParseError};
 
 /// The `NtpPacket` struct represents a parsed NTP packet.
 #[derive(Debug)]
@@ -131,7 +126,7 @@ impl TryFrom<&[u8]> for NtpPacket {
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
         // Check if payload has the minimum length required for an NTP packet
         validate_ntp_packet_length(payload)?;
-        
+
         let flags = extract_flags(&payload[0])?;
         let stratum = extract_stratum(&payload[1])?;
         let poll = extract_poll(&payload[2])?;
@@ -143,12 +138,13 @@ impl TryFrom<&[u8]> for NtpPacket {
         let originate_timestamp = extract_timestamp(&payload[24..32])?;
         let receive_timestamp = extract_timestamp(&payload[32..40])?;
         let transmit_timestamp = extract_timestamp(&payload[40..48])?;
-        
+
         validate_datetime_ordering(
             reference_timestamp,
             originate_timestamp,
             receive_timestamp,
-            transmit_timestamp)?;
+            transmit_timestamp,
+        )?;
 
         Ok(NtpPacket {
             flags,
@@ -168,16 +164,17 @@ impl TryFrom<&[u8]> for NtpPacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::parse::application::NtpPacket;
     use crate::errors::application::ntp::NtpPacketParseError;
     use crate::parse::application::protocols::ntp::*;
+    use crate::parse::application::NtpPacket;
     use chrono::TimeZone;
 
     #[test]
     fn test_valid_ntp_packet() {
         let binding = hex::decode("d9000afa000000000001029000000000000000000000000000000000000000000000000000000000c50204eceed33c52");
-        
-        let result = NtpPacket::try_from(binding.expect("REASON").as_slice()).expect("Expected a valid NTP packet");
+
+        let result = NtpPacket::try_from(binding.expect("REASON").as_slice())
+            .expect("Expected a valid NTP packet");
 
         assert_eq!(result.flags, (3, 3, 1));
         assert_eq!(result.stratum, 0x00);
@@ -186,17 +183,23 @@ mod tests {
         assert_eq!(result.root_delay, 0x00000000);
         assert_eq!(result.root_dispersion, 66192);
         assert_eq!(result.reference_id, Refid::KissCode("NULL".to_string()));
-        let expected_timestamp = Utc.datetime_from_str("1970-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
+
+        let expected_timestamp = Utc
+            .datetime_from_str("1970-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
             .expect("Invalid datetime format");
+        
         assert_eq!(result.reference_timestamp, expected_timestamp);
-        let expected_timestamp = Utc.datetime_from_str("1970-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
-        .expect("Invalid datetime format");
+        let expected_timestamp = Utc
+            .datetime_from_str("1970-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
+            .expect("Invalid datetime format");
         assert_eq!(result.originate_timestamp, expected_timestamp);
-        let expected_timestamp = Utc.datetime_from_str("1970-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
-        .expect("Invalid datetime format");
+        let expected_timestamp = Utc
+            .datetime_from_str("1970-01-01T00:00:00Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
+            .expect("Invalid datetime format");
         assert_eq!(result.receive_timestamp, expected_timestamp);
-        let expected_timestamp = Utc.datetime_from_str("2004-09-27T03:18:04.932910699Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
-        .expect("Invalid datetime format");
+        let expected_timestamp = Utc
+            .datetime_from_str("2004-09-27T03:18:04.932910699Z", "%Y-%m-%dT%H:%M:%S%.9fZ")
+            .expect("Invalid datetime format");
         assert_eq!(result.transmit_timestamp, expected_timestamp);
     }
 
@@ -219,7 +222,10 @@ mod tests {
             0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
         ];
         let result = NtpPacket::try_from(invalid_version_payload.as_slice());
-        assert!(matches!(result, Err(NtpPacketParseError::InvalidVersion { .. })));
+        assert!(matches!(
+            result,
+            Err(NtpPacketParseError::InvalidVersion { .. })
+        ));
     }
 
     #[test]
@@ -231,7 +237,10 @@ mod tests {
             0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
         ];
         let result = NtpPacket::try_from(invalid_mode_payload.as_slice());
-        assert!(matches!(result, Err(NtpPacketParseError::InvalidMode { .. })));
+        assert!(matches!(
+            result,
+            Err(NtpPacketParseError::InvalidMode { .. })
+        ));
     }
 
     #[test]
@@ -246,7 +255,10 @@ mod tests {
         // Invalid NTP packet (short length)
         let short_ntp_packet = vec![0x1B, 0x00, 0x04];
         let result = NtpPacket::try_from(short_ntp_packet.as_slice());
-        assert!(matches!(result, Err(NtpPacketParseError::InvalidPacketLength )));
+        assert!(matches!(
+            result,
+            Err(NtpPacketParseError::InvalidPacketLength)
+        ));
 
         // Invalid NTP packet (invalid version)
         let invalid_version_packet = vec![
@@ -256,6 +268,9 @@ mod tests {
             0x00, 0x00, 0xE1, 0x44, 0xC6, 0x71,
         ];
         let result = NtpPacket::try_from(invalid_version_packet.as_slice());
-        assert!(matches!(result, Err(NtpPacketParseError::InvalidVersion { version } )));
+        assert!(matches!(
+            result,
+            Err(NtpPacketParseError::InvalidVersion { version })
+        ));
     }
 }
