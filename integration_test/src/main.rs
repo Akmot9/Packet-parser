@@ -31,13 +31,17 @@ fn create_channel(interface: &NetworkInterface) -> Result<(Box<dyn datalink::Dat
     match datalink::channel(interface, Default::default()) {
         Ok(Ethernet(tx, rx)) => Ok((tx, rx)),
         Ok(_) => Err(PacketCaptureError::ChannelCreationError("Unhandled channel type".to_string())),
-        Err(e) => Err(PacketCaptureError::ChannelCreationError(e.to_string())),
+        Err(e) => {
+            eprintln!("use sudo setcap cap_net_raw,cap_net_admin=eip target/debug/integration_test");
+            Err(PacketCaptureError::ChannelCreationError(e.to_string()))
+        }
     }
 }
 
+
 fn main() -> Result<(), PacketCaptureError> {
     // Sélectionner l'interface réseau
-    let interface_name = "enxfeaa81e86d1e"; // Exemple d'interface réseau wlp6s0 wlp0s20f3
+    let interface_name = "wlp0s20f3"; // Exemple d'interface réseau wlp6s0 wlp0s20f3 enxfeaa81e86d1e
 
     let interface = find_interface(interface_name)?;
 
@@ -53,7 +57,7 @@ fn main() -> Result<(), PacketCaptureError> {
                 continue;
             }
         };
-        println!("");
+        println!("--------------");
         println!("Received packet: {:2X?}", packet);
 
         // Tenter de parser le paquet

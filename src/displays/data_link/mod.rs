@@ -1,6 +1,7 @@
 use std::fmt;
 pub mod ethertype;
 pub mod mac_addres;
+pub mod oui;
 use crate::parse::data_link::DataLink;
 
 impl fmt::Display for DataLink<'_> {
