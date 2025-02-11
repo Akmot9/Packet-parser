@@ -1,8 +1,3 @@
-Here is a well-structured and detailed `README.md` for your **Packet Parser** crate:
-
----
-
-```markdown
 # Packet Parser
 
 **Packet Parser** is a powerful and modular Rust crate designed for analyzing and decoding network frames. It provides tools to extract information from various network layers (Data Link, Network, Transport, and Application) and offers an extensible architecture for network monitoring and packet analysis.
