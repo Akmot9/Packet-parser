@@ -3,15 +3,9 @@ use std::convert::TryFrom;
 mod oui;
 use oui::*;
 
-use serde::{
-    Deserialize, 
-    Serialize
-};
+use serde::{Deserialize, Serialize};
 
-use crate::{
-    checks::data_link::validate_mac_length, 
-    errors::data_link::mac_addres::MacParseError
-};
+use crate::{checks::data_link::validate_mac_length, errors::data_link::mac_addres::MacParseError};
 
 pub const MAC_LEN: usize = 6;
 

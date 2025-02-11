@@ -33,10 +33,10 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
 
 #[cfg(test)]
 mod tests {
- 
+
+    use crate::errors::data_link::DataLinkError;
     use crate::parse::data_link::mac_addres::MacAddress;
     use crate::parse::data_link::{DataLink, Ethertype};
-    use crate::errors::data_link::DataLinkError;
 
     #[test]
     fn test_datalink_try_from_valid_packet() {
@@ -47,7 +47,8 @@ mod tests {
             0x45, 0x00, 0x00, 0x54, // Payload (IPv4 Header fragment)
         ];
 
-        let datalink = DataLink::try_from(raw_packet.as_ref()).expect("Failed to parse valid packet");
+        let datalink =
+            DataLink::try_from(raw_packet.as_ref()).expect("Failed to parse valid packet");
 
         assert_eq!(
             datalink.destination_mac,
@@ -95,4 +96,3 @@ mod tests {
         assert_eq!(datalink.ethertype, Ethertype::from(0xABCD)); // Ethertype inconnu, mais accepté
     }
 }
-
