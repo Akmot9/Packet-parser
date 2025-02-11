@@ -1,9 +1,17 @@
 use std::convert::TryFrom;
+
 mod oui;
 use oui::*;
-use serde::{Deserialize, Serialize};
 
-use crate::{checks::data_link::validate_mac_length, errors::data_link::mac_addres::MacParseError};
+use serde::{
+    Deserialize, 
+    Serialize
+};
+
+use crate::{
+    checks::data_link::validate_mac_length, 
+    errors::data_link::mac_addres::MacParseError
+};
 
 pub const MAC_LEN: usize = 6;
 
@@ -11,10 +19,6 @@ pub const MAC_LEN: usize = 6;
 pub struct MacAddress(pub [u8; MAC_LEN]);
 
 impl MacAddress {
-    pub fn get_oui(&self) -> Oui {
-        Oui::from_bytes(&self.0[0..3])
-    }
-
     pub fn display_with_oui(&self) -> String {
         match self.get_oui() {
             Oui::Unknown => format!(
@@ -26,6 +30,10 @@ impl MacAddress {
                 oui, self.0[3], self.0[4], self.0[5]
             ),
         }
+    }
+
+    pub fn get_oui(&self) -> Oui {
+        Oui::from_bytes(&self.0[0..3])
     }
 }
 

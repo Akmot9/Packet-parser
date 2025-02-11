@@ -37,7 +37,7 @@ fn create_channel(interface: &NetworkInterface) -> Result<(Box<dyn datalink::Dat
 
 fn main() -> Result<(), PacketCaptureError> {
     // Sélectionner l'interface réseau
-    let interface_name = "wlp6s0"; // Exemple d'interface réseau wlp6s0 wlp0s20f3
+    let interface_name = "enxfeaa81e86d1e"; // Exemple d'interface réseau wlp6s0 wlp0s20f3
 
     let interface = find_interface(interface_name)?;
 
@@ -53,7 +53,7 @@ fn main() -> Result<(), PacketCaptureError> {
                 continue;
             }
         };
-        println("");
+        println!("");
         println!("Received packet: {:2X?}", packet);
 
         // Tenter de parser le paquet
