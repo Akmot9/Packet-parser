@@ -3,7 +3,6 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-
 //! The `Oui` module provides a representation of Organizationally Unique Identifiers (OUI).
 //! An OUI is the first 3 bytes of a MAC address, used to identify the manufacturer of a device.
 //!

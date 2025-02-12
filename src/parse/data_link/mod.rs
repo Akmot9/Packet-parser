@@ -155,4 +155,15 @@ mod tests {
         let datalink = DataLink::try_from(raw_packet.as_ref()).unwrap();
         assert_eq!(datalink.ethertype, Ethertype::from(0xABCD)); // Ethertype inconnu, mais accepté
     }
+    #[test]
+    fn test_datalink_try_from_empty_payload() {
+        let raw_packet: [u8; 14] = [
+            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // Destination MAC
+            0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, // Source MAC
+            0xAB, 0xCD, // Inconnu Ethertype
+        ];
+
+        let datalink = DataLink::try_from(raw_packet.as_ref()).unwrap();
+        assert_eq!(datalink.ethertype, Ethertype::from(0xABCD)); // Ethertype inconnu, mais accepté
+    }
 }
