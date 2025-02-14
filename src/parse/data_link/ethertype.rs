@@ -82,7 +82,12 @@ mod tests {
 
         for (code, expected_name) in test_cases {
             let ethertype = Ethertype::from(code);
-            assert_eq!(ethertype.name(), expected_name, "Failed for Ethertype: {:#06X}", code);
+            assert_eq!(
+                ethertype.name(),
+                expected_name,
+                "Failed for Ethertype: {:#06X}",
+                code
+            );
         }
     }
 
