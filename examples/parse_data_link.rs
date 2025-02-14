@@ -15,4 +15,17 @@ fn main() {
         Ok(datalink) => println!("{}", datalink),
         Err(e) => eprintln!("Erreur : {:?}", e),
     }
+    let hex_dump_data = "feaa81e86d1efeaa818ec8640800";
+
+    // Convertir la chaîne hexadécimale en un Vec<u8>
+    let packet = decode(hex_dump_data).expect("Conversion hexadécimale échouée");
+
+    // Afficher les octets du paquet en hexadécimal
+    println!("{:X?}", packet);
+
+    // Convertir en DataLink (supposé implémenter TryFrom<&[u8]>)
+    match DataLink::try_from(packet.as_slice()) {
+        Ok(datalink) => println!("{}", datalink),
+        Err(e) => eprintln!("Erreur : {:?}", e),
+    }
 }

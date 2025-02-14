@@ -6,6 +6,11 @@ authors = ["Cyprien Avico avicocyprien@yahoo.com"]
 description = "A powerful and modular Rust crate for network packet parsing."
 license = "MIT"
 repository = "https://github.com/Akmot9/Packet-parser"
+categories = ["network-programming", "parsing", "development-tools"]
+readme = "README.md"
+homepage = "https://github.com/Akmot9/Packet-parser"
+keywords = ["network", "packets", "parser", "cybersecurity", "Rust"]
+exclude = [".github/", ".gitignore", "tests/", "benches/"]
 
 
 [dependencies]
@@ -22,3 +27,12 @@ criterion = { version = "0.5.1", features = ["html_reports"] }
 pnet = "0.35.0"
 hex = "0.4.3"
 
+[workspace]
+members = ["integration_test"] # Spécifie que ta crate a un workspace avec d'autres projets
+
+[profile.release]
+lto = "fat"          # Optimisation maximale de la taille binaire et des performances
+codegen-units = 1    # Compilation optimisée pour la performance (au détriment du temps de build)
+panic = "abort"      # Supprime le support du backtrace, réduit la taille binaire
+strip = true         # Supprime les symboles de debug pour réduire la taille binaire
+opt-level = "z"      # Optimisation pour la taille (`s` pour équilibrer, `z` pour minimiser)
