@@ -11,6 +11,12 @@
 ✅ **Performance Optimization**: Integrated benchmarks using `Criterion`.  
 ✅ **Extensibility**: Modular architecture for easily adding new protocols.  
 
+Documentation
+
+For full documentation and explanations, check out the [Packet Parser Book](https://akmot9.github.io/packet-parser-book/).
+
+
+
 ## 🚀 Installation
 
 Add the dependency to your `Cargo.toml`:
