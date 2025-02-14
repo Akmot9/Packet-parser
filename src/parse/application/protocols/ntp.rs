@@ -172,7 +172,7 @@ mod tests {
     use crate::errors::application::ntp::NtpPacketParseError;
     use crate::parse::application::protocols::ntp::*;
     use crate::parse::application::NtpPacket;
-    use chrono::TimeZone;
+    // use chrono::TimeZone;
 
     #[test]
     fn test_valid_ntp_packet() {
@@ -253,7 +253,7 @@ mod tests {
 
         let result = NtpPacket::try_from(binding.expect("REASON").as_slice());
 
-        assert!(matches!(result, Ok(_)));
+        assert!((result.is_ok()));
 
         // Invalid NTP packet (short length)
         let short_ntp_packet = vec![0x1B, 0x00, 0x04];
