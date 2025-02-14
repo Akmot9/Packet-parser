@@ -1,6 +1,6 @@
-use pnet::datalink::{self, NetworkInterface};
-use pnet::datalink::Channel::Ethernet;
 use packet_parser::parse::data_link::DataLink;
+use pnet::datalink::Channel::Ethernet;
+use pnet::datalink::{self, NetworkInterface};
 use std::convert::TryFrom;
 use thiserror::Error;
 
@@ -27,17 +27,28 @@ fn find_interface(interface_name: &str) -> Result<NetworkInterface, PacketCaptur
         .ok_or_else(|| PacketCaptureError::InterfaceNotFound(interface_name.to_string()))
 }
 
-fn create_channel(interface: &NetworkInterface) -> Result<(Box<dyn datalink::DataLinkSender>, Box<dyn datalink::DataLinkReceiver>), PacketCaptureError> {
+fn create_channel(
+    interface: &NetworkInterface,
+) -> Result<
+    (
+        Box<dyn datalink::DataLinkSender>,
+        Box<dyn datalink::DataLinkReceiver>,
+    ),
+    PacketCaptureError,
+> {
     match datalink::channel(interface, Default::default()) {
         Ok(Ethernet(tx, rx)) => Ok((tx, rx)),
-        Ok(_) => Err(PacketCaptureError::ChannelCreationError("Unhandled channel type".to_string())),
+        Ok(_) => Err(PacketCaptureError::ChannelCreationError(
+            "Unhandled channel type".to_string(),
+        )),
         Err(e) => {
-            eprintln!("use sudo setcap cap_net_raw,cap_net_admin=eip target/debug/integration_test");
+            eprintln!(
+                "use sudo setcap cap_net_raw,cap_net_admin=eip target/debug/integration_test"
+            );
             Err(PacketCaptureError::ChannelCreationError(e.to_string()))
         }
     }
 }
-
 
 fn main() -> Result<(), PacketCaptureError> {
     // Sélectionner l'interface réseau
@@ -63,7 +74,10 @@ fn main() -> Result<(), PacketCaptureError> {
         // Tenter de parser le paquet
         match DataLink::try_from(packet) {
             Ok(parsed_packet) => println!("{}", parsed_packet),
-            Err(e) => eprintln!("Error parsing packet: {:?}", PacketCaptureError::PacketParseError(e.to_string())),
+            Err(e) => eprintln!(
+                "Error parsing packet: {:?}",
+                PacketCaptureError::PacketParseError(e.to_string())
+            ),
         }
     }
 }
