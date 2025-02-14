@@ -1,6 +1,6 @@
 [![codecov](https://codecov.io/gh/Akmot9/Packet-parser/graph/badge.svg?token=5YpEN9abhE)](https://codecov.io/gh/Akmot9/Packet-parser)
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FAkmot9%2FPacket-parser.svg?type=shield&issueType=security)](https://app.fossa.com/projects/git%2Bgithub.com%2FAkmot9%2FPacket-parser?ref=badge_shield&issueType=security)
-[![Build status](https://github.com/Akmot9/Packet-parser/actions/workflows/ci/badge.svg)](https://github.com/Akmot9/Packet-parser/actions)
+[![CI](https://github.com/Akmot9/Packet-parser/actions/workflows/ci.yml/badge.svg)](https://github.com/Akmot9/Packet-parser/actions/workflows/ci.yml)
 
 [![Crates.io](https://img.shields.io/crates/v/Packet-parser.svg)](https://crates.io/crates/packet_parser)
 

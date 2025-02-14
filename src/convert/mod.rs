@@ -95,3 +95,53 @@ pub fn format_hex_array(bytes: &[u8]) -> String {
 pub fn display_packet(bytes: &[u8]) {
     println!("Packet: {}", format_hex_array(bytes));
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    #[test]
+    fn test_hex_stream_to_bytes() {
+        let hex = "48656C6C6F"; // "Hello" in ASCII
+        let expected_bytes = vec![0x48, 0x65, 0x6C, 0x6C, 0x6F];
+        assert_eq!(hex_stream_to_bytes(hex), expected_bytes);
+    }
+
+    #[test]
+    fn test_bytes_to_hex_string() {
+        let bytes = vec![0x48, 0x65, 0x6C, 0x6C, 0x6F]; // "Hello" in ASCII
+        let expected_hex = "48656C6C6F";
+        assert_eq!(bytes_to_hex_string(&bytes), expected_hex);
+    }
+
+    // #[test]
+    // fn test_format_hex_array() {
+    //     let bytes = vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09];
+    //     let expected_format = "[\n    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, \n    0x08, 0x09, \n];";
+    //     assert_eq!(format_hex_array(&bytes), expected_format);
+    // }
+
+    // #[test]
+    // fn test_packet_display() {
+    //     let packet = Packet::from("48656C6C6F"); // "Hello"
+    //     assert_eq!(packet.to_string(), "[\n    0x48, 0x65, 0x6C, 0x6C, 0x6F, \n];");
+    // }
+
+    #[test]
+    fn test_packet_to_pcap() {
+        let packet = Packet::from("48656C6C6F"); // "Hello"
+        let result = packet.packet_to_pcap();
+
+        // Ensure no error occurred
+        assert!(result.is_ok());
+
+        // Check if the file was created
+        let pcap_path = Path::new("output.pcap");
+        assert!(pcap_path.exists());
+
+        // Cleanup the test file
+        fs::remove_file(pcap_path).unwrap();
+    }
+}
