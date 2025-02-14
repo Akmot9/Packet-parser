@@ -1,3 +1,4 @@
+[![codecov](https://codecov.io/gh/Akmot9/Packet-parser/graph/badge.svg?token=5YpEN9abhE)](https://codecov.io/gh/Akmot9/Packet-parser)
 # Packet Parser
 
 **Packet Parser** is a powerful and modular Rust crate designed for analyzing and decoding network frames. It provides tools to extract information from various network layers (Data Link, Network, Transport, and Application) and offers an extensible architecture for network monitoring and packet analysis.
@@ -16,22 +17,18 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-packet_parser = "0.1.0"
+packet_parser = "0.1.1"
 ```
 
 Then, import the crate in your project:
 
-```rust
-extern crate packet_parser;
-```
 
 ## 🔧 Usage
 
 ### Example: Parsing an Ethernet Frame
 
 ```rust
-use packet_parser::parsed_packet::data_link::DataLink;
-use std::convert::TryFrom;
+use packet_parser::parse::data_link::DataLink;
 
 let raw_packet: [u8; 18] = [
     0x2C, 0xFD, 0xA1, 0x3C, 0x4D, 0x5E, // Destination MAC
@@ -47,7 +44,7 @@ println!("{:?}", datalink);
 ### Example: Extracting OUI from a MAC Address
 
 ```rust
-use packet_parser::parsed_packet::data_link::mac_addres::{MacAddress, Oui};
+use packet_parser::parse::data_link::mac_addres::{MacAddress, Oui};
 
 let mac = MacAddress([0x64, 0x6E, 0xE0, 0x12, 0x34, 0x56]);
 assert_eq!(mac.get_oui(), Oui::Intel);
