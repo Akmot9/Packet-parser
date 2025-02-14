@@ -15,3 +15,29 @@ impl Display for Oui {
         write!(f, "{}", name)
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::parse::data_link::mac_addres::oui::Oui;
+
+    #[test]
+    fn test_oui_display() {
+        let test_cases = vec![
+            (Oui::ASUSTek, "ASUSTek"),
+            (Oui::Siemens, "Siemens"),
+            (Oui::Sagemcom, "Sagemcom"),
+            (Oui::Intel, "Intel"),
+            (Oui::Unknown, "Unknown"),
+        ];
+
+        for (oui_variant, expected_str) in test_cases {
+            assert_eq!(
+                oui_variant.to_string(),
+                expected_str,
+                "Failed for variant {:?}",
+                oui_variant
+            );
+        }
+    }
+}
