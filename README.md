@@ -1,5 +1,9 @@
 [![codecov](https://codecov.io/gh/Akmot9/Packet-parser/graph/badge.svg?token=5YpEN9abhE)](https://codecov.io/gh/Akmot9/Packet-parser)
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FAkmot9%2FPacket-parser.svg?type=shield&issueType=license)](https://app.fossa.com/projects/git%2Bgithub.com%2FAkmot9%2FPacket-parser?ref=badge_shield&issueType=license)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FAkmot9%2FPacket-parser.svg?type=shield&issueType=security)](https://app.fossa.com/projects/git%2Bgithub.com%2FAkmot9%2FPacket-parser?ref=badge_shield&issueType=security)
+[![Build status](https://github.com/Akmot9/Packet-parser/actions/workflows/ci/badge.svg)](https://github.com/Akmot9/Packet-parser/actions)
+
+[![Crates.io](https://img.shields.io/crates/v/Packet-parser.svg)](https://crates.io/crates/packet_parser)
+
 # Packet Parser
 
 **Packet Parser** is a powerful and modular Rust crate designed for analyzing and decoding network frames. It provides tools to extract information from various network layers (Data Link, Network, Transport, and Application) and offers an extensible architecture for network monitoring and packet analysis.
@@ -15,7 +19,6 @@
 Documentation
 
 For full documentation and explanations, check out the [Packet Parser Book](https://akmot9.github.io/packet-parser-book/).
-
 
 
 ## 🚀 Installation
