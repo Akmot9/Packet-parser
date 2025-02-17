@@ -11,6 +11,8 @@ use crate::{
     errors::application::ntp::NtpPacketParseError, parse::application::protocols::ntp::Refid,
 };
 
+const MINIMUM_NTP_PACKET_LENGTH: usize = 48;
+
 /// ## NTP Validation Process
 ///
 /// 1. The NTP packet must be at least **48 bytes** long.
@@ -18,7 +20,6 @@ use crate::{
 /// 3. The **Mode field** (first byte) must be in `[1, 2, 3, 4, 5]` (Client, Server, Broadcast, etc.).
 /// 4. The **Stratum field** must be between `0` and `15` for valid servers.
 /// 5. The **Timestamps** must be logically consistent.
-const MINIMUM_NTP_PACKET_LENGTH: usize = 48;
 pub fn validate_ntp_packet_length(payload: &[u8]) -> Result<(), NtpPacketParseError> {
     if payload.len() < MINIMUM_NTP_PACKET_LENGTH {
         return Err(NtpPacketParseError::InvalidPacketLength);

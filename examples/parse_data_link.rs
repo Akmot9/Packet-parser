@@ -1,5 +1,5 @@
 use hex::decode;
-use packet_parser::parse::data_link::DataLink;
+use packet_parser::{DataLink, MacAddress};
 
 fn main() {
     let hex_dump_data = "feaa81e86d1efeaa818ec864080045500034000000003d06206b36e6700dac140a0201bbc1087d7f02aa4e2b998e80100081748300000101080a9373c9c207ef14e3";
@@ -28,4 +28,10 @@ fn main() {
         Ok(datalink) => println!("{}", datalink),
         Err(e) => eprintln!("Erreur : {:?}", e),
     }
+
+    let hex_dump_data = "feaa81e86d1e";
+    let packet = decode(hex_dump_data).expect("Conversion hexadécimale échouée");
+
+    let mac = MacAddress::try_from(packet.as_slice()).unwrap();
+    println!("{}", mac.display_with_oui());
 }

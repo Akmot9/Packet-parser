@@ -53,6 +53,7 @@ use mac_addres::MacAddress;
 pub mod ethertype;
 
 use crate::{checks::data_link::validate_data_link_length, errors::data_link::DataLinkError};
+
 use ethertype::Ethertype;
 
 /// Represents a parsed Ethernet frame, containing source and destination MAC addresses,
