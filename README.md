@@ -6,6 +6,8 @@
 
 # Packet Parser
 
+![Images](images/packet_parser.png)
+
 **Packet Parser** is a powerful and modular Rust crate designed for analyzing and decoding network frames. It provides tools to extract information from various network layers (Data Link, Network, Transport, and Application) and offers an extensible architecture for network monitoring and packet analysis.
 
 ## 📌 Features
@@ -27,7 +29,7 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-packet_parser = "0.1.3"
+packet_parser = "0.1.4"
 ```
 
 Then, import the crate in your project:
