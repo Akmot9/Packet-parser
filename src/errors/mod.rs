@@ -1,4 +1,3 @@
-
 // Copyright (c) 2024 Cyprien Avico avicocyprien@yahoo.com
 //
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
