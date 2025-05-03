@@ -51,3 +51,6 @@ pub use parse::data_link::DataLink;
 
 /// Exports MAC address parsing functionality.
 pub use parse::data_link::mac_addres::MacAddress;
+
+/// Exports data link layer parsing functionality.
+pub use parse::ParsedPacket;
