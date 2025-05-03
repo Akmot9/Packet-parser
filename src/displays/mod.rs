@@ -9,7 +9,7 @@ use crate::parse::ParsedPacket;
 
 pub(crate) mod data_link;
 
-impl<'a> Display for ParsedPacket<'a> {
+impl Display for ParsedPacket<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
