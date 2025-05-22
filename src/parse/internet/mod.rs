@@ -7,22 +7,15 @@ use crate::errors::internet::InternetError;
 use protocols::arp::ArpPacket;
 
 #[derive(Debug, Clone)]
-pub struct InternetPacket<'a> {
+pub struct Internet<'a> {
     pub source: IpAddr,
     pub destination: IpAddr,
     pub protocol_name: String,
-    pub payload: &'a [u8],
+    pub payload: Option<&'a [u8]>,
 }
 
-#[derive(Debug)]
-pub enum InternetProtocolType {
-    Arp,
-    Ipv4,
-    Ipv6,
-    Unknown(u8),
-}
 
-impl<'a> TryFrom<&'a [u8]> for InternetPacket<'a> {
+impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
     type Error = InternetError;
 
     fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
@@ -32,11 +25,11 @@ impl<'a> TryFrom<&'a [u8]> for InternetPacket<'a> {
 
         // Try to parse as ARP first
         if let Ok(arp_packet) = ArpPacket::try_from(packet) {
-            return Ok(InternetPacket {
+            return Ok(Internet {
                 source: arp_packet.sender_protocol_addr,
                 destination: arp_packet.target_protocol_addr,
                 protocol_name: "ARP".to_string(),
-                payload: packet,
+                payload: None,
             });
         }
 
@@ -56,11 +49,11 @@ impl<'a> TryFrom<&'a [u8]> for InternetPacket<'a> {
                 let source = IpAddr::from([packet[12], packet[13], packet[14], packet[15]]);
                 let dest = IpAddr::from([packet[16], packet[17], packet[18], packet[19]]);
 
-                Ok(InternetPacket {
+                Ok(Internet {
                     source,
                     destination: dest,
                     protocol_name: "IPv4".to_string(),
-                    payload: packet,
+                    payload: Some(&packet[20..]),
                 })
             }
             6 => {
@@ -80,11 +73,11 @@ impl<'a> TryFrom<&'a [u8]> for InternetPacket<'a> {
                 dest_bytes.copy_from_slice(&packet[24..40]);
                 let dest = IpAddr::from(dest_bytes);
 
-                Ok(InternetPacket {
+                Ok(Internet {
                     source,
                     destination: dest,
                     protocol_name: "IPv6".to_string(),
-                    payload: packet,
+                    payload: Some(&packet[40..]),
                 })
             }
             _ => Err(InternetError::UnsupportedProtocol(format!(

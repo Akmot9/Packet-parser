@@ -4,19 +4,12 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 pub mod protocols;
+use protocols::ApplicationProtocol;
+
 use crate::{
     errors::application::ApplicationParseError, parse::application::protocols::ntp::NtpPacket,
 };
 
-/// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
-#[derive(Debug)]
-pub enum ApplicationProtocol<'a> {
-    Ntp(NtpPacket),
-
-    Raw(&'a [u8]),
-
-    None,
-}
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
 #[derive(Debug)]

@@ -5,18 +5,28 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use crate::parse::ParsedPacketPath;
+use crate::parse::PacketPath;
 
 pub(crate) mod data_link;
 pub(crate) mod internet;
+pub(crate) mod transport;
+pub(crate) mod application;
 
-impl Display for ParsedPacketPath<'_> {
+impl Display for PacketPath<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "ParsedPacket :")?;
         writeln!(f, "  Data Link Layer: {}", self.data_link)?;
         match &self.internet {
             Some(ip) => writeln!(f, "  Internet Layer: {}", ip)?,
-            None => writeln!(f, "  Internet Layer: [non parsée]")?,
+            None => {},
+        }
+        match &self.transport {
+            Some(trans) => writeln!(f, "  Transport Layer: {}", trans)?,
+            None => {},
+        }
+        match &self.application {
+            Some(app) => writeln!(f, "  Application Layer: {}", app)?,
+            None => {},
         }
         write!(f, "")
     }
