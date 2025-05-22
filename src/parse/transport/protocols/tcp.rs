@@ -53,18 +53,21 @@ impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
             return Err(TcpError::PacketTooShort);
         }
 
-        let data_offset = (packet[12] >> 4) * 4;
-
-        // Validate data offset (must be at least 20 and at most 60 bytes)
-        if !(20..=60).contains(&data_offset) {
-            return Err(TcpError::InvalidDataOffset(data_offset));
+        let data_offset_words = packet[12] >> 4;
+        
+        // Validate data offset (must be between 5 and 15, inclusive)
+        if data_offset_words < 5 || data_offset_words > 15 {
+            return Err(TcpError::InvalidDataOffset(data_offset_words));
         }
+        
+        let data_offset = (data_offset_words * 4) as usize;
 
         // Ensure packet is long enough for the header
-        if packet.len() < data_offset as usize {
+        if packet.len() < data_offset {
             return Err(TcpError::PacketTooShort);
         }
 
+        // Rest of the implementation remains the same...
         let header = TcpHeader {
             source_port: u16::from_be_bytes([packet[0], packet[1]]),
             destination_port: u16::from_be_bytes([packet[2], packet[3]]),
@@ -72,7 +75,7 @@ impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
             acknowledgment_number: u32::from_be_bytes([
                 packet[8], packet[9], packet[10], packet[11],
             ]),
-            data_offset: packet[12] >> 4,
+            data_offset: data_offset_words,
             reserved: (packet[12] >> 1) & 0x07,
             ns: (packet[12] & 0x01) != 0,
             cwr: (packet[13] & 0x80) != 0,
@@ -87,13 +90,13 @@ impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
             checksum: u16::from_be_bytes([packet[16], packet[17]]),
             urgent_pointer: u16::from_be_bytes([packet[18], packet[19]]),
             options: if data_offset > 20 {
-                packet[20..data_offset as usize].to_vec()
+                packet[20..data_offset].to_vec()
             } else {
                 Vec::new()
             },
         };
 
-        let payload = &packet[data_offset as usize..];
+        let payload = &packet[data_offset..];
 
         Ok(TcpPacket { header, payload })
     }
