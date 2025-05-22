@@ -3,9 +3,9 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-use application::{Application};
-use internet::{Internet};
-use transport::{Transport};
+use application::Application;
+use internet::Internet;
+use transport::Transport;
 
 use crate::{errors::ParsedPacketError, DataLink};
 
@@ -37,11 +37,9 @@ impl<'a> TryFrom<&'a [u8]> for PacketPath<'a> {
     /// - [`ParsedPacketError::InvalidLength`] si le paquet est trop court.
     /// - Erreurs spécifiques pour chaque couche si les données ne respectent pas les formats attendus.
     fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
- 
-
         // Étape 2 : Analyser la couche lien de données.
         let data_link = DataLink::try_from(packets)?;
-        
+
         // Étape 3 : Analyser la couche Internet (IP)
         let internet = match Internet::try_from(data_link.payload) {
             Ok(internet) => Some(internet),
@@ -73,7 +71,7 @@ impl<'a> TryFrom<&'a [u8]> for PacketPath<'a> {
                 })
                 .ok()
         });
-            
+
         Ok(PacketPath {
             data_link,
             internet,

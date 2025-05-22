@@ -28,10 +28,10 @@ pub struct Transport<'a> {
 pub enum TransportError {
     #[error("Packet is too short to be a valid transport packet")]
     PacketTooShort,
-    
+
     #[error("Invalid TCP packet: {0}")]
     InvalidTcpPacket(String),
-    
+
     #[error("Unsupported transport protocol")]
     UnsupportedProtocol,
 }
@@ -51,7 +51,7 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
         }
 
         // TODO: Add other protocol parsers here (UDP, etc.)
-        
+
         // If we get here, no parser could handle the packet
         Err(TransportError::UnsupportedProtocol)
     }

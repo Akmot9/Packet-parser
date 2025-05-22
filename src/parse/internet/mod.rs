@@ -14,7 +14,6 @@ pub struct Internet<'a> {
     pub payload: Option<&'a [u8]>,
 }
 
-
 impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
     type Error = InternetError;
 

@@ -7,26 +7,24 @@ use std::fmt::{self, Display, Formatter};
 
 use crate::parse::PacketPath;
 
+pub(crate) mod application;
 pub(crate) mod data_link;
 pub(crate) mod internet;
 pub(crate) mod transport;
-pub(crate) mod application;
 
 impl Display for PacketPath<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "ParsedPacket :")?;
         writeln!(f, "  Data Link Layer: {}", self.data_link)?;
-        match &self.internet {
-            Some(ip) => writeln!(f, "  Internet Layer: {}", ip)?,
-            None => {},
+        
+        if let Some(ip) = &self.internet {
+            writeln!(f, "  Internet Layer: {}", ip)?;
         }
-        match &self.transport {
-            Some(trans) => writeln!(f, "  Transport Layer: {}", trans)?,
-            None => {},
+        if let Some(trans) = &self.transport {
+            writeln!(f, "  Transport Layer: {}", trans)?;
         }
-        match &self.application {
-            Some(app) => writeln!(f, "  Application Layer: {}", app)?,
-            None => {},
+        if let Some(app) = &self.application {
+            writeln!(f, "  Application Layer: {}", app)?;
         }
         write!(f, "")
     }

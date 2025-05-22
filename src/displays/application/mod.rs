@@ -1,5 +1,5 @@
+use crate::parse::application::{protocols::ApplicationProtocol, Application};
 use std::fmt;
-use crate::parse::application::{Application, protocols::ApplicationProtocol};
 
 impl<'a> fmt::Display for Application<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -18,13 +18,13 @@ impl<'a> fmt::Display for ApplicationProtocol<'a> {
                     .map(|&b| format!("{:02X}", b))
                     .collect::<Vec<_>>()
                     .join(" ");
-                
+
                 if data.len() > preview_len {
                     write!(f, "Raw [{} bytes]: {}...", data.len(), hex_preview)
                 } else {
                     write!(f, "Raw [{} bytes]: {}", data.len(), hex_preview)
                 }
-            },
+            }
             ApplicationProtocol::None => write!(f, "None"),
         }
     }

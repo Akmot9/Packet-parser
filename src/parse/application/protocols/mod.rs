@@ -13,4 +13,3 @@ pub enum ApplicationProtocol<'a> {
     Raw(&'a [u8]),
     None,
 }
-

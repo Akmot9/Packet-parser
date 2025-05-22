@@ -10,7 +10,6 @@ use crate::{
     errors::application::ApplicationParseError, parse::application::protocols::ntp::NtpPacket,
 };
 
-
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
 #[derive(Debug)]
 pub struct Application<'a> {
