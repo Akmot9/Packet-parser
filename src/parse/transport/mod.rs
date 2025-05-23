@@ -16,11 +16,11 @@ pub struct Transport<'a> {
     /// The transport layer protocol name
     pub protocol: String,
     /// Source port
-    pub source_port: u16,
+    pub source_port: Option<u16>,
     /// Destination port
-    pub destination_port: u16,
+    pub destination_port: Option<u16>,
     /// The payload of the transport packet
-    pub payload: &'a [u8],
+    pub payload: Option<&'a [u8]>,
 }
 
 /// Errors that can occur when parsing transport layer packets
@@ -44,9 +44,9 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
         if let Ok(tcp_packet) = TcpPacket::try_from(packet) {
             return Ok(Transport {
                 protocol: "TCP".to_string(),
-                source_port: tcp_packet.header.source_port,
-                destination_port: tcp_packet.header.destination_port,
-                payload: tcp_packet.payload,
+                source_port: Some(tcp_packet.header.source_port),
+                destination_port: Some(tcp_packet.header.destination_port),
+                payload: Some(&tcp_packet.payload),
             });
         }
 

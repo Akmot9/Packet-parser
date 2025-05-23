@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::parse::internet::Internet;
+use crate::parse::internet::{Internet, NetworkAddress};
 
 impl<'a> fmt::Display for Internet<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -17,5 +17,14 @@ impl<'a> fmt::Display for Internet<'a> {
             payload.len(),
 
         )
+    }
+}
+
+impl<'a> fmt::Display for NetworkAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NetworkAddress::Ip(ip) => write!(f, "{}", ip),
+            NetworkAddress::Mac(mac) => write!(f, "{}", mac),
+        }
     }
 }

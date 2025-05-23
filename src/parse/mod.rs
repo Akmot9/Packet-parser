@@ -18,7 +18,7 @@ pub mod transport;
 
 pub struct PacketFlux<'a> {
     pub data_link: DataLink<'a>,
-    pub internet: Option<Internet<'a>>,
+    pub internet: Internet<'a>,
     pub transport: Option<Transport<'a>>,
     pub application: Option<Application<'a>>,
 }
@@ -26,54 +26,15 @@ pub struct PacketFlux<'a> {
 impl<'a> TryFrom<&'a [u8]> for PacketFlux<'a> {
     type Error = ParsedPacketError;
 
-    /// Tente d'analyser un tableau d'octets en un paquet réseau structuré.
-    ///
-    /// # Étapes d'analyse
-    /// 1. Valider la longueur minimale requise pour les paquets.
-    /// 2. Décoder la couche lien de données (obligatoire).
-    /// 3. Les couches réseau, transport et application sont analysées si nécessaire.
-    ///
-    /// # Erreurs
-    /// - [`ParsedPacketError::InvalidLength`] si le paquet est trop court.
-    /// - Erreurs spécifiques pour chaque couche si les données ne respectent pas les formats attendus.
     fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
-        // Étape 2 : Analyser la couche lien de données.
         let data_link = DataLink::try_from(packets)?;
+        let internet = Internet::try_from(data_link.payload)?;
 
-        // Étape 3 : Analyser la couche Internet (IP)
-        let internet = match Internet::try_from(data_link.payload) {
-            Ok(internet) => Some(internet),
-            Err(e) => {
-                // Log the error or handle it as needed
-                eprintln!("Failed to parse Internet layer: {}", e);
-                None
-            }
-        };
-        // TODO: si internet est None, on retourne data_link.ethertype
-        
+        // Étape 4 : Transport
+        let transport = None;
 
-        // Étape 4 : Analyser la couche Transport (TCP/UDP)
-        let transport = internet.as_ref().and_then(|net| {
-            net.payload.and_then(|payload| {
-                Transport::try_from(payload)
-                    .map_err(|e| {
-                        eprintln!("Failed to parse Transport layer: {}", e);
-                        e
-                    })
-                    .ok()
-            })
-        });
-        // TODO: si transport est None, on retourne internet. payload_protocol
-
-        // Étape 5 : Analyser la couche Application si disponible
-        let application = transport.as_ref().and_then(|trans| {
-            Application::try_from(trans.payload)
-                .map_err(|e| {
-                    eprintln!("Failed to parse Application layer: {}", e);
-                    e
-                })
-                .ok()
-        });
+        // Étape 5 : Application
+        let application = None;
 
         Ok(PacketFlux {
             data_link,
@@ -83,3 +44,4 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlux<'a> {
         })
     }
 }
+
