@@ -5,6 +5,8 @@ use std::net::IpAddr;
 
 use crate::errors::internet::InternetError;
 use protocols::arp::ArpPacket;
+use protocols::ipv4;
+use protocols::ipv6;
 
 #[derive(Debug, Clone)]
 pub struct Internet<'a> {
@@ -34,59 +36,26 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
             });
         }
 
-        // Try to determine protocol from the first byte (IPv4/IPv6 version field)
-        let version = packet[0] >> 4;
-
-        match version {
-            4 => {
-                // IPv4 packet
-                if packet.len() < 20 {
-                    return Err(InternetError::InvalidLength {
-                        expected: 20,
-                        actual: packet.len(),
-                    });
-                }
-
-                let source = IpAddr::from([packet[12], packet[13], packet[14], packet[15]]);
-                let dest = IpAddr::from([packet[16], packet[17], packet[18], packet[19]]);
-
-                Ok(Internet {
-                    source,
-                    destination: dest,
-                    protocol_name: "IPv4".to_string(),
-                    payload_protocol: None,
-                    payload: Some(&packet[20..]),
-                })
-            }
-            6 => {
-                // IPv6 packet - basic parsing, just get addresses
-                if packet.len() < 40 {
-                    return Err(InternetError::InvalidLength {
-                        expected: 40,
-                        actual: packet.len(),
-                    });
-                }
-
-                let mut source_bytes = [0u8; 16];
-                source_bytes.copy_from_slice(&packet[8..24]);
-                let source = IpAddr::from(source_bytes);
-
-                let mut dest_bytes = [0u8; 16];
-                dest_bytes.copy_from_slice(&packet[24..40]);
-                let dest = IpAddr::from(dest_bytes);
-
-                Ok(Internet {
-                    source,
-                    destination: dest,
-                    protocol_name: "IPv6".to_string(),
-                    payload_protocol: None,
-                    payload: Some(&packet[40..]),
-                })
-            }
-            _ => Err(InternetError::UnsupportedProtocol(format!(
-                "Unknown IP version: {}",
-                version
-            ))),
+        if let Ok(ipv4_packet) = ipv4::Ipv4Packet::try_from(packet) {
+            return Ok(Internet {
+                source: IpAddr::V4(ipv4_packet.source_addr),
+                destination: IpAddr::V4(ipv4_packet.dest_addr),
+                protocol_name: "IPv4".to_string(),
+                payload_protocol: Some(ipv4_packet.protocol),
+                payload: Some(&ipv4_packet.payload),
+            });
         }
+        
+        if let Ok(ipv6_packet) = ipv6::Ipv6Packet::try_from(packet) {
+            return Ok(Internet {
+                source: IpAddr::V6(ipv6_packet.source_addr),
+                destination: IpAddr::V6(ipv6_packet.dest_addr),
+                protocol_name: "IPv6".to_string(),
+                payload_protocol: Some(ipv6_packet.next_header),
+                payload: Some(&ipv6_packet.payload),
+            });
+        }
+
+        Err(InternetError::UnsupportedProtocol(format!("Unsupported protocol: {}", packet[0])))
     }
 }
