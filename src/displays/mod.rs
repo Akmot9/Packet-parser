@@ -5,14 +5,14 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use crate::parse::PacketPath;
+use crate::parse::PacketFlux;
 
 pub(crate) mod application;
 pub(crate) mod data_link;
 pub(crate) mod internet;
 pub(crate) mod transport;
 
-impl Display for PacketPath<'_> {
+impl Display for PacketFlux<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "ParsedPacket :")?;
         writeln!(f, "  Data Link Layer: {}", self.data_link)?;

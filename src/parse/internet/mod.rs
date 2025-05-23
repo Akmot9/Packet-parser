@@ -11,6 +11,7 @@ pub struct Internet<'a> {
     pub source: IpAddr,
     pub destination: IpAddr,
     pub protocol_name: String,
+    pub payload_protocol: Option<u8>,
     pub payload: Option<&'a [u8]>,
 }
 
@@ -28,6 +29,7 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
                 source: arp_packet.sender_protocol_addr,
                 destination: arp_packet.target_protocol_addr,
                 protocol_name: "ARP".to_string(),
+                payload_protocol: None,
                 payload: None,
             });
         }
@@ -52,6 +54,7 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
                     source,
                     destination: dest,
                     protocol_name: "IPv4".to_string(),
+                    payload_protocol: None,
                     payload: Some(&packet[20..]),
                 })
             }
@@ -76,6 +79,7 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
                     source,
                     destination: dest,
                     protocol_name: "IPv6".to_string(),
+                    payload_protocol: None,
                     payload: Some(&packet[40..]),
                 })
             }

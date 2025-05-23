@@ -16,14 +16,14 @@ pub mod transport;
 // You can determine either a full raw packet that will return a PacketParsed struct composed of data link network transportand application layers.
 // Or if you need to, you can put your payload in a determine application try from. detemines function are not dependants.
 
-pub struct PacketPath<'a> {
+pub struct PacketFlux<'a> {
     pub data_link: DataLink<'a>,
     pub internet: Option<Internet<'a>>,
     pub transport: Option<Transport<'a>>,
     pub application: Option<Application<'a>>,
 }
 
-impl<'a> TryFrom<&'a [u8]> for PacketPath<'a> {
+impl<'a> TryFrom<&'a [u8]> for PacketFlux<'a> {
     type Error = ParsedPacketError;
 
     /// Tente d'analyser un tableau d'octets en un paquet réseau structuré.
@@ -49,6 +49,8 @@ impl<'a> TryFrom<&'a [u8]> for PacketPath<'a> {
                 None
             }
         };
+        // TODO: si internet est None, on retourne data_link.ethertype
+        
 
         // Étape 4 : Analyser la couche Transport (TCP/UDP)
         let transport = internet.as_ref().and_then(|net| {
@@ -61,6 +63,7 @@ impl<'a> TryFrom<&'a [u8]> for PacketPath<'a> {
                     .ok()
             })
         });
+        // TODO: si transport est None, on retourne internet. payload_protocol
 
         // Étape 5 : Analyser la couche Application si disponible
         let application = transport.as_ref().and_then(|trans| {
@@ -72,7 +75,7 @@ impl<'a> TryFrom<&'a [u8]> for PacketPath<'a> {
                 .ok()
         });
 
-        Ok(PacketPath {
+        Ok(PacketFlux {
             data_link,
             internet,
             transport,
