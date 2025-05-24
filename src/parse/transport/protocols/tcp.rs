@@ -54,12 +54,12 @@ impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
         }
 
         let data_offset_words = packet[12] >> 4;
-        
+
         // Validate data offset (must be between 5 and 15, inclusive)
         if data_offset_words < 5 || data_offset_words > 15 {
             return Err(TcpError::InvalidDataOffset(data_offset_words));
         }
-        
+
         let data_offset = (data_offset_words * 4) as usize;
 
         // Ensure packet is long enough for the header

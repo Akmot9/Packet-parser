@@ -16,10 +16,9 @@ impl Display for PacketFlux<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "ParsedPacket :")?;
         writeln!(f, "  Data Link Layer: {}", self.data_link)?;
-        
-        if let Some(ip) = &self.internet {
-            writeln!(f, "  Internet Layer: {}", ip)?;
-        }
+
+        writeln!(f, "  Internet Layer: {}", self.internet)?;
+
         if let Some(trans) = &self.transport {
             writeln!(f, "  Transport Layer: {}", trans)?;
         }

@@ -44,4 +44,3 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlux<'a> {
         })
     }
 }
-

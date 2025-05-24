@@ -4,11 +4,9 @@ use std::convert::TryFrom;
 use std::net::IpAddr;
 
 use crate::errors::internet::InternetError;
-use crate::MacAddress;
 use protocols::arp::ArpPacket;
 use protocols::ipv4;
 use protocols::ipv6;
-
 
 #[derive(Debug, Clone)]
 pub struct Internet<'a> {
@@ -42,12 +40,12 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
             return Ok(Internet {
                 source: IpAddr::V4(ipv4_packet.source_addr),
                 destination: IpAddr::V4(ipv4_packet.dest_addr),
-                protocol_name: "IPv4".to_string(),  
+                protocol_name: "IPv4".to_string(),
                 payload_protocol: Some(ipv4_packet.protocol),
                 payload: &ipv4_packet.payload,
             });
         }
-        
+
         if let Ok(ipv6_packet) = ipv6::Ipv6Packet::try_from(packet) {
             return Ok(Internet {
                 source: IpAddr::V6(ipv6_packet.source_addr),
@@ -58,6 +56,9 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
             });
         }
 
-        Err(InternetError::UnsupportedProtocol(format!("Unsupported protocol: {}", packet[0])))
+        Err(InternetError::UnsupportedProtocol(format!(
+            "Unsupported protocol: {}",
+            packet[0]
+        )))
     }
 }

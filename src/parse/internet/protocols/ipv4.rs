@@ -1,6 +1,6 @@
 use crate::errors::internet::ipv4::Ipv4Error;
-use std::net::Ipv4Addr;
 use std::convert::TryFrom;
+use std::net::Ipv4Addr;
 
 /// IPv4 Packet Structure
 ///
@@ -70,7 +70,7 @@ impl<'a> Ipv4Packet<'a> {
     }
 }
 
-impl<'a> TryFrom<&'a [u8]> for Ipv4Packet<'a>  {
+impl<'a> TryFrom<&'a [u8]> for Ipv4Packet<'a> {
     type Error = Ipv4Error;
 
     /// Attempts to parse a byte slice into an IPv4 packet
@@ -83,7 +83,7 @@ impl<'a> TryFrom<&'a [u8]> for Ipv4Packet<'a>  {
     fn try_from(data: &'a [u8]) -> Result<Self, Self::Error> {
         // Minimum IPv4 header size is 20 bytes (5 * 32-bit words)
         const MIN_HEADER_LEN: usize = 20;
-        
+
         if data.len() < MIN_HEADER_LEN {
             return Err(Ipv4Error::InvalidLength {
                 expected: MIN_HEADER_LEN,
@@ -94,26 +94,27 @@ impl<'a> TryFrom<&'a [u8]> for Ipv4Packet<'a>  {
         let version_ihl = data[0];
         let version = version_ihl >> 4;
         let ihl = version_ihl & 0x0F;
-        
+
         if version != 4 {
             return Err(Ipv4Error::InvalidVersion(version));
         }
-        
+
         let header_len = (ihl as usize) * 4;
-        if header_len < MIN_HEADER_LEN || header_len > 60 {  // Max IHL is 15 (15 * 4 = 60 bytes)
+        if header_len < MIN_HEADER_LEN || header_len > 60 {
+            // Max IHL is 15 (15 * 4 = 60 bytes)
             return Err(Ipv4Error::InvalidHeaderLength(header_len));
         }
-        
+
         if data.len() < header_len {
             return Err(Ipv4Error::InvalidLength {
                 expected: header_len,
                 actual: data.len(),
             });
         }
-        
+
         let dscp_ecn = data[1];
         let total_length = u16::from_be_bytes([data[2], data[3]]);
-        
+
         // Verify total length is at least header length and not larger than received data
         if (total_length as usize) < header_len || (total_length as usize) > data.len() {
             return Err(Ipv4Error::InvalidTotalLength {
@@ -122,34 +123,35 @@ impl<'a> TryFrom<&'a [u8]> for Ipv4Packet<'a>  {
                 min_header_len: header_len,
             });
         }
-        
+
         let identification = u16::from_be_bytes([data[4], data[5]]);
         let flags_fragment = u16::from_be_bytes([data[6], data[7]]);
         let ttl = data[8];
         let protocol = data[9];
         let header_checksum = u16::from_be_bytes([data[10], data[11]]);
-        
+
         let source_addr = Ipv4Addr::new(data[12], data[13], data[14], data[15]);
         let dest_addr = Ipv4Addr::new(data[16], data[17], data[18], data[19]);
-        
+
         // Extract options if present
         let options = if header_len > MIN_HEADER_LEN {
             data[MIN_HEADER_LEN..header_len].to_vec()
         } else {
             Vec::new()
         };
-        
+
         // Extract payload
-        let payload = if (total_length as usize) > header_len && (total_length as usize) <= data.len() {
-            &data[header_len..(total_length as usize)]
-        } else if (total_length as usize) > data.len() {
-            // If the total length exceeds the available data, use what we have
-            &data[header_len..]
-        } else {
-            // Empty slice if no payload
-            &[]
-        };
-        
+        let payload =
+            if (total_length as usize) > header_len && (total_length as usize) <= data.len() {
+                &data[header_len..(total_length as usize)]
+            } else if (total_length as usize) > data.len() {
+                // If the total length exceeds the available data, use what we have
+                &data[header_len..]
+            } else {
+                // Empty slice if no payload
+                &[]
+            };
+
         Ok(Ipv4Packet {
             version_ihl,
             dscp_ecn,
@@ -176,18 +178,15 @@ mod tests {
     fn test_ipv4_packet_parsing() {
         // Example IPv4 packet (truncated for brevity)
         let data = [
-            0x45, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00,
-            0x40, 0x06, 0x00, 0x00, 0xc0, 0xa8, 0x01, 0x01,
-            0xc0, 0xa8, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x50, 0x02, 0x20, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00
+            0x45, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xc0, 0xa8,
+            0x01, 0x01, 0xc0, 0xa8, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x50, 0x02, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
         ];
-        
+
         let packet = Ipv4Packet::try_from(&data[..]).unwrap();
-        
+
         assert_eq!(packet.version(), 4);
         assert_eq!(packet.ihl(), 5);
         assert_eq!(packet.header_length(), 20);
@@ -197,29 +196,27 @@ mod tests {
         assert_eq!(packet.dest_addr, Ipv4Addr::new(192, 168, 1, 2));
         assert!(packet.options.is_empty());
     }
-    
+
     #[test]
     fn test_invalid_version() {
         // Version 6 (should be 4)
         let data = [
-            0x65, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00,
-            0x40, 0x06, 0x00, 0x00, 0xc0, 0xa8, 0x01, 0x01,
-            0xc0, 0xa8, 0x01, 0x02
+            0x65, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xc0, 0xa8,
+            0x01, 0x01, 0xc0, 0xa8, 0x01, 0x02,
         ];
-        
+
         let result = Ipv4Packet::try_from(&data[..]);
         assert!(matches!(result, Err(Ipv4Error::InvalidVersion(6))));
     }
-    
+
     #[test]
     fn test_invalid_header_length() {
         // IHL = 1 (less than minimum 5)
         let data = [
-            0x41, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00,
-            0x40, 0x06, 0x00, 0x00, 0xc0, 0xa8, 0x01, 0x01,
-            0xc0, 0xa8, 0x01, 0x02
+            0x41, 0x00, 0x00, 0x3c, 0x1c, 0x46, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 0xc0, 0xa8,
+            0x01, 0x01, 0xc0, 0xa8, 0x01, 0x02,
         ];
-        
+
         let result = Ipv4Packet::try_from(&data[..]);
         assert!(matches!(result, Err(Ipv4Error::InvalidHeaderLength(4))));
     }

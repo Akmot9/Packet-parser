@@ -1,9 +1,9 @@
 use crate::errors::internet::ipv6::Ipv6Error;
-use std::net::Ipv6Addr;
 use std::convert::TryFrom;
+use std::net::Ipv6Addr;
 
 /// IPv6 Packet Structure
-/// 
+///
 /// Represents an Internet Protocol version 6 packet
 #[derive(Debug, PartialEq)]
 pub struct Ipv6Packet<'a> {
@@ -38,9 +38,9 @@ impl<'a> Ipv6Packet<'a> {
 
     /// Returns the Flow Label
     pub fn flow_label(&self) -> u32 {
-        ((self.version_tc_flow[1] as u32 & 0x0F) << 16) |
-        ((self.version_tc_flow[2] as u32) << 8) |
-        (self.version_tc_flow[3] as u32)
+        ((self.version_tc_flow[1] as u32 & 0x0F) << 16)
+            | ((self.version_tc_flow[2] as u32) << 8)
+            | (self.version_tc_flow[3] as u32)
     }
 }
 
@@ -57,7 +57,7 @@ impl<'a> TryFrom<&'a [u8]> for Ipv6Packet<'a> {
     fn try_from(data: &'a [u8]) -> Result<Self, Self::Error> {
         // IPv6 header is fixed at 40 bytes
         const IPV6_HEADER_LEN: usize = 40;
-        
+
         if data.len() < IPV6_HEADER_LEN {
             return Err(Ipv6Error::InvalidLength {
                 expected: IPV6_HEADER_LEN,
@@ -74,7 +74,7 @@ impl<'a> TryFrom<&'a [u8]> for Ipv6Packet<'a> {
         let payload_length = u16::from_be_bytes([data[4], data[5]]);
         let next_header = data[6];
         let hop_limit = data[7];
-        
+
         // Parse source and destination addresses (16 bytes each)
         let source_addr = Ipv6Addr::new(
             u16::from_be_bytes([data[8], data[9]]),
@@ -86,7 +86,7 @@ impl<'a> TryFrom<&'a [u8]> for Ipv6Packet<'a> {
             u16::from_be_bytes([data[20], data[21]]),
             u16::from_be_bytes([data[22], data[23]]),
         );
-        
+
         let dest_addr = Ipv6Addr::new(
             u16::from_be_bytes([data[24], data[25]]),
             u16::from_be_bytes([data[26], data[27]]),
@@ -97,7 +97,7 @@ impl<'a> TryFrom<&'a [u8]> for Ipv6Packet<'a> {
             u16::from_be_bytes([data[36], data[37]]),
             u16::from_be_bytes([data[38], data[39]]),
         );
-        
+
         // Check if we have enough data for the payload
         let total_expected_len = IPV6_HEADER_LEN + payload_length as usize;
         if data.len() < total_expected_len {
@@ -106,18 +106,18 @@ impl<'a> TryFrom<&'a [u8]> for Ipv6Packet<'a> {
                 actual: data.len().saturating_sub(IPV6_HEADER_LEN),
             });
         }
-        
+
         // For simplicity, we're not parsing extension headers here
         // In a real implementation, you would parse them based on next_header
         let extension_headers = Vec::new();
-        
+
         // Extract payload
         let payload = if payload_length > 0 {
             &data[IPV6_HEADER_LEN..total_expected_len]
         } else {
             &[]
         };
-        
+
         Ok(Ipv6Packet {
             version_tc_flow,
             payload_length,
@@ -141,61 +141,60 @@ mod tests {
         // Example IPv6 packet (truncated for brevity)
         let data = [
             // Version (6), Traffic Class, Flow Label (0x12345)
-            0x60, 0x12, 0x34, 0x50,
-            // Payload Length (32 bytes)
-            0x00, 0x20,
-            // Next Header (17 = UDP), Hop Limit (64)
-            0x11, 0x40,
-            // Source Address (::1)
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-            // Destination Address (::1)
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-            // Payload (32 bytes of zeros for this test)
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x60, 0x12, 0x34, 0x50, // Payload Length (32 bytes)
+            0x00, 0x20, // Next Header (17 = UDP), Hop Limit (64)
+            0x11, 0x40, // Source Address (::1)
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x01, // Destination Address (::1)
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x01, // Payload (32 bytes of zeros for this test)
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
         ];
-        
+
         let packet = Ipv6Packet::try_from(&data[..]).unwrap();
-        
+
         assert_eq!(packet.version(), 6);
         assert_eq!(packet.traffic_class(), 0x12);
         assert_eq!(packet.flow_label(), 0x03450);
         assert_eq!(packet.payload_length, 32);
         assert_eq!(packet.next_header, 0x11); // UDP
-        assert_eq!(packet.hop_limit, 0x40);   // 64
+        assert_eq!(packet.hop_limit, 0x40); // 64
         assert_eq!(packet.source_addr, Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
         assert_eq!(packet.dest_addr, Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
         assert_eq!(packet.payload.len(), 32);
     }
-    
+
     #[test]
     fn test_invalid_version() {
         // Invalid version (4 instead of 6)
         let data = [
-            0x40, 0x00, 0x00, 0x00,  // Version 4
-            0x00, 0x00, 0x11, 0x40,  // Rest of header
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x40, 0x00, 0x00, 0x00, // Version 4
+            0x00, 0x00, 0x11, 0x40, // Rest of header
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x01,
         ];
-        
+
         let result = Ipv6Packet::try_from(&data[..]);
         assert!(matches!(result, Err(Ipv6Error::InvalidVersion(4))));
     }
-    
+
     #[test]
     fn test_invalid_length() {
         // Packet too short (only 39 bytes)
         let data = [0u8; 39];
         let result = Ipv6Packet::try_from(&data[..]);
-        assert!(matches!(result, Err(Ipv6Error::InvalidLength { expected: 40, actual: 39 })));
+        assert!(matches!(
+            result,
+            Err(Ipv6Error::InvalidLength {
+                expected: 40,
+                actual: 39
+            })
+        ));
     }
-    
+
     #[test]
     fn test_invalid_payload_length() {
         // Packet with payload length longer than actual data
@@ -205,8 +204,14 @@ mod tests {
         // Set payload length to 100 bytes (but we only have 40)
         data[4] = 0x00;
         data[5] = 100;
-        
+
         let result = Ipv6Packet::try_from(&data[..]);
-        assert!(matches!(result, Err(Ipv6Error::InvalidPayloadLength { expected: 100, actual: 0 })));
+        assert!(matches!(
+            result,
+            Err(Ipv6Error::InvalidPayloadLength {
+                expected: 100,
+                actual: 0
+            })
+        ));
     }
 }
