@@ -7,7 +7,7 @@ pub mod ntp;
 
 /// Errors related to parsing an `Application`
 #[derive(Debug, thiserror::Error)]
-pub enum ApplicationParseError {
+pub enum ApplicationError {
     #[error("Packet is empty")]
     EmptyPacket,
 

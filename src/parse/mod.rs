@@ -7,7 +7,7 @@ use application::Application;
 use internet::Internet;
 use transport::Transport;
 
-use crate::{errors::ParsedPacketError, DataLink};
+use crate::{errors::{transport::TransportError, ParsedPacketError}, DataLink};
 
 pub mod application;
 pub mod data_link;
@@ -31,10 +31,23 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlux<'a> {
         let internet = Internet::try_from(data_link.payload)?;
 
         // Étape 4 : Transport
-        let transport = None;
-
+        // met None si pas de transport et pas de internet. ou le transport si il y a un transport. ou internet.protocol_name
+        let transport = match Transport::try_from(internet.payload) {
+            Ok(transport) => Some(transport),
+            Err(TransportError::UnsupportedProtocol) => {
+                Some(internet.payload_protocol.clone())
+            }
+            Err(e) => return Err(e.into()), // Pour les autres erreurs, on propage
+        };
         // Étape 5 : Application
-        let application = None;
+        // handle when transport is None then application is None   
+        let application = match &transport {
+            Some(t) => match t.payload {
+                Some(p) => Application::try_from(p).ok(),
+                None => None,
+            },
+            None => None,
+        };
 
         Ok(PacketFlux {
             data_link,

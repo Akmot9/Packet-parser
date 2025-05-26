@@ -4,17 +4,21 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 use std::convert::TryFrom;
-use thiserror::Error;
+
 
 pub mod protocols;
 
-use protocols::tcp::TcpPacket;
+use protocols::{tcp::TcpPacket, udp::UdpPacket, TransportProtocol};
+
+use crate::errors::transport::TransportError;
+
+
 
 /// Represents a transport layer packet (UDP, TCP, etc.)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Transport<'a> {
     /// The transport layer protocol name
-    pub protocol: String,
+    pub protocol: TransportProtocol,
     /// Source port
     pub source_port: Option<u16>,
     /// Destination port
@@ -23,18 +27,17 @@ pub struct Transport<'a> {
     pub payload: Option<&'a [u8]>,
 }
 
-/// Errors that can occur when parsing transport layer packets
-#[derive(Error, Debug)]
-pub enum TransportError {
-    #[error("Packet is too short to be a valid transport packet")]
-    PacketTooShort,
-
-    #[error("Invalid TCP packet: {0}")]
-    InvalidTcpPacket(String),
-
-    #[error("Unsupported transport protocol")]
-    UnsupportedProtocol,
+impl<'a> Transport<'a> {
+    pub fn transport_from_u8(protocol: u8) -> Self {
+        Transport {
+            protocol: TransportProtocol::from_u8(protocol),
+            source_port: None,
+            destination_port: None,
+            payload: None,
+        }
+    }
 }
+
 
 impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
     type Error = TransportError;
@@ -43,7 +46,7 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
         // First try to parse as TCP (most common case)
         if let Ok(tcp_packet) = TcpPacket::try_from(packet) {
             return Ok(Transport {
-                protocol: "TCP".to_string(),
+                protocol: TransportProtocol::Tcp,
                 source_port: Some(tcp_packet.header.source_port),
                 destination_port: Some(tcp_packet.header.destination_port),
                 payload: Some(&tcp_packet.payload),
@@ -51,8 +54,17 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
         }
 
         // TODO: Add other protocol parsers here (UDP, etc.)
-
+        if let Ok(udp_packet) = UdpPacket::try_from(packet) {
+            return Ok(Transport {
+                protocol: TransportProtocol::Udp,
+                source_port: Some(udp_packet.source_port),
+                destination_port: Some(udp_packet.destination_port),
+                payload: Some(&udp_packet.payload),
+            });
+        }
         // If we get here, no parser could handle the packet
         Err(TransportError::UnsupportedProtocol)
     }
 }
+
+

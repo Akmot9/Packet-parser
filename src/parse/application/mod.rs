@@ -7,7 +7,7 @@ pub mod protocols;
 use protocols::ApplicationProtocol;
 
 use crate::{
-    errors::application::ApplicationParseError, parse::application::protocols::ntp::NtpPacket,
+    errors::application::ApplicationError, parse::application::protocols::ntp::NtpPacket,
 };
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
@@ -18,11 +18,11 @@ pub struct Application<'a> {
 }
 
 impl<'a> TryFrom<&'a [u8]> for Application<'a> {
-    type Error = ApplicationParseError;
+    type Error = ApplicationError;
 
     fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
         if packet.is_empty() {
-            return Err(ApplicationParseError::EmptyPacket);
+            return Err(ApplicationError::EmptyPacket);
         }
 
         if let Ok(ntp_packet) = NtpPacket::try_from(packet) {

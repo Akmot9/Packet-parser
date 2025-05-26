@@ -1,4 +1,4 @@
-use crate::parse::transport::Transport;
+use crate::parse::transport::{protocols::TransportProtocol, Transport};
 use std::fmt;
 
 impl<'a> fmt::Display for Transport<'a> {
@@ -23,5 +23,18 @@ impl<'a> fmt::Display for Transport<'a> {
     "#,
             self.protocol, source_port, dest_port, payload_len,
         )
+    }
+}
+
+impl fmt::Display for TransportProtocol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let protocol_str = match self {
+            TransportProtocol::Tcp => "TCP",
+            TransportProtocol::Udp => "UDP",
+            TransportProtocol::Icmp => "ICMP",
+            TransportProtocol::None => "None",
+            TransportProtocol::Unknown => "Unknown",
+        };
+        write!(f, "{}", protocol_str)
     }
 }

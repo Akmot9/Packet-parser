@@ -8,10 +8,15 @@
 pub(crate) mod application;
 pub(crate) mod data_link;
 pub(crate) mod internet;
+pub(crate) mod transport;
 
+use application::ApplicationError;
 use data_link::DataLinkError;
 use internet::InternetError;
 use thiserror::Error;
+use transport::TransportError;
+
+
 
 #[derive(Error, Debug)]
 pub enum ParsedPacketError {
@@ -21,6 +26,10 @@ pub enum ParsedPacketError {
     InvalidDataLink,
     #[error("Invalid Internet segment")]
     InvalidInternet,
+    #[error("Transport layer error: {0}")]
+    Transport(#[from] TransportError),
+    #[error("Application layer error: {0}")]
+    Application(#[from] ApplicationError),
 }
 
 // Implémente la conversion automatique
