@@ -181,7 +181,7 @@ mod tests {
                 assert_eq!(packet.fixed_header.packet_type, MqttPacketType::Connect);
                 assert_eq!(packet.fixed_header.remaining_length, 12);
                 assert_eq!(packet.variable_header, vec![0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C]);
-                assert_eq!(packet.payload, vec![]);
+                assert_eq!(packet.payload, Vec::<u8>::new());
             }
             Err(_) => panic!("Expected MQTT packet"),
         }
@@ -233,6 +233,6 @@ mod tests {
         let payload = vec![0x10, 0x0C, 0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C];
         let (variable_header, payload_data) = extract_variable_and_payload(&payload, 12, 2).unwrap();
         assert_eq!(variable_header, vec![0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C]);
-        assert_eq!(payload_data, vec![]);
+        assert_eq!(payload_data, Vec::<u8>::new());
     }
 }

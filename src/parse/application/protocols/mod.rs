@@ -10,6 +10,9 @@ use http::HttpRequest;
 use mqtt::MqttPacket;
 use dhcp::DhcpPacket;
 use bitcoin::BitcoinPacket;
+use s7comm::S7CommPacket;
+use copt::CotpHeader;
+
 pub mod ntp;
 pub mod tls;
 pub mod http;
@@ -17,6 +20,8 @@ pub mod mqtt;
 pub mod dhcp;
 pub mod bitcoin;
 pub mod dns;
+pub mod s7comm;
+pub mod copt;
 
 /// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
 #[derive(Debug)]
@@ -28,6 +33,8 @@ pub enum ApplicationProtocol<'a> {
     Dhcp(DhcpPacket),
     Bitcoin(BitcoinPacket),
     Dns(DnsPacket),
+    S7Comm(S7CommPacket<'a>),
+    Cotp(CotpHeader),
     Raw(&'a [u8]),
     None,
 }

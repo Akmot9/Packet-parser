@@ -17,6 +17,8 @@ impl<'a> fmt::Display for ApplicationProtocol<'a> {
             ApplicationProtocol::Dhcp(_) => write!(f, "DHCP"),
             ApplicationProtocol::Bitcoin(_) => write!(f, "Bitcoin"),
             ApplicationProtocol::Dns(_) => write!(f, "DNS"),
+            ApplicationProtocol::S7Comm(_) => write!(f, "S7Comm"),
+            ApplicationProtocol::Cotp(_) => write!(f, "COTP"),
             ApplicationProtocol::Raw(data) => {
                 let preview_len = 16.min(data.len());
                 let hex_preview: String = data[..preview_len]

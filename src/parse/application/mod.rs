@@ -4,7 +4,7 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 pub mod protocols;
-use protocols::{bitcoin::parse_bitcoin_packet, dns::DnsPacket, tls::parse_tls_packet};
+use protocols::{bitcoin::parse_bitcoin_packet, copt::CotpHeader, dns::DnsPacket, s7comm::S7CommPacket, tls::parse_tls_packet};
 
 use crate::{
     errors::application::ApplicationError, parse::application::protocols::ntp::NtpPacket,
@@ -47,6 +47,18 @@ impl TryFrom<&[u8]> for Application {
         if let Ok(_) = parse_tls_packet(packet) {
             return Ok(Application {
                 application_protocol: "TLS".to_string(),
+                
+            });
+        }
+        if let Ok(_) = S7CommPacket::try_from(packet) {
+            return Ok(Application {
+                application_protocol: "S7Comm".to_string(),
+                
+            });
+        }
+        if let Ok(_) = CotpHeader::from_bytes(packet) {
+            return Ok(Application {
+                application_protocol: "COTP".to_string(),
                 
             });
         }
