@@ -28,9 +28,9 @@ pub struct Transport<'a> {
 }
 
 impl<'a> Transport<'a> {
-    pub fn transport_from_u8(protocol: u8) -> Self {
+    pub fn transport_from_u8(protocol: &u8) -> Self {
         Transport {
-            protocol: TransportProtocol::from_u8(protocol),
+            protocol: TransportProtocol::from_u8(*protocol),
             source_port: None,
             destination_port: None,
             payload: None,

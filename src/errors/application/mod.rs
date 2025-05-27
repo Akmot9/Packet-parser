@@ -4,7 +4,7 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 pub mod ntp;
-
+pub mod dns;
 /// Errors related to parsing an `Application`
 #[derive(Debug, thiserror::Error)]
 pub enum ApplicationError {
@@ -15,4 +15,7 @@ pub enum ApplicationError {
     // ModbusParseError,
     #[error("Failed to parse NTP packet")]
     NtpParseError,
+    
+    #[error("Failed to parse DNS packet")]
+    DnsParseError,
 }

@@ -1,4 +1,5 @@
-use crate::errors::application::dns::dns_header::dns_flags::DnsFlagsError;
+use crate::errors::application::dns::DnsFlagsError;
+
 
 /// Verifies the consistency of DNS packet flags.
 ///

@@ -1,8 +1,7 @@
 use std::fmt;
 
 use crate::{
-    errors::application::dns::dns_queries::DnsQueryParseError,
-    parse::application::protocols::dns::utils::{dns_class::DnsClass, dns_types::DnsType},
+    errors::application::dns::DnsQueryParseError, parse::application::protocols::dns::utils::{dns_class::DnsClass, dns_types::DnsType}
 };
 
 #[derive(Debug, PartialEq)]

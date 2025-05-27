@@ -4,7 +4,7 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 pub mod protocols;
-use protocols::ApplicationProtocol;
+use protocols::{bitcoin::parse_bitcoin_packet, dns::DnsPacket, tls::parse_tls_packet};
 
 use crate::{
     errors::application::ApplicationError, parse::application::protocols::ntp::NtpPacket,
@@ -12,30 +12,49 @@ use crate::{
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
 #[derive(Debug)]
-pub struct Application<'a> {
+pub struct Application {
     pub application_protocol: String,
-    pub layer_7_protocol_infos: Option<ApplicationProtocol<'a>>,
+    
 }
 
-impl<'a> TryFrom<&'a [u8]> for Application<'a> {
+impl TryFrom<&[u8]> for Application {
     type Error = ApplicationError;
 
-    fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
+    fn try_from(packet: &[u8]) -> Result<Self, Self::Error> {
         if packet.is_empty() {
             return Err(ApplicationError::EmptyPacket);
         }
 
-        if let Ok(ntp_packet) = NtpPacket::try_from(packet) {
+        if let Ok(_) = NtpPacket::try_from(packet) {
             return Ok(Application {
                 application_protocol: "NTP".to_string(),
-                layer_7_protocol_infos: Some(ApplicationProtocol::Ntp(ntp_packet)),
+                
+            });
+        }
+        
+        if let Ok(_) = parse_bitcoin_packet(packet) {
+            return Ok(Application {
+                application_protocol: "Bitcoin".to_string(),
+                
+            });
+        }
+        if let Ok(_) = DnsPacket::try_from(packet) {
+            return Ok(Application {
+                application_protocol: "DNS".to_string(),
+                
+            });
+        }
+        if let Ok(_) = parse_tls_packet(packet) {
+            return Ok(Application {
+                application_protocol: "TLS".to_string(),
+                
             });
         }
 
         // If no parser matches, return a "None" protocol
         Ok(Application {
             application_protocol: "Unknown".to_string(),
-            layer_7_protocol_infos: Some(ApplicationProtocol::Raw(packet)), // Utilisation correcte avec 'a
+            
         })
     }
 }

@@ -2,7 +2,9 @@ use std::fmt;
 mod dns_flags;
 use dns_flags::verify_dns_flags;
 
-use crate::errors::application::dns::dns_header::DnsHeaderError;
+use crate::errors::application::dns::DnsHeaderError;
+
+
 
 #[derive(Debug)]
 pub struct DnsHeader {
