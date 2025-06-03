@@ -153,8 +153,12 @@ fn extract_variable_and_payload(
     header_len: usize,
     packet_type: &MqttPacketType,
 ) -> Result<(Vec<u8>, Vec<u8>), bool> {
-    println!("extract_variable_and_payload - payload len: {}, remaining_length: {}, header_len: {}", 
-             payload.len(), remaining_length, header_len);
+    println!(
+        "extract_variable_and_payload - payload len: {}, remaining_length: {}, header_len: {}",
+        payload.len(),
+        remaining_length,
+        header_len
+    );
 
     if payload.len() < header_len {
         println!("Error: Payload too short for header_len ({})", header_len);
@@ -174,18 +178,29 @@ fn extract_variable_and_payload(
     let variable_header_len = get_variable_header_length(packet_type, variable_and_payload);
 
     if variable_header_len > variable_and_payload.len() {
-        println!("Error: variable_header_len ({}) > variable_and_payload.len() ({})", variable_header_len, variable_and_payload.len());
+        println!(
+            "Error: variable_header_len ({}) > variable_and_payload.len() ({})",
+            variable_header_len,
+            variable_and_payload.len()
+        );
         return Err(false);
     }
 
     let (variable_header, payload_data) = variable_and_payload.split_at(variable_header_len);
 
-    println!("Extracted variable header ({} bytes): {:?}", variable_header.len(), variable_header);
-    println!("Extracted payload data ({} bytes): {:?}", payload_data.len(), payload_data);
+    println!(
+        "Extracted variable header ({} bytes): {:?}",
+        variable_header.len(),
+        variable_header
+    );
+    println!(
+        "Extracted payload data ({} bytes): {:?}",
+        payload_data.len(),
+        payload_data
+    );
 
     Ok((variable_header.to_vec(), payload_data.to_vec()))
 }
-
 
 /// Parses an MQTT packet from a given payload.
 ///
@@ -215,12 +230,8 @@ pub fn parse_mqtt_packet(payload: &[u8]) -> Result<MqttPacket, bool> {
 
     let header_len = 1 + remaining_length_bytes;
 
-    let (variable_header, payload_data) = extract_variable_and_payload(
-        payload, 
-        remaining_length,
-        header_len,
-        &packet_type
-    )?;
+    let (variable_header, payload_data) =
+        extract_variable_and_payload(payload, remaining_length, header_len, &packet_type)?;
     println!("Successfully extracted variable header and payload");
     println!("Variable header: {:?}", variable_header);
     println!("Payload data: {:?}", payload_data);
@@ -240,7 +251,9 @@ fn get_variable_header_length(packet_type: &MqttPacketType, data: &[u8]) -> usiz
         MqttPacketType::Connect => 10,
         MqttPacketType::Connack => 2,
         MqttPacketType::Publish => {
-            if data.len() < 4 { return 0; }
+            if data.len() < 4 {
+                return 0;
+            }
             let topic_len = u16::from_be_bytes([data[0], data[1]]) as usize;
             2 + topic_len
         }
@@ -248,7 +261,6 @@ fn get_variable_header_length(packet_type: &MqttPacketType, data: &[u8]) -> usiz
         _ => 0,
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -338,27 +350,31 @@ mod tests {
         let payload = vec![
             0x10, 0x0A, 0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C,
         ];
-        
+
         // On doit appeler la fonction avec le bon type MQTT
         let packet_type = MqttPacketType::Connect;
         let (variable_header, payload_data) =
             extract_variable_and_payload(&payload, 10, 2, &packet_type).unwrap();
-    
+
         assert_eq!(
             variable_header,
             vec![0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C]
         );
         assert_eq!(payload_data, Vec::<u8>::new());
     }
-    
 
     #[test]
     fn test_parse_mqtt_connect() {
-        let payload = vec![0x10, 0x0C, 0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C, 0x00, 0x00];
+        let payload = vec![
+            0x10, 0x0C, 0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C, 0x00, 0x00,
+        ];
         let packet = parse_mqtt_packet(&payload).expect("Failed to parse CONNECT packet");
         assert_eq!(packet.fixed_header.packet_type, MqttPacketType::Connect);
         assert_eq!(packet.fixed_header.remaining_length, 12);
-        assert_eq!(packet.variable_header, vec![0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C]);
+        assert_eq!(
+            packet.variable_header,
+            vec![0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C]
+        );
         assert_eq!(packet.payload, vec![0x00, 0x00]);
     }
 
@@ -374,14 +390,24 @@ mod tests {
     #[test]
     fn test_parse_mqtt_publish() {
         let payload = vec![
-            0x30, 0x1D, 0x00, 0x0B, b's', b'e', b'n', b's', b'o', b'r', b'/', b'd', b'a', b't', b'a',
-            b'{', b'"', b's', b't', b'a', b't', b'u', b's', b'"', b':', b' ', b'"', b'O', b'K', b'"', b'}',
+            0x30, 0x1D, 0x00, 0x0B, b's', b'e', b'n', b's', b'o', b'r', b'/', b'd', b'a', b't',
+            b'a', b'{', b'"', b's', b't', b'a', b't', b'u', b's', b'"', b':', b' ', b'"', b'O',
+            b'K', b'"', b'}',
         ];
         let packet = parse_mqtt_packet(&payload).expect("Failed to parse PUBLISH packet");
         assert_eq!(packet.fixed_header.packet_type, MqttPacketType::Publish);
         assert_eq!(packet.fixed_header.remaining_length, 29);
-        assert_eq!(packet.variable_header, vec![0x00, 0x0B, b's', b'e', b'n', b's', b'o', b'r', b'/', b'd', b'a', b't', b'a']);
-        assert_eq!(packet.payload, vec![b'{', b'"', b's', b't', b'a', b't', b'u', b's', b'"', b':', b' ', b'"', b'O', b'K', b'"', b'}']);
+        assert_eq!(
+            packet.variable_header,
+            vec![0x00, 0x0B, b's', b'e', b'n', b's', b'o', b'r', b'/', b'd', b'a', b't', b'a']
+        );
+        assert_eq!(
+            packet.payload,
+            vec![
+                b'{', b'"', b's', b't', b'a', b't', b'u', b's', b'"', b':', b' ', b'"', b'O', b'K',
+                b'"', b'}'
+            ]
+        );
     }
 
     #[test]
@@ -393,5 +419,4 @@ mod tests {
         assert_eq!(packet.variable_header, Vec::<u8>::new());
         assert_eq!(packet.payload, Vec::<u8>::new());
     }
-
 }
