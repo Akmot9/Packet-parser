@@ -49,6 +49,7 @@
 
 pub mod mac_addres;
 use mac_addres::MacAddress;
+use serde::Serialize;
 
 pub mod ethertype;
 
@@ -58,7 +59,7 @@ use ethertype::Ethertype;
 
 /// Represents a parsed Ethernet frame, containing source and destination MAC addresses,
 /// an Ethertype, and the payload.
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DataLink<'a> {
     /// The destination MAC address.
     pub destination_mac: MacAddress,

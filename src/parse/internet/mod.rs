@@ -7,10 +7,11 @@ use crate::errors::internet::InternetError;
 use protocols::arp::ArpPacket;
 use protocols::ipv4;
 use protocols::ipv6;
+use serde::Serialize;
 
 use super::transport::Transport;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Internet<'a> {
     pub source: Option<IpAddr>,
     pub destination: Option<IpAddr>,

@@ -8,11 +8,12 @@ use std::convert::TryFrom;
 pub mod protocols;
 
 use protocols::{tcp::TcpPacket, udp::UdpPacket, TransportProtocol};
+use serde::Serialize;
 
 use crate::errors::transport::TransportError;
 
 /// Represents a transport layer packet (UDP, TCP, etc.)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Transport<'a> {
     /// The transport layer protocol name
     pub protocol: TransportProtocol,

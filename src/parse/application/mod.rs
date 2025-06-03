@@ -8,11 +8,12 @@ use protocols::{
     bitcoin::parse_bitcoin_packet, copt::CotpHeader, dns::DnsPacket, s7comm::S7CommPacket,
     tls::parse_tls_packet,
 };
+use serde::Serialize;
 
 use crate::{errors::application::ApplicationError, parse::application::protocols::ntp::NtpPacket};
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Application {
     pub application_protocol: String,
 }

@@ -3,8 +3,10 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
+use serde::Serialize;
+
 // ethertype.rs
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub struct Ethertype(pub u16);
 
 impl Ethertype {

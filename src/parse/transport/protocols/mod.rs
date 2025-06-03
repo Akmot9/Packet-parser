@@ -1,7 +1,9 @@
+use serde::Serialize;
+
 pub mod tcp;
 pub mod udp;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum TransportProtocol {
     Tcp,
     Udp,
