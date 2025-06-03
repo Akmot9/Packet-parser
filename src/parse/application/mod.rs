@@ -25,33 +25,33 @@ impl TryFrom<&[u8]> for Application {
             return Err(ApplicationError::EmptyPacket);
         }
 
-        if let Ok(_) = NtpPacket::try_from(packet) {
+        if NtpPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "NTP".to_string(),
             });
         }
 
-        if let Ok(_) = parse_bitcoin_packet(packet) {
+        if parse_bitcoin_packet(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "Bitcoin".to_string(),
             });
         }
-        if let Ok(_) = DnsPacket::try_from(packet) {
+        if DnsPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "DNS".to_string(),
             });
         }
-        if let Ok(_) = parse_tls_packet(packet) {
+        if parse_tls_packet(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "TLS".to_string(),
             });
         }
-        if let Ok(_) = S7CommPacket::try_from(packet) {
+        if S7CommPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "S7Comm".to_string(),
             });
         }
-        if let Ok(_) = CotpHeader::from_bytes(packet) {
+        if CotpHeader::from_bytes(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "COTP".to_string(),
             });

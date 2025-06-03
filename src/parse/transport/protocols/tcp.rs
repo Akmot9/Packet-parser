@@ -56,7 +56,7 @@ impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
         let data_offset_words = packet[12] >> 4;
 
         // Validate data offset (must be between 5 and 15, inclusive)
-        if data_offset_words < 5 || data_offset_words > 15 {
+        if !(5..=15).contains(&data_offset_words) {
             return Err(TcpError::InvalidDataOffset(data_offset_words));
         }
 

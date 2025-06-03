@@ -116,7 +116,7 @@ fn validate_dcp_block(data: &[u8]) -> Result<(), ProfinetPacketError> {
 }
 
 /// Extract the name of station from the DCP block.
-fn extract_name_of_station<'a>(data: &'a [u8]) -> Result<&'a str, ProfinetPacketError> {
+fn extract_name_of_station(data: &[u8]) -> Result<&str, ProfinetPacketError> {
     let block = &data[12..];
     let dcp_block_length = u16::from_be_bytes([block[2], block[3]]) as usize;
 

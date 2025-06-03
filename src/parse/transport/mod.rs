@@ -45,7 +45,7 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
                 protocol: TransportProtocol::Tcp,
                 source_port: Some(tcp_packet.header.source_port),
                 destination_port: Some(tcp_packet.header.destination_port),
-                payload: Some(&tcp_packet.payload),
+                payload: Some(tcp_packet.payload),
             });
         }
 
@@ -55,7 +55,7 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
                 protocol: TransportProtocol::Udp,
                 source_port: Some(udp_packet.source_port),
                 destination_port: Some(udp_packet.destination_port),
-                payload: Some(&udp_packet.payload),
+                payload: Some(udp_packet.payload),
             });
         }
         // If we get here, no parser could handle the packet

@@ -44,7 +44,7 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
                 destination: Some(IpAddr::V4(ipv4_packet.dest_addr)),
                 protocol_name: "IPv4".to_string(),
                 payload_protocol: Some(Transport::transport_from_u8(&ipv4_packet.protocol)),
-                payload: &ipv4_packet.payload,
+                payload: ipv4_packet.payload,
             });
         }
 
@@ -54,7 +54,7 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
                 destination: Some(IpAddr::V6(ipv6_packet.dest_addr)),
                 protocol_name: "IPv6".to_string(),
                 payload_protocol: Some(Transport::transport_from_u8(&ipv6_packet.next_header)),
-                payload: &ipv6_packet.payload,
+                payload: ipv6_packet.payload,
             });
         }
 

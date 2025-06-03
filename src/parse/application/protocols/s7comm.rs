@@ -158,8 +158,8 @@ impl<'a> S7CommPacket<'a> {
         // Only print S7 header bytes that exist in the packet
         let s7_header_end = std::cmp::min(s7_start + 12, packet.len());
         print!("  S7 Header: ");
-        for i in s7_start..s7_header_end {
-            print!("{:02x} ", packet[i]);
+        for byte in packet.iter().take(s7_header_end).skip(s7_start) {
+            print!("{:02x} ", byte);
         }
         println!();
 

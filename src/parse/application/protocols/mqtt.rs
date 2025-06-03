@@ -113,7 +113,7 @@ fn extract_remaining_length(payload: &[u8]) -> Result<(u32, usize), bool> {
     let mut multiplier = 1;
     let mut value = 0;
     let mut bytes_used = 0; // Start at 1 to account for the first byte (packet type)
-    
+
     // We need at least 2 bytes (packet type + at least 1 length byte)
     if payload.len() < 2 {
         return Err(false);
@@ -124,16 +124,16 @@ fn extract_remaining_length(payload: &[u8]) -> Result<(u32, usize), bool> {
         value += ((byte & 127) as u32) * multiplier;
         multiplier *= 128;
         bytes_used += 1;
-        
+
         if byte & 128 == 0 {
             break;
         }
-        
+
         // Prevent integer overflow and malformed packets
         if bytes_used > 4 {
             return Err(false);
         }
-        
+
         // Make sure we don't go past the end of the payload
         if bytes_used >= payload.len() {
             return Err(false);
@@ -152,8 +152,12 @@ fn extract_variable_and_payload(
     remaining_length: u32,
     header_len: usize,
 ) -> Result<(Vec<u8>, Vec<u8>), bool> {
-    println!("extract_variable_and_payload - payload len: {}, remaining_length: {}, header_len: {}", 
-             payload.len(), remaining_length, header_len);
+    println!(
+        "extract_variable_and_payload - payload len: {}, remaining_length: {}, header_len: {}",
+        payload.len(),
+        remaining_length,
+        header_len
+    );
 
     // Vérifie d'abord que le header complet est disponible
     if payload.len() < header_len {
@@ -181,12 +185,19 @@ fn extract_variable_and_payload(
         (variable_and_payload, &[][..])
     };
 
-    println!("Extracted variable header ({} bytes): {:?}", variable_header.len(), variable_header);
-    println!("Extracted payload data ({} bytes): {:?}", payload_data.len(), payload_data);
+    println!(
+        "Extracted variable header ({} bytes): {:?}",
+        variable_header.len(),
+        variable_header
+    );
+    println!(
+        "Extracted payload data ({} bytes): {:?}",
+        payload_data.len(),
+        payload_data
+    );
 
     Ok((variable_header.to_vec(), payload_data.to_vec()))
 }
-
 
 /// Parses an MQTT packet from a given payload.
 ///
@@ -201,24 +212,24 @@ fn extract_variable_and_payload(
 pub fn parse_mqtt_packet(payload: &[u8]) -> Result<MqttPacket, bool> {
     println!("Parsing MQTT packet. Payload length: {}", payload.len());
     println!("Payload: {:?}", payload);
-    
+
     check_minimum_length(payload)?;
     println!("Passed minimum length check");
-    
+
     let packet_type = check_packet_type(payload)?;
     println!("Packet type: {:?}", packet_type);
-    
+
     let (remaining_length, remaining_length_bytes) = extract_remaining_length(payload)?;
-    println!("Remaining length: {}, remaining_length_bytes: {}", remaining_length, remaining_length_bytes);
-    
+    println!(
+        "Remaining length: {}, remaining_length_bytes: {}",
+        remaining_length, remaining_length_bytes
+    );
+
     let header_len = 1 + remaining_length_bytes;
 
-    let (variable_header, payload_data) = extract_variable_and_payload(
-        payload, 
-        remaining_length,
-        header_len
-    )?;
-    
+    let (variable_header, payload_data) =
+        extract_variable_and_payload(payload, remaining_length, header_len)?;
+
     println!("Successfully extracted variable header and payload");
     println!("Variable header: {:?}", variable_header);
     println!("Payload data: {:?}", payload_data);
@@ -233,7 +244,6 @@ pub fn parse_mqtt_packet(payload: &[u8]) -> Result<MqttPacket, bool> {
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,7 +254,7 @@ mod tests {
         let mqtt_payload = vec![
             0x10, 0x0A, 0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C,
         ];
-        
+
         println!("Testing with MQTT CONNECT packet");
         match parse_mqtt_packet(&mqtt_payload) {
             Ok(packet) => {
@@ -302,10 +312,7 @@ mod tests {
 
     #[test]
     fn test_extract_remaining_length() {
-        assert_eq!(
-            extract_remaining_length(&vec![0x10, 0x00]).unwrap(),
-            (0, 1)
-        );
+        assert_eq!(extract_remaining_length(&vec![0x10, 0x00]).unwrap(), (0, 1));
         assert_eq!(
             extract_remaining_length(&vec![0x10, 0x7F]).unwrap(),
             (127, 1)
@@ -319,7 +326,6 @@ mod tests {
             (16383, 2)
         );
     }
-    
 
     #[test]
     fn test_extract_variable_and_payload() {

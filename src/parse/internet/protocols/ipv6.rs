@@ -42,7 +42,6 @@ impl<'a> Ipv6Packet<'a> {
             | ((self.version_tc_flow[2] as u32) << 8)
             | (self.version_tc_flow[3] as u32)
     }
-    
 }
 
 impl<'a> TryFrom<&'a [u8]> for Ipv6Packet<'a> {

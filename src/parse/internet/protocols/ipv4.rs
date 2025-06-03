@@ -100,7 +100,7 @@ impl<'a> TryFrom<&'a [u8]> for Ipv4Packet<'a> {
         }
 
         let header_len = (ihl as usize) * 4;
-        if header_len < MIN_HEADER_LEN || header_len > 60 {
+        if !(MIN_HEADER_LEN..=60).contains(&header_len) {
             // Max IHL is 15 (15 * 4 = 60 bytes)
             return Err(Ipv4Error::InvalidHeaderLength(header_len));
         }
