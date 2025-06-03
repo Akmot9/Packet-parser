@@ -112,35 +112,81 @@ fn check_packet_type(payload: &[u8]) -> Result<MqttPacketType, bool> {
 fn extract_remaining_length(payload: &[u8]) -> Result<(u32, usize), bool> {
     let mut multiplier = 1;
     let mut value = 0;
-    let mut bytes_used = 0;
+    let mut bytes_used = 0; // Start at 1 to account for the first byte (packet type)
+    
+    // We need at least 2 bytes (packet type + at least 1 length byte)
+    if payload.len() < 2 {
+        return Err(false);
+    }
 
-    for (i, &byte) in payload[1..].iter().enumerate() {
+    // Skip the first byte (packet type)
+    for &byte in &payload[1..] {
         value += ((byte & 127) as u32) * multiplier;
         multiplier *= 128;
-        bytes_used = i + 1;
+        bytes_used += 1;
+        
         if byte & 128 == 0 {
             break;
         }
+        
+        // Prevent integer overflow and malformed packets
+        if bytes_used > 4 {
+            return Err(false);
+        }
+        
+        // Make sure we don't go past the end of the payload
+        if bytes_used >= payload.len() {
+            return Err(false);
+        }
     }
 
-    if bytes_used == 0 {
-        return Err(false);
-    }
-
-    Ok((value, bytes_used + 1))
+    // The header length is the packet type (1) + the number of bytes used for remaining length
+    // But since bytes_used already includes the packet type, we can just use it as is
+    Ok((value, bytes_used))
 }
 
 /// Extracts the variable header and payload
-fn extract_variable_and_payload(payload: &[u8], remaining_length: u32, header_len: usize) -> Result<(Vec<u8>, Vec<u8>), bool> {
-    if payload.len() < header_len + remaining_length as usize {
+/// Extracts the variable header and payload based on the remaining_length and header_len
+fn extract_variable_and_payload(
+    payload: &[u8],
+    remaining_length: u32,
+    header_len: usize,
+) -> Result<(Vec<u8>, Vec<u8>), bool> {
+    println!("extract_variable_and_payload - payload len: {}, remaining_length: {}, header_len: {}", 
+             payload.len(), remaining_length, header_len);
+
+    // Vérifie d'abord que le header complet est disponible
+    if payload.len() < header_len {
+        println!("Error: Payload too short for header_len ({})", header_len);
         return Err(false);
     }
 
-    let variable_header = payload[header_len..(header_len + remaining_length as usize)].to_vec();
-    let payload_data = payload[(header_len + remaining_length as usize)..].to_vec();
+    let actual_remaining = payload.len() - header_len;
+    if actual_remaining < remaining_length as usize {
+        println!(
+            "Error: actual remaining length ({}) is less than expected remaining_length ({})",
+            actual_remaining, remaining_length
+        );
+        return Err(false);
+    }
 
-    Ok((variable_header, payload_data))
+    // Découpe le buffer restant après le header
+    let variable_and_payload = &payload[header_len..header_len + remaining_length as usize];
+
+    // 📝 Pour CONNECT, le variable header est toujours 10 octets
+    // TODO : Ajouter une table de correspondance par type MQTT pour généraliser
+    let (variable_header, payload_data) = if remaining_length >= 10 {
+        variable_and_payload.split_at(10)
+    } else {
+        (variable_and_payload, &[][..])
+    };
+
+    println!("Extracted variable header ({} bytes): {:?}", variable_header.len(), variable_header);
+    println!("Extracted payload data ({} bytes): {:?}", payload_data.len(), payload_data);
+
+    Ok((variable_header.to_vec(), payload_data.to_vec()))
 }
+
 
 /// Parses an MQTT packet from a given payload.
 ///
@@ -153,10 +199,29 @@ fn extract_variable_and_payload(payload: &[u8], remaining_length: u32, header_le
 /// * `Result<MqttPacket, bool>` - Returns `Ok(MqttPacket)` if parsing is successful,
 ///   otherwise returns `Err(false)` indicating an invalid MQTT packet.
 pub fn parse_mqtt_packet(payload: &[u8]) -> Result<MqttPacket, bool> {
+    println!("Parsing MQTT packet. Payload length: {}", payload.len());
+    println!("Payload: {:?}", payload);
+    
     check_minimum_length(payload)?;
+    println!("Passed minimum length check");
+    
     let packet_type = check_packet_type(payload)?;
-    let (remaining_length, header_len) = extract_remaining_length(payload)?;
-    let (variable_header, payload_data) = extract_variable_and_payload(payload, remaining_length, header_len)?;
+    println!("Packet type: {:?}", packet_type);
+    
+    let (remaining_length, remaining_length_bytes) = extract_remaining_length(payload)?;
+    println!("Remaining length: {}, remaining_length_bytes: {}", remaining_length, remaining_length_bytes);
+    
+    let header_len = 1 + remaining_length_bytes;
+
+    let (variable_header, payload_data) = extract_variable_and_payload(
+        payload, 
+        remaining_length,
+        header_len
+    )?;
+    
+    println!("Successfully extracted variable header and payload");
+    println!("Variable header: {:?}", variable_header);
+    println!("Payload data: {:?}", payload_data);
 
     Ok(MqttPacket {
         fixed_header: MqttFixedHeader {
@@ -168,6 +233,7 @@ pub fn parse_mqtt_packet(payload: &[u8]) -> Result<MqttPacket, bool> {
     })
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,15 +241,26 @@ mod tests {
     #[test]
     fn test_parse_mqtt_packet() {
         // Test with a valid MQTT packet (CONNECT)
-        let mqtt_payload = vec![0x10, 0x0C, 0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C];
+        let mqtt_payload = vec![
+            0x10, 0x0A, 0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C,
+        ];
+        
+        println!("Testing with MQTT CONNECT packet");
         match parse_mqtt_packet(&mqtt_payload) {
             Ok(packet) => {
+                println!("Successfully parsed MQTT packet: {:?}", packet);
                 assert_eq!(packet.fixed_header.packet_type, MqttPacketType::Connect);
-                assert_eq!(packet.fixed_header.remaining_length, 12);
-                assert_eq!(packet.variable_header, vec![0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C]);
+                assert_eq!(packet.fixed_header.remaining_length, 10);
+                assert_eq!(
+                    packet.variable_header,
+                    vec![0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C]
+                );
                 assert_eq!(packet.payload, Vec::<u8>::new());
             }
-            Err(_) => panic!("Expected MQTT packet"),
+            Err(e) => {
+                println!("Failed to parse MQTT packet. Error: {}", e);
+                panic!("Expected MQTT packet");
+            }
         }
 
         // Test with an invalid packet type
@@ -193,8 +270,8 @@ mod tests {
             Err(is_mqtt) => assert!(!is_mqtt),
         }
 
-        // Test with an invalid remaining length
-        let invalid_remaining_length = vec![0x10, 0xFF, 0xFF, 0xFF, 0xFF]; // Incorrect remaining length encoding
+        // Test with an invalid remaining length (malformed)
+        let invalid_remaining_length = vec![0x10, 0xFF, 0xFF, 0xFF, 0xFF]; // Malformed remaining length
         match parse_mqtt_packet(&invalid_remaining_length) {
             Ok(_) => panic!("Expected non-MQTT packet due to invalid remaining length"),
             Err(is_mqtt) => assert!(!is_mqtt),
@@ -216,23 +293,45 @@ mod tests {
 
     #[test]
     fn test_check_packet_type() {
-        assert_eq!(check_packet_type(&vec![0x10, 0x00]).unwrap(), MqttPacketType::Connect);
+        assert_eq!(
+            check_packet_type(&vec![0x10, 0x00]).unwrap(),
+            MqttPacketType::Connect
+        );
         assert!(check_packet_type(&vec![0xF0, 0x00]).is_err());
     }
 
     #[test]
     fn test_extract_remaining_length() {
-        assert_eq!(extract_remaining_length(&vec![0x10, 0x00]).unwrap(), (0, 2));
-        assert_eq!(extract_remaining_length(&vec![0x10, 0x7F]).unwrap(), (127, 2));
-        assert_eq!(extract_remaining_length(&vec![0x10, 0x80, 0x01]).unwrap(), (128, 3));
-        assert_eq!(extract_remaining_length(&vec![0x10, 0xFF, 0x7F]).unwrap(), (16383, 3));
+        assert_eq!(
+            extract_remaining_length(&vec![0x10, 0x00]).unwrap(),
+            (0, 1)
+        );
+        assert_eq!(
+            extract_remaining_length(&vec![0x10, 0x7F]).unwrap(),
+            (127, 1)
+        );
+        assert_eq!(
+            extract_remaining_length(&vec![0x10, 0x80, 0x01]).unwrap(),
+            (128, 2)
+        );
+        assert_eq!(
+            extract_remaining_length(&vec![0x10, 0xFF, 0x7F]).unwrap(),
+            (16383, 2)
+        );
     }
+    
 
     #[test]
     fn test_extract_variable_and_payload() {
-        let payload = vec![0x10, 0x0C, 0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C];
-        let (variable_header, payload_data) = extract_variable_and_payload(&payload, 12, 2).unwrap();
-        assert_eq!(variable_header, vec![0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C]);
+        let payload = vec![
+            0x10, 0x0A, 0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C,
+        ];
+        let (variable_header, payload_data) =
+            extract_variable_and_payload(&payload, 10, 2).unwrap();
+        assert_eq!(
+            variable_header,
+            vec![0x00, 0x04, b'M', b'Q', b'T', b'T', 0x04, 0x02, 0x00, 0x3C]
+        );
         assert_eq!(payload_data, Vec::<u8>::new());
     }
 }

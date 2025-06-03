@@ -1,7 +1,4 @@
-
-
 use thiserror::Error;
-
 
 #[derive(Debug, Error)]
 pub enum DnsPacketError {
@@ -36,8 +33,6 @@ pub enum DnsQueryParseError {
     #[error("UTF-8 parsing error: {0}")]
     Utf8Error(#[from] std::string::FromUtf8Error),
 }
-
-
 
 #[derive(Debug, Error, PartialEq)]
 pub enum DnsFlagsError {

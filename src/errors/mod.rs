@@ -16,8 +16,6 @@ use internet::InternetError;
 use thiserror::Error;
 use transport::TransportError;
 
-
-
 #[derive(Error, Debug)]
 pub enum ParsedPacketError {
     #[error("Packet too short: {0} bytes")]

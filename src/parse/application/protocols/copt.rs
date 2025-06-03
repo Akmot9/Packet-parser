@@ -41,18 +41,17 @@ pub struct CotpHeader {
 
 #[derive(Debug, Clone)]
 pub enum CotpParameter {
-    TpduSize(u8),  // 0xC0: TPDU size
-    SrcTsap(u16),  // 0xC1: Source TSAP
-    DstTsap(u16),  // 0xC2: Destination TSAP
-    TpduNumber(u8), // 0xC0 in DT TPDU
-    Eot(bool),     // 0x80 in DT TPDU
+    TpduSize(u8),       // 0xC0: TPDU size
+    SrcTsap(u16),       // 0xC1: Source TSAP
+    DstTsap(u16),       // 0xC2: Destination TSAP
+    TpduNumber(u8),     // 0xC0 in DT TPDU
+    Eot(bool),          // 0x80 in DT TPDU
     Other(u8, Vec<u8>), // Other parameters
 }
 
 impl CotpHeader {
     /// Minimum size of a COTP header (3 bytes for basic header)
     pub const MIN_SIZE: usize = 7; // 1 + 1 + 2 + 2 + 1 (for CR/CC)
-
 
     /// Parse a COTP header from a byte slice
     pub fn from_bytes(data: &[u8]) -> Result<(Self, usize), &'static str> {
@@ -62,32 +61,37 @@ impl CotpHeader {
 
         let length = data[0];
         let pdu_type = CotpPduType::from(data[1]);
-        
+
         if data.len() < length as usize + 1 {
             return Err("Packet shorter than indicated by COTP length");
         }
 
         let mut offset = 2; // Skip length and PDU type
-        let (dst_ref, src_ref, class, extended_formats, no_explicit_flow_control) = 
-            match pdu_type {
-                CotpPduType::ConnectionRequest | 
-                CotpPduType::ConnectionConfirm |
-                CotpPduType::DisconnectRequest |
-                CotpPduType::DisconnectConfirm |
-                CotpPduType::TpduError => {
-                    if data.len() < offset + 6 {
-                        return Err("Packet too short for COTP connection header");
-                    }
-                    let dst_ref = u16::from_be_bytes([data[offset], data[offset + 1]]);
-                    let src_ref = u16::from_be_bytes([data[offset + 2], data[offset + 3]]);
-                    let class = data[offset + 4] >> 4;
-                    let extended_formats = (data[offset + 4] & 0x04) != 0;
-                    let no_explicit_flow_control = (data[offset + 4] & 0x01) != 0;
-                    offset += 5;
-                    (dst_ref, src_ref, class, extended_formats, no_explicit_flow_control)
-                },
-                _ => (0, 0, 0, false, false),
-            };
+        let (dst_ref, src_ref, class, extended_formats, no_explicit_flow_control) = match pdu_type {
+            CotpPduType::ConnectionRequest
+            | CotpPduType::ConnectionConfirm
+            | CotpPduType::DisconnectRequest
+            | CotpPduType::DisconnectConfirm
+            | CotpPduType::TpduError => {
+                if data.len() < offset + 6 {
+                    return Err("Packet too short for COTP connection header");
+                }
+                let dst_ref = u16::from_be_bytes([data[offset], data[offset + 1]]);
+                let src_ref = u16::from_be_bytes([data[offset + 2], data[offset + 3]]);
+                let class = data[offset + 4] >> 4;
+                let extended_formats = (data[offset + 4] & 0x04) != 0;
+                let no_explicit_flow_control = (data[offset + 4] & 0x01) != 0;
+                offset += 5;
+                (
+                    dst_ref,
+                    src_ref,
+                    class,
+                    extended_formats,
+                    no_explicit_flow_control,
+                )
+            }
+            _ => (0, 0, 0, false, false),
+        };
 
         // Parse parameters
         let mut parameters = Vec::new();
@@ -95,18 +99,19 @@ impl CotpHeader {
             if offset + 1 >= data.len() {
                 break;
             }
-            
+
             let param_type = data[offset];
             let param_len = data[offset + 1] as usize;
-            
+
             if offset + 2 + param_len > data.len() {
                 break;
             }
-            
+
             let param_data = &data[offset + 2..offset + 2 + param_len];
-            
+
             let param = match param_type {
-                0xC0 => { // TPDU size or TPDU number
+                0xC0 => {
+                    // TPDU size or TPDU number
                     if pdu_type == CotpPduType::Data {
                         CotpParameter::TpduNumber(param_data[0])
                     } else if param_len == 1 {
@@ -114,35 +119,39 @@ impl CotpHeader {
                     } else {
                         CotpParameter::Other(param_type, param_data.to_vec())
                     }
-                },
-                0xC1 if param_len == 2 => { // Source TSAP
-                    CotpParameter::SrcTsap(u16::from_be_bytes([param_data[0], param_data[1]]))
-                },
-                0xC2 if param_len == 2 => { // Destination TSAP
-                    CotpParameter::DstTsap(u16::from_be_bytes([param_data[0], param_data[1]]))
-                },
-                0x80 if pdu_type == CotpPduType::Data && param_len == 0 => { // EOT
-                    CotpParameter::Eot(true)
-                },
-                _ => {
-                    CotpParameter::Other(param_type, param_data.to_vec())
                 }
+                0xC1 if param_len == 2 => {
+                    // Source TSAP
+                    CotpParameter::SrcTsap(u16::from_be_bytes([param_data[0], param_data[1]]))
+                }
+                0xC2 if param_len == 2 => {
+                    // Destination TSAP
+                    CotpParameter::DstTsap(u16::from_be_bytes([param_data[0], param_data[1]]))
+                }
+                0x80 if pdu_type == CotpPduType::Data && param_len == 0 => {
+                    // EOT
+                    CotpParameter::Eot(true)
+                }
+                _ => CotpParameter::Other(param_type, param_data.to_vec()),
             };
-            
+
             parameters.push(param);
             offset += 2 + param_len;
         }
 
-        Ok((Self {
-            length,
-            pdu_type,
-            dst_ref,
-            src_ref,
-            class,
-            extended_formats,
-            no_explicit_flow_control,
-            parameters,
-        }, offset))
+        Ok((
+            Self {
+                length,
+                pdu_type,
+                dst_ref,
+                src_ref,
+                class,
+                extended_formats,
+                no_explicit_flow_control,
+                parameters,
+            },
+            offset,
+        ))
     }
 }
 
@@ -162,7 +171,7 @@ impl fmt::Display for CotpHeader {
         writeln!(f, "  Length: {}", self.length)?;
         writeln!(f, "  Destination reference: 0x{:04X}", self.dst_ref)?;
         writeln!(f, "  Source reference: 0x{:04X}", self.src_ref)?;
-        
+
         if self.class != 0 {
             writeln!(f, "  Class: {}", self.class)?;
         }
@@ -185,19 +194,19 @@ impl fmt::Display for CotpHeader {
                         _ => 1 << (*size as u16 + 6),
                     };
                     writeln!(f, "  TPDU size: {} bytes", tpdu_size)?;
-                },
+                }
                 CotpParameter::SrcTsap(tsap) => {
                     writeln!(f, "  Source TSAP: 0x{:04X}", tsap)?;
-                },
+                }
                 CotpParameter::DstTsap(tsap) => {
                     writeln!(f, "  Destination TSAP: 0x{:04X}", tsap)?;
-                },
+                }
                 CotpParameter::TpduNumber(num) => {
                     writeln!(f, "  TPDU Number: {}", num)?;
-                },
+                }
                 CotpParameter::Eot(_) => {
                     writeln!(f, "  End of TSDU: Yes")?;
-                },
+                }
                 CotpParameter::Other(code, data) => {
                     write!(f, "  Parameter 0x{:02X}: ", code)?;
                     for byte in data {
@@ -229,18 +238,18 @@ mod tests {
             0xC1, 0x02, 0x01, 0x00, // Source TSAP = 0x0100
             0xC2, 0x02, 0x01, 0x02, // Destination TSAP = 0x0102
         ];
-        
+
         let (header, bytes_parsed) = CotpHeader::from_bytes(&data).unwrap();
         assert_eq!(bytes_parsed, data.len());
         assert!(matches!(header.pdu_type, CotpPduType::ConnectionConfirm));
         assert_eq!(header.dst_ref, 0x0001);
         assert_eq!(header.src_ref, 0x0003);
-        
+
         // Check parameters
         let mut has_tpdu_size = false;
         let mut has_src_tsap = false;
         let mut has_dst_tsap = false;
-        
+
         for param in &header.parameters {
             match param {
                 CotpParameter::TpduSize(0x09) => has_tpdu_size = true,
@@ -249,7 +258,7 @@ mod tests {
                 _ => {}
             }
         }
-        
+
         assert!(has_tpdu_size);
         assert!(has_src_tsap);
         assert!(has_dst_tsap);

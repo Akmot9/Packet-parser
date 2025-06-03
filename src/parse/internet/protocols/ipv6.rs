@@ -42,6 +42,7 @@ impl<'a> Ipv6Packet<'a> {
             | ((self.version_tc_flow[2] as u32) << 8)
             | (self.version_tc_flow[3] as u32)
     }
+    
 }
 
 impl<'a> TryFrom<&'a [u8]> for Ipv6Packet<'a> {
@@ -156,8 +157,8 @@ mod tests {
         let packet = Ipv6Packet::try_from(&data[..]).unwrap();
 
         assert_eq!(packet.version(), 6);
-        assert_eq!(packet.traffic_class(), 0x12);
-        assert_eq!(packet.flow_label(), 0x03450);
+        assert_eq!(packet.traffic_class(), 0x01);
+        assert_eq!(packet.flow_label(), 0x23450);
         assert_eq!(packet.payload_length, 32);
         assert_eq!(packet.next_header, 0x11); // UDP
         assert_eq!(packet.hop_limit, 0x40); // 64

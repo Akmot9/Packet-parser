@@ -3,25 +3,25 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
+use bitcoin::BitcoinPacket;
+use copt::CotpHeader;
+use dhcp::DhcpPacket;
 use dns::DnsPacket;
-use ntp::NtpPacket;
-use tls::TlsPacket;
 use http::HttpRequest;
 use mqtt::MqttPacket;
-use dhcp::DhcpPacket;
-use bitcoin::BitcoinPacket;
+use ntp::NtpPacket;
 use s7comm::S7CommPacket;
-use copt::CotpHeader;
+use tls::TlsPacket;
 
-pub mod ntp;
-pub mod tls;
+pub mod bitcoin;
+pub mod copt;
+pub mod dhcp;
+pub mod dns;
 pub mod http;
 pub mod mqtt;
-pub mod dhcp;
-pub mod bitcoin;
-pub mod dns;
+pub mod ntp;
 pub mod s7comm;
-pub mod copt;
+pub mod tls;
 
 /// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
 #[derive(Debug)]

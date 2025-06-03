@@ -8,7 +8,6 @@ use protocols::arp::ArpPacket;
 use protocols::ipv4;
 use protocols::ipv6;
 
-
 use super::transport::Transport;
 
 #[derive(Debug, Clone)]

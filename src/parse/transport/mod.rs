@@ -5,14 +5,11 @@
 
 use std::convert::TryFrom;
 
-
 pub mod protocols;
 
 use protocols::{tcp::TcpPacket, udp::UdpPacket, TransportProtocol};
 
 use crate::errors::transport::TransportError;
-
-
 
 /// Represents a transport layer packet (UDP, TCP, etc.)
 #[derive(Debug, Clone)]
@@ -37,7 +34,6 @@ impl<'a> Transport<'a> {
         }
     }
 }
-
 
 impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
     type Error = TransportError;
@@ -66,5 +62,3 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
         Err(TransportError::UnsupportedProtocol)
     }
 }
-
-

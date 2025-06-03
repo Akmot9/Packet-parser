@@ -11,7 +11,7 @@ pub enum UdpError {
         /// The actual size of the packet
         actual: usize,
     },
-    
+
     /// The length field in the UDP header doesn't match the actual packet length
     #[error("UDP length field ({length}) doesn't match actual packet length ({actual})")]
     InvalidLength {
@@ -20,7 +20,7 @@ pub enum UdpError {
         /// The actual length of the packet
         actual: usize,
     },
-    
+
     /// The checksum in the UDP header is invalid
     #[error("Invalid UDP checksum")]
     InvalidChecksum,
@@ -41,4 +41,3 @@ pub enum TransportError {
     #[error("Unsupported transport protocol")]
     UnsupportedProtocol,
 }
-

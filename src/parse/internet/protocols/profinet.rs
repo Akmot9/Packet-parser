@@ -53,7 +53,7 @@ pub struct ProfinetPacket<'a> {
     pub name_of_station: &'a str,
 }
 
-impl<'a> TryFrom<&'a [u8]> for ProfinetPacket<'a>  {
+impl<'a> TryFrom<&'a [u8]> for ProfinetPacket<'a> {
     type Error = ProfinetPacketError;
 
     fn try_from(data: &'a [u8]) -> Result<Self, Self::Error> {
@@ -152,7 +152,10 @@ mod tests {
     fn test_frame_id_from_u16() {
         assert_eq!(FrameId::from_u16(0xC000), Some(FrameId::Unicast));
         assert_eq!(FrameId::from_u16(0xF800), Some(FrameId::Multicast));
-        assert_eq!(FrameId::from_u16(0xFEFD), Some(FrameId::GetReqSetReqGetRespSetResp));
+        assert_eq!(
+            FrameId::from_u16(0xFEFD),
+            Some(FrameId::GetReqSetReqGetRespSetResp)
+        );
         assert_eq!(FrameId::from_u16(0xFEFE), Some(FrameId::IdentifyReq));
         assert_eq!(FrameId::from_u16(0xFEFF), Some(FrameId::IdentifyResp));
         assert_eq!(FrameId::from_u16(0x0000), None);
@@ -245,7 +248,7 @@ mod integration_tests {
             0x02, // Option
             0x03, // Suboption
             0x00, 0x04, // DCP Block Length
-            b'T', b'E', b'S', b'T' // Name Of Station
+            b'T', b'E', b'S', b'T', // Name Of Station
         ];
         eth_packet.payload_mut()[..profinet_payload.len()].copy_from_slice(&profinet_payload);
 

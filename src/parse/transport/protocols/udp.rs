@@ -2,7 +2,6 @@ use std::convert::TryFrom;
 
 use crate::errors::transport::UdpError;
 
-
 /// Represents a UDP packet header and payload
 #[derive(Debug)]
 pub struct UdpPacket<'a> {
@@ -83,19 +82,25 @@ mod tests {
         ];
 
         let udp_packet = UdpPacket::try_from(&data[..]).unwrap();
-        
+
         assert_eq!(udp_packet.source_port, 1234);
         assert_eq!(udp_packet.destination_port, 80);
         assert_eq!(udp_packet.length, 20);
         assert_eq!(udp_packet.checksum, 0x1234);
-        assert_eq!(udp_packet.payload, &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C]);
+        assert_eq!(
+            udp_packet.payload,
+            &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C]
+        );
     }
 
     #[test]
     fn test_udp_packet_too_short() {
         let data = [0x04, 0xD2, 0x00, 0x50]; // Only 4 bytes
         let result = UdpPacket::try_from(&data[..]);
-        assert!(matches!(result, Err(UdpError::PacketTooShort { expected, actual })));
+        assert!(matches!(
+            result,
+            Err(UdpError::PacketTooShort { expected, actual })
+        ));
     }
 
     #[test]
@@ -107,8 +112,11 @@ mod tests {
             0x12, 0x34, // checksum
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A,
         ];
-        
+
         let result = UdpPacket::try_from(&data[..]);
-        assert!(matches!(result, Err(UdpError::InvalidLength { length, actual })));
+        assert!(matches!(
+            result,
+            Err(UdpError::InvalidLength { length, actual })
+        ));
     }
 }

@@ -4,8 +4,6 @@ use dns_flags::verify_dns_flags;
 
 use crate::errors::application::dns::DnsHeaderError;
 
-
-
 #[derive(Debug)]
 pub struct DnsHeader {
     pub transaction_id: u16,
