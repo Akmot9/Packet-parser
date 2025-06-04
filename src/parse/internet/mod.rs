@@ -9,8 +9,8 @@ use protocols::ipv4;
 use protocols::ipv6;
 use serde::Serialize;
 pub mod ip_type;
-use ip_type::IpType;
 use super::transport::Transport;
+use ip_type::IpType;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Internet<'a> {
@@ -35,9 +35,13 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
         if let Ok(arp_packet) = ArpPacket::try_from(packet) {
             return Ok(Internet {
                 source: Some(arp_packet.sender_protocol_addr),
-                source_type: Some(IpType::from_ip(&arp_packet.sender_protocol_addr.to_string())),
+                source_type: Some(IpType::from_ip(
+                    &arp_packet.sender_protocol_addr.to_string(),
+                )),
                 destination: Some(arp_packet.target_protocol_addr),
-                destination_type: Some(IpType::from_ip(&arp_packet.target_protocol_addr.to_string())),
+                destination_type: Some(IpType::from_ip(
+                    &arp_packet.target_protocol_addr.to_string(),
+                )),
                 protocol_name: "ARP".to_string(),
                 payload_protocol: None,
                 payload: &[],
