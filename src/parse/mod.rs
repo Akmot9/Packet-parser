@@ -34,9 +34,7 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
 
     fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
         let data_link = DataLink::try_from(packets)?;
-
         let mut internet = Internet::try_from(data_link.payload)?;
-
         // Étape 4 : Transport
         let transport = match Transport::try_from(internet.payload) {
             Ok(transport) => Some(transport),

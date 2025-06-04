@@ -67,7 +67,44 @@ impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
             return Err(TcpError::PacketTooShort);
         }
 
-        // Rest of the implementation remains the same...
+        // Validate reserved bits (must be 0)
+        let reserved = (packet[12] >> 1) & 0x07;
+        if reserved != 0 {
+            return Err(TcpError::InvalidHeaderLength);
+        }
+
+        // Check for invalid flag combinations that would never appear in real traffic
+        let flags = packet[13];
+
+        // SYN and FIN should never be set together in a valid TCP packet
+        if (flags & 0x03) == 0x03 {
+            // FIN and SYN both set
+            return Err(TcpError::InvalidHeaderLength);
+        }
+
+        // If SYN is set, the sequence number should be the initial sequence number (ISN)
+        // which is typically a random value, but we can check for all zeros which is invalid
+        if (flags & 0x02) != 0
+            && u32::from_be_bytes([packet[4], packet[5], packet[6], packet[7]]) == 0
+        {
+            return Err(TcpError::InvalidHeaderLength);
+        }
+
+        // If ACK is not set, the acknowledgment number must be zero
+        if (flags & 0x10) == 0
+            && u32::from_be_bytes([packet[8], packet[9], packet[10], packet[11]]) != 0
+        {
+            return Err(TcpError::InvalidHeaderLength);
+        }
+
+        // Check for invalid window size (0 is technically valid but usually indicates a problem)
+        let window_size = u16::from_be_bytes([packet[14], packet[15]]);
+        if window_size == 0 && (flags & 0x02) == 0 {
+            // Zero window size is only valid for SYN packets
+            return Err(TcpError::InvalidHeaderLength);
+        }
+
+        // The rest of the header parsing...
         let header = TcpHeader {
             source_port: u16::from_be_bytes([packet[0], packet[1]]),
             destination_port: u16::from_be_bytes([packet[2], packet[3]]),
@@ -76,17 +113,17 @@ impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
                 packet[8], packet[9], packet[10], packet[11],
             ]),
             data_offset: data_offset_words,
-            reserved: (packet[12] >> 1) & 0x07,
+            reserved,
             ns: (packet[12] & 0x01) != 0,
-            cwr: (packet[13] & 0x80) != 0,
-            ece: (packet[13] & 0x40) != 0,
-            urg: (packet[13] & 0x20) != 0,
-            ack: (packet[13] & 0x10) != 0,
-            psh: (packet[13] & 0x08) != 0,
-            rst: (packet[13] & 0x04) != 0,
-            syn: (packet[13] & 0x02) != 0,
-            fin: (packet[13] & 0x01) != 0,
-            window_size: u16::from_be_bytes([packet[14], packet[15]]),
+            cwr: (flags & 0x80) != 0,
+            ece: (flags & 0x40) != 0,
+            urg: (flags & 0x20) != 0,
+            ack: (flags & 0x10) != 0,
+            psh: (flags & 0x08) != 0,
+            rst: (flags & 0x04) != 0,
+            syn: (flags & 0x02) != 0,
+            fin: (flags & 0x01) != 0,
+            window_size,
             checksum: u16::from_be_bytes([packet[16], packet[17]]),
             urgent_pointer: u16::from_be_bytes([packet[18], packet[19]]),
             options: if data_offset > 20 {
@@ -155,5 +192,28 @@ mod tests {
         packet[12] = 0x10; // Data offset = 1 (4 bytes)
         let result = TcpPacket::try_from(&packet[..]);
         assert!(matches!(result, Err(TcpError::InvalidDataOffset(1))));
+    }
+
+    #[test]
+    fn test_invalid_tcp_packet_form_icmp() {
+        // This is an invalid TCP packet that should fail parsing
+        let hex_str = "85001c45000000000101a2afb2c15c03";
+        let packet_data = hex::decode(hex_str).expect("Failed to decode hex string");
+
+        // The packet is too short (15 bytes) to be a valid TCP header (minimum 20 bytes)
+        let result = TcpPacket::try_from(packet_data.as_slice());
+        assert!(matches!(result, Err(TcpError::PacketTooShort)));
+    }
+
+    #[test]
+    fn test_invalid_tcp_packet_form_icmp_with_data() {
+        // This is an invalid TCP packet that should fail parsing
+        let hex_str = "c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f7071727374757677";
+        let packet_data = hex::decode(hex_str).expect("Failed to decode hex string");
+
+        // The packet is too short (15 bytes) to be a valid TCP header (minimum 20 bytes)
+        let result = TcpPacket::try_from(packet_data.as_slice());
+        println!("result: {:?}", result);
+        assert!(matches!(result, Err(TcpError::InvalidHeaderLength)));
     }
 }
