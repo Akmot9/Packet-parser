@@ -52,11 +52,11 @@ impl TryFrom<&[u8]> for Application {
                 application_protocol: "S7Comm".to_string(),
             });
         }
-        if CotpHeader::from_bytes(packet).is_ok() {
-            return Ok(Application {
-                application_protocol: "COTP".to_string(),
-            });
-        }
+        // if CotpHeader::from_bytes(packet).is_ok() {
+        //     return Ok(Application {
+        //         application_protocol: "COTP".to_string(),
+        //     });
+        // }
 
         // If no parser matches, return a "None" protocol
         Ok(Application {

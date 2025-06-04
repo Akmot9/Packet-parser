@@ -81,7 +81,7 @@ impl<'a> S7CommPacket<'a> {
 
     /// Try to parse a byte slice into an S7CommPacket
     pub fn try_from(packet: &'a [u8]) -> Result<Self, &'static str> {
-        println!("S7CommPacket::try_from: packet len: {:?}", packet);
+        // println!("S7CommPacket::try_from: packet len: {:?}", packet);
         if packet.len() < Self::MIN_SIZES {
             return Err("Packet too short for S7Comm header");
         }
@@ -113,14 +113,14 @@ impl<'a> S7CommPacket<'a> {
 
         // S7 Header starts after TPKT + COTP
         let s7_start = 4 + cotp.length as usize + 1; // +1 for the length byte itself
-        println!("S7 header start: {}", s7_start);
+        // println!("S7 header start: {}", s7_start);
 
         if s7_start + 10 > packet.len() {
-            println!(
-                "Packet too short for S7 header: need {} bytes, have {}",
-                s7_start + 10,
-                packet.len()
-            );
+            // println!(
+            //     "Packet too short for S7 header: need {} bytes, have {}",
+            //     s7_start + 10,
+            //     packet.len()
+            // );
             return Err("Packet too short for S7 header");
         }
 
@@ -142,47 +142,47 @@ impl<'a> S7CommPacket<'a> {
             s7_header.error_code = Some(packet[s7_start + 11]);
         }
 
-        println!("S7 Header: {:?}", s7_header);
+        // println!("S7 Header: {:?}", s7_header);
 
         // Print packet structure for debugging - only print up to the packet length
-        println!("Packet structure:");
-        println!(
-            "  TPKT: {:02x} {:02x} {:02x}{:02x}",
-            packet[0], packet[1], packet[2], packet[3]
-        );
-        println!(
-            "  COTP: {:02x} {:02x} {:02x}",
-            packet[4], packet[5], packet[6]
-        );
+        // println!("Packet structure:");
+        // println!(
+        //     "  TPKT: {:02x} {:02x} {:02x}{:02x}",
+        //     packet[0], packet[1], packet[2], packet[3]
+        // );
+        // println!(
+        //     "  COTP: {:02x} {:02x} {:02x}",
+        //     packet[4], packet[5], packet[6]
+        // );
 
         // Only print S7 header bytes that exist in the packet
         let s7_header_end = std::cmp::min(s7_start + 12, packet.len());
-        print!("  S7 Header: ");
+        // print!("  S7 Header: ");
         for byte in packet.iter().take(s7_header_end).skip(s7_start) {
-            print!("{:02x} ", byte);
+            // print!("{:02x} ", byte);
         }
-        println!();
+        // println!();
 
         // The parameter section starts right after the S7 header (10 bytes for header + 2 for error class/code if present)
         let s7_header_length = if s7_header.rosctr == 0x03 { 12 } else { 10 };
         let param_start = s7_start + s7_header_length;
 
-        println!("Parameter section start: {}", param_start);
+        // println!("Parameter section start: {}", param_start);
 
         // If there's no parameter data, return an empty parameter section
         let parameter = if s7_header.parameter_length > 0 {
             let param_end = param_start + s7_header.parameter_length as usize;
 
             if param_end > packet.len() {
-                println!(
-                    "Invalid parameter length: param_end={}, packet_len={}",
-                    param_end,
-                    packet.len()
-                );
-                println!("  TPKT length: {}", tpkt.length);
-                println!("  COTP length: {}", cotp.length);
-                println!("  S7 parameter_length: {}", s7_header.parameter_length);
-                println!("  S7 data_length: {}", s7_header.data_length);
+                // println!(
+                //     "Invalid parameter length: param_end={}, packet_len={}",
+                //     param_end,
+                //     packet.len()
+                // );
+                // println!("  TPKT length: {}", tpkt.length);
+                // println!("  COTP length: {}", cotp.length);
+                // println!("  S7 parameter_length: {}", s7_header.parameter_length);
+                // println!("  S7 data_length: {}", s7_header.data_length);
                 return Err("Invalid parameter length");
             }
 
@@ -222,7 +222,7 @@ impl<'a> S7CommPacket<'a> {
             return Err("Empty parameter data");
         }
 
-        println!("Parameter data ({} bytes): {:?}", data.len(), data);
+        // println!("Parameter data ({} bytes): {:?}", data.len(), data);
         let function = data[0];
         let item_count = data[1] as usize;
         let mut items = Vec::with_capacity(item_count);
@@ -236,18 +236,18 @@ impl<'a> S7CommPacket<'a> {
             let spec_type = data[offset];
             let length = data[offset + 1] as usize;
 
-            println!(
-                "  Item {}: spec_type={:02x}, length={}",
-                i, spec_type, length
-            );
+            // println!(
+            //     "  Item {}: spec_type={:02x}, length={}",
+            //     i, spec_type, length
+            // );
 
             if offset + 2 + length > data.len() {
-                println!(
-                    "  Invalid item: offset={}, length={}, data_len={}",
-                    offset,
-                    length,
-                    data.len()
-                );
+                // println!(
+                //     "  Invalid item: offset={}, length={}, data_len={}",
+                //     offset,
+                //     length,
+                //     data.len()
+                // );
                 return Err("Invalid parameter item length");
             }
 
@@ -265,8 +265,8 @@ impl<'a> S7CommPacket<'a> {
                     | ((data[offset + 9] as u32) << 8)
                     | (data[offset + 10] as u32);
 
-                println!("  S7ANY: syntax_id={:02x}, transport_size={}, db_number={}, area={:02x}, address={:06x}",
-                        syntax_id, transport_size, db_number, area, address);
+                // println!("  S7ANY: syntax_id={:02x}, transport_size={}, db_number={}, area={:02x}, address={:06x}",
+                //         syntax_id, transport_size, db_number, area, address);
 
                 items.push(S7ParameterItem {
                     spec_type,
@@ -282,7 +282,7 @@ impl<'a> S7CommPacket<'a> {
                 offset += 2 + length;
             } else {
                 // For other item types, just store the raw data
-                println!("  Generic parameter item");
+                // println!("  Generic parameter item");
                 items.push(S7ParameterItem {
                     spec_type,
                     length: length as u8,
