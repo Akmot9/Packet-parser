@@ -158,7 +158,7 @@ impl<'a> S7CommPacket<'a> {
         // Only print S7 header bytes that exist in the packet
         let s7_header_end = std::cmp::min(s7_start + 12, packet.len());
         // print!("  S7 Header: ");
-        for byte in packet.iter().take(s7_header_end).skip(s7_start) {
+        for _byte in packet.iter().take(s7_header_end).skip(s7_start) {
             // print!("{:02x} ", byte);
         }
         // println!();
@@ -228,7 +228,7 @@ impl<'a> S7CommPacket<'a> {
         let mut items = Vec::with_capacity(item_count);
         let mut offset = 2; // Skip function code and item count
 
-        for i in 0..item_count {
+        for _i in 0..item_count {
             if offset + 2 > data.len() {
                 return Err("Invalid parameter item header");
             }

@@ -5,7 +5,7 @@
 
 pub mod protocols;
 use protocols::{
-    bitcoin::parse_bitcoin_packet, copt::CotpHeader, dns::DnsPacket, s7comm::S7CommPacket,
+    bitcoin::parse_bitcoin_packet, dns::DnsPacket, s7comm::S7CommPacket,
     tls::parse_tls_packet,
 };
 use serde::Serialize;
