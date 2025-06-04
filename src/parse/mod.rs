@@ -22,14 +22,14 @@ pub mod transport;
 // Or if you need to, you can put your payload in a determine application try from. detemines function are not dependants.
 
 #[derive(Debug, Clone, Serialize)]
-pub struct PacketFlux<'a> {
+pub struct PacketFlow<'a> {
     pub data_link: DataLink<'a>,
     pub internet: Internet<'a>,
     pub transport: Option<Transport<'a>>,
     pub application: Option<Application>,
 }
 
-impl<'a> TryFrom<&'a [u8]> for PacketFlux<'a> {
+impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
     type Error = ParsedPacketError;
 
     fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
@@ -55,7 +55,7 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlux<'a> {
             None => None,
         };
 
-        Ok(PacketFlux {
+        Ok(PacketFlow {
             data_link,
             internet,
             transport,

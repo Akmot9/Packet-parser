@@ -12,8 +12,8 @@
 //! # Overview
 //!
 //! The `DataLink` structure represents an Ethernet frame with the following fields:
-//! - `destination_mac`: The destination MAC address of the packet.
-//! - `source_mac`: The source MAC address of the packet.
+//! - `destination_mac`: The destination MAC address of the packet as a string.
+//! - `source_mac`: The source MAC address of the packet as a string.
 //! - `ethertype`: The Ethertype value, which indicates the protocol used in the payload.
 //! - `payload`: The remaining packet data after the Ethernet header.
 //!
@@ -61,10 +61,10 @@ use ethertype::Ethertype;
 /// an Ethertype, and the payload.
 #[derive(Debug, Clone, Serialize)]
 pub struct DataLink<'a> {
-    /// The destination MAC address.
-    pub destination_mac: MacAddress,
-    /// The source MAC address.
-    pub source_mac: MacAddress,
+    /// The destination MAC address as a string.
+    pub destination_mac: String,
+    /// The source MAC address as a string.
+    pub source_mac: String,
     /// The Ethertype of the packet, indicating the protocol in the payload.
     pub ethertype: Ethertype,
     /// The payload of the Ethernet frame.
@@ -84,9 +84,12 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
     fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
         validate_data_link_length(packets)?;
 
+        let destination_mac = MacAddress::try_from(&packets[0..6])?;
+        let source_mac = MacAddress::try_from(&packets[6..12])?;
+
         Ok(DataLink {
-            destination_mac: MacAddress::try_from(&packets[0..6])?,
-            source_mac: MacAddress::try_from(&packets[6..12])?,
+            destination_mac: destination_mac.display_with_oui(),
+            source_mac: source_mac.display_with_oui(),
             ethertype: Ethertype::from(u16::from_be_bytes([packets[12], packets[13]])),
             payload: &packets[14..],
         })
@@ -114,11 +117,15 @@ mod tests {
 
         assert_eq!(
             datalink.destination_mac,
-            MacAddress::try_from(&raw_packet[0..6]).unwrap()
+            MacAddress::try_from(&raw_packet[0..6])
+                .unwrap()
+                .display_with_oui()
         );
         assert_eq!(
             datalink.source_mac,
-            MacAddress::try_from(&raw_packet[6..12]).unwrap()
+            MacAddress::try_from(&raw_packet[6..12])
+                .unwrap()
+                .display_with_oui()
         );
         assert_eq!(datalink.ethertype, Ethertype::from(0x0800)); // IPv4 Ethertype
         assert_eq!(datalink.payload, &raw_packet[14..]);

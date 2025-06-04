@@ -1,4 +1,4 @@
-use packet_parser::parse::PacketFlux;
+use packet_parser::parse::PacketFlow;
 use pnet::datalink::Channel::Ethernet;
 use pnet::datalink::{self, NetworkInterface};
 use std::convert::TryFrom;
@@ -52,7 +52,7 @@ fn create_channel(
 
 fn main() -> Result<(), PacketCaptureError> {
     // Sélectionner l'interface réseau
-    let interface_name = "veth0"; // Exemple d'interface réseau maison : wlp6s0 wlp0s20f3 enxfeaa81e86d1e veth0
+    let interface_name = "enxfeaa81e86d1e"; // Exemple d'interface réseau maison : wlp6s0 wlp0s20f3 enxfeaa81e86d1e veth0
 
     let interface = find_interface(interface_name)?;
 
@@ -72,7 +72,7 @@ fn main() -> Result<(), PacketCaptureError> {
         println!("Received packet: {:2X?}", packet);
 
         // Tenter de parser le paquet
-        match PacketFlux::try_from(packet) {
+        match PacketFlow::try_from(packet) {
             Ok(parsed_packet) => println!("{}", parsed_packet),
             Err(e) => eprintln!(
                 "Error parsing packet: {:?}",

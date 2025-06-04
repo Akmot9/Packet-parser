@@ -9,8 +9,8 @@ impl fmt::Display for DataLink<'_> {
         write!(
             f,
             "\n    Destination MAC: {},\n    Source MAC: {},\n    Ethertype: {},\n    Payload Length: {}\n",
-            self.destination_mac.display_with_oui(),
-            self.source_mac.display_with_oui(),
+            self.destination_mac,
+            self.source_mac,
             self.ethertype,
             self.payload.len()
         )
