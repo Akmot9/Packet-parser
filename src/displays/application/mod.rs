@@ -1,4 +1,4 @@
-use crate::parse::application::{protocols::ApplicationProtocol, Application};
+use crate::parse::application::{Application, protocols::ApplicationProtocol};
 use std::fmt;
 
 impl fmt::Display for Application {

@@ -399,7 +399,9 @@ mod tests {
         assert_eq!(packet.fixed_header.remaining_length, 29);
         assert_eq!(
             packet.variable_header,
-            vec![0x00, 0x0B, b's', b'e', b'n', b's', b'o', b'r', b'/', b'd', b'a', b't', b'a']
+            vec![
+                0x00, 0x0B, b's', b'e', b'n', b's', b'o', b'r', b'/', b'd', b'a', b't', b'a'
+            ]
         );
         assert_eq!(
             packet.payload,

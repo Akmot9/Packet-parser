@@ -7,7 +7,7 @@ use std::convert::TryFrom;
 
 pub mod protocols;
 
-use protocols::{tcp::TcpPacket, udp::UdpPacket, TransportProtocol};
+use protocols::{TransportProtocol, tcp::TcpPacket, udp::UdpPacket};
 use serde::Serialize;
 
 use crate::errors::transport::TransportError;

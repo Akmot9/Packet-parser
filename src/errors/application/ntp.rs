@@ -29,7 +29,9 @@ pub enum NtpPacketParseError {
     #[error("La taille du timestamp NTP est incorrecte. Attendu: 8 octets, Reçu: {received}")]
     InvalidTimestampSize { received: usize },
 
-    #[error("Erreur lors de la conversion du timestamp NTP en `DateTime<Utc>`. Unix Seconds: {seconds}, Nanos: {nanos}")]
+    #[error(
+        "Erreur lors de la conversion du timestamp NTP en `DateTime<Utc>`. Unix Seconds: {seconds}, Nanos: {nanos}"
+    )]
     TimestampConversionError { seconds: i64, nanos: u32 },
 
     #[error("NTP timestamps are not in ascending order: Originate ≤ Receive ≤ Transmit violated")]

@@ -4,7 +4,7 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 use crate::{
-    errors::data_link::{mac_addres::MacParseError, DataLinkError},
+    errors::data_link::{DataLinkError, mac_addres::MacParseError},
     parse::data_link::mac_addres::MAC_LEN,
 };
 

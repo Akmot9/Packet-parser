@@ -10,8 +10,8 @@ use serde::Serialize;
 use transport::Transport;
 
 use crate::{
-    errors::{transport::TransportError, ParsedPacketError},
     DataLink,
+    errors::{ParsedPacketError, transport::TransportError},
 };
 
 pub mod application;

@@ -1,4 +1,4 @@
-use crate::parse::transport::{protocols::TransportProtocol, Transport};
+use crate::parse::transport::{Transport, protocols::TransportProtocol};
 use std::fmt;
 
 impl<'a> fmt::Display for Transport<'a> {

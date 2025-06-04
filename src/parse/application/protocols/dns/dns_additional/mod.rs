@@ -17,7 +17,12 @@ impl fmt::Display for AdditionalRecord {
         write!(
             f,
             "AdditionalRecord {{ name: {}, answer_type: {}, answer_class: {}, ttl: {}, data_length: {}, address: {:?} }}",
-            self.name, self.answer_type, self.answer_class, self.ttl, self.data_length, self.address
+            self.name,
+            self.answer_type,
+            self.answer_class,
+            self.ttl,
+            self.data_length,
+            self.address
         )
     }
 }

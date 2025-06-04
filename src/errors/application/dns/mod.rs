@@ -22,7 +22,9 @@ pub enum DnsHeaderError {
 
 #[derive(Debug, Error)]
 pub enum DnsQueryParseError {
-    #[error("Insufficient data: required {required} more bytes at offset {offset}, but only {available} bytes available")]
+    #[error(
+        "Insufficient data: required {required} more bytes at offset {offset}, but only {available} bytes available"
+    )]
     InsufficientData {
         required: usize,
         offset: usize,

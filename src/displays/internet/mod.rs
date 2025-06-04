@@ -10,8 +10,14 @@ impl<'a> fmt::Display for Internet<'a> {
             f,
             "\n    Protocol: {}\n    Source IP: {}\n    Destination IP: {}\n    Payload ({} bytes)\n",
             self.protocol_name,
-            self.source.as_ref().map(|ip| ip.to_string()).unwrap_or_else(|| "None".to_string()),
-            self.destination.as_ref().map(|ip| ip.to_string()).unwrap_or_else(|| "None".to_string()),
+            self.source
+                .as_ref()
+                .map(|ip| ip.to_string())
+                .unwrap_or_else(|| "None".to_string()),
+            self.destination
+                .as_ref()
+                .map(|ip| ip.to_string())
+                .unwrap_or_else(|| "None".to_string()),
             self.payload.len(),
         )
     }

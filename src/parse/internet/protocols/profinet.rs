@@ -224,8 +224,8 @@ mod tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use pnet::packet::ethernet::MutableEthernetPacket;
     use pnet::packet::MutablePacket;
+    use pnet::packet::ethernet::MutableEthernetPacket;
 
     use pnet::packet::Packet;
 

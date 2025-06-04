@@ -221,7 +221,11 @@ mod tests {
             0x05, 0x00, 0x00, 0x00, // Length (5)
         ];
         match parse_bitcoin_packet(&invalid_length) {
-            Ok(_) => assert!(false,"Expected non-Bitcoin packet due to inconsistent length => length of the tested packet: {}", invalid_length.len()),
+            Ok(_) => assert!(
+                false,
+                "Expected non-Bitcoin packet due to inconsistent length => length of the tested packet: {}",
+                invalid_length.len()
+            ),
             Err(is_bitcoin) => assert!(!is_bitcoin),
         }
     }

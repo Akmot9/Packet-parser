@@ -170,13 +170,15 @@ impl TryFrom<&[u8]> for NtpPacket {
 #[cfg(test)]
 mod tests {
     use crate::errors::application::ntp::NtpPacketParseError;
-    use crate::parse::application::protocols::ntp::*;
     use crate::parse::application::NtpPacket;
+    use crate::parse::application::protocols::ntp::*;
     // use chrono::TimeZone;
 
     #[test]
     fn test_valid_ntp_packet() {
-        let binding = hex::decode("d9000afa000000000001029000000000000000000000000000000000000000000000000000000000c50204eceed33c52");
+        let binding = hex::decode(
+            "d9000afa000000000001029000000000000000000000000000000000000000000000000000000000c50204eceed33c52",
+        );
 
         let result = NtpPacket::try_from(binding.expect("REASON").as_slice())
             .expect("Expected a valid NTP packet");
@@ -249,7 +251,9 @@ mod tests {
     #[test]
     fn test_check_ntp_packet() {
         // Valid NTP packet
-        let binding = hex::decode("d9000afa000000000001029000000000000000000000000000000000000000000000000000000000c50204eceed33c52");
+        let binding = hex::decode(
+            "d9000afa000000000001029000000000000000000000000000000000000000000000000000000000c50204eceed33c52",
+        );
 
         let result = NtpPacket::try_from(binding.expect("REASON").as_slice());
 
