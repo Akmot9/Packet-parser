@@ -8,17 +8,24 @@ impl<'a> fmt::Display for Internet<'a> {
 
         write!(
             f,
-            "\n    Protocol: {}\n    Source IP: {}\n    Destination IP: {}\n    Payload ({} bytes)\n",
+            "\n    Protocol: {}\n    Source IP: {}\n    Source IP Type: {}\n    Destination IP: {}\n    Destination IP Type: {}\n",
             self.protocol_name,
             self.source
                 .as_ref()
                 .map(|ip| ip.to_string())
                 .unwrap_or_else(|| "None".to_string()),
+            self.source_type
+                .as_ref()
+                .map(|ip_type| ip_type.to_string())
+                .unwrap_or_else(|| "None".to_string()),
             self.destination
                 .as_ref()
                 .map(|ip| ip.to_string())
                 .unwrap_or_else(|| "None".to_string()),
-            self.payload.len(),
+            self.destination_type
+                .as_ref()
+                .map(|ip_type| ip_type.to_string())
+                .unwrap_or_else(|| "None".to_string()),
         )
     }
 }

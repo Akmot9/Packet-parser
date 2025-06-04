@@ -34,6 +34,7 @@ impl fmt::Display for TransportProtocol {
             TransportProtocol::Icmp => "ICMP",
             TransportProtocol::IcmpV6 => "ICMPv6",
             TransportProtocol::PimV2 => "PIMv2",
+            TransportProtocol::Vrrp => "VRRP",
             TransportProtocol::Igmp => "IGMP",
             TransportProtocol::Pim => "PIM",
             TransportProtocol::Egp => "EGP",

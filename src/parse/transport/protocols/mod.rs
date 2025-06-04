@@ -14,6 +14,7 @@ pub enum TransportProtocol {
     Igmp,
     Pim,
     PimV2,
+    Vrrp,
 
     // Routing protocols
     Egp,
@@ -52,7 +53,7 @@ impl TransportProtocol {
             17 => TransportProtocol::Udp,
             58 => TransportProtocol::IcmpV6,
             103 => TransportProtocol::PimV2,
-
+            112 => TransportProtocol::Vrrp,
             // Routing protocols
             8 => TransportProtocol::Egp,
             9 => TransportProtocol::Igrp,

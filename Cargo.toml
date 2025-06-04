@@ -1,6 +1,6 @@
 [package]
 name = "packet_parser"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 authors = ["Cyprien Avico avicocyprien@yahoo.com"]
 description = "A powerful and modular Rust crate for network packet parsing."
