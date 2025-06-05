@@ -27,10 +27,6 @@ criterion = { version = "0.6.0", features = ["html_reports"] }
 pnet = "0.35.0"
 hex = "0.4.3"
 
-
-
-
-
 [workspace]
 members = ["integration_test"] # Spécifie que ta crate a un workspace avec d'autres projets
 
