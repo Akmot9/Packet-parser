@@ -44,6 +44,8 @@ pub enum Oui {
     ASUSTek,
     /// Siemens AG.
     Siemens,
+
+    SiemensN,
     /// Sagemcom Broadband SAS.
     Sagemcom,
     /// Intel Corporate.
@@ -85,6 +87,7 @@ impl Oui {
         match bytes {
             [0x2C, 0xFD, 0xA1, ..] => Oui::ASUSTek,
             [0xE0, 0xDC, 0xA0, ..] => Oui::Siemens,
+            [0x08, 0x00, 0x06, ..] => Oui::SiemensN,
             [0xB0, 0x5B, 0x99, ..] => Oui::Sagemcom,
             [0x64, 0x6E, 0xE0, ..] => Oui::Intel, // Ajout de Intel Corporate
             _ => Oui::Unknown,

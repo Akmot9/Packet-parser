@@ -4,6 +4,7 @@ use std::convert::TryFrom;
 use std::net::IpAddr;
 
 use crate::errors::internet::InternetError;
+use crate::parse::internet::protocols::profinet;
 use protocols::arp::ArpPacket;
 use protocols::ipv4;
 use protocols::ipv6;
@@ -71,10 +72,25 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
                 payload: ipv6_packet.payload,
             });
         }
-
-        Err(InternetError::UnsupportedProtocol(format!(
-            "Unsupported protocol: {}",
-            packet[0]
-        )))
+        if profinet::ProfinetPacket::try_from(packet).is_ok() {
+            return Ok(Internet {
+                source: None,
+                source_type: None,
+                destination: None,
+                destination_type: None,
+                protocol_name: "Profinet".to_string(),
+                payload_protocol: None,
+                payload: &[],
+            });
+        }
+        Ok(Internet {
+            source: None,
+            source_type: None,
+            destination: None,
+            destination_type: None,
+            protocol_name: "Unknown".to_string(),
+            payload_protocol: None,
+            payload: packet,
+        })
     }
 }

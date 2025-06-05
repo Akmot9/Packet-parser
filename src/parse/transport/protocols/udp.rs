@@ -101,7 +101,10 @@ mod tests {
         let result = UdpPacket::try_from(&data[..]);
         assert!(matches!(
             result,
-            Err(UdpError::PacketTooShort { expected, actual })
+            Err(UdpError::PacketTooShort {
+                expected: 8,
+                actual: 4
+            })
         ));
     }
 
@@ -118,7 +121,10 @@ mod tests {
         let result = UdpPacket::try_from(&data[..]);
         assert!(matches!(
             result,
-            Err(UdpError::InvalidLength { length, actual })
+            Err(UdpError::InvalidLength {
+                length: 16,
+                actual: 18
+            })
         ));
     }
 }

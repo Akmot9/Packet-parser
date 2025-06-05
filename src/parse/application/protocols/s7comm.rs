@@ -3,9 +3,64 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
+//! S7Comm protocol parser implementation.
+//!
+//! This module provides functionality to parse and handle S7Comm protocol packets,
+//! which is a communication protocol used by Siemens S7 PLCs. The implementation
+//! supports parsing of TPKT, COTP, and S7 protocol layers.
+//!
+//! # Example
+//! ```no_run
+//! use packet_parser::parse::application::protocols::s7comm::S7CommPacket;
+//!
+//! // Example S7Comm packet (simplified for demonstration)
+//! let raw_packet = [
+//!     0x03, 0x00, 0x00, 0x16, 0x11, 0xE0, 0x00, 0x00,
+//!     0x00, 0x01, 0x00, 0xC0, 0x01, 0x0A, 0xC1, 0x02,
+//!     0x01, 0x00, 0xC2, 0x02, 0x01, 0x02
+//! ];
+//!
+//! match S7CommPacket::try_from(&raw_packet[..]) {
+//!     Ok(packet) => println!("Successfully parsed S7Comm packet: {:?}", packet),
+//!     Err(e) => eprintln!("Failed to parse S7Comm packet: {}", e),
+//! }
+//! ```
+
 use std::fmt;
 
-/// Represents an S7Comm packet
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// S7Comm Protocol Packet
+///
+/// ```mermaid
+/// ---
+/// title: S7CommPacket
+/// ---
+/// packet-beta
+/// %% TPKT Header
+/// 0-7: "TPKT Version u8"
+/// 8-15: "TPKT Reserved u8"
+/// 16-31: "TPKT Length u16"
+///
+/// %% COTP Header
+/// 32-39: "COTP Length u8"
+/// 40-47: "COTP PDU Type u8"
+/// 48-63: "COTP Dest Ref u16"
+/// 64-79: "COTP Src Ref u16"
+/// 80-87: "COTP Last Data Unit"
+///
+/// %% S7 Header
+/// 88-95: "S7 Protocol ID u8"
+/// 96-103: "S7 ROSCTR u8"
+/// 104-119: "S7 Reserved u16"
+/// 120-135: "S7 PDU Ref u16"
+/// 136-151: "S7 Param Len u16"
+/// 152-167: "S7 Data Len u16"
+/// 168-175: "S7 Error Class"
+/// 176-183: "S7 Error Code"
+///
+/// %% S7 Parameter
+/// 184-191: "Param Function u8"
+/// ```
 #[derive(Debug)]
 pub struct S7CommPacket<'a> {
     /// TPKT Header (RFC 1006)
@@ -17,69 +72,145 @@ pub struct S7CommPacket<'a> {
     /// S7 Communication Header (S7Comm)
     pub s7_header: S7Header,
 
-    /// S7 Parameter (ex: Read Var, Write Var, etc.)
+    /// S7 Parameter section containing function code and items
     pub parameter: S7Parameter<'a>,
 
-    /// Données supplémentaires (optionnel)
+    /// Optional payload data
     pub payload: Option<&'a [u8]>,
 }
 
-/// TPKT Header (4 octets)
+/// TPKT (Transport Protocol Data Unit) Header (4 bytes)
+///
+/// Defined in RFC 1006, this is the outermost protocol layer.
 #[derive(Debug)]
 pub struct TpktHeader {
-    pub version: u8,  // Devrait être 3
-    pub reserved: u8, // Devrait être 0
-    pub length: u16,  // Taille totale du TPKT
+    /// Protocol version (should be 0x03)
+    pub version: u8,
+
+    /// Reserved field (should be 0x00)
+    pub reserved: u8,
+
+    /// Total length of the TPKT packet (including header)
+    pub length: u16,
 }
 
-/// COTP Header (au minimum 3 octets pour Data TPDU)
+/// COTP (Connection-Oriented Transport Protocol) Header
+///
+/// Defined in ISO 8073/X.224, this layer provides connection-oriented services.
 #[derive(Debug)]
 pub struct CotpHeader {
-    pub length: u8,                 // Longueur du header (ex: 2)
-    pub pdu_type: u8,               // 0xF0 = Data TPDU
-    pub destination_reference: u16, // Destination Reference (0x0000)
-    pub source_reference: u16,      // Source Reference (0x0000)
-    pub last_data_unit: bool,       // Dernier paquet (bit 0x01)
+    /// Length of the COTP header
+    pub length: u8,
+
+    /// PDU type (0xF0 = Data TPDU)
+    pub pdu_type: u8,
+
+    /// Destination reference number
+    pub destination_reference: u16,
+
+    /// Source reference number
+    pub source_reference: u16,
+
+    /// Indicates if this is the last data unit
+    pub last_data_unit: bool,
 }
 
-/// S7 Header (S7Comm PDU)
+/// S7 Communication Protocol Header
+///
+/// This is the S7-specific protocol header that follows the COTP header.
 #[derive(Debug)]
 pub struct S7Header {
-    pub protocol_id: u8,         // 0x32
-    pub rosctr: u8,              // Type de message (0x01 = Job, 0x03 = Ack, etc.)
-    pub reserved: u16,           // 0x0000
-    pub pduref: u16,             // PDU Reference ID
-    pub parameter_length: u16,   // Taille de la section Parameter
-    pub data_length: u16,        // Taille de la section Data (optionnel)
-    pub error_class: Option<u8>, // Pour ACK/Error uniquement
-    pub error_code: Option<u8>,  // Pour ACK/Error uniquement
+    /// Protocol ID (should be 0x32 for S7Comm)
+    pub protocol_id: u8,
+
+    /// Message type (0x01 = Job, 0x02 = Ack, 0x03 = Ack-Data, 0x07 = Userdata)
+    pub rosctr: u8,
+
+    /// Reserved field (should be 0x0000)
+    pub reserved: u16,
+
+    /// PDU reference number
+    pub pduref: u16,
+
+    /// Length of the parameter section
+    pub parameter_length: u16,
+
+    /// Length of the data section
+    pub data_length: u16,
+
+    /// Error class (only present in ACK/Error messages)
+    pub error_class: Option<u8>,
+
+    /// Error code (only present in ACK/Error messages)
+    pub error_code: Option<u8>,
 }
 
-/// Paramètres S7 (Read Var, Write Var, etc.)
+/// S7 Parameter section containing function code and items
+///
+/// This structure represents the parameter section of an S7Comm packet,
+/// which contains the function code and associated parameter items.
 #[derive(Debug)]
 pub struct S7Parameter<'a> {
-    pub function: u8, // Exemple: 0x04 = Read Var
+    /// Function code (e.g., 0x04 = Read Var, 0x05 = Write Var)
+    pub function: u8,
+
+    /// List of parameter items
     pub items: Vec<S7ParameterItem<'a>>,
 }
 
-/// Item dans les paramètres S7 (Read Var, Write Var)
+/// Represents a single item in the S7 parameter section
+///
+/// This structure contains the addressing information for a single data item
+/// being read from or written to the PLC.
 #[derive(Debug)]
 pub struct S7ParameterItem<'a> {
-    pub spec_type: u8,         // 0x12 = Variable Specification
-    pub length: u8,            // Longueur de la spec (ex: 0x0A)
-    pub syntax_id: u8,         // 0x10 = S7ANY
-    pub transport_size: u8,    // 0x02 = BYTE
-    pub db_number: u16,        // Numéro du bloc de données (DB)
-    pub area: u8,              // Zone mémoire (0x83 = DB)
-    pub address: u32,          // Adresse (calculée sur 3 octets)
-    pub raw: Option<&'a [u8]>, // Données brutes si nécessaire
+    /// Specification type (0x12 = Variable Specification)
+    pub spec_type: u8,
+
+    /// Length of the specification
+    pub length: u8,
+
+    /// Syntax ID (0x10 = S7ANY)
+    pub syntax_id: u8,
+
+    /// Transport size (0x02 = BYTE, 0x04 = WORD, etc.)
+    pub transport_size: u8,
+
+    /// DB number (0 for non-DB areas)
+    pub db_number: u16,
+
+    /// Memory area (0x81 = Input, 0x82 = Output, 0x83 = DB, etc.)
+    pub area: u8,
+
+    /// Memory address (3-byte address in big-endian format)
+    pub address: u32,
+
+    /// Raw bytes of the parameter item (if needed for debugging)
+    pub raw: Option<&'a [u8]>,
 }
 
 impl<'a> S7CommPacket<'a> {
     /// Minimum required size for an S7Comm packet (TPKT + COTP + S7 Header)
-    const MIN_SIZES: usize = 4 + 3 + 10;
+    pub const MIN_SIZES: usize = 4 + 3 + 10;
 
-    /// Try to parse a byte slice into an S7CommPacket
+    /// Attempts to parse a byte slice into an `S7CommPacket`.
+    ///
+    /// # Arguments
+    /// * `packet` - A byte slice containing the raw S7Comm packet
+    ///
+    /// # Returns
+    /// * `Ok(S7CommPacket)` if parsing was successful
+    /// * `Err(&'static str)` if the packet is malformed or incomplete
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use packet_parser::parse::application::protocols::s7comm::S7CommPacket;
+    /// let packet_data = [/* raw packet data */];
+    /// match S7CommPacket::try_from(&packet_data[..]) {
+    ///     Ok(packet) => println!("Successfully parsed packet: {:?}", packet),
+    ///     Err(e) => eprintln!("Failed to parse packet: {}", e),
+    /// }
+    /// ```
     pub fn try_from(packet: &'a [u8]) -> Result<Self, &'static str> {
         // println!("S7CommPacket::try_from: packet len: {:?}", packet);
         if packet.len() < Self::MIN_SIZES {
@@ -216,7 +347,17 @@ impl<'a> S7CommPacket<'a> {
         })
     }
 
-    /// Helper function to parse S7 parameter section
+    /// Parses the S7 parameter section of the packet.
+    ///
+    /// This is a helper function used internally by `try_from` to parse
+    /// the parameter section of an S7Comm packet.
+    ///
+    /// # Arguments
+    /// * `data` - The parameter section bytes to parse
+    ///
+    /// # Returns
+    /// * `Ok(S7Parameter)` if parsing was successful
+    /// * `Err(&'static str)` if the parameter data is invalid
     fn parse_parameter(data: &'a [u8]) -> Result<S7Parameter<'a>, &'static str> {
         if data.is_empty() {
             return Err("Empty parameter data");

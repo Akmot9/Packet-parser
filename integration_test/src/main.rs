@@ -52,7 +52,7 @@ fn create_channel(
 
 fn main() -> Result<(), PacketCaptureError> {
     // Sélectionner l'interface réseau
-    let interface_name = "enxfeaa81e86d1e"; // Exemple d'interface réseau maison : wlp6s0 wlp0s20f3 enxfeaa81e86d1e veth0
+    let interface_name = "veth0"; // Exemple d'interface réseau maison : wlp6s0 wlp0s20f3 enxfeaa81e86d1e veth0
 
     let interface = find_interface(interface_name)?;
 

@@ -20,24 +20,16 @@ use transport::TransportError;
 pub enum ParsedPacketError {
     #[error("Packet too short: {0} bytes")]
     PacketTooShort(u8),
-    #[error("Invalid DataLink segment")]
-    InvalidDataLink,
-    #[error("Invalid Internet segment")]
-    InvalidInternet,
+
+    #[error("Invalid DataLink segment: {0}")]
+    InvalidDataLink(#[from] DataLinkError),
+
+    #[error("Invalid Internet segment: {0}")]
+    InvalidInternet(#[from] InternetError),
+
     #[error("Transport layer error: {0}")]
     Transport(#[from] TransportError),
+
     #[error("Application layer error: {0}")]
     Application(#[from] ApplicationError),
-}
-
-// Implémente la conversion automatique
-impl From<DataLinkError> for ParsedPacketError {
-    fn from(_: DataLinkError) -> Self {
-        ParsedPacketError::InvalidDataLink
-    }
-}
-impl From<InternetError> for ParsedPacketError {
-    fn from(_: InternetError) -> Self {
-        ParsedPacketError::InvalidInternet
-    }
 }

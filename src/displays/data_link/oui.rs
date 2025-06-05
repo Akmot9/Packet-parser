@@ -8,6 +8,7 @@ impl Display for Oui {
         let name = match self {
             Oui::ASUSTek => "ASUSTek",
             Oui::Siemens => "Siemens",
+            Oui::SiemensN => "SiemensN",
             Oui::Sagemcom => "Sagemcom",
             Oui::Intel => "Intel",
             Oui::Unknown => "Unknown",
@@ -26,6 +27,7 @@ mod tests {
         let test_cases = vec![
             (Oui::ASUSTek, "ASUSTek"),
             (Oui::Siemens, "Siemens"),
+            (Oui::SiemensN, "SiemensN"),
             (Oui::Sagemcom, "Sagemcom"),
             (Oui::Intel, "Intel"),
             (Oui::Unknown, "Unknown"),
