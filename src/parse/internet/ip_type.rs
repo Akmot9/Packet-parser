@@ -27,6 +27,8 @@ impl IpType {
             Ok(IpAddr::V6(ipv6_addr)) if ipv6_addr.is_loopback() => Self::Loopback,
             Ok(IpAddr::V6(ipv6_addr)) if is_ipv6_unicast_link_local(&ipv6_addr) => Self::LinkLocal,
             Ok(IpAddr::V6(ipv6_addr)) if is_ula(&ipv6_addr) => Self::Ula,
+            Ok(IpAddr::V6(ipv6_addr)) if ipv6_addr.is_unspecified() => Self::Unknown,
+            Ok(IpAddr::V6(ipv6_addr)) if ipv6_addr.is_unique_local() => Self::Ula,
             Ok(_) => Self::Public, // Cette ligne devrait être la dernière condition pour IPv6
             Err(_) => Self::Unknown,
         }
