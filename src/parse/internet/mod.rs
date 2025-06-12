@@ -83,14 +83,6 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
                 payload: &[],
             });
         }
-        Ok(Internet {
-            source: None,
-            source_type: None,
-            destination: None,
-            destination_type: None,
-            protocol_name: "Unknown".to_string(),
-            payload_protocol: None,
-            payload: packet,
-        })
+        Err(InternetError::UnsupportedProtocol)
     }
 }

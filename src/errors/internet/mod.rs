@@ -19,8 +19,8 @@ pub enum InternetError {
     EmptyPacket,
 
     /// The protocol is not supported
-    #[error("Unsupported protocol: {0}")]
-    UnsupportedProtocol(String),
+    #[error("Unsupported transport protocol")]
+    UnsupportedProtocol,
 
     /// The packet format is invalid
     #[error("Invalid packet format: {0}")]

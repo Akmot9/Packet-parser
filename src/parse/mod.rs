@@ -11,7 +11,7 @@ use transport::Transport;
 
 use crate::{
     DataLink,
-    errors::{ParsedPacketError, transport::TransportError},
+    errors::{ParsedPacketError, internet::InternetError, transport::TransportError},
 };
 
 pub mod application;
@@ -24,7 +24,7 @@ pub mod transport;
 #[derive(Debug, Clone, Serialize)]
 pub struct PacketFlow<'a> {
     pub data_link: DataLink<'a>,
-    pub internet: Internet<'a>,
+    pub internet: Option<Internet<'a>>,
     pub transport: Option<Transport<'a>>,
     pub application: Option<Application>,
 }
@@ -34,15 +34,23 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
 
     fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
         let data_link = DataLink::try_from(packets)?;
-        let mut internet = Internet::try_from(data_link.payload)?;
-        // Étape 4 : Transport
-        let transport = match Transport::try_from(internet.payload) {
-            Ok(transport) => Some(transport),
-            Err(TransportError::UnsupportedProtocol) => {
-                std::mem::take(&mut internet.payload_protocol)
-            }
-            Err(e) => return Err(e.into()), // Pour les autres erreurs, on propage
+        let mut internet = match Internet::try_from(data_link.payload) {
+            Ok(internet) => Some(internet),
+            Err(InternetError::UnsupportedProtocol) => None,
+            Err(e) => return Err(e.into()), // ex : DataLinkError etc.
         };
+        // Étape 4 : Transport
+        let transport = match internet.as_mut() {
+            Some(internet) => match Transport::try_from(internet.payload) {
+                Ok(transport) => Some(transport),
+                Err(TransportError::UnsupportedProtocol) => {
+                    std::mem::take(&mut internet.payload_protocol)
+                }
+                Err(e) => return Err(e.into()),
+            },
+            None => None,
+        };
+
         // Étape 5 : Application
         // handle when transport is None then application is None
         let application = match &transport {

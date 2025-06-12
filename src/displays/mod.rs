@@ -17,7 +17,9 @@ impl Display for PacketFlow<'_> {
         writeln!(f, "ParsedPacket :")?;
         writeln!(f, "  Data Link Layer: {}", self.data_link)?;
 
-        writeln!(f, "  Internet Layer: {}", self.internet)?;
+        if let Some(internet) = &self.internet {
+            writeln!(f, "  Internet Layer: {}", internet)?;
+        }
 
         if let Some(trans) = &self.transport {
             writeln!(f, "  Transport Layer: {}", trans)?;
