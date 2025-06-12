@@ -39,7 +39,7 @@ mod tests {
             (0x8864, "0x8864 (Pppoe Session Stage)"),
             (0x8819, "0x8819 (CobraNet)"),
             (0x8902, "0x8902 (cfm)"),
-            (0xFFFF, "0xFFFF (Unknown)"), // Random unknown Ethertype
+            (0xFFFF, "0xFFFF (Unknown (0xFFFF))"), // Updated to show hex value for unknown
         ];
 
         for (code, expected_output) in test_cases {

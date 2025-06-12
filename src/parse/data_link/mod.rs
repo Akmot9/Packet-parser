@@ -66,7 +66,7 @@ pub struct DataLink<'a> {
     /// The source MAC address as a string.
     pub source_mac: String,
     /// The Ethertype of the packet, indicating the protocol in the payload.
-    pub ethertype: Ethertype,
+    pub ethertype: String,
     /// The payload of the Ethernet frame.
     pub payload: &'a [u8],
 }
@@ -86,11 +86,13 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
 
         let destination_mac = MacAddress::try_from(&packets[0..6])?;
         let source_mac = MacAddress::try_from(&packets[6..12])?;
-
+        let ethertype = Ethertype::from(u16::from_be_bytes([packets[12], packets[13]]))
+            .name()
+            .to_string();
         Ok(DataLink {
             destination_mac: destination_mac.display_with_oui(),
             source_mac: source_mac.display_with_oui(),
-            ethertype: Ethertype::from(u16::from_be_bytes([packets[12], packets[13]])),
+            ethertype,
             payload: &packets[14..],
         })
     }
@@ -100,8 +102,8 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
 mod tests {
 
     use crate::errors::data_link::DataLinkError;
+    use crate::parse::data_link::DataLink;
     use crate::parse::data_link::mac_addres::MacAddress;
-    use crate::parse::data_link::{DataLink, Ethertype};
 
     #[test]
     fn test_datalink_try_from_valid_packet() {
@@ -127,7 +129,7 @@ mod tests {
                 .unwrap()
                 .display_with_oui()
         );
-        assert_eq!(datalink.ethertype, Ethertype::from(0x0800)); // IPv4 Ethertype
+        assert_eq!(datalink.ethertype, "IPv4"); // IPv4 Ethertype
         assert_eq!(datalink.payload, &raw_packet[14..]);
     }
 
@@ -149,7 +151,7 @@ mod tests {
         ];
 
         let datalink = DataLink::try_from(raw_packet.as_ref()).unwrap();
-        assert_eq!(datalink.ethertype, Ethertype::from(0x86DD)); // IPv6 Ethertype
+        assert_eq!(datalink.ethertype, "IPv6"); // IPv6 Ethertype
     }
 
     #[test]
@@ -162,7 +164,7 @@ mod tests {
         ];
 
         let datalink = DataLink::try_from(raw_packet.as_ref()).unwrap();
-        assert_eq!(datalink.ethertype, Ethertype::from(0xABCD)); // Ethertype inconnu, mais accepté
+        assert_eq!(datalink.ethertype, "Unknown (0xABCD)"); // Ethertype inconnu, mais accepté
     }
     #[test]
     fn test_datalink_try_from_empty_payload() {
@@ -173,6 +175,6 @@ mod tests {
         ];
 
         let datalink = DataLink::try_from(raw_packet.as_ref()).unwrap();
-        assert_eq!(datalink.ethertype, Ethertype::from(0xABCD)); // Ethertype inconnu, mais accepté
+        assert_eq!(datalink.ethertype, "Unknown (0xABCD)"); // Ethertype inconnu, mais accepté
     }
 }
