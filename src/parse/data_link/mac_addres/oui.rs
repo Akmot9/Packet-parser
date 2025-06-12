@@ -46,6 +46,10 @@ pub enum Oui {
     Siemens,
 
     SiemensN,
+
+    SiemensD3,
+
+    PnMc,
     /// Sagemcom Broadband SAS.
     Sagemcom,
     /// Intel Corporate.
@@ -90,6 +94,8 @@ impl Oui {
             [0x08, 0x00, 0x06, ..] => Oui::SiemensN,
             [0xB0, 0x5B, 0x99, ..] => Oui::Sagemcom,
             [0x64, 0x6E, 0xE0, ..] => Oui::Intel, // Ajout de Intel Corporate
+            [0x01, 0x0E, 0xCF, ..] => Oui::PnMc,
+            [0x00, 0x0E, 0x8C, ..] => Oui::SiemensD3,
             _ => Oui::Unknown,
         }
     }

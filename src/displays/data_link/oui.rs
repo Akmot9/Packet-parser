@@ -11,6 +11,8 @@ impl Display for Oui {
             Oui::SiemensN => "SiemensN",
             Oui::Sagemcom => "Sagemcom",
             Oui::Intel => "Intel",
+            Oui::PnMc => "PnMc",
+            Oui::SiemensD3 => "SiemensD3",
             Oui::Unknown => "Unknown",
         };
         write!(f, "{}", name)
@@ -30,6 +32,8 @@ mod tests {
             (Oui::SiemensN, "SiemensN"),
             (Oui::Sagemcom, "Sagemcom"),
             (Oui::Intel, "Intel"),
+            (Oui::PnMc, "PnMc"),
+            (Oui::SiemensD3, "SiemensD3"),
             (Oui::Unknown, "Unknown"),
         ];
 
