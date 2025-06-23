@@ -30,6 +30,68 @@
 //!     Err(e) => eprintln!("Parsing error: {:?}", e),
 //! }
 //! ```
+//! ## Packet Structure
+//!
+//! The library parses packets into a hierarchical structure that can be represented as:
+//!
+//! ```text
+//! Packet
+//! ├── DataLink (Ethernet II)
+//! │   ├── source_mac: String
+//! │   ├── destination_mac: String
+//! │   └── ether_type: EtherType
+//! │
+//! ├── Network (IPv4/IPv6)
+//! │   ├── source_ip: IpAddr
+//! │   ├── destination_ip: IpAddr
+//! │   ├── protocol: IpProtocol
+//! │   └── ttl: u8
+//! │
+//! ├── Transport (TCP/UDP/ICMP)
+//! │   ├── source_port: Option<u16>
+//! │   ├── destination_port: Option<u16>
+//! │   └── flags: TransportFlags
+//! │
+//! └── Application
+//!     ├── protocol: ApplicationProtocol
+//!     └── payload: Vec<u8>
+//! ```
+//!
+//! ## Example Flattened Struct
+//!
+//! For easier access to all fields, you can use a flattened structure:
+//!
+//! ```rust
+//! use std::net::IpAddr;
+//! use pnet::packet::ethernet::EtherType;
+//! use pnet::packet::ip::IpNextHeaderProtocol as IpProtocol;
+//! use packet_parser::parse::application::protocols::ApplicationProtocol;
+//!
+//! pub struct FlattenedPacket<'a> {
+//!     // Data Link Layer (Ethernet)
+//!     pub source_mac: String,
+//!     pub destination_mac: String,
+//!     pub ether_type: EtherType,
+//!     
+//!     // Network Layer
+//!     pub source_ip: IpAddr,
+//!     pub destination_ip: IpAddr,
+//!     pub ip_protocol: IpProtocol,
+//!     pub ttl: u8,
+//!     
+//!     // Transport Layer
+//!     pub source_port: Option<u16>,
+//!     pub destination_port: Option<u16>,
+//!     pub transport_flags: u16,  // Using u16 as a simple representation of flags
+//!     
+//!     // Application Layer
+//!     pub application_protocol: Option<ApplicationProtocol<'a>>,
+//!     pub payload: Vec<u8>,
+//! }
+//! ```
+//!
+//! This flattened structure provides direct access to all packet fields without
+//! having to navigate through multiple layers of nested enums and structs.
 
 /// Module handling format and integrity checks for packets.
 pub mod checks;

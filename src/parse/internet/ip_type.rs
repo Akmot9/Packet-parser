@@ -11,6 +11,7 @@ pub enum IpType {
     LinkLocal,
     Ula,
     Public,
+    Documentation,
     #[default]
     Unknown,
 }
@@ -23,6 +24,10 @@ impl IpType {
             Ok(IpAddr::V4(ipv4_addr)) if ipv4_addr.is_loopback() => Self::Loopback,
             Ok(IpAddr::V4(ipv4_addr)) if is_apipa_ip(&ipv4_addr) => Self::Apipa,
             Ok(IpAddr::V4(ipv4_addr)) if ipv4_addr.is_multicast() => Self::Multicast,
+            Ok(IpAddr::V4(ipv4_addr)) if ipv4_addr.is_documentation() => Self::Documentation,
+            Ok(IpAddr::V4(ipv4_addr)) if ipv4_addr.is_link_local() => Self::LinkLocal,
+            Ok(IpAddr::V4(ipv4_addr)) if ipv4_addr.is_unspecified() => Self::Unknown,
+
             Ok(IpAddr::V6(ipv6_addr)) if ipv6_addr.is_multicast() => Self::Multicast,
             Ok(IpAddr::V6(ipv6_addr)) if ipv6_addr.is_loopback() => Self::Loopback,
             Ok(IpAddr::V6(ipv6_addr)) if is_ipv6_unicast_link_local(&ipv6_addr) => Self::LinkLocal,
@@ -46,6 +51,7 @@ impl fmt::Display for IpType {
             IpType::Ula => "ULA",
             IpType::Public => "Publique",
             IpType::Unknown => "Inconnue",
+            IpType::Documentation => "Documentation",
         };
 
         write!(f, "{}", display_string)

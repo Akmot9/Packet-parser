@@ -1,6 +1,6 @@
 [package]
 name = "packet_parser"
-version = "0.5.5"
+version = "0.5.6"
 edition = "2024"
 authors = ["Cyprien Avico avicocyprien@yahoo.com"]
 description = "A powerful and modular Rust crate for network packet parsing."
@@ -16,9 +16,9 @@ exclude = [".github/", ".gitignore", "tests/", "benches/"]
 [dependencies]
 thiserror = "2.0.12"
 pcap-file = "2.0.0"
-serde = { version = "1.0.217", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
 uuid = "1.17.0"
-chrono = "0.4.39" # for ntp timestamp
+chrono = "0.4.41" # for ntp timestamp
 aquamarine = "0.6.0"
 hex = "0.4.3"
 
