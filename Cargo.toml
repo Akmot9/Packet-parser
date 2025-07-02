@@ -1,6 +1,6 @@
 [package]
 name = "packet_parser"
-version = "0.5.6"
+version = "0.5.7"
 edition = "2024"
 authors = ["Cyprien Avico avicocyprien@yahoo.com"]
 description = "A powerful and modular Rust crate for network packet parsing."
@@ -31,8 +31,11 @@ hex = "0.4.3"
 members = ["integration_test"] # Spécifie que ta crate a un workspace avec d'autres projets
 
 [profile.release]
-lto = "fat"          # Optimisation maximale de la taille binaire et des performances
-codegen-units = 1    # Compilation optimisée pour la performance (au détriment du temps de build)
-panic = "abort"      # Supprime le support du backtrace, réduit la taille binaire
-strip = true         # Supprime les symboles de debug pour réduire la taille binaire
-opt-level = "z"      # Optimisation pour la taille (`s` pour équilibrer, `z` pour minimiser)
+opt-level = 3         # Highest speed optimization
+lto = "fat"           # Link Time Optimization for best performance
+codegen-units = 1     # Best for performance (slower build)
+panic = "abort"       # Optional: slightly faster, smaller
+strip = false         # Keep symbols if you want better profiling/debugging
+incremental = false   # Ensures full optimization
+debug = false         # No debug info in release
+rpath = false         # No runtime path in binary

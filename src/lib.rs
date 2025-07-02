@@ -114,5 +114,10 @@ pub use parse::data_link::DataLink;
 /// Exports MAC address parsing functionality.
 pub use parse::data_link::mac_addres::MacAddress;
 
+
+pub use parse::internet::Internet;
+pub use parse::transport::Transport;
+pub use parse::application::Application;
+
 /// Exports data link layer parsing functionality.
 pub use parse::PacketFlow;
