@@ -20,7 +20,8 @@ pub struct Internet<'a> {
     pub destination: Option<IpAddr>,
     pub destination_type: Option<IpType>,
     pub protocol_name: String,
-    pub payload_protocol: Option<Transport<'a>>,
+    pub payload_protocol: Option<String>,
+    #[serde(skip_serializing)]
     pub payload: &'a [u8],
 }
 

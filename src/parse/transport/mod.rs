@@ -22,17 +22,13 @@ pub struct Transport<'a> {
     /// Destination port
     pub destination_port: Option<u16>,
     /// The payload of the transport packet
+    #[serde(skip_serializing)]
     pub payload: Option<&'a [u8]>,
 }
 
 impl<'a> Transport<'a> {
-    pub fn transport_from_u8(protocol: &u8) -> Self {
-        Transport {
-            protocol: TransportProtocol::from_u8(*protocol),
-            source_port: None,
-            destination_port: None,
-            payload: None,
-        }
+    pub fn transport_from_u8(protocol: &u8) -> String {
+        TransportProtocol::from_u8(*protocol).to_string()
     }
 }
 

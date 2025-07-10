@@ -52,7 +52,7 @@ fn create_channel(
 
 fn main() -> Result<(), PacketCaptureError> {
     // Sélectionner l'interface réseau
-    let interface_name = "veth0"; // Exemple d'interface réseau maison : wlp6s0 wlp0s20f3 enxfeaa81e86d1e veth0
+    let interface_name = "wlp0s20f3"; // Exemple d'interface réseau maison : wlp6s0 wlp0s20f3 enxfeaa81e86d1e veth0
 
     let interface = find_interface(interface_name)?;
 
@@ -73,7 +73,10 @@ fn main() -> Result<(), PacketCaptureError> {
 
         // Tenter de parser le paquet
         match PacketFlow::try_from(packet) {
-            Ok(parsed_packet) => println!("{}", parsed_packet),
+            Ok(parsed_packet) => match serde_json::to_string(&parsed_packet) {
+                Ok(json) => println!("{}", json),
+                Err(e) => eprintln!("Serialization error: {}", e),
+            },
             Err(e) => eprintln!(
                 "Error parsing packet: {:?}",
                 PacketCaptureError::PacketParseError(e.to_string())

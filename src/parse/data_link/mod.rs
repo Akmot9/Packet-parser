@@ -68,6 +68,7 @@ pub struct DataLink<'a> {
     /// The Ethertype of the packet, indicating the protocol in the payload.
     pub ethertype: String,
     /// The payload of the Ethernet frame.
+    #[serde(skip_serializing)]
     pub payload: &'a [u8],
 }
 

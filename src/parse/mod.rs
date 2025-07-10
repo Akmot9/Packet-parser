@@ -23,9 +23,13 @@ pub mod transport;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PacketFlow<'a> {
+    #[serde(flatten)]
     pub data_link: DataLink<'a>,
+    #[serde(flatten)]
     pub internet: Option<Internet<'a>>,
+    #[serde(flatten)]
     pub transport: Option<Transport<'a>>,
+    #[serde(flatten)]
     pub application: Option<Application>,
 }
 
@@ -43,9 +47,7 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
         let transport = match internet.as_mut() {
             Some(internet) => match Transport::try_from(internet.payload) {
                 Ok(transport) => Some(transport),
-                Err(TransportError::UnsupportedProtocol) => {
-                    std::mem::take(&mut internet.payload_protocol)
-                }
+                Err(TransportError::UnsupportedProtocol) => None,
                 Err(e) => return Err(e.into()),
             },
             None => None,
@@ -69,3 +71,5 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
         })
     }
 }
+
+
