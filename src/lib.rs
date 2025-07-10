@@ -116,6 +116,7 @@ pub use parse::data_link::mac_addres::MacAddress;
 
 
 pub use parse::internet::Internet;
+pub use parse::internet::ip_type::IpType;
 pub use parse::transport::Transport;
 pub use parse::application::Application;
 
