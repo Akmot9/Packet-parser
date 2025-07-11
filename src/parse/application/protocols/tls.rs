@@ -42,7 +42,7 @@ impl fmt::Display for TlsContentType {
             TlsContentType::ApplicationData => "ApplicationData",
             TlsContentType::Heartbeat => "Heartbeat",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -70,7 +70,7 @@ impl fmt::Display for TlsVersion {
             (3, 4) => "TLS 1.3",
             _ => return write!(f, "{}.{}", self.major, self.minor),
         };
-        write!(f, "{}", version)
+        write!(f, "{version}")
     }
 }
 

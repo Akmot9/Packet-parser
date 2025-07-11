@@ -23,7 +23,7 @@ impl<'a> fmt::Display for ApplicationProtocol<'a> {
                 let preview_len = 16.min(data.len());
                 let hex_preview: String = data[..preview_len]
                     .iter()
-                    .map(|&b| format!("{:02X}", b))
+                    .map(|&b| format!("{b:02X}"))
                     .collect::<Vec<_>>()
                     .join(" ");
 

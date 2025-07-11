@@ -22,7 +22,7 @@
 //!     0x00, 0x04, // DCP Block Length
 //!     b'T', b'E', b'S', b'T'  // Name Of Station
 //! ];
-//! 
+//!
 //! match ProfinetPacket::try_from(raw) {
 //!     Ok(packet) => println!("Station: {}", packet.name_of_station),
 //!     Err(e) => eprintln!("Erreur de parsing: {}", e),
@@ -70,7 +70,6 @@ impl FrameId {
     }
 }
 
-
 /// Liste des erreurs possibles lors du parsing d’un paquet Profinet.
 #[derive(Error, Debug, Clone, Eq, PartialEq)]
 pub enum ProfinetPacketError {
@@ -92,7 +91,6 @@ pub enum ProfinetPacketError {
 }
 
 /// Structure représentant un paquet Profinet DCP parsé.
-
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// Profinet Protocol Packet
 ///

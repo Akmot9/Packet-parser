@@ -164,10 +164,10 @@ impl fmt::Display for CotpHeader {
             CotpPduType::DisconnectRequest => "Disconnect Request (DR)",
             CotpPduType::DisconnectConfirm => "Disconnect Confirm (DC)",
             CotpPduType::TpduError => "TPDU Error (ER)",
-            CotpPduType::Other(code) => return write!(f, "Unknown PDU Type: 0x{:02X}", code),
+            CotpPduType::Other(code) => return write!(f, "Unknown PDU Type: 0x{code:02X}"),
         };
 
-        writeln!(f, "COTP: {}", type_str)?;
+        writeln!(f, "COTP: {type_str}")?;
         writeln!(f, "  Length: {}", self.length)?;
         writeln!(f, "  Destination reference: 0x{:04X}", self.dst_ref)?;
         writeln!(f, "  Source reference: 0x{:04X}", self.src_ref)?;
@@ -193,24 +193,24 @@ impl fmt::Display for CotpHeader {
                         0x0D => 8192,
                         _ => 1 << (*size as u16 + 6),
                     };
-                    writeln!(f, "  TPDU size: {} bytes", tpdu_size)?;
+                    writeln!(f, "  TPDU size: {tpdu_size} bytes")?;
                 }
                 CotpParameter::SrcTsap(tsap) => {
-                    writeln!(f, "  Source TSAP: 0x{:04X}", tsap)?;
+                    writeln!(f, "  Source TSAP: 0x{tsap:04X}")?;
                 }
                 CotpParameter::DstTsap(tsap) => {
-                    writeln!(f, "  Destination TSAP: 0x{:04X}", tsap)?;
+                    writeln!(f, "  Destination TSAP: 0x{tsap:04X}")?;
                 }
                 CotpParameter::TpduNumber(num) => {
-                    writeln!(f, "  TPDU Number: {}", num)?;
+                    writeln!(f, "  TPDU Number: {num}")?;
                 }
                 CotpParameter::Eot(_) => {
                     writeln!(f, "  End of TSDU: Yes")?;
                 }
                 CotpParameter::Other(code, data) => {
-                    write!(f, "  Parameter 0x{:02X}: ", code)?;
+                    write!(f, "  Parameter 0x{code:02X}: ")?;
                     for byte in data {
-                        write!(f, "{:02X} ", byte)?;
+                        write!(f, "{byte:02X} ")?;
                     }
                     writeln!(f)?;
                 }

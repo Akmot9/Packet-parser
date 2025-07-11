@@ -18,14 +18,14 @@ impl Display for PacketFlow<'_> {
         writeln!(f, "  Data Link Layer: {}", self.data_link)?;
 
         if let Some(internet) = &self.internet {
-            writeln!(f, "  Internet Layer: {}", internet)?;
+            writeln!(f, "  Internet Layer: {internet}")?;
         }
 
         if let Some(trans) = &self.transport {
-            writeln!(f, "  Transport Layer: {}", trans)?;
+            writeln!(f, "  Transport Layer: {trans}")?;
         }
         if let Some(app) = &self.application {
-            writeln!(f, "  Application Layer: {}", app)?;
+            writeln!(f, "  Application Layer: {app}")?;
         }
         write!(f, "")
     }

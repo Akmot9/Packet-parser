@@ -54,7 +54,7 @@ impl fmt::Display for IpType {
             IpType::Documentation => "Documentation",
         };
 
-        write!(f, "{}", display_string)
+        write!(f, "{display_string}")
     }
 }
 

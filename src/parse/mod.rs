@@ -71,5 +71,3 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
         })
     }
 }
-
-

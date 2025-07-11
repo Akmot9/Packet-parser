@@ -52,6 +52,6 @@ impl fmt::Display for TransportProtocol {
             TransportProtocol::None => "None",
             TransportProtocol::Unknown => "Unknown",
         };
-        write!(f, "{}", protocol_str)
+        write!(f, "{protocol_str}")
     }
 }

@@ -41,7 +41,7 @@ impl fmt::Display for DnsQueries {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "DnsQueries {{ queries: [")?;
         for query in &self.queries {
-            write!(f, " {},", query)?;
+            write!(f, " {query},")?;
         }
         write!(f, "] }}")
     }

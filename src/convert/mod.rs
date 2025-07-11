@@ -76,7 +76,7 @@ pub fn hex_stream_to_bytes(hex: &str) -> Vec<u8> {
 pub fn bytes_to_hex_string(bytes: &[u8]) -> String {
     let mut hex_string = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-        write!(&mut hex_string, "{:02X}", byte).unwrap();
+        write!(&mut hex_string, "{byte:02X}").unwrap();
     }
     hex_string
 }
@@ -85,7 +85,7 @@ pub fn bytes_to_hex_string(bytes: &[u8]) -> String {
 pub fn format_hex_array(bytes: &[u8]) -> String {
     let mut formatted = String::from("[\n");
     for (i, byte) in bytes.iter().enumerate() {
-        formatted.push_str(&format!("    0x{:02X},", byte));
+        formatted.push_str(&format!("    0x{byte:02X},"));
         if (i + 1) % 8 == 0 {
             formatted.push('\n');
         } else {

@@ -198,7 +198,7 @@ fn validate_epoch(payload: &[u8]) -> Result<(), NtpPacketParseError> {
 
     // Vérification si le timestamp est avant 1970
     if (ntp_seconds as i64) < 0 {
-        println!("Invalid timestamp: {}", ntp_seconds);
+        println!("Invalid timestamp: {ntp_seconds}");
         return Err(NtpPacketParseError::InvalidTime);
     }
 

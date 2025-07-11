@@ -75,7 +75,7 @@ impl fmt::Display for MqttPacketType {
             MqttPacketType::Pingresp => "PINGRESP",
             MqttPacketType::Disconnect => "DISCONNECT",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -161,15 +161,14 @@ fn extract_variable_and_payload(
     );
 
     if payload.len() < header_len {
-        println!("Error: Payload too short for header_len ({})", header_len);
+        println!("Error: Payload too short for header_len ({header_len})");
         return Err(false);
     }
 
     let actual_remaining = payload.len() - header_len;
     if actual_remaining < remaining_length as usize {
         println!(
-            "Error: actual remaining length ({}) is less than expected remaining_length ({})",
-            actual_remaining, remaining_length
+            "Error: actual remaining length ({actual_remaining}) is less than expected remaining_length ({remaining_length})",
         );
         return Err(false);
     }
@@ -214,18 +213,17 @@ fn extract_variable_and_payload(
 ///   otherwise returns `Err(false)` indicating an invalid MQTT packet.
 pub fn parse_mqtt_packet(payload: &[u8]) -> Result<MqttPacket, bool> {
     println!("Parsing MQTT packet. Payload length: {}", payload.len());
-    println!("Payload: {:?}", payload);
+    println!("Payload: {payload:?}");
 
     check_minimum_length(payload)?;
     println!("Passed minimum length check");
 
     let packet_type = check_packet_type(payload)?;
-    println!("Packet type: {:?}", packet_type);
+    println!("Packet type: {packet_type:?}");
 
     let (remaining_length, remaining_length_bytes) = extract_remaining_length(payload)?;
     println!(
-        "Remaining length: {}, remaining_length_bytes: {}",
-        remaining_length, remaining_length_bytes
+        "Remaining length: {remaining_length}, remaining_length_bytes: {remaining_length_bytes}"
     );
 
     let header_len = 1 + remaining_length_bytes;
@@ -233,8 +231,8 @@ pub fn parse_mqtt_packet(payload: &[u8]) -> Result<MqttPacket, bool> {
     let (variable_header, payload_data) =
         extract_variable_and_payload(payload, remaining_length, header_len, &packet_type)?;
     println!("Successfully extracted variable header and payload");
-    println!("Variable header: {:?}", variable_header);
-    println!("Payload data: {:?}", payload_data);
+    println!("Variable header: {variable_header:?}");
+    println!("Payload data: {payload_data:?}");
 
     Ok(MqttPacket {
         fixed_header: MqttFixedHeader {

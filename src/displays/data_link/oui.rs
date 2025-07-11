@@ -15,7 +15,7 @@ impl Display for Oui {
             Oui::SiemensD3 => "SiemensD3",
             Oui::Unknown => "Unknown",
         };
-        write!(f, "{}", name)
+        write!(f, "{name}")
     }
 }
 
