@@ -59,7 +59,7 @@ use ethertype::Ethertype;
 
 /// Represents a parsed Ethernet frame, containing source and destination MAC addresses,
 /// an Ethertype, and the payload.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Eq)]
 pub struct DataLink<'a> {
     /// The destination MAC address as a string.
     pub destination_mac: String,

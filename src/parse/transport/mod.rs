@@ -13,7 +13,7 @@ use serde::Serialize;
 use crate::errors::transport::TransportError;
 
 /// Represents a transport layer packet (UDP, TCP, etc.)
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Eq)]
 pub struct Transport<'a> {
     /// The transport layer protocol name
     pub protocol: TransportProtocol,

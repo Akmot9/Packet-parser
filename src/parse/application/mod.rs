@@ -12,7 +12,7 @@ use serde::Serialize;
 use crate::{errors::application::ApplicationError, parse::application::protocols::ntp::NtpPacket};
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Eq)]
 pub struct Application {
     pub application_protocol: String,
 }

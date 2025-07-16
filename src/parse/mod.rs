@@ -21,7 +21,7 @@ pub mod transport;
 // You can determine either a full raw packet that will return a PacketParsed struct composed of data link network transportand application layers.
 // Or if you need to, you can put your payload in a determine application try from. detemines function are not dependants.
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Eq)]
 pub struct PacketFlow<'a> {
     #[serde(flatten)]
     pub data_link: DataLink<'a>,

@@ -13,7 +13,7 @@ pub mod ip_type;
 use super::transport::Transport;
 use ip_type::IpType;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Eq)]
 pub struct Internet<'a> {
     pub source: Option<IpAddr>,
     pub source_type: Option<IpType>,
