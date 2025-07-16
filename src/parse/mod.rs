@@ -71,3 +71,22 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
         })
     }
 }
+
+impl<'a> PartialEq for PacketFlow<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.data_link == other.data_link &&
+        self.internet == other.internet &&
+        self.transport == other.transport &&
+        self.application == other.application
+    }
+}
+use std::hash::{Hash, Hasher};
+
+impl<'a> Hash for PacketFlow<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.data_link.hash(state);
+        self.internet.hash(state);
+        self.transport.hash(state);
+        self.application.hash(state);
+    }
+}

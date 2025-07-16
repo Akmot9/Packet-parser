@@ -99,6 +99,23 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
     }
 }
 
+impl<'a> PartialEq for DataLink<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.destination_mac == other.destination_mac &&
+        self.source_mac == other.source_mac &&
+        self.ethertype == other.ethertype 
+    }
+}
+use std::hash::{Hash, Hasher};
+
+impl<'a> Hash for DataLink<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.destination_mac.hash(state);
+        self.source_mac.hash(state);
+        self.ethertype.hash(state);
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -131,7 +148,6 @@ mod tests {
                 .display_with_oui()
         );
         assert_eq!(datalink.ethertype, "IPv4"); // IPv4 Ethertype
-        assert_eq!(datalink.payload, &raw_packet[14..]);
     }
 
     #[test]

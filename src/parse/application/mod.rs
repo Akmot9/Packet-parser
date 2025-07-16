@@ -64,6 +64,20 @@ impl TryFrom<&[u8]> for Application {
     }
 }
 
+impl PartialEq for Application {
+    fn eq(&self, other: &Self) -> bool {
+        self.application_protocol == other.application_protocol
+    }
+}
+
+use std::hash::{Hash, Hasher};
+
+impl Hash for Application {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.application_protocol.hash(state);
+    }
+}
+
 #[cfg(test)]
 mod tests {
 

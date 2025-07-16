@@ -59,3 +59,20 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
         Err(TransportError::UnsupportedProtocol)
     }
 }
+
+impl<'a> PartialEq for Transport<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.protocol == other.protocol &&
+        self.source_port == other.source_port &&
+        self.destination_port == other.destination_port
+    }
+}
+use std::hash::{Hash, Hasher};
+
+impl<'a> Hash for Transport<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.protocol.hash(state);
+        self.source_port.hash(state);
+        self.destination_port.hash(state);
+    }
+}   

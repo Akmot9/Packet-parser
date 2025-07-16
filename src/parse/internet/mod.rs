@@ -87,3 +87,26 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
         Err(InternetError::UnsupportedProtocol)
     }
 }
+
+impl<'a> PartialEq for Internet<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.source == other.source &&
+        self.source_type == other.source_type &&
+        self.destination == other.destination &&
+        self.destination_type == other.destination_type &&
+        self.protocol_name == other.protocol_name &&
+        self.payload_protocol == other.payload_protocol
+    }
+}
+use std::hash::{Hash, Hasher};
+
+impl<'a> Hash for Internet<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.source.hash(state);
+        self.source_type.hash(state);
+        self.destination.hash(state);
+        self.destination_type.hash(state);
+        self.protocol_name.hash(state);
+        self.payload_protocol.hash(state);
+    }
+}
