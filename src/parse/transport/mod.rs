@@ -62,9 +62,9 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
 
 impl<'a> PartialEq for Transport<'a> {
     fn eq(&self, other: &Self) -> bool {
-        self.protocol == other.protocol &&
-        self.source_port == other.source_port &&
-        self.destination_port == other.destination_port
+        self.protocol == other.protocol
+            && self.source_port == other.source_port
+            && self.destination_port == other.destination_port
     }
 }
 use std::hash::{Hash, Hasher};
@@ -75,4 +75,4 @@ impl<'a> Hash for Transport<'a> {
         self.source_port.hash(state);
         self.destination_port.hash(state);
     }
-}   
+}

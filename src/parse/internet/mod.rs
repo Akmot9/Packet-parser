@@ -90,12 +90,12 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
 
 impl<'a> PartialEq for Internet<'a> {
     fn eq(&self, other: &Self) -> bool {
-        self.source == other.source &&
-        self.source_type == other.source_type &&
-        self.destination == other.destination &&
-        self.destination_type == other.destination_type &&
-        self.protocol_name == other.protocol_name &&
-        self.payload_protocol == other.payload_protocol
+        self.source == other.source
+            && self.source_type == other.source_type
+            && self.destination == other.destination
+            && self.destination_type == other.destination_type
+            && self.protocol_name == other.protocol_name
+            && self.payload_protocol == other.payload_protocol
     }
 }
 use std::hash::{Hash, Hasher};

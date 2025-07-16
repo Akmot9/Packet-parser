@@ -4,7 +4,7 @@ pub mod tcp;
 pub mod udp;
 
 /// Represents various transport layer protocols with their IANA protocol numbers
-#[derive(Debug, Clone, Serialize, Hash)]
+#[derive(Debug, Clone, Serialize, Hash, PartialEq, Eq)]
 pub enum TransportProtocol {
     // Core protocols
     Tcp,
@@ -78,13 +78,6 @@ impl TransportProtocol {
         }
     }
 }
-
-impl PartialEq for TransportProtocol {
-    fn eq(&self, other: &Self) -> bool {
-        self == other
-    }
-}
-
 
 #[cfg(test)]
 mod tests {

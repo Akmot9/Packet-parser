@@ -101,9 +101,9 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
 
 impl<'a> PartialEq for DataLink<'a> {
     fn eq(&self, other: &Self) -> bool {
-        self.destination_mac == other.destination_mac &&
-        self.source_mac == other.source_mac &&
-        self.ethertype == other.ethertype 
+        self.destination_mac == other.destination_mac
+            && self.source_mac == other.source_mac
+            && self.ethertype == other.ethertype
     }
 }
 use std::hash::{Hash, Hasher};
