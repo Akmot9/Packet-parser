@@ -1,10 +1,10 @@
-use std::net::IpAddr;
+use std::{hash::Hasher, net::IpAddr};
 
 use serde::Serialize;
 
 use crate::{Application, PacketFlow};
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct PacketFlowOwned {
     #[serde(flatten)]
     pub data_link: DataLinkOwned,
@@ -16,7 +16,7 @@ pub struct PacketFlowOwned {
     pub application: Option<Application>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
 pub struct DataLinkOwned {
     pub destination_mac: String,
     /// The source MAC address as a string.
@@ -25,14 +25,16 @@ pub struct DataLinkOwned {
     pub ethertype: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+
+
+#[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
 pub struct InternetOwned {
     pub source_ip: Option<IpAddr>,
     pub destination_ip: Option<IpAddr>,
     pub protocol: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
 pub struct TransportOwned {
     pub source_port: Option<u16>,
     pub destination_port: Option<u16>,
@@ -75,5 +77,16 @@ impl<'a> From<PacketFlow<'a>> for PacketFlowOwned {
                 None => None,
             },
         }
+    }
+}
+
+
+use std::hash::Hash;
+impl Hash for PacketFlowOwned {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.data_link.hash(state);
+        self.internet.hash(state);
+        self.transport.hash(state);
+        self.application.hash(state);
     }
 }
