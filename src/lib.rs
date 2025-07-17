@@ -99,6 +99,8 @@ pub mod checks;
 /// Module for converting packet formats.
 pub mod convert;
 
+pub mod owned;
+
 /// Module for displaying parsed data (internal use).
 mod displays;
 
