@@ -104,6 +104,7 @@ mod displays;
 
 /// Centralized error management for the crate.
 mod errors;
+pub use errors::ParsedPacketError;
 
 /// Main module for packet analysis.
 pub mod parse;
