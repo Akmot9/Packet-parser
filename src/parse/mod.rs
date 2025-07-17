@@ -10,8 +10,7 @@ use serde::Serialize;
 use transport::Transport;
 
 use crate::{
-    DataLink,
-    errors::{ParsedPacketError, internet::InternetError, transport::TransportError},
+    errors::{internet::InternetError, transport::TransportError, ParsedPacketError}, owned::PacketFlowOwned, DataLink
 };
 
 pub mod application;
@@ -88,5 +87,11 @@ impl<'a> Hash for PacketFlow<'a> {
         self.internet.hash(state);
         self.transport.hash(state);
         self.application.hash(state);
+    }
+}
+
+impl<'a> PacketFlow<'a> {
+    pub fn to_owned(&self) -> PacketFlowOwned {
+        PacketFlowOwned::from(self.clone())
     }
 }
