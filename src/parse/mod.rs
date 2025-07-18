@@ -10,7 +10,9 @@ use serde::Serialize;
 use transport::Transport;
 
 use crate::{
-    errors::{internet::InternetError, transport::TransportError, ParsedPacketError}, owned::PacketFlowOwned, DataLink
+    DataLink,
+    errors::{ParsedPacketError, internet::InternetError, transport::TransportError},
+    owned::PacketFlowOwned,
 };
 
 pub mod application;

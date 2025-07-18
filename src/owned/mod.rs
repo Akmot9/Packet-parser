@@ -1,6 +1,7 @@
 use std::{hash::Hasher, net::IpAddr};
 
 use serde::Serialize;
+use std::fmt::Display;
 
 use crate::{Application, PacketFlow};
 
@@ -25,7 +26,61 @@ pub struct DataLinkOwned {
     pub ethertype: String,
 }
 
+impl Display for DataLinkOwned {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "\n    Destination MAC: {},\n    Source MAC: {},\n    Ethertype: {}\n",
+            self.destination_mac, self.source_mac, self.ethertype
+        )
+    }
+}
 
+impl Display for InternetOwned {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let source_ip = match &self.source_ip {
+            Some(ip) => ip.to_string(),
+            None => "None".to_string(),
+        };
+
+        let destination_ip = match &self.destination_ip {
+            Some(ip) => ip.to_string(),
+            None => "None".to_string(),
+        };
+
+        write!(
+            f,
+            "\n    Source IP: {},\n    Destination IP: {},\n    Protocol: {}\n",
+            source_ip, destination_ip, self.protocol
+        )
+    }
+}
+
+impl Display for TransportOwned {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let source_port = match self.source_port {
+            Some(port) => port.to_string(),
+            None => "None".to_string(),
+        };
+
+        let destination_port = match self.destination_port {
+            Some(port) => port.to_string(),
+            None => "None".to_string(),
+        };
+
+        write!(
+            f,
+            "\n    Source Port: {},\n    Destination Port: {},\n    Protocol: {}\n",
+            source_port, destination_port, self.protocol
+        )
+    }
+}
+
+impl Display for ApplicationOwned {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "\n    Protocol: {}\n", self.protocol)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
 pub struct InternetOwned {
@@ -80,7 +135,6 @@ impl<'a> From<PacketFlow<'a>> for PacketFlowOwned {
     }
 }
 
-
 use std::hash::Hash;
 impl Hash for PacketFlowOwned {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -88,5 +142,28 @@ impl Hash for PacketFlowOwned {
         self.internet.hash(state);
         self.transport.hash(state);
         self.application.hash(state);
+    }
+}
+
+use std::fmt::{Formatter, Result};
+
+impl Display for PacketFlowOwned {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        writeln!(f, "Packet Flow:")?;
+        writeln!(f, "  Data Link: {}", self.data_link)?;
+
+        if let Some(ref internet) = self.internet {
+            writeln!(f, "  Internet: {internet}")?;
+        }
+
+        if let Some(ref transport) = self.transport {
+            writeln!(f, "  Transport: {transport}")?;
+        }
+
+        if let Some(ref application) = self.application {
+            writeln!(f, "  Application: {application}")?;
+        }
+
+        Ok(())
     }
 }
