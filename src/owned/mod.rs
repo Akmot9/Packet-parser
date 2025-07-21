@@ -3,7 +3,7 @@ use std::{hash::Hasher, net::IpAddr};
 use serde::Serialize;
 use std::fmt::Display;
 
-use crate::{Application, PacketFlow};
+use crate::{Application, IpType, PacketFlow};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct PacketFlowOwned {
@@ -85,9 +85,12 @@ impl Display for ApplicationOwned {
 #[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
 pub struct InternetOwned {
     pub source_ip: Option<IpAddr>,
+    pub ip_source_type: Option<IpType>,
     pub destination_ip: Option<IpAddr>,
+    pub ip_destination_type: Option<IpType>,
     pub protocol: String,
 }
+
 
 #[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
 pub struct TransportOwned {
@@ -101,6 +104,7 @@ pub struct ApplicationOwned {
     pub protocol: String,
 }
 
+
 impl<'a> From<PacketFlow<'a>> for PacketFlowOwned {
     fn from(flow: PacketFlow<'a>) -> Self {
         Self {
@@ -112,7 +116,9 @@ impl<'a> From<PacketFlow<'a>> for PacketFlowOwned {
             internet: match flow.internet {
                 Some(internet) => Some(InternetOwned {
                     source_ip: internet.source,
+                    ip_source_type: internet.source_type,
                     destination_ip: internet.destination,
+                    ip_destination_type: internet.destination_type,
                     protocol: internet.protocol_name,
                 }),
                 None => None,
