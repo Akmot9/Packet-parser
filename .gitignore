@@ -6,3 +6,4 @@ Cargo.lock
 /lock
 output.pcap
 *.pcap
+/vendor
