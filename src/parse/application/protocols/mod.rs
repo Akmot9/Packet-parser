@@ -13,6 +13,8 @@ use ntp::NtpPacket;
 use s7comm::S7CommPacket;
 use tls::TlsPacket;
 
+use crate::parse::application::protocols::quic::QuicPacket;
+
 pub mod bitcoin;
 pub mod copt;
 pub mod dhcp;
@@ -22,6 +24,7 @@ pub mod mqtt;
 pub mod ntp;
 pub mod s7comm;
 pub mod tls;
+pub mod quic;
 
 /// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
 #[derive(Debug)]
@@ -35,6 +38,7 @@ pub enum ApplicationProtocol<'a> {
     Dns(DnsPacket),
     S7Comm(S7CommPacket<'a>),
     Cotp(CotpHeader),
+    Quic(QuicPacket),
     Raw(&'a [u8]),
     None,
 }

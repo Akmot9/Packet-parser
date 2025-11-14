@@ -27,8 +27,8 @@ pub struct Transport<'a> {
 }
 
 impl<'a> Transport<'a> {
-    pub fn transport_from_u8(protocol: &u8) -> String {
-        TransportProtocol::from_u8(*protocol).to_string()
+    pub fn transport_from_u8(protocol: &u8) -> TransportProtocol {
+        TransportProtocol::from_u8(*protocol)
     }
 }
 

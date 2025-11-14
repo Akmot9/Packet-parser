@@ -22,4 +22,7 @@ pub enum ApplicationError {
 
     #[error("Failed to parse DNS packet")]
     DnsParseError,
+
+    #[error("Failed to parse QUIC packet")]
+    QuicParseError,
 }

@@ -5,6 +5,7 @@ use std::net::IpAddr;
 
 use crate::errors::internet::InternetError;
 use crate::parse::internet::protocols::profinet;
+use crate::parse::transport::protocols::TransportProtocol;
 use protocols::arp::ArpPacket;
 use protocols::ipv4;
 use protocols::ipv6;
@@ -20,7 +21,7 @@ pub struct Internet<'a> {
     pub destination: Option<IpAddr>,
     pub destination_type: Option<IpType>,
     pub protocol_name: String,
-    pub payload_protocol: Option<String>,
+    pub payload_protocol: Option<TransportProtocol>,
     #[serde(skip_serializing)]
     pub payload: &'a [u8],
 }
@@ -87,6 +88,30 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
         Err(InternetError::UnsupportedProtocol)
     }
 }
+
+// impl<'a> Internet<'a> {
+//     pub fn to_transport(&self) -> Option<Transport<'a>> {
+//        let protocol = match self.payload_protocol.as_deref()? {
+//             "ICMPv6" => TransportProtocol::IcmpV6,
+//             "ICMP" => TransportProtocol::Icmp,
+//             "UDP" => TransportProtocol::Udp,
+//             "TCP" => TransportProtocol::Tcp,
+//             "IGMP" => TransportProtocol::Igmp,
+//             "PIM" => TransportProtocol::Pim,
+//             "PIMv2" => TransportProtocol::PimV2,
+//             "VRRP" => TransportProtocol::Vrrp,
+//             // Ajoutez d'autres correspondances si nécessaire
+//             _ => return None,
+//         };
+
+//         Some(Transport {
+//             protocol,
+//             source_port: None,
+//             destination_port: None,
+//             payload: None,
+//         })
+//     } 
+// }
 
 impl<'a> PartialEq for Internet<'a> {
     fn eq(&self, other: &Self) -> bool {

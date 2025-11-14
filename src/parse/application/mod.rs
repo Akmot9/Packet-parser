@@ -9,7 +9,7 @@ use protocols::{
 };
 use serde::Serialize;
 
-use crate::{errors::application::ApplicationError, parse::application::protocols::ntp::NtpPacket};
+use crate::{errors::application::ApplicationError, parse::application::protocols::{ntp::NtpPacket, quic::QuicPacket}};
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
 #[derive(Debug, Clone, Serialize, Eq)]
@@ -56,7 +56,11 @@ impl TryFrom<&[u8]> for Application {
         //         application_protocol: "COTP".to_string(),
         //     });
         // }
-
+        if QuicPacket::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "QUIQ".to_string(),
+            });
+        }
         // If no parser matches, return a "None" protocol
         Ok(Application {
             application_protocol: "Unknown".to_string(),

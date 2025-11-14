@@ -91,7 +91,6 @@ pub struct InternetOwned {
     pub protocol: String,
 }
 
-
 #[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
 pub struct TransportOwned {
     pub source_port: Option<u16>,
