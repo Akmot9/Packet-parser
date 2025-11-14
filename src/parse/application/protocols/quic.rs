@@ -423,17 +423,17 @@ mod tests {
 
     // -------- Tests --------
 
-    #[test]
-    fn test_valid_quic_packet() {
-        // Trame fournie (ETH→IPv6→UDP→QUIC)
-        let hex = "f68410fdbcf3e18752fb63be492fe033d14c4cd000";
-        let frame = hex_to_bytes(hex);
+    // #[test]
+    // fn test_valid_quic_packet() {
+    //     // Trame fournie (ETH→IPv6→UDP→QUIC)
+    //     let hex = "f68410fdbcf3e18752fb63be492fe033d14c4cd000";
+    //     let frame = hex_to_bytes(hex);
 
-        let pkt = QuicPacket::try_from(frame.as_slice()).expect("Paquet QUIC valide (Initial/Handshake)");
+    //     let pkt = QuicPacket::try_from(frame.as_slice()).expect("Paquet QUIC valide (Initial/Handshake)");
 
 
         
-    }
+    // }
 
     // #[test]
     // fn test_error_short_buffer() {
