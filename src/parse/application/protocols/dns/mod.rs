@@ -26,6 +26,7 @@ impl TryFrom<&[u8]> for DnsPacket {
     type Error = DnsPacketError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        println!("try parse dns packet");
         check_dns_minimum_size(bytes)?;
 
         let header = DnsHeader::try_from(bytes)?;

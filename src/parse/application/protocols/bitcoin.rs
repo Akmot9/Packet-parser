@@ -110,6 +110,7 @@ fn extract_payload(payload: &[u8]) -> Vec<u8> {
 /// * `Result<BitcoinPacket, bool>` - Returns `Ok(BitcoinPacket)` if parsing is successful,
 ///   otherwise returns `Err(false)` indicating an invalid Bitcoin packet.
 pub fn parse_bitcoin_packet(payload: &[u8]) -> Result<BitcoinPacket, bool> {
+    println!("try parse bitcoin packet");
     check_minimum_length(payload)?;
     let magic = check_magic_number(payload)?;
     let command = extract_command(payload)?;

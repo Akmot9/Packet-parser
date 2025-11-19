@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::{
     errors::application::ApplicationError,
-    parse::application::protocols::{ntp::NtpPacket, quic::QuicPacket},
+    parse::application::protocols::{giop::GiopPacket, ntp::NtpPacket},
 };
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
@@ -52,6 +52,11 @@ impl TryFrom<&[u8]> for Application {
         if S7CommPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "S7Comm".to_string(),
+            });
+        }
+        if GiopPacket::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "GIOP".to_string(),
             });
         }
         // if CotpHeader::from_bytes(packet).is_ok() {
