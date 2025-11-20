@@ -5,7 +5,7 @@
 
 pub mod protocols;
 use protocols::{
-    bitcoin::parse_bitcoin_packet, dns::DnsPacket, s7comm::S7CommPacket, tls::parse_tls_packet,
+    bitcoin::parse_bitcoin_packet, dns::DnsPacket, s7comm::S7CommPacket, tls::TlsPacket,
 };
 use serde::Serialize;
 
@@ -44,7 +44,7 @@ impl TryFrom<&[u8]> for Application {
                 application_protocol: "DNS".to_string(),
             });
         }
-        if parse_tls_packet(packet).is_ok() {
+        if TlsPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "TLS".to_string(),
             });

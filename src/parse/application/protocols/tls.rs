@@ -1,19 +1,25 @@
 use std::fmt;
+use std::convert::TryFrom;
 
-/// The `TlsPacket` struct represents a parsed TLS packet.
-#[derive(Debug)]
-pub struct TlsPacket {
-    /// The content type of the TLS packet (e.g., Handshake, ApplicationData).
-    pub content_type: TlsContentType,
-    /// The TLS version of the packet.
-    pub version: TlsVersion,
-    /// The length of the payload.
-    pub length: u16,
-    /// The actual payload data.
-    pub payload: Vec<u8>,
+/// Erreurs possibles lors du parsing d'un enregistrement TLS.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TlsError {
+    TooShort,
+    InvalidContentType(u8),
+    InvalidVersion { major: u8, minor: u8 },
+    InconsistentLength { declared: u16, available: usize },
 }
 
-impl fmt::Display for TlsPacket {
+/// Représente un enregistrement TLS (TLS Record Layer).
+#[derive(Debug)]
+pub struct TlsPacket<'a> {
+    pub content_type: TlsContentType,
+    pub version: TlsVersion,
+    pub length: u16,
+    pub payload: &'a [u8],
+}
+
+impl fmt::Display for TlsPacket<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -23,8 +29,7 @@ impl fmt::Display for TlsPacket {
     }
 }
 
-/// The `TlsContentType` enum represents the possible content types of a TLS packet.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TlsContentType {
     ChangeCipherSpec = 20,
     Alert = 21,
@@ -46,199 +51,320 @@ impl fmt::Display for TlsContentType {
     }
 }
 
-/// The `TlsVersion` struct represents a TLS version with major and minor version numbers.
-#[derive(Debug, PartialEq)]
+impl TryFrom<u8> for TlsContentType {
+    type Error = TlsError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            20 => Ok(TlsContentType::ChangeCipherSpec),
+            21 => Ok(TlsContentType::Alert),
+            22 => Ok(TlsContentType::Handshake),
+            23 => Ok(TlsContentType::ApplicationData),
+            24 => Ok(TlsContentType::Heartbeat),
+            _ => Err(TlsError::InvalidContentType(value)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TlsVersion {
     pub major: u8,
     pub minor: u8,
 }
 
-// List of valid TLS versions
-const VALID_TLS_VERSIONS: [TlsVersion; 4] = [
-    TlsVersion { major: 3, minor: 1 }, // TLS 1.0
-    TlsVersion { major: 3, minor: 2 }, // TLS 1.1
-    TlsVersion { major: 3, minor: 3 }, // TLS 1.2
-    TlsVersion { major: 3, minor: 4 }, // TLS 1.3
-];
+impl TlsVersion {
+    pub fn new(major: u8, minor: u8) -> Result<Self, TlsError> {
+        match (major, minor) {
+            (3, 1) | // TLS 1.0
+            (3, 2) | // TLS 1.1
+            (3, 3) | // TLS 1.2 (utilisé aussi comme "legacy version" TLS 1.3)
+            (3, 4)   // TLS 1.3 (si jamais tu le vois dans le record header)
+                => Ok(Self { major, minor }),
+            _ => Err(TlsError::InvalidVersion { major, minor }),
+        }
+    }
+}
 
 impl fmt::Display for TlsVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let version = match (self.major, self.minor) {
+        let version_str = match (self.major, self.minor) {
             (3, 1) => "TLS 1.0",
             (3, 2) => "TLS 1.1",
             (3, 3) => "TLS 1.2",
             (3, 4) => "TLS 1.3",
             _ => return write!(f, "{}.{}", self.major, self.minor),
         };
-        write!(f, "{version}")
+        write!(f, "{version_str}")
     }
 }
 
-/// Checks if the payload length is at least 5 bytes
-fn check_minimum_length(payload: &[u8]) -> Result<(), bool> {
-    if payload.len() < 5 {
-        return Err(false);
+impl<'a> TryFrom<&'a [u8]> for TlsPacket<'a> {
+    type Error = TlsError;
+
+    fn try_from(buf: &'a [u8]) -> Result<Self, Self::Error> {
+        if buf.len() < 5 {
+            return Err(TlsError::TooShort);
+        }
+
+        let content_type = TlsContentType::try_from(buf[0])?;
+        let version = TlsVersion::new(buf[1], buf[2])?;
+        let length = u16::from_be_bytes([buf[3], buf[4]]);
+
+        let header_len = 5usize;
+        let available = buf.len().saturating_sub(header_len);
+
+        if available < length as usize {
+            return Err(TlsError::InconsistentLength {
+                declared: length,
+                available,
+            });
+        }
+
+        let start = header_len;
+        let end = start + length as usize;
+        let payload = &buf[start..end];
+
+        Ok(TlsPacket {
+            content_type,
+            version,
+            length,
+            payload,
+        })
     }
-    Ok(())
 }
 
-/// Checks if the first byte matches any known TLS content type
-fn check_content_type(payload: &[u8]) -> Result<TlsContentType, bool> {
-    match payload[0] {
-        20 => Ok(TlsContentType::ChangeCipherSpec),
-        21 => Ok(TlsContentType::Alert),
-        22 => Ok(TlsContentType::Handshake),
-        23 => Ok(TlsContentType::ApplicationData),
-        24 => Ok(TlsContentType::Heartbeat),
-        _ => Err(false),
-    }
-}
-
-/// Checks if the second and third bytes match any valid TLS version
-fn check_tls_version(payload: &[u8]) -> Result<TlsVersion, bool> {
-    let version = TlsVersion {
-        major: payload[1],
-        minor: payload[2],
-    };
-    if VALID_TLS_VERSIONS.contains(&version) {
-        Ok(version)
-    } else {
-        Err(false)
-    }
-}
-
-/// Extracts the length of the TLS payload from the fourth and fifth bytes
-fn extract_length(payload: &[u8]) -> u16 {
-    u16::from_be_bytes([payload[3], payload[4]])
-}
-
-/// Ensures the payload length is consistent with the actual data length
-fn validate_payload_length(payload: &[u8], length: u16) -> Result<(), bool> {
-    if payload.len() < (5 + length as usize) {
-        return Err(false);
-    }
-    Ok(())
-}
-
-/// Extracts the actual payload data
-fn extract_payload(payload: &[u8], length: u16) -> Vec<u8> {
-    payload[5..(5 + length as usize)].to_vec()
-}
-
-/// Parses a TLS packet from a given payload.
+/// Parse un ou plusieurs enregistrements TLS consécutifs dans `buf`.
 ///
-/// # Arguments
-///
-/// * `payload` - A byte slice representing the raw TLS packet data.
-///
-/// # Returns
-///
-/// * `Result<TlsPacket, bool>` - Returns `Ok(TlsPacket)` if parsing is successful,
-///   otherwise returns `Err(false)` indicating an invalid TLS packet.
-pub fn parse_tls_packet(payload: &[u8]) -> Result<TlsPacket, bool> {
-    check_minimum_length(payload)?;
-    let content_type = check_content_type(payload)?;
-    let version = check_tls_version(payload)?;
-    let length = extract_length(payload);
-    validate_payload_length(payload, length)?;
-    let actual_payload = extract_payload(payload, length);
+/// - Retourne un `Vec<TlsPacket>` avec tous les records complets trouvés.
+/// - S'arrête dès que :
+///   - le header (5 octets) n'est plus disponible, ou
+///   - la longueur annoncée dépasse la taille restante (record tronqué en fin de buffer), ou
+///   - on rencontre quelque chose qui n'est manifestement pas du TLS.
+pub fn parse_tls_records<'a>(buf: &'a [u8]) -> Vec<TlsPacket<'a>> {
+    let mut records = Vec::new();
+    let mut offset = 0usize;
 
-    Ok(TlsPacket {
-        content_type,
-        version,
-        length,
-        payload: actual_payload,
-    })
+    while buf.len().saturating_sub(offset) >= 5 {
+        let slice = &buf[offset..];
+
+        match TlsPacket::try_from(slice) {
+            Ok(packet) => {
+                let record_total_len = 5 + packet.length as usize;
+                if buf.len().saturating_sub(offset) < record_total_len {
+                    // Record annoncé mais tronqué → on s'arrête, on ne le compte pas.
+                    break;
+                }
+
+                // On garde le packet (avec des slices dans le buffer d'origine).
+                records.push(packet);
+
+                // On avance à l'enregistrement TLS suivant.
+                offset += record_total_len;
+            }
+            Err(TlsError::TooShort) => {
+                // Plus assez de données pour un header complet → on s'arrête.
+                break;
+            }
+            Err(TlsError::InconsistentLength { .. }) => {
+                // Longueur incohérente -> soit tronqué, soit pas du TLS → on s'arrête.
+                break;
+            }
+            Err(_) => {
+                // InvalidContentType / InvalidVersion → probablement pas (ou plus) du TLS.
+                break;
+            }
+        }
+    }
+
+    records
 }
+
+/// Helper : détection simple "est-ce que ça ressemble à du TLS ?"
+///
+/// Utile si tu veux juste classifier un flux comme TLS/Non-TLS.
+pub fn looks_like_tls(buf: &[u8]) -> bool {
+    TlsPacket::try_from(buf).is_ok()
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::convert::TryFrom;
 
-    /// Tests for the `parse_tls_packet` function.
     #[test]
-    fn test_parse_tls_packet() {
-        // Test with a valid TLS packet
-        let tls_payload = vec![22, 3, 3, 0, 5, 1, 2, 3, 4, 5]; // Handshake, TLS 1.2, length 5
-        match parse_tls_packet(&tls_payload) {
-            Ok(packet) => {
-                assert_eq!(packet.content_type, TlsContentType::Handshake);
-                assert_eq!(packet.version, TlsVersion { major: 3, minor: 3 });
-                assert_eq!(packet.length, 5);
-                assert_eq!(packet.payload, vec![1, 2, 3, 4, 5]);
-            }
-            Err(_) => panic!("Expected TLS packet"),
+    fn test_parse_valid_tls_packet() {
+        // Handshake, TLS 1.2, length 5, payload = [1,2,3,4,5]
+        let tls_payload = vec![22, 3, 3, 0, 5, 1, 2, 3, 4, 5];
+
+        let packet = TlsPacket::try_from(tls_payload.as_slice()).expect("Expected TLS packet");
+
+        assert_eq!(packet.content_type, TlsContentType::Handshake);
+        assert_eq!(packet.version, TlsVersion { major: 3, minor: 3 });
+        assert_eq!(packet.length, 5);
+        assert_eq!(packet.payload, &[1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_invalid_content_type() {
+        let invalid = vec![99, 3, 3, 0, 5, 1, 2, 3, 4, 5];
+        let err = TlsPacket::try_from(invalid.as_slice()).unwrap_err();
+        assert!(matches!(err, TlsError::InvalidContentType(99)));
+    }
+
+    #[test]
+    fn test_invalid_tls_version() {
+        // Handshake, version 3.9 (invalide)
+        let invalid = vec![22, 3, 9, 0, 5, 1, 2, 3, 4, 5];
+        let err = TlsPacket::try_from(invalid.as_slice()).unwrap_err();
+        assert!(matches!(
+            err,
+            TlsError::InvalidVersion { major: 3, minor: 9 }
+        ));
+    }
+
+    #[test]
+    fn test_inconsistent_length() {
+        // Handshake, TLS 1.2, length 6 mais seulement 5 octets de payload
+        let invalid = vec![22, 3, 3, 0, 6, 1, 2, 3, 4, 5];
+        let err = TlsPacket::try_from(invalid.as_slice()).unwrap_err();
+        assert!(matches!(
+            err,
+            TlsError::InconsistentLength { declared: 6, available: 5 }
+        ));
+    }
+
+    #[test]
+    fn test_too_short() {
+        // 4 octets seulement
+        let short = vec![22, 3, 3, 0];
+        let err = TlsPacket::try_from(short.as_slice()).unwrap_err();
+        assert!(matches!(err, TlsError::TooShort));
+    }
+
+    #[test]
+    fn test_parse_multiple_tls_records_in_one_buffer() {
+        // Record 1 : ChangeCipherSpec, TLS 1.2, length 1, payload = [0x00]
+        // Record 2 : ApplicationData, TLS 1.2, length 3, payload = [0x01,0x02,0x03]
+        let buf = vec![
+            20, 3, 3, 0, 1, 0x00,          // CCS
+            23, 3, 3, 0, 3, 0x01, 0x02, 0x03, // AppData
+        ];
+
+        let records = parse_tls_records(&buf);
+        assert_eq!(records.len(), 2);
+
+        assert_eq!(records[0].content_type, TlsContentType::ChangeCipherSpec);
+        assert_eq!(records[0].version, TlsVersion { major: 3, minor: 3 });
+        assert_eq!(records[0].length, 1);
+        assert_eq!(records[0].payload, &[0x00]);
+
+        assert_eq!(records[1].content_type, TlsContentType::ApplicationData);
+        assert_eq!(records[1].version, TlsVersion { major: 3, minor: 3 });
+        assert_eq!(records[1].length, 3);
+        assert_eq!(records[1].payload, &[0x01, 0x02, 0x03]);
+    }
+
+    #[test]
+    fn test_parse_tls_records_truncated_last_record() {
+        // Record complet puis record tronqué
+        // Record 1 : ApplicationData, length 2, payload [0xAA, 0xBB]
+        // Record 2 : ApplicationData, length 4, mais seulement 1 octet de payload (tronqué)
+        let buf = vec![
+            23, 3, 3, 0, 2, 0xAA, 0xBB,  // record 1 complet
+            23, 3, 3, 0, 4, 0xCC,        // record 2 incomplet
+        ];
+
+        let records = parse_tls_records(&buf);
+
+        // On doit récupérer uniquement le premier record, le deuxième est tronqué
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].content_type, TlsContentType::ApplicationData);
+        assert_eq!(records[0].length, 2);
+        assert_eq!(records[0].payload, &[0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn test_parse_tls_records_non_tls_content() {
+        // Premier octet = 0x01 -> content type invalide
+        let buf = vec![1, 3, 3, 0, 5, 0, 0, 0, 0, 0];
+
+        let records = parse_tls_records(&buf);
+        // On ne doit rien parser, on considère que ce n'est pas du TLS.
+        assert!(records.is_empty());
+    }
+
+    #[test]
+    fn test_parse_tls_records_header_too_short_at_end() {
+        // Record valide, suivi de 4 octets "résiduels" (< 5 octets pour un header)
+        let buf = vec![
+            22, 3, 3, 0, 1, 0x01, // Handshake, length 1
+            0x23, 0x00, 0x00, 0x00, // 4 octets, pas assez pour un header complet
+        ];
+
+        let records = parse_tls_records(&buf);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].content_type, TlsContentType::Handshake);
+        assert_eq!(records[0].payload, &[0x01]);
+    }
+
+    // --- Tests pour looks_like_tls ---
+
+    #[test]
+    fn test_looks_like_tls_when_true() {
+        let tls_buf = vec![22, 3, 3, 0, 2, 0xAA, 0xBB];
+        assert!(looks_like_tls(&tls_buf));
+    }
+
+    #[test]
+    fn test_looks_like_tls_when_false_invalid_content_type() {
+        let non_tls = vec![0, 3, 3, 0, 2, 0xAA, 0xBB];
+        assert!(!looks_like_tls(&non_tls));
+    }
+
+    #[test]
+    fn test_looks_like_tls_when_false_too_short() {
+        let too_short = vec![22, 3, 3, 0]; // 4 octets seulement
+        assert!(!looks_like_tls(&too_short));
+    }
+
+    // --- Tests sur les types et versions ---
+
+    #[test]
+    fn test_tls_content_type_from_u8_all_valid_values() {
+        for (value, expected) in [
+            (20u8, TlsContentType::ChangeCipherSpec),
+            (21, TlsContentType::Alert),
+            (22, TlsContentType::Handshake),
+            (23, TlsContentType::ApplicationData),
+            (24, TlsContentType::Heartbeat),
+        ] {
+            let ct = TlsContentType::try_from(value).unwrap();
+            assert_eq!(ct, expected);
         }
+    }
 
-        // Test with an invalid content type
-        let invalid_content_type = vec![99, 3, 3, 0, 5, 1, 2, 3, 4, 5];
-        match parse_tls_packet(&invalid_content_type) {
-            Ok(_) => panic!("Expected non-TLS packet due to invalid content type"),
-            Err(is_tls) => assert!(!is_tls),
-        }
+    #[test]
+    fn test_tls_content_type_from_u8_invalid_value() {
+        let err = TlsContentType::try_from(0xFF).unwrap_err();
+        assert!(matches!(err, TlsError::InvalidContentType(0xFF)));
+    }
 
-        // Test with an invalid TLS version
-        let invalid_tls_version = vec![22, 3, 9, 0, 5, 1, 2, 3, 4, 5]; // Handshake, invalid TLS 1.3
-        match parse_tls_packet(&invalid_tls_version) {
-            Ok(_) => panic!("Expected non-TLS packet due to invalid TLS version"),
-            Err(is_tls) => assert!(!is_tls),
-        }
-
-        // Test with an invalid length (inconsistent with payload length)
-        let invalid_length = vec![22, 3, 3, 0, 6, 1, 2, 3, 4, 5]; // Handshake, TLS 1.2, length 6 (but only 5 bytes of actual data)
-        match parse_tls_packet(&invalid_length) {
-            Ok(_) => panic!("Expected non-TLS packet due to inconsistent length"),
-            Err(is_tls) => assert!(!is_tls),
-        }
-
-        // Test with a payload length shorter than 5 bytes
-        let short_payload = vec![22, 3, 3, 0]; // Only 4 bytes, should be at least 5
-        match parse_tls_packet(&short_payload) {
-            Ok(_) => panic!("Expected non-TLS packet due to short payload"),
-            Err(is_tls) => assert!(!is_tls),
+    #[test]
+    fn test_tls_version_new_valid_versions() {
+        for (maj, min) in [(3, 1), (3, 2), (3, 3), (3, 4)] {
+            let v = TlsVersion::new(maj, min).expect("valid version");
+            assert_eq!(v.major, maj);
+            assert_eq!(v.minor, min);
         }
     }
 
     #[test]
-    fn test_check_minimum_length() {
-        assert!(check_minimum_length(&vec![1, 2, 3, 4, 5]).is_ok());
-        assert!(check_minimum_length(&vec![1, 2, 3, 4]).is_err());
-    }
-
-    #[test]
-    fn test_check_content_type() {
-        assert_eq!(
-            check_content_type(&vec![22, 3, 3, 0, 5]).unwrap(),
-            TlsContentType::Handshake
-        );
-        assert!(check_content_type(&vec![99, 3, 3, 0, 5]).is_err());
-    }
-
-    #[test]
-    fn test_check_tls_version() {
-        assert_eq!(
-            check_tls_version(&vec![22, 3, 3, 0, 5]).unwrap(),
-            TlsVersion { major: 3, minor: 3 }
-        );
-        assert!(check_tls_version(&vec![22, 3, 9, 0, 5]).is_err());
-    }
-
-    #[test]
-    fn test_extract_length() {
-        assert_eq!(extract_length(&vec![22, 3, 3, 0, 5]), 5);
-    }
-
-    #[test]
-    fn test_validate_payload_length() {
-        assert!(validate_payload_length(&vec![22, 3, 3, 0, 5, 1, 2, 3, 4, 5], 5).is_ok());
-        assert!(validate_payload_length(&vec![22, 3, 3, 0, 6, 1, 2, 3, 4, 5], 6).is_err());
-    }
-
-    #[test]
-    fn test_extract_payload() {
-        assert_eq!(
-            extract_payload(&vec![22, 3, 3, 0, 5, 1, 2, 3, 4, 5], 5),
-            vec![1, 2, 3, 4, 5]
-        );
+    fn test_tls_version_new_invalid_version() {
+        let err = TlsVersion::new(3, 0).unwrap_err();
+        assert!(matches!(
+            err,
+            TlsError::InvalidVersion { major: 3, minor: 0 }
+        ));
     }
 }

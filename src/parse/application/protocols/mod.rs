@@ -32,7 +32,7 @@ pub mod srvloc;
 #[derive(Debug)]
 pub enum ApplicationProtocol<'a> {
     Ntp(NtpPacket),
-    Tls(TlsPacket),
+    Tls(TlsPacket<'a>),
     Http(HttpRequest),
     Mqtt(MqttPacket),
     Dhcp(DhcpPacket),
