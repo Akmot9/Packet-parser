@@ -130,7 +130,6 @@ impl TryFrom<&[u8]> for NtpPacket {
 
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
         // Check if payload has the minimum length required for an NTP packet
-        println!("try parse ntp packet");
         validate_ntp_packet_length(payload)?;
 
         let flags = extract_flags(&payload[0])?;

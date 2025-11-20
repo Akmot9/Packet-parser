@@ -21,6 +21,7 @@ impl<'a> fmt::Display for ApplicationProtocol<'a> {
             ApplicationProtocol::Cotp(_) => write!(f, "COTP"),
             ApplicationProtocol::Quic(_) => write!(f, "QUIC"),
             ApplicationProtocol::Giop(_) => write!(f, "GIOP"),
+            ApplicationProtocol::Srvloc(_) => write!(f, "SRVLOC"),
             ApplicationProtocol::Raw(data) => {
                 let preview_len = 16.min(data.len());
                 let hex_preview: String = data[..preview_len]

@@ -100,12 +100,10 @@ impl GiopHeader {
     }
 
     fn parse_magic(payload: &[u8]) -> Result<[u8; 4], GiopParseError> {
-        println!("try parse giop magic");
         let magic: [u8; 4] = payload[0..4].try_into().unwrap();
         if &magic != b"GIOP" {
             return Err(GiopParseError::InvalidMagic);
         }
-        println!("giop magic parsed");
         Ok(magic)
     }
 }
@@ -114,7 +112,6 @@ impl TryFrom<&[u8]> for GiopHeader {
     type Error = GiopParseError;
 
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        println!("try parse giop header");
         GiopHeader::ensure_min_len(payload)?;
 
         let magic = GiopHeader::parse_magic(payload)?;
@@ -131,7 +128,6 @@ impl TryFrom<&[u8]> for GiopHeader {
 
         // MessageSize est toujours en big-endian dans le header
         let message_length = u32::from_be_bytes(payload[8..12].try_into().unwrap());
-        println!("giop header parsed");
         Ok(GiopHeader {
             magic,
             major_version,
@@ -204,26 +200,20 @@ impl TryFrom<&[u8]> for GiopPacket {
     type Error = GiopParseError;
 
     fn try_from(buf: &[u8]) -> Result<Self, Self::Error> {
-        println!("try parse giop packet");
         let header = GiopHeader::try_from(buf)?;
-        println!("giop header parsed {:?}", header);
         let total_needed = GiopHeader::HEADER_LEN + header.message_length as usize;
-        println!("total needed {}", total_needed);
         if buf.len() < total_needed {
-            println!("giop packet truncated expected {} actual {}", total_needed, buf.len());
             return Err(GiopParseError::TruncatedBody {
                 expected: total_needed,
                 actual: buf.len(),
             });
         }
-        println!("giop packet has the right size");
 
         // let body = &buf[GiopHeader::HEADER_LEN..total_needed];
         // println!("giop body parsed");
 
         // Bit 0 des flags = endianness du body
         let little_endian = (header.flags & 0x01) != 0;
-        println!("giop little endian {}", little_endian);
 
         // let payload = match header.message_type {
         //     GiopMessageType::Request => {
@@ -251,7 +241,6 @@ impl TryFrom<&[u8]> for GiopPacket {
         // };
 
         let payload = GiopMessage::Other;
-        println!("giop packet parsed");
         Ok(GiopPacket { header, payload })
     }
 }
@@ -332,26 +321,19 @@ impl<'a> Cursor<'a> {
 
 impl GiopRequest {
     pub fn parse(body: &[u8], little_endian: bool) -> Result<Self, GiopParseError> {
-        println!("try parse giop request");
         let mut cur = Cursor::new(body, little_endian);
 
         let request_id = cur.read_u32()?;
-        println!("giop request id {}", request_id);
         let response_flags = cur.read_u8()?;
-        println!("giop response flags {}", response_flags);
 
         // Reserved 3 octets
         let _r1 = cur.read_u8()?;
         let _r2 = cur.read_u8()?;
         let _r3 = cur.read_u8()?;
-        println!("giop reserved {} {} {}", _r1, _r2, _r3);
 
         let target = parse_target_address(&mut cur)?;
-        println!("giop target {:?}", target);
         let operation = cur.read_string()?;
-        println!("giop operation {}", operation);
         let service_contexts = parse_service_context_list(&mut cur)?;
-        println!("giop service contexts {:?}", service_contexts);
 
         // Le reste = stub data (arguments CDR)
         let remaining = cur.remaining();
@@ -360,7 +342,6 @@ impl GiopRequest {
         } else {
             Vec::new()
         };
-        println!("giop request parsed");
         Ok(GiopRequest {
             request_id,
             response_flags,
@@ -373,9 +354,7 @@ impl GiopRequest {
 }
 
 fn parse_target_address(cur: &mut Cursor<'_>) -> Result<TargetAddress, GiopParseError> {
-    println!("try parse giop target address");
     let discriminator = cur.read_u8()?;
-    println!("giop target discriminator {}", discriminator);
 
     match discriminator {
         0 => {
