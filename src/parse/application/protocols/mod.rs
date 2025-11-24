@@ -27,6 +27,7 @@ pub mod tls;
 pub mod quic;
 pub mod giop;
 pub mod srvloc;
+pub mod ams;
 
 /// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
 #[derive(Debug)]
@@ -43,6 +44,8 @@ pub enum ApplicationProtocol<'a> {
     Quic(QuicPacket),
     Giop(GiopPacket),
     Srvloc(SrvlocPacket),
+    Ams(ams::AmsPacket<'a>),
+    
     Raw(&'a [u8]),
     None,
 }
