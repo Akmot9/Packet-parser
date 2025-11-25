@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::{
     errors::application::ApplicationError,
-    parse::application::protocols::{ams::AmsPacket, giop::GiopPacket, ntp::NtpPacket, srvloc::SrvlocPacket},
+    parse::application::protocols::{giop::GiopPacket, ntp::NtpPacket, srvloc::SrvlocPacket},
 };
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
@@ -69,7 +69,7 @@ impl TryFrom<&[u8]> for Application {
         //         application_protocol: "AMS".to_string(),
         //     });
         // }
-            
+
         // if CotpHeader::from_bytes(packet).is_ok() {
         //     return Ok(Application {
         //         application_protocol: "COTP".to_string(),

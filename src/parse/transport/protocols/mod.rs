@@ -9,12 +9,12 @@ pub mod udp;
 #[derive(Debug, Clone, Serialize, Hash, PartialEq, Eq)]
 pub enum TransportProtocol {
     // IPv6 Extension Headers
-    HopByHop,          // 0
-    Routing,           // 43
-    Fragment,          // 44
-    DestinationOptions,// 60
-    Mobility,          // 135
-    NoNextHeader,      // 59
+    HopByHop,           // 0
+    Routing,            // 43
+    Fragment,           // 44
+    DestinationOptions, // 60
+    Mobility,           // 135
+    NoNextHeader,       // 59
 
     // Core transport protocols
     Tcp,
@@ -112,21 +112,60 @@ mod tests {
 
     #[test]
     fn test_protocol_conversion() {
-        assert!(matches!(TransportProtocol::from_u8(6), TransportProtocol::Tcp));
-        assert!(matches!(TransportProtocol::from_u8(17), TransportProtocol::Udp));
-        assert!(matches!(TransportProtocol::from_u8(1), TransportProtocol::Icmp));
-        assert!(matches!(TransportProtocol::from_u8(58), TransportProtocol::IcmpV6));
-        assert!(matches!(TransportProtocol::from_u8(47), TransportProtocol::Gre));
-        assert!(matches!(TransportProtocol::from_u8(50), TransportProtocol::Esp));
+        assert!(matches!(
+            TransportProtocol::from_u8(6),
+            TransportProtocol::Tcp
+        ));
+        assert!(matches!(
+            TransportProtocol::from_u8(17),
+            TransportProtocol::Udp
+        ));
+        assert!(matches!(
+            TransportProtocol::from_u8(1),
+            TransportProtocol::Icmp
+        ));
+        assert!(matches!(
+            TransportProtocol::from_u8(58),
+            TransportProtocol::IcmpV6
+        ));
+        assert!(matches!(
+            TransportProtocol::from_u8(47),
+            TransportProtocol::Gre
+        ));
+        assert!(matches!(
+            TransportProtocol::from_u8(50),
+            TransportProtocol::Esp
+        ));
 
         // IPv6 extension tests
-        assert!(matches!(TransportProtocol::from_u8(0), TransportProtocol::HopByHop));
-        assert!(matches!(TransportProtocol::from_u8(43), TransportProtocol::Routing));
-        assert!(matches!(TransportProtocol::from_u8(44), TransportProtocol::Fragment));
-        assert!(matches!(TransportProtocol::from_u8(59), TransportProtocol::NoNextHeader));
-        assert!(matches!(TransportProtocol::from_u8(60), TransportProtocol::DestinationOptions));
-        assert!(matches!(TransportProtocol::from_u8(135), TransportProtocol::Mobility));
+        assert!(matches!(
+            TransportProtocol::from_u8(0),
+            TransportProtocol::HopByHop
+        ));
+        assert!(matches!(
+            TransportProtocol::from_u8(43),
+            TransportProtocol::Routing
+        ));
+        assert!(matches!(
+            TransportProtocol::from_u8(44),
+            TransportProtocol::Fragment
+        ));
+        assert!(matches!(
+            TransportProtocol::from_u8(59),
+            TransportProtocol::NoNextHeader
+        ));
+        assert!(matches!(
+            TransportProtocol::from_u8(60),
+            TransportProtocol::DestinationOptions
+        ));
+        assert!(matches!(
+            TransportProtocol::from_u8(135),
+            TransportProtocol::Mobility
+        ));
 
-        assert!(matches!(TransportProtocol::from_u8(255), TransportProtocol::Unknown));
+        assert!(matches!(
+            TransportProtocol::from_u8(255),
+            TransportProtocol::Unknown
+        ));
     }
 }

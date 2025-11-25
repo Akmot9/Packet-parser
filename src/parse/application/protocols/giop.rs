@@ -81,12 +81,12 @@ impl TryFrom<u8> for GiopMessageType {
 
 #[derive(Debug)]
 pub struct GiopHeader {
-    pub magic: [u8; 4],             // "GIOP"
-    pub major_version: u8,          // 1
-    pub minor_version: u8,          // 0, 1, 2
-    pub flags: u8,                  // bit 0 = endianness du body
+    pub magic: [u8; 4],    // "GIOP"
+    pub major_version: u8, // 1
+    pub minor_version: u8, // 0, 1, 2
+    pub flags: u8,         // bit 0 = endianness du body
     pub message_type: GiopMessageType,
-    pub message_length: u32,        // taille du body uniquement
+    pub message_length: u32, // taille du body uniquement
 }
 
 impl GiopHeader {
@@ -119,7 +119,10 @@ impl TryFrom<&[u8]> for GiopHeader {
         let minor_version = payload[5];
 
         if major_version != 1 || minor_version > 2 {
-            return Err(GiopParseError::UnsupportedVersion(major_version, minor_version));
+            return Err(GiopParseError::UnsupportedVersion(
+                major_version,
+                minor_version,
+            ));
         }
 
         let flags = payload[6];
@@ -176,11 +179,11 @@ pub struct ServiceContext {
 #[derive(Debug)]
 pub struct GiopRequest {
     pub request_id: u32,
-    pub response_flags: u8,     // 0..3 (SyncScope)
+    pub response_flags: u8, // 0..3 (SyncScope)
     pub target: TargetAddress,
     pub operation: String,
     pub service_contexts: Vec<ServiceContext>,
-    pub stub_data: Vec<u8>,     // CDR payload (arguments), non décodé ici
+    pub stub_data: Vec<u8>, // CDR payload (arguments), non décodé ici
 }
 
 // Placeholders pour plus tard
@@ -213,7 +216,7 @@ impl TryFrom<&[u8]> for GiopPacket {
         // println!("giop body parsed");
 
         // Bit 0 des flags = endianness du body
-        let little_endian = (header.flags & 0x01) != 0;
+        let _little_endian = (header.flags & 0x01) != 0;
 
         // let payload = match header.message_type {
         //     GiopMessageType::Request => {
@@ -259,7 +262,11 @@ struct Cursor<'a> {
 
 impl<'a> Cursor<'a> {
     fn new(buf: &'a [u8], little_endian: bool) -> Self {
-        Self { buf, pos: 0, little_endian }
+        Self {
+            buf,
+            pos: 0,
+            little_endian,
+        }
     }
 
     fn remaining(&self) -> usize {
@@ -387,7 +394,10 @@ fn parse_service_context_list(cur: &mut Cursor<'_>) -> Result<Vec<ServiceContext
         let context_id = cur.read_u32()?;
         let len = cur.read_u32()? as usize;
         let data = cur.read_bytes(len)?.to_vec();
-        contexts.push(ServiceContext { context_id, context_data: data });
+        contexts.push(ServiceContext {
+            context_id,
+            context_data: data,
+        });
     }
 
     Ok(contexts)

@@ -3,6 +3,7 @@ use std::{hash::Hasher, net::IpAddr};
 use serde::Serialize;
 use std::fmt::Display;
 
+use crate::parse::data_link::vlan_tag::VlanTag;
 use crate::{Application, IpType, PacketFlow};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -24,14 +25,21 @@ pub struct DataLinkOwned {
     pub source_mac: String,
     /// The Ethertype of the packet, indicating the protocol in the payload.
     pub ethertype: String,
+    pub vlan: Option<VlanTag>,
 }
 
 impl Display for DataLinkOwned {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "\n    Destination MAC: {},\n    Source MAC: {},\n    Ethertype: {}\n",
-            self.destination_mac, self.source_mac, self.ethertype
+            "\n    Destination MAC: {},\n    Source MAC: {},\n    Ethertype: {}\n    VLAN: {}\n",
+            self.destination_mac,
+            self.source_mac,
+            self.ethertype,
+            match &self.vlan {
+                Some(vlan) => vlan.to_string(),
+                None => "None".to_string(),
+            },
         )
     }
 }
@@ -103,7 +111,6 @@ pub struct ApplicationOwned {
     pub protocol: String,
 }
 
-
 impl<'a> From<PacketFlow<'a>> for PacketFlowOwned {
     fn from(flow: PacketFlow<'a>) -> Self {
         Self {
@@ -111,6 +118,7 @@ impl<'a> From<PacketFlow<'a>> for PacketFlowOwned {
                 destination_mac: flow.data_link.destination_mac,
                 source_mac: flow.data_link.source_mac,
                 ethertype: flow.data_link.ethertype,
+                vlan: flow.data_link.vlan,
             },
             internet: match flow.internet {
                 Some(internet) => Some(InternetOwned {

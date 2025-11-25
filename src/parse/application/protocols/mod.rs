@@ -13,21 +13,23 @@ use ntp::NtpPacket;
 use s7comm::S7CommPacket;
 use tls::TlsPacket;
 
-use crate::parse::application::protocols::{giop::GiopPacket, quic::QuicPacket, srvloc::SrvlocPacket};
+use crate::parse::application::protocols::{
+    giop::GiopPacket, quic::QuicPacket, srvloc::SrvlocPacket,
+};
 
+pub mod ams;
 pub mod bitcoin;
 pub mod copt;
 pub mod dhcp;
 pub mod dns;
+pub mod giop;
 pub mod http;
 pub mod mqtt;
 pub mod ntp;
-pub mod s7comm;
-pub mod tls;
 pub mod quic;
-pub mod giop;
+pub mod s7comm;
 pub mod srvloc;
-pub mod ams;
+pub mod tls;
 
 /// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
 #[derive(Debug)]
@@ -45,7 +47,7 @@ pub enum ApplicationProtocol<'a> {
     Giop(GiopPacket),
     Srvloc(SrvlocPacket),
     Ams(ams::AmsPacket<'a>),
-    
+
     Raw(&'a [u8]),
     None,
 }

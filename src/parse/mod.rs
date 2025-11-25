@@ -12,7 +12,8 @@ use transport::Transport;
 use crate::{
     DataLink,
     errors::{ParsedPacketError, internet::InternetError, transport::TransportError},
-    owned::PacketFlowOwned, parse::transport::protocols::TransportProtocol,
+    owned::PacketFlowOwned,
+    parse::transport::protocols::TransportProtocol,
 };
 
 pub mod application;
@@ -51,7 +52,7 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
                 Err(TransportError::UnsupportedProtocol) => {
                     internet
                         .payload_protocol
-                        .take()                   // Option<TransportProtocol> -> Option<TransportProtocol> (move)
+                        .take() // Option<TransportProtocol> -> Option<TransportProtocol> (move)
                         .map(TransportProtocol::to_transport)
                 }
                 Err(e) => return Err(e.into()),

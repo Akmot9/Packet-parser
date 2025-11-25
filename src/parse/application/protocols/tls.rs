@@ -1,5 +1,5 @@
-use std::fmt;
 use std::convert::TryFrom;
+use std::fmt;
 
 /// Erreurs possibles lors du parsing d'un enregistrement TLS.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -186,7 +186,6 @@ pub fn looks_like_tls(buf: &[u8]) -> bool {
     TlsPacket::try_from(buf).is_ok()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,7 +229,10 @@ mod tests {
         let err = TlsPacket::try_from(invalid.as_slice()).unwrap_err();
         assert!(matches!(
             err,
-            TlsError::InconsistentLength { declared: 6, available: 5 }
+            TlsError::InconsistentLength {
+                declared: 6,
+                available: 5
+            }
         ));
     }
 
@@ -247,7 +249,7 @@ mod tests {
         // Record 1 : ChangeCipherSpec, TLS 1.2, length 1, payload = [0x00]
         // Record 2 : ApplicationData, TLS 1.2, length 3, payload = [0x01,0x02,0x03]
         let buf = vec![
-            20, 3, 3, 0, 1, 0x00,          // CCS
+            20, 3, 3, 0, 1, 0x00, // CCS
             23, 3, 3, 0, 3, 0x01, 0x02, 0x03, // AppData
         ];
 
@@ -271,8 +273,8 @@ mod tests {
         // Record 1 : ApplicationData, length 2, payload [0xAA, 0xBB]
         // Record 2 : ApplicationData, length 4, mais seulement 1 octet de payload (tronqué)
         let buf = vec![
-            23, 3, 3, 0, 2, 0xAA, 0xBB,  // record 1 complet
-            23, 3, 3, 0, 4, 0xCC,        // record 2 incomplet
+            23, 3, 3, 0, 2, 0xAA, 0xBB, // record 1 complet
+            23, 3, 3, 0, 4, 0xCC, // record 2 incomplet
         ];
 
         let records = parse_tls_records(&buf);

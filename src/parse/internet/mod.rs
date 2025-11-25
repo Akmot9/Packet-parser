@@ -110,7 +110,7 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
 //             destination_port: None,
 //             payload: None,
 //         })
-//     } 
+//     }
 // }
 
 impl<'a> PartialEq for Internet<'a> {
@@ -135,4 +135,3 @@ impl<'a> Hash for Internet<'a> {
         self.payload_protocol.hash(state);
     }
 }
-

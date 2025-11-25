@@ -40,10 +40,10 @@ pub struct SrvlocHeaderV2 {
 pub struct SrvlocHeaderV1 {
     pub version: u8,
     pub function: u8,
-    pub packet_length: u16,   // 2 octets
+    pub packet_length: u16, // 2 octets
     pub flags: u8,
     pub dialect: u8,
-    pub language: String,     // 2 bytes ASCII -> "en"
+    pub language: String, // 2 bytes ASCII -> "en"
 
     pub encoding: u8,
     pub transaction_id: u16,
@@ -69,7 +69,10 @@ pub enum SrvlocPacketParseError {
     /// Le buffer ne contient même pas une version
     InvalidPacketLength,
     /// Buffer tronqué alors qu’on attendait plus de données
-    Truncated { expected_at_least: usize, actual: usize },
+    Truncated {
+        expected_at_least: usize,
+        actual: usize,
+    },
     /// Version non supportée (≠ 1 ou 2)
     UnsupportedVersion(u8),
     /// Erreur UTF-8 dans un champ texte
@@ -82,7 +85,10 @@ impl core::fmt::Display for SrvlocPacketParseError {
             SrvlocPacketParseError::InvalidPacketLength => {
                 write!(f, "SRVLOC packet too short")
             }
-            SrvlocPacketParseError::Truncated { expected_at_least, actual } => {
+            SrvlocPacketParseError::Truncated {
+                expected_at_least,
+                actual,
+            } => {
                 write!(
                     f,
                     "SRVLOC packet truncated: expected at least {} bytes, got {}",
@@ -100,8 +106,6 @@ impl core::fmt::Display for SrvlocPacketParseError {
 }
 
 impl std::error::Error for SrvlocPacketParseError {}
-
-/// Helpers bas niveau
 
 fn ensure_len(buf: &[u8], needed: usize) -> Result<(), SrvlocPacketParseError> {
     if buf.len() < needed {
@@ -147,7 +151,7 @@ impl TryFrom<&[u8]> for SrvlocPacket {
 
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
         // 1) taille minimale : au moins la version
-        if payload.len() < 1 {
+        if payload.is_empty() {
             return Err(SrvlocPacketParseError::InvalidPacketLength);
         }
 
@@ -202,12 +206,7 @@ fn parse_v1_packet(payload: &[u8]) -> Result<SrvlocPacket, SrvlocPacketParseErro
     let error_code = read_u16(payload, &mut offset)?;
 
     let url_length = read_u16(payload, &mut offset)? as u16;
-    let url = read_string(
-        payload,
-        &mut offset,
-        url_length as usize,
-        "url",
-    )?;
+    let url = read_string(payload, &mut offset, url_length as usize, "url")?;
 
     let scope_list_lengh = read_u16(payload, &mut offset)? as u16;
     let scope_list = read_string(
@@ -272,12 +271,7 @@ fn parse_v2_packet(payload: &[u8]) -> Result<SrvlocPacket, SrvlocPacketParseErro
     let next_extension_offset = read_u24(payload, &mut offset)?;
     let xid = read_u16(payload, &mut offset)?;
     let lang_tag_len = read_u16(payload, &mut offset)? as u16;
-    let lang_tag = read_string(
-        payload,
-        &mut offset,
-        lang_tag_len as usize,
-        "lang_tag",
-    )?;
+    let lang_tag = read_string(payload, &mut offset, lang_tag_len as usize, "lang_tag")?;
 
     let header_v2 = SrvlocHeaderV2 {
         version,

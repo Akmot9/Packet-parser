@@ -6,7 +6,7 @@
 use serde::Serialize;
 
 // ethertype.rs
-#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Hash)]
 pub struct Ethertype(pub u16);
 
 impl Ethertype {

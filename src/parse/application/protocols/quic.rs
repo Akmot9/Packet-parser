@@ -166,7 +166,10 @@ impl<'a> Cur<'a> {
 // Implement Clone for Cur to allow cloning the cursor
 impl<'a> Clone for Cur<'a> {
     fn clone(&self) -> Self {
-        Self { b: self.b, i: self.i }
+        Self {
+            b: self.b,
+            i: self.i,
+        }
     }
 }
 
@@ -197,7 +200,9 @@ impl TryFrom<&[u8]> for QuicPacket {
             Ok(val)
         }
 
-        fn read_cid(cur: &mut Cur) -> Result<ConnectionId, crate::parse::application::ApplicationError> {
+        fn read_cid(
+            cur: &mut Cur,
+        ) -> Result<ConnectionId, crate::parse::application::ApplicationError> {
             let len = cur.take_u8()?;
             let bytes = cur.take(len as usize)?.to_vec();
             Ok(ConnectionId { len, bytes })
@@ -210,16 +215,18 @@ impl TryFrom<&[u8]> for QuicPacket {
         let b0 = cur.take_u8()?;
         let header_form_long = (b0 & 0b1000_0000) != 0;
         if !header_form_long {
-            return Err(err("Not a QUIC Long Header (short header not supported here)"));
+            return Err(err(
+                "Not a QUIC Long Header (short header not supported here)",
+            ));
         }
         let fixed_bit = (b0 & 0b0100_0000) != 0;
         if !fixed_bit {
             return Err(err("Fixed bit must be 1 for QUIC v1 Long Header"));
         }
-        let lptype = (b0 >> 4) & 0b11;        // Long Packet Type (2 bits)
-        let _reserved = (b0 >> 2) & 0b11;     // reserved
-        let pn_len_code = b0 & 0b11;          // PN length code
-        let pn_length = (pn_len_code + 1) as u8; // 1..=4
+        let lptype = (b0 >> 4) & 0b11; // Long Packet Type (2 bits)
+        let _reserved = (b0 >> 2) & 0b11; // reserved
+        let pn_len_code = b0 & 0b11; // PN length code
+        let pn_length = pn_len_code + 1; // 1..=4
 
         let packet_type = match lptype {
             0 => QuicPacketType::Initial,
@@ -246,8 +253,8 @@ impl TryFrom<&[u8]> for QuicPacket {
             dcid,
             scid,
             pn_length,
-            length_field: 0,        // placeholder, on remplit après
-            packet_number: None,    // idem
+            length_field: 0,     // placeholder, on remplit après
+            packet_number: None, // idem
         };
 
         // 5) Champs spécifiques selon type
@@ -264,7 +271,9 @@ impl TryFrom<&[u8]> for QuicPacket {
                 // PN
                 let pn_raw = cur.take(header.pn_length as usize)?;
                 let mut pn: u64 = 0;
-                for &b in pn_raw { pn = (pn << 8) | (b as u64); }
+                for &b in pn_raw {
+                    pn = (pn << 8) | (b as u64);
+                }
                 header.packet_number = Some(pn);
 
                 // Payload (length_field inclut PN + payload)
@@ -289,7 +298,9 @@ impl TryFrom<&[u8]> for QuicPacket {
                 // PN
                 let pn_raw = cur.take(header.pn_length as usize)?;
                 let mut pn: u64 = 0;
-                for &b in pn_raw { pn = (pn << 8) | (b as u64); }
+                for &b in pn_raw {
+                    pn = (pn << 8) | (b as u64);
+                }
                 header.packet_number = Some(pn);
 
                 // Payload
@@ -312,7 +323,9 @@ impl TryFrom<&[u8]> for QuicPacket {
 
                 let pn_raw = cur.take(header.pn_length as usize)?;
                 let mut pn: u64 = 0;
-                for &b in pn_raw { pn = (pn << 8) | (b as u64); }
+                for &b in pn_raw {
+                    pn = (pn << 8) | (b as u64);
+                }
                 header.packet_number = Some(pn);
 
                 let remaining_for_payload = length_field as usize - (header.pn_length as usize);
@@ -344,7 +357,10 @@ impl TryFrom<&[u8]> for QuicPacket {
                     Ok(v) => v,
                     Err(_) => {
                         // pas de varint plausible, tout en brut
-                        let rest = snapshot.take(snapshot.left()).map_err(|_| err("internal"))?.to_vec();
+                        let rest = snapshot
+                            .take(snapshot.left())
+                            .map_err(|_| err("internal"))?
+                            .to_vec();
                         return Ok(QuicPacket::OtherLong {
                             header,
                             payload: QuicPayload::EncryptedPayload(rest),
@@ -356,12 +372,17 @@ impl TryFrom<&[u8]> for QuicPacket {
                 // PN
                 let pn_raw = cur.take(header.pn_length as usize)?;
                 let mut pn: u64 = 0;
-                for &b in pn_raw { pn = (pn << 8) | (b as u64); }
+                for &b in pn_raw {
+                    pn = (pn << 8) | (b as u64);
+                }
                 header.packet_number = Some(pn);
 
                 let remaining_for_payload = length_field as usize - (header.pn_length as usize);
                 if cur.left() < remaining_for_payload {
-                    return Err(err(format!("Truncated payload for unknown long type {}", t)));
+                    return Err(err(format!(
+                        "Truncated payload for unknown long type {}",
+                        t
+                    )));
                 }
                 let payload_bytes = cur.take(remaining_for_payload)?.to_vec();
 
@@ -384,7 +405,11 @@ mod tests {
     fn hex_to_bytes(s: &str) -> Vec<u8> {
         let s = s.trim().strip_prefix("0x").unwrap_or(s);
         let mut out = Vec::with_capacity(s.len() / 2);
-        let bytes = s.as_bytes().iter().copied().filter(|c| !c.is_ascii_whitespace());
+        let bytes = s
+            .as_bytes()
+            .iter()
+            .copied()
+            .filter(|c| !c.is_ascii_whitespace());
         let mut it = bytes.peekable();
         while it.peek().is_some() {
             let h = (it.next().unwrap() as char).to_digit(16).expect("hex") as u8;
@@ -395,29 +420,45 @@ mod tests {
     }
 
     #[derive(Debug)]
-    enum SliceError { Underflow(&'static str), NotIpv6, NotUdp }
+    enum SliceError {
+        Underflow(&'static str),
+        NotIpv6,
+        NotUdp,
+    }
 
     /// Isoler le payload QUIC depuis une trame Ethernet II → IPv6 (40o) → UDP (8o).
     fn slice_quic_from_eth_ipv6_udp(frame: &[u8]) -> Result<&[u8], SliceError> {
         // Ethernet (14)
-        if frame.len() < 14 { return Err(SliceError::Underflow("eth")); }
+        if frame.len() < 14 {
+            return Err(SliceError::Underflow("eth"));
+        }
         let eth_type = u16::from_be_bytes([frame[12], frame[13]]);
-        if eth_type != 0x86DD { return Err(SliceError::NotIpv6); }
+        if eth_type != 0x86DD {
+            return Err(SliceError::NotIpv6);
+        }
 
         // IPv6 (40)
-        if frame.len() < 14 + 40 { return Err(SliceError::Underflow("ipv6")); }
-        let ipv6 = &frame[14..14+40];
+        if frame.len() < 14 + 40 {
+            return Err(SliceError::Underflow("ipv6"));
+        }
+        let ipv6 = &frame[14..14 + 40];
         let next_header = ipv6[6];
-        if next_header != 17 { return Err(SliceError::NotUdp); } // 17 = UDP
+        if next_header != 17 {
+            return Err(SliceError::NotUdp);
+        } // 17 = UDP
 
         let payload_len = u16::from_be_bytes([ipv6[4], ipv6[5]]) as usize;
         let udp_start = 14 + 40;
-        if frame.len() < udp_start + payload_len { return Err(SliceError::Underflow("ipv6 payload")); }
+        if frame.len() < udp_start + payload_len {
+            return Err(SliceError::Underflow("ipv6 payload"));
+        }
 
         // UDP (8)
-        if payload_len < 8 { return Err(SliceError::Underflow("udp")); }
+        if payload_len < 8 {
+            return Err(SliceError::Underflow("udp"));
+        }
         let quic_start = udp_start + 8;
-        let quic_end   = udp_start + payload_len;
+        let quic_end = udp_start + payload_len;
         Ok(&frame[quic_start..quic_end])
     }
 
@@ -431,8 +472,6 @@ mod tests {
 
     //     let pkt = QuicPacket::try_from(frame.as_slice()).expect("Paquet QUIC valide (Initial/Handshake)");
 
-
-        
     // }
 
     // #[test]
@@ -452,7 +491,10 @@ mod tests {
         buf.push(0); // dcid len
         buf.push(0); // scid len
         let res = QuicPacket::try_from(buf.as_slice());
-        assert!(matches!(res, Err(crate::parse::application::ApplicationError::QuicParseError)));
+        assert!(matches!(
+            res,
+            Err(crate::parse::application::ApplicationError::QuicParseError)
+        ));
     }
 
     #[test]
@@ -471,7 +513,10 @@ mod tests {
         // PN sur 1 octet (pn_length=1 via b0=0x80 -> pn_len_code=0 -> 1)
         buf.push(0x00);
         let res = QuicPacket::try_from(buf.as_slice());
-        assert!(matches!(res, Err(crate::parse::application::ApplicationError::QuicParseError)));
+        assert!(matches!(
+            res,
+            Err(crate::parse::application::ApplicationError::QuicParseError)
+        ));
     }
 
     #[test]
@@ -495,6 +540,9 @@ mod tests {
         buf.extend_from_slice(&[0x01, 0x02]);
 
         let res = QuicPacket::try_from(buf.as_slice());
-        assert!(matches!(res, Err(crate::parse::application::ApplicationError::QuicParseError)));
+        assert!(matches!(
+            res,
+            Err(crate::parse::application::ApplicationError::QuicParseError)
+        ));
     }
 }

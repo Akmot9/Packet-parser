@@ -29,18 +29,7 @@ pub struct AmsPacket<'a> {
 /// Commandes AMS/ADS connues.
 /// (Tu peux compléter si besoin)
 fn is_known_cmd_id(cmd_id: u16) -> bool {
-    matches!(
-        cmd_id,
-        0x0001 // ADS Read Device Info
-        | 0x0002 // ADS Read
-        | 0x0003 // ADS Write
-        | 0x0004 // ADS Read State
-        | 0x0005 // ADS Write Control
-        | 0x0006 // ADS Add Device Notification
-        | 0x0007 // ADS Delete Device Notification
-        | 0x0008 // ADS Device Notification
-        | 0x0009 // ADS Read Write
-    )
+    matches!(cmd_id, 0x0001..=0x0009)
 }
 
 /// Bits réservés dans state_flags.

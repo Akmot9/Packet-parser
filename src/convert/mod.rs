@@ -61,7 +61,7 @@ impl fmt::Display for Packet {
 pub fn hex_stream_to_bytes(hex: &str) -> Vec<u8> {
     let mut bytes = Vec::new();
     assert!(
-        hex.len() % 2 == 0,
+        hex.len().is_multiple_of(2),
         "La chaîne hexadécimale doit avoir une longueur paire"
     );
     for i in (0..hex.len()).step_by(2) {
