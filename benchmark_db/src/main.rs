@@ -71,7 +71,6 @@ fn main() -> Result<(), PacketCaptureError> {
             println!("taille du paquet: {}", &packet.data.len());
             // Parser via l’impl TryFrom<&[u8]>
             match PacketFlow::try_from(packet.data) {
-                
                 Ok(parsed_packet) => {
                     // println!("pas encore {}", counter);
                     let start = std::time::Instant::now();
@@ -84,12 +83,11 @@ fn main() -> Result<(), PacketCaptureError> {
                     println!("temps pour parser: {}", duration.as_nanos());
                 }
                 Err(e) => {
-                    eprintln!("Error parsing packet: {}", e); 
+                    eprintln!("Error parsing packet: {}", e);
                     counter += 1;
                     erreur += 1;
                     println!("{:?} pour le {}", packet.data, counter);
-                    
-                },
+                }
             }
         }
         println!("{} paquets parseés", counter);
