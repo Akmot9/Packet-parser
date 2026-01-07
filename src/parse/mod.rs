@@ -40,11 +40,13 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
 
     fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
         let data_link = DataLink::try_from(packets)?;
+
         let mut internet = match Internet::try_from(data_link.payload) {
             Ok(internet) => Some(internet),
             Err(InternetError::UnsupportedProtocol) => None,
             Err(e) => return Err(e.into()), // ex : DataLinkError etc.
         };
+
         // Étape 4 : Transport
         let transport = match internet.as_mut() {
             Some(internet) => match Transport::try_from(internet.payload) {
@@ -87,6 +89,7 @@ impl<'a> PartialEq for PacketFlow<'a> {
             && self.application == other.application
     }
 }
+
 use std::hash::{Hash, Hasher};
 
 impl<'a> Hash for PacketFlow<'a> {

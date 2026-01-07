@@ -358,92 +358,79 @@ impl<'a> S7CommPacket<'a> {
     /// # Returns
     /// * `Ok(S7Parameter)` if parsing was successful
     /// * `Err(&'static str)` if the parameter data is invalid
-    fn parse_parameter(data: &'a [u8]) -> Result<S7Parameter<'a>, &'static str> {
-        if data.is_empty() {
-            return Err("Empty parameter data");
-        }
-
-        // println!("Parameter data ({} bytes): {:?}", data.len(), data);
-        let function = data[0];
-        let item_count = data[1] as usize;
-        let mut items = Vec::with_capacity(item_count);
-        let mut offset = 2; // Skip function code and item count
-
-        for _i in 0..item_count {
-            if offset + 2 > data.len() {
-                return Err("Invalid parameter item header");
-            }
-
-            let spec_type = data[offset];
-            let length = data[offset + 1] as usize;
-
-            // println!(
-            //     "  Item {}: spec_type={:02x}, length={}",
-            //     i, spec_type, length
-            // );
-
-            if offset + 2 + length > data.len() {
-                // println!(
-                //     "  Invalid item: offset={}, length={}, data_len={}",
-                //     offset,
-                //     length,
-                //     data.len()
-                // );
-                return Err("Invalid parameter item length");
-            }
-
-            if spec_type == 0x12 && length >= 0x0A {
-                // S7ANY parameter item
-                if offset + 12 > data.len() {
-                    return Err("S7ANY parameter too short");
-                }
-
-                let syntax_id = data[offset + 2];
-                let transport_size = data[offset + 3];
-                let db_number = u16::from_be_bytes([data[offset + 5], data[offset + 6]]);
-                let area = data[offset + 7];
-                let address = ((data[offset + 8] as u32) << 16)
-                    | ((data[offset + 9] as u32) << 8)
-                    | (data[offset + 10] as u32);
-
-                // println!("  S7ANY: syntax_id={:02x}, transport_size={}, db_number={}, area={:02x}, address={:06x}",
-                //         syntax_id, transport_size, db_number, area, address);
-
-                items.push(S7ParameterItem {
-                    spec_type,
-                    length: length as u8,
-                    syntax_id,
-                    transport_size,
-                    db_number,
-                    area,
-                    address,
-                    raw: Some(&data[offset..offset + 2 + length]),
-                });
-
-                offset += 2 + length;
-            } else {
-                // For other item types, just store the raw data
-                // println!("  Generic parameter item");
-                items.push(S7ParameterItem {
-                    spec_type,
-                    length: length as u8,
-                    syntax_id: 0,
-                    transport_size: 0,
-                    db_number: 0,
-                    area: 0,
-                    address: 0,
-                    raw: Some(&data[offset..offset + 2 + length]),
-                });
-                offset += 2 + length;
-            }
-        }
-
-        if items.is_empty() {
-            return Err("No parameter items found");
-        }
-
-        Ok(S7Parameter { function, items })
+fn parse_parameter(data: &'a [u8]) -> Result<S7Parameter<'a>, &'static str> {
+    if data.is_empty() {
+        return Err("Empty parameter data");
     }
+
+    // Cas "fonction seule" (ex: parameter_length = 1)
+    if data.len() == 1 {
+        return Ok(S7Parameter {
+            function: data[0],
+            items: Vec::new(),
+        });
+    }
+
+    let function = data[0];
+    let item_count = data[1] as usize;
+    let mut items = Vec::with_capacity(item_count);
+    let mut offset = 2;
+
+    for _ in 0..item_count {
+        if offset + 2 > data.len() {
+            return Err("Invalid parameter item header");
+        }
+
+        let spec_type = data[offset];
+        let length = data[offset + 1] as usize;
+
+        if offset + 2 + length > data.len() {
+            return Err("Invalid parameter item length");
+        }
+
+        if spec_type == 0x12 && length >= 0x0A {
+            if offset + 12 > data.len() {
+                return Err("S7ANY parameter too short");
+            }
+
+            let syntax_id = data[offset + 2];
+            let transport_size = data[offset + 3];
+            let db_number = u16::from_be_bytes([data[offset + 5], data[offset + 6]]);
+            let area = data[offset + 7];
+            let address = ((data[offset + 8] as u32) << 16)
+                | ((data[offset + 9] as u32) << 8)
+                | (data[offset + 10] as u32);
+
+            items.push(S7ParameterItem {
+                spec_type,
+                length: length as u8,
+                syntax_id,
+                transport_size,
+                db_number,
+                area,
+                address,
+                raw: Some(&data[offset..offset + 2 + length]),
+            });
+        } else {
+            items.push(S7ParameterItem {
+                spec_type,
+                length: length as u8,
+                syntax_id: 0,
+                transport_size: 0,
+                db_number: 0,
+                area: 0,
+                address: 0,
+                raw: Some(&data[offset..offset + 2 + length]),
+            });
+        }
+
+        offset += 2 + length;
+    }
+
+    // Important : certains paquets ont item_count=0 => OK.
+    Ok(S7Parameter { function, items })
+}
+
 }
 
 impl<'a> fmt::Display for S7CommPacket<'a> {
@@ -476,5 +463,21 @@ mod tests {
         );
 
         // Add more assertions based on the expected values from your packet
+    }
+
+    #[test]
+    fn test_s7comm_parse() {
+        let hex_str = "0300003102f080320100000e00002000001a00010000000000095f30413030303031500d31303030353030303030343030";
+        let bytes = hex::decode(hex_str).expect("Failed to decode hex string");
+        let result = S7CommPacket::try_from(&bytes[..]);
+        assert!(result.is_ok(), "Failed to parse S7Comm packet: {:?}", result.err().unwrap());
+    }
+
+    #[test]
+    fn test_parameter_request_download() {
+        let hex_str = "0300001402f080320300000e000001000000001a";
+        let bytes = hex::decode(hex_str).expect("Failed to decode hex string");
+        let result = S7CommPacket::try_from(&bytes[..]);
+        assert!(result.is_ok(), "Failed to parse S7Comm packet: {:?}", result.err().unwrap());
     }
 }
