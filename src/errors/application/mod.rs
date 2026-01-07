@@ -8,6 +8,7 @@ use thiserror::Error;
 
 pub mod bitcoin;
 pub mod dns;
+pub mod mqtt;
 pub mod ntp;
 
 /// Errors related to parsing an `Application`
@@ -29,4 +30,7 @@ pub enum ApplicationError {
 
     #[error("Failed to parse Bitcoin packet")]
     BitcoinParseError,
+
+    #[error("Failed to parse MQTT packet")]
+    MqttParseError,
 }

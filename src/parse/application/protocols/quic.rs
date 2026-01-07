@@ -398,81 +398,36 @@ impl TryFrom<&[u8]> for QuicPacket {
 #[cfg(test)]
 mod tests {
     use super::*; // adapte si tes types sont dans un autre module
-    use hex;
-
-    // -------- Helpers --------
-
-    fn hex_to_bytes(s: &str) -> Vec<u8> {
-        let s = s.trim().strip_prefix("0x").unwrap_or(s);
-        let mut out = Vec::with_capacity(s.len() / 2);
-        let bytes = s
-            .as_bytes()
-            .iter()
-            .copied()
-            .filter(|c| !c.is_ascii_whitespace());
-        let mut it = bytes.peekable();
-        while it.peek().is_some() {
-            let h = (it.next().unwrap() as char).to_digit(16).expect("hex") as u8;
-            let l = (it.next().unwrap() as char).to_digit(16).expect("hex") as u8;
-            out.push((h << 4) | l);
-        }
-        out
-    }
-
-    #[derive(Debug)]
-    enum SliceError {
-        Underflow(&'static str),
-        NotIpv6,
-        NotUdp,
-    }
-
-    /// Isoler le payload QUIC depuis une trame Ethernet II → IPv6 (40o) → UDP (8o).
-    fn slice_quic_from_eth_ipv6_udp(frame: &[u8]) -> Result<&[u8], SliceError> {
-        // Ethernet (14)
-        if frame.len() < 14 {
-            return Err(SliceError::Underflow("eth"));
-        }
-        let eth_type = u16::from_be_bytes([frame[12], frame[13]]);
-        if eth_type != 0x86DD {
-            return Err(SliceError::NotIpv6);
-        }
-
-        // IPv6 (40)
-        if frame.len() < 14 + 40 {
-            return Err(SliceError::Underflow("ipv6"));
-        }
-        let ipv6 = &frame[14..14 + 40];
-        let next_header = ipv6[6];
-        if next_header != 17 {
-            return Err(SliceError::NotUdp);
-        } // 17 = UDP
-
-        let payload_len = u16::from_be_bytes([ipv6[4], ipv6[5]]) as usize;
-        let udp_start = 14 + 40;
-        if frame.len() < udp_start + payload_len {
-            return Err(SliceError::Underflow("ipv6 payload"));
-        }
-
-        // UDP (8)
-        if payload_len < 8 {
-            return Err(SliceError::Underflow("udp"));
-        }
-        let quic_start = udp_start + 8;
-        let quic_end = udp_start + payload_len;
-        Ok(&frame[quic_start..quic_end])
-    }
 
     // -------- Tests --------
 
-    // #[test]
-    // fn test_valid_quic_packet() {
-    //     // Trame fournie (ETH→IPv6→UDP→QUIC)
-    //     let hex = "f68410fdbcf3e18752fb63be492fe033d14c4cd000";
-    //     let frame = hex_to_bytes(hex);
+    #[test]
+    fn test_valid_quic_initial_minimal() {
+        // construit un QUIC Initial minimal (comme tes autres tests),
+        // pas besoin ETH/IPv6/UDP pour l’instant.
+        let mut buf = Vec::new();
+        buf.push(0xC0); // Long=1, Fixed=1, Initial, PN len=1
+        buf.extend_from_slice(&0x00000001u32.to_be_bytes());
+        buf.push(0); // dcid len
+        buf.push(0); // scid len
+        buf.push(0x00); // token len = 0
+        buf.push(0x01); // length = 1 (PN seul)
+        buf.push(0x00); // PN
 
-    //     let pkt = QuicPacket::try_from(frame.as_slice()).expect("Paquet QUIC valide (Initial/Handshake)");
-
-    // }
+        let pkt = QuicPacket::try_from(buf.as_slice()).expect("must parse");
+        match pkt {
+            QuicPacket::Initial {
+                header,
+                token,
+                payload,
+            } => {
+                assert_eq!(header.version, 1);
+                assert!(token.is_empty());
+                matches!(payload, QuicPayload::EncryptedPayload(ref v) if v.is_empty());
+            }
+            _ => panic!("expected Initial"),
+        }
+    }
 
     // #[test]
     // fn test_error_short_buffer() {
