@@ -4,9 +4,7 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 pub mod protocols;
-use protocols::{
-    bitcoin::parse_bitcoin_packet, dns::DnsPacket, s7comm::S7CommPacket, tls::TlsPacket,
-};
+use protocols::{bitcoin::BitcoinPacket, dns::DnsPacket, s7comm::S7CommPacket, tls::TlsPacket};
 use serde::Serialize;
 
 use crate::{
@@ -34,7 +32,7 @@ impl TryFrom<&[u8]> for Application {
             });
         }
 
-        if parse_bitcoin_packet(packet).is_ok() {
+        if BitcoinPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "Bitcoin".to_string(),
             });

@@ -1,6 +1,6 @@
 use crate::parse::application::{Application, protocols::ApplicationProtocol};
 use std::fmt;
-
+pub mod bitcoin;
 impl fmt::Display for Application {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} ", self.application_protocol)
@@ -23,7 +23,6 @@ impl<'a> fmt::Display for ApplicationProtocol<'a> {
             ApplicationProtocol::Giop(_) => write!(f, "GIOP"),
             ApplicationProtocol::Srvloc(_) => write!(f, "SRVLOC"),
             ApplicationProtocol::Ams(_) => write!(f, "AMS"),
-
             ApplicationProtocol::Raw(data) => {
                 let preview_len = 16.min(data.len());
                 let hex_preview: String = data[..preview_len]

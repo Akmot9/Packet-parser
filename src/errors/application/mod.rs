@@ -6,6 +6,7 @@
 use serde::Serialize;
 use thiserror::Error;
 
+pub mod bitcoin;
 pub mod dns;
 pub mod ntp;
 
@@ -25,4 +26,7 @@ pub enum ApplicationError {
 
     #[error("Failed to parse QUIC packet")]
     QuicParseError,
+
+    #[error("Failed to parse Bitcoin packet")]
+    BitcoinParseError,
 }
