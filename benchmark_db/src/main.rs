@@ -26,7 +26,7 @@ pub enum PacketCaptureError {
 
 fn main() -> Result<(), PacketCaptureError> {
     // Dossier contenant les fichiers .pcap
-    let pcap_dir = Path::new("/home/erdt-cyber/exemple_pcap/801q");
+    let pcap_dir = Path::new("/home/erdt-cyber/rust/ICS-Security-Tools/pcaps/ModbusTCP");
 
     // Itérer sur les fichiers du dossier
     for entry in fs::read_dir(pcap_dir)? {
@@ -52,7 +52,7 @@ fn main() -> Result<(), PacketCaptureError> {
 
         // Ouvrir le fichier PCAP
         let mut cap = pcap::Capture::from_file(&path)?;
-        let mut counter = 0;
+        let mut counter = 1;
         let mut erreur = 0;
         // Lire les paquets
         loop {
@@ -72,7 +72,7 @@ fn main() -> Result<(), PacketCaptureError> {
             // Parser via l’impl TryFrom<&[u8]>
             match PacketFlow::try_from(packet.data) {
                 Ok(parsed_packet) => {
-                    // println!("pas encore {}", counter);
+                    println!("counter : {}", counter);
                     let start = std::time::Instant::now();
                     // Si tu as un modèle "owned", ok.
                     // Attention: `to_owned()` sur un type peut faire autre chose selon ton impl.

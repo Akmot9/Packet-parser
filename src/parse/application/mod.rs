@@ -9,7 +9,9 @@ use serde::Serialize;
 
 use crate::{
     errors::application::ApplicationError,
-    parse::application::protocols::{giop::GiopPacket, ntp::NtpPacket, srvloc::SrvlocPacket},
+    parse::application::protocols::{
+        giop::GiopPacket, modbus_tcp::ModbusTcpPacket, ntp::NtpPacket, srvloc::SrvlocPacket,
+    },
 };
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
@@ -60,6 +62,11 @@ impl TryFrom<&[u8]> for Application {
         if SrvlocPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "SRVLOCK".to_string(),
+            });
+        }
+        if ModbusTcpPacket::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "ModbusTCP".to_string(),
             });
         }
         // if AmsPacket::try_from(packet).is_ok() {

@@ -10,6 +10,7 @@ impl fmt::Display for Application {
 impl<'a> fmt::Display for ApplicationProtocol<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ApplicationProtocol::ModbusTcp(_) => write!(f, "ModbusTCP"),
             ApplicationProtocol::Ntp(_) => write!(f, "NTP"),
             ApplicationProtocol::Tls(_) => write!(f, "TLS"),
             ApplicationProtocol::Http(_) => write!(f, "HTTP"),

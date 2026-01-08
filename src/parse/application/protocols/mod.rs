@@ -8,6 +8,7 @@ use copt::CotpHeader;
 use dhcp::DhcpPacket;
 use dns::DnsPacket;
 use http::HttpRequest;
+use modbus_tcp::ModbusTcpPacket;
 use mqtt::MqttPacket;
 use ntp::NtpPacket;
 use s7comm::S7CommPacket;
@@ -24,6 +25,7 @@ pub mod dhcp;
 pub mod dns;
 pub mod giop;
 pub mod http;
+pub mod modbus_tcp;
 pub mod mqtt;
 pub mod ntp;
 pub mod quic;
@@ -47,7 +49,7 @@ pub enum ApplicationProtocol<'a> {
     Giop(GiopPacket),
     Srvloc(SrvlocPacket),
     Ams(ams::AmsPacket<'a>),
-
+    ModbusTcp(ModbusTcpPacket<'a>),
     Raw(&'a [u8]),
     None,
 }
