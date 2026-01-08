@@ -1,6 +1,5 @@
 use core::convert::TryFrom;
 
-
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// Modbus/TCP Protocol Packet
 ///
@@ -66,7 +65,6 @@ impl<'a> TryFrom<&'a [u8]> for ModbusTcpPacket<'a> {
     }
 }
 
-
 #[derive(Debug)]
 pub struct MBAP<'a> {
     pub transaction_identifier: u16,
@@ -93,14 +91,16 @@ pub enum ModbusTcpError {
     PduTooSmall { needed: usize, actual: usize },
 }
 
-
 impl<'a> TryFrom<&'a [u8]> for MBAP<'a> {
     type Error = ModbusTcpError;
 
     fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
         // MBAP minimal = 7 bytes
         if value.len() < MBAP_MIN_SIZE {
-            return Err(ModbusTcpError::BufferTooSmall { needed: MBAP_MIN_SIZE, actual: value.len() });
+            return Err(ModbusTcpError::BufferTooSmall {
+                needed: MBAP_MIN_SIZE,
+                actual: value.len(),
+            });
         }
 
         let transaction_identifier = u16::from_be_bytes([value[0], value[1]]);
@@ -109,7 +109,9 @@ impl<'a> TryFrom<&'a [u8]> for MBAP<'a> {
         let unit_identifier = value[6];
 
         if protocol_identifier != 0 {
-            return Err(ModbusTcpError::InvalidProtocolIdentifier { got: protocol_identifier });
+            return Err(ModbusTcpError::InvalidProtocolIdentifier {
+                got: protocol_identifier,
+            });
         }
 
         if length < 1 {
@@ -119,13 +121,19 @@ impl<'a> TryFrom<&'a [u8]> for MBAP<'a> {
         // Taille totale attendue = 6 + length
         let expected_total = 6usize + length as usize;
         if value.len() < expected_total {
-            return Err(ModbusTcpError::LengthMismatch { expected: expected_total, actual: value.len() });
+            return Err(ModbusTcpError::LengthMismatch {
+                expected: expected_total,
+                actual: value.len(),
+            });
         }
 
         // PDU = après unit id
         let pdu = &value[7..expected_total];
-        if pdu.len() < 1 {
-            return Err(ModbusTcpError::PduTooSmall { needed: 1, actual: pdu.len() });
+        if pdu.is_empty() {
+            return Err(ModbusTcpError::PduTooSmall {
+                needed: 1,
+                actual: pdu.len(),
+            });
         }
 
         let function_code = pdu[0];
@@ -145,7 +153,6 @@ impl<'a> TryFrom<&'a [u8]> for MBAP<'a> {
         })
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -216,7 +223,7 @@ mod tests {
             0x04, // function
             0xC6, // byte_count=198
         ];
-        bytes.extend(core::iter::repeat(0u8).take(198));
+        bytes.extend(core::iter::repeat_n(0u8, 198));
 
         let pkt = MBAP::try_from(bytes.as_slice()).unwrap();
         assert_eq!(pkt.transaction_identifier, 0x7CFE);
