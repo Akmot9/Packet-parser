@@ -15,13 +15,15 @@ pub enum PacketCaptureError {
     #[error("Failed to receive packet: {0}")]
     PacketReceiveError(String),
 
-    #[error("Failed to parse packet: {0:?}")]
+    #[error("Failed to parse packet: {0}")]
     PacketParseError(String),
+
+    #[error("Failed to serialize packet to JSON: {0}")]
+    JsonError(String),
 }
 
 fn find_interface(interface_name: &str) -> Result<NetworkInterface, PacketCaptureError> {
-    let interfaces = datalink::interfaces();
-    interfaces
+    datalink::interfaces()
         .into_iter()
         .find(|iface| iface.name == interface_name)
         .ok_or_else(|| PacketCaptureError::InterfaceNotFound(interface_name.to_string()))
@@ -43,7 +45,7 @@ fn create_channel(
         )),
         Err(e) => {
             eprintln!(
-                "use sudo setcap cap_net_raw,cap_net_admin=eip target/debug/integration_test"
+                "Hint: sudo setcap cap_net_raw,cap_net_admin=eip target/debug/integration_test"
             );
             Err(PacketCaptureError::ChannelCreationError(e.to_string()))
         }
@@ -51,40 +53,39 @@ fn create_channel(
 }
 
 fn main() -> Result<(), PacketCaptureError> {
-    // Sélectionner l'interface réseau
-    let interface_name = "wlp0s20f3"; // Exemple d'interface réseau maison : wlp6s0 wlp0s20f3 enxfeaa81e86d1e veth0
-
+    let interface_name = "wlp0s20f3";
     let interface = find_interface(interface_name)?;
-
-    // Créer un canal pour recevoir les paquets
     let (_tx, mut rx) = create_channel(&interface)?;
 
     loop {
-        // Recevoir un paquet
-        let packet = match rx.next() {
-            Ok(packet) => packet,
-            Err(e) => {
-                eprintln!("Failed to receive packet: {}", e);
-                continue;
-            }
-        };
-        println!("--------------");
-        println!("Received packet: {:2X?}", packet);
+        let packet = rx
+            .next()
+            .map_err(|e| PacketCaptureError::PacketReceiveError(e.to_string()))?;
 
-        // Tenter de parser le paquet
+        println!("--------------");
+        println!("Received packet: {:02X?}", packet);
+
         match PacketFlow::try_from(packet) {
             Ok(parsed_packet) => {
-                println!("=== Version avec to_string() ===");
-                println!("{}", parsed_packet);
+                // 1) rendu humain (Display)
+                println!("=== Parsed (Display) ===");
+                println!("{parsed_packet}");
 
-                println!("\n=== Version avec to_owned() ===");
-                let owned_json = parsed_packet.to_owned();
-                println!("{}", owned_json);
+                // 2) version owned sérialisable
+                let owned = parsed_packet.to_owned();
+
+                // 3) JSON compact (recommandé pour fichier / IPC)
+                let json = serde_json::to_string(&owned)
+                    .map_err(|e| PacketCaptureError::JsonError(e.to_string()))?;
+                println!("=== Owned (JSON) ===");
+                println!("{json}");
+
+                // Option debug lisible:
+                // let json_pretty = serde_json::to_string_pretty(&owned)
+                //     .map_err(|e| PacketCaptureError::JsonError(e.to_string()))?;
+                // println!("{json_pretty}");
             }
-            Err(e) => eprintln!(
-                "Error parsing packet: {}",
-                PacketCaptureError::PacketParseError(e.to_string())
-            ),
+            Err(e) => eprintln!("{}", PacketCaptureError::PacketParseError(e.to_string())),
         }
     }
 }

@@ -41,7 +41,7 @@ fn main() -> Result<(), PacketCaptureError> {
 
         println!("===============================");
         println!("Opening PCAP: {}", path.display());
-        let mut cap = match pcap::Capture::from_file(&path) {
+        let _cap = match pcap::Capture::from_file(&path) {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("pcap open failed for {}: {}", path.display(), e);
