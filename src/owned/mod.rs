@@ -138,7 +138,6 @@ impl<'a> From<PacketFlow<'a>> for PacketFlowOwned {
     }
 }
 
-
 impl Display for PacketFlowOwned {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "Packet Flow:")?;
