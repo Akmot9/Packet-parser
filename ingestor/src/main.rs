@@ -163,6 +163,7 @@ ON CONFLICT (run_id, pcap, idx) DO NOTHING
 fn list_jsonl_files(dir: &Path) -> Result<Vec<PathBuf>> {
     let pattern = dir.join("*.jsonl");
     let pattern = pattern.to_string_lossy().to_string();
+    eprintln!("pattern={}", pattern);
 
     let mut out = Vec::new();
     for entry in glob(&pattern).context("glob failed")? {
@@ -223,6 +224,17 @@ async fn main() -> Result<()> {
     let jsonl_dir = env_string("JSONL_DIR", "/data/jsonl");
     let scan_interval_ms = env_u64("SCAN_INTERVAL_MS", 500);
     let batch_size = env_usize("BATCH_SIZE", 1000);
+    
+    eprintln!(
+        "ingestor start: jsonl_dir={} scan_interval_ms={} batch_size={} pg_host={} pg_port={} pg_db={} pg_user={}",
+        jsonl_dir,
+        scan_interval_ms,
+        batch_size,
+        env_string("PG_HOST", "localhost"),
+        env_string("PG_PORT", "5432"),
+        env_string("PG_DB", "benchdb"),
+        env_string("PG_USER", "bench"),
+    );
 
     let jsonl_dir = PathBuf::from(jsonl_dir);
 
