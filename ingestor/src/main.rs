@@ -39,11 +39,17 @@ struct FileState {
 }
 
 fn env_u64(key: &str, default: u64) -> u64 {
-    std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 fn env_usize(key: &str, default: usize) -> usize {
-    std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 fn env_string(key: &str, default: &str) -> String {
@@ -106,7 +112,10 @@ CREATE INDEX IF NOT EXISTS ix_by_pcap ON packet_parse_events (pcap);
 CREATE INDEX IF NOT EXISTS ix_by_ts ON packet_parse_events (ts_ms);
 "#;
 
-    client.batch_execute(sql).await.context("ensure schema failed")?;
+    client
+        .batch_execute(sql)
+        .await
+        .context("ensure schema failed")?;
     Ok(())
 }
 
@@ -159,7 +168,6 @@ ON CONFLICT (run_id, pcap, idx) DO NOTHING
     Ok(())
 }
 
-
 fn list_jsonl_files(dir: &Path) -> Result<Vec<PathBuf>> {
     let pattern = dir.join("*.jsonl");
     let pattern = pattern.to_string_lossy().to_string();
@@ -211,7 +219,11 @@ fn read_new_lines(path: &Path, offset_bytes: u64) -> Result<(u64, Vec<JsonlEvent
         match serde_json::from_str::<JsonlEvent>(line) {
             Ok(ev) => events.push(ev),
             Err(e) => {
-                eprintln!("json parse error in {}: {e} | line={}", path.display(), line);
+                eprintln!(
+                    "json parse error in {}: {e} | line={}",
+                    path.display(),
+                    line
+                );
             }
         }
     }
@@ -224,7 +236,7 @@ async fn main() -> Result<()> {
     let jsonl_dir = env_string("JSONL_DIR", "/data/jsonl");
     let scan_interval_ms = env_u64("SCAN_INTERVAL_MS", 500);
     let batch_size = env_usize("BATCH_SIZE", 1000);
-    
+
     eprintln!(
         "ingestor start: jsonl_dir={} scan_interval_ms={} batch_size={} pg_host={} pg_port={} pg_db={} pg_user={}",
         jsonl_dir,
@@ -255,7 +267,9 @@ async fn main() -> Result<()> {
 
         for path in files {
             // init state si absent
-            states.entry(path.clone()).or_insert(FileState { offset_bytes: 0 });
+            states
+                .entry(path.clone())
+                .or_insert(FileState { offset_bytes: 0 });
 
             // si truncate: reset
             if let (Ok(len), Some(st)) = (file_len(&path), states.get_mut(&path)) {

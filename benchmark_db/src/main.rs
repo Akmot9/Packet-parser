@@ -202,7 +202,6 @@ fn log_path_for(pcap_path: &Path) -> PathBuf {
     dir.join(format!("bench_{}.jsonl", fname))
 }
 
-
 fn make_run_id() -> String {
     // minimal: timestamp ms + pid
     let ts = now_unix_ms();

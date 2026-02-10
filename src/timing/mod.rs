@@ -30,7 +30,6 @@ pub struct ParseReport {
     pub l7: LayerAttempt,
 }
 
-
 #[cfg(not(feature = "parse_timing"))]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ParseTiming;

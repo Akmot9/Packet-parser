@@ -30,7 +30,7 @@ use transport::Transport;
 
 use crate::{
     DataLink,
-    errors::{internet::InternetError, transport::TransportError, ParsedPacketError},
+    errors::{ParsedPacketError, internet::InternetError, transport::TransportError},
     owned::PacketFlowOwned,
     parse::transport::protocols::TransportProtocol,
 };
