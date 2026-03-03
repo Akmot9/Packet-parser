@@ -111,13 +111,13 @@ impl<'a> PacketFlow<'a> {
     #[inline(always)]
     fn parse_impl(packets: &'a [u8]) -> Result<Self, ParsedPacketError> {
         let data_link = DataLink::try_from(packets)?;
-
+        // add tempo de 30 ns
+        
         let mut internet = match Internet::try_from(data_link.payload) {
             Ok(internet) => Some(internet),
             Err(InternetError::UnsupportedProtocol) => None,
             Err(e) => return Err(e.into()),
         };
-
         let transport = match internet.as_mut() {
             Some(internet) => match Transport::try_from(internet.payload) {
                 Ok(transport) => Some(transport),

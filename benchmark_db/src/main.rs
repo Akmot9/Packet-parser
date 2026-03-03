@@ -211,7 +211,8 @@ fn make_run_id() -> String {
 
 fn main() -> Result<(), PacketCaptureError> {
     let run_id = make_run_id();
-    let crate_version = env!("CARGO_PKG_VERSION");
+    println!("run_id: {}", run_id);
+    let crate_version = "1.1.0";
 
     let pcap_dir = Path::new("/home/erdt-cyber/rust/ICS-Security-Tools/pcaps/ModbusTCP");
 
