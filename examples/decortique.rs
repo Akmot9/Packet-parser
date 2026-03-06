@@ -1,6 +1,4 @@
-use packet_parser::{
-    Application, DataLink, Internet, Transport, parse::transport::protocols::TransportProtocol
-};
+use packet_parser::{Application, DataLink, Internet, Transport};
 
 fn parse_csv_hex_bytes(s: &str) -> Vec<u8> {
     s.split(|c| c == ',' || c == '\n' || c == '\r' || c == '\t' || c == ' ')

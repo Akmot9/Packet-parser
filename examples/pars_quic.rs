@@ -3,9 +3,9 @@
 use hex::decode;
 use packet_parser::Application;
 
-
 fn main() {
-    let hex_dump_data = "c4000000010008f409517248c4ab52004016dae7c01a42788f5049396532534a03ae8ebd63bf94e4";
+    let hex_dump_data =
+        "c4000000010008f409517248c4ab52004016dae7c01a42788f5049396532534a03ae8ebd63bf94e4";
 
     let packet = decode(hex_dump_data).expect("Conversion hexadécimale échouée");
     let _app = match Application::try_from(packet.as_slice()) {
@@ -20,6 +20,4 @@ fn main() {
         Ok(app) => println!("{}", app),
         Err(e) => eprintln!("Erreur : {:?}", e),
     };
-
-
 }
