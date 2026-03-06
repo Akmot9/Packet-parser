@@ -16,6 +16,7 @@ impl<'a> fmt::Display for ApplicationProtocol<'a> {
             ApplicationProtocol::Http(_) => write!(f, "HTTP"),
             ApplicationProtocol::Mqtt(_) => write!(f, "MQTT"),
             ApplicationProtocol::Dhcp(_) => write!(f, "DHCP"),
+            ApplicationProtocol::Dhcpv6(_) => write!(f, "DHCPv6"),
             ApplicationProtocol::Bitcoin(_) => write!(f, "Bitcoin"),
             ApplicationProtocol::Dns(_) => write!(f, "DNS"),
             ApplicationProtocol::S7Comm(_) => write!(f, "S7Comm"),
