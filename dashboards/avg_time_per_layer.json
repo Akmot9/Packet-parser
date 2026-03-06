@@ -36,29 +36,16 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "line",
-            "fillOpacity": 25,
+            "fillOpacity": 61,
             "gradientMode": "none",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
+            "lineWidth": 0,
             "scaleDistribution": {
               "type": "linear"
-            },
-            "showPoints": "auto",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "normal"
             },
             "thresholdsStyle": {
               "mode": "off"
@@ -97,17 +84,26 @@
       },
       "id": 1,
       "options": {
+        "barRadius": 0,
+        "barWidth": 1,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
         "legend": {
           "calcs": [],
-          "displayMode": "hidden",
-          "placement": "right",
-          "showLegend": false
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
+        "orientation": "auto",
+        "showValue": "auto",
+        "stacking": "normal",
         "tooltip": {
           "hideZeros": false,
           "mode": "single",
           "sort": "none"
-        }
+        },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
       },
       "pluginVersion": "12.3.2",
       "targets": [
@@ -116,7 +112,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  run_id,\n  MIN(to_timestamp(ts_ms / 1000.0)) AS run_start,\n  MAX(to_timestamp(ts_ms / 1000.0)) AS run_end,\n  AVG(l2_ns)::bigint                 AS avg_l2_ns,\n  AVG(l3_ns)::bigint                 AS avg_l3_ns,\n  AVG(l4_ns)::bigint                 AS avg_l4_ns,\n  AVG(l7_ns)::bigint                 AS avg_l7_ns\nFROM packet_parse_events\nWHERE l2_ns IS NOT NULL\n  OR l3_ns IS NOT NULL\n  OR l4_ns IS NOT NULL\n  OR l7_ns IS NOT NULL\nGROUP BY run_id\nORDER BY run_end DESC;\n",
+          "rawSql": "SELECT\n  run_id,\n  MIN(to_timestamp(ts_ms / 1000.0)) AS run_start,\n  MAX(to_timestamp(ts_ms / 1000.0)) AS run_end,\n  AVG(l2_ns)::bigint                 AS avg_l2_ns,\n  AVG(l3_ns)::bigint                 AS avg_l3_ns,\n  AVG(l4_ns)::bigint                 AS avg_l4_ns,\n  AVG(l7_ns)::bigint                 AS avg_l7_ns\nFROM packet_parse_events\nWHERE l2_ns IS NOT NULL\n  OR l3_ns IS NOT NULL\n  OR l4_ns IS NOT NULL\n  OR l7_ns IS NOT NULL\nGROUP BY run_id\nORDER BY run_id ASC;\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -138,7 +134,7 @@
         }
       ],
       "title": "avg parsing ime over version ",
-      "type": "timeseries"
+      "type": "barchart"
     }
   ],
   "preload": false,
@@ -149,12 +145,12 @@
     "list": []
   },
   "time": {
-    "from": "2026-02-11T06:28:27.049Z",
-    "to": "2026-02-11T06:36:04.439Z"
+    "from": "now-1h",
+    "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "avg time per layer overt version ",
+  "title": "avg time per layer overt version",
   "uid": "ad8ch9p",
-  "version": 4
+  "version": 3
 }
