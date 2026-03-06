@@ -42,13 +42,8 @@ pub fn parse_dhcpv6_packet<'a>(
 
     let message_type = payload[0];
 
-    // Relay agents use different message formats (types 12 and 13)
-    if message_type == 12 || message_type == 13 {
-        return Err(Dhcpv6PacketParseError::UnsupportedRelayType);
-    }
-
-    // Type 0 is not a valid message type in DHCPv6
-    if message_type == 0 {
+    // Allowed message types in DHCPv6 go from 1 to 13 (including Relay Agents 12 and 13)
+    if !(1..=13).contains(&message_type) {
         return Err(Dhcpv6PacketParseError::InvalidMessageType { message_type });
     }
 
@@ -105,17 +100,35 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_dhcpv6_packet_unsupported_relay() {
-        // Relay-forward message (Type 12) - different structure
+    fn test_parse_dhcpv6_packet_invalid_type() {
+        // Unknown message type 14 (0x0E)
+        let invalid_payload = vec![
+            0x0E, // msg-type: UNKNOWN
+            0x12, 0x34, 0x56, // transaction-id
+            0x00, 0x00, 0x00, 0x00, // Options
+        ];
+        match parse_dhcpv6_packet(&invalid_payload) {
+            Ok(_) => panic!("Expected invalid DHCPv6 packet due to invalid message type"),
+            Err(e) => assert_eq!(
+                e,
+                Dhcpv6PacketParseError::InvalidMessageType { message_type: 14 }
+            ),
+        }
+    }
+
+    #[test]
+    fn test_parse_dhcpv6_relay_agent() {
+        // Relay-forward message (Type 12)
         let relay_payload = vec![
             0x0C, // msg-type: RELAY-FORW
-            0x00, // hop-count
-            0x00, 0x00, // Padding
-            0x00, 0x00, 0x00, 0x00, // Link-address...
+            0x01, 0x02, 0x03, // pseudo transaction-id (mapped from hop-count + logic)
+            0x00, 0x00, 0x00, 0x00, // Options
         ];
         match parse_dhcpv6_packet(&relay_payload) {
-            Ok(_) => panic!("Expected invalid DHCPv6 packet due to unsupported relay type"),
-            Err(e) => assert_eq!(e, Dhcpv6PacketParseError::UnsupportedRelayType),
+            Ok(packet) => {
+                assert_eq!(packet.message_type, 12);
+            }
+            Err(e) => panic!("Expected valid DHCPv6 Relay packet, got {:?}", e),
         }
     }
 }

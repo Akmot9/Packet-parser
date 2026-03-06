@@ -17,7 +17,4 @@ pub enum Dhcpv6PacketParseError {
 
     #[error("Invalid DHCPv6 message type: {message_type}")]
     InvalidMessageType { message_type: u8 },
-
-    #[error("Unsupported DHCPv6 relay type")]
-    UnsupportedRelayType,
 }

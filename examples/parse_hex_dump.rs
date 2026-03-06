@@ -51,20 +51,23 @@ fn main() {
         Err(e) => println!("✅ Erreur capturée avec succès : {:?}", e),
     }
 
-    // 4️⃣ Test: Tester l'erreur UnsupportedRelayType
-    println!("\n--- 4. Test Gestion d'Erreur (Agent de Relais non supporté) ---");
+    // 4️⃣ Test: Tester le support des Agents de Relais
+    println!("\n--- 4. Test d'un Agent de Relais (Type 12) ---");
     // Type 12 (0x0C) Relay-forward
     let relay_payload_hex = "0c000000000000000000000000000000";
     let relay_payload = decode(relay_payload_hex).unwrap();
     match parse_dhcpv6_packet(relay_payload.as_slice()) {
-        Ok(_) => println!("❌ N'aurait pas dû réussir !"),
-        Err(e) => println!("✅ Erreur capturée avec succès : {:?}", e),
+        Ok(packet) => {
+            println!("✅ Payload Relais DHCPv6 (Type 12) décodé avec succès !");
+            println!("   > Type de Message : {}", packet.message_type);
+        }
+        Err(e) => println!("❌ Erreur inattendue : {:?}", e),
     }
 
     // 5️⃣ Test: Tester l'erreur InvalidMessageType
     println!("\n--- 5. Test Gestion d'Erreur (Type de message inexistant) ---");
-    // Type 0 (0x00) n'existe pas en DHCPv6
-    let invalid_type_hex = "001234560000";
+    // Type 14 (0x0E) n'est pas autorisé
+    let invalid_type_hex = "0e1234560000";
     let invalid_payload = decode(invalid_type_hex).unwrap();
     match parse_dhcpv6_packet(invalid_payload.as_slice()) {
         Ok(_) => println!("❌ N'aurait pas dû réussir !"),
