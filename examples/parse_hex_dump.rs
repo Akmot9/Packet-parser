@@ -1,7 +1,7 @@
 use hex::decode;
 use packet_parser::PacketFlow;
-use packet_parser::parse::application::protocols::dhcpv6::parse_dhcpv6_packet;
-
+use std::convert::TryFrom;
+use packet_parser::parse::application::protocols::dhcpv6::Dhcpv6Packet;
 fn main() {
     println!("=======================================================");
     println!("🧪 ENVIRONNEMENT DE TEST DHCPv6 (PARSER & ERRORS)");
@@ -32,7 +32,7 @@ fn main() {
     // Options = 0001 000a00030001001122334455
     let dhcp_payload_hex = "011234560001000a00030001001122334455";
     let valid_payload = decode(dhcp_payload_hex).unwrap();
-    match parse_dhcpv6_packet(valid_payload.as_slice()) {
+    match Dhcpv6Packet::try_from(valid_payload.as_slice()) {
         Ok(packet) => {
             println!("✅ Payload DHCPv6 décodé :");
             println!("   > Type de Message : {}", packet.message_type);
@@ -46,7 +46,7 @@ fn main() {
     println!("\n--- 3. Test Gestion d'Erreur (Payload trop court) ---");
     let short_payload_hex = "011234"; // Seulement 3 octets, doit échouer < 4
     let short_payload = decode(short_payload_hex).unwrap();
-    match parse_dhcpv6_packet(short_payload.as_slice()) {
+    match Dhcpv6Packet::try_from(short_payload.as_slice()) {
         Ok(_) => println!("❌ N'aurait pas dû réussir !"),
         Err(e) => println!("✅ Erreur capturée avec succès : {:?}", e),
     }
@@ -56,7 +56,7 @@ fn main() {
     // Type 12 (0x0C) Relay-forward
     let relay_payload_hex = "0c000000000000000000000000000000";
     let relay_payload = decode(relay_payload_hex).unwrap();
-    match parse_dhcpv6_packet(relay_payload.as_slice()) {
+    match Dhcpv6Packet::try_from(relay_payload.as_slice()) {
         Ok(packet) => {
             println!("✅ Payload Relais DHCPv6 (Type 12) décodé avec succès !");
             println!("   > Type de Message : {}", packet.message_type);
@@ -69,7 +69,7 @@ fn main() {
     // Type 14 (0x0E) n'est pas autorisé
     let invalid_type_hex = "0e1234560000";
     let invalid_payload = decode(invalid_type_hex).unwrap();
-    match parse_dhcpv6_packet(invalid_payload.as_slice()) {
+    match Dhcpv6Packet::try_from(invalid_payload.as_slice()) {
         Ok(_) => println!("❌ N'aurait pas dû réussir !"),
         Err(e) => println!("✅ Erreur capturée avec succès : {:?}", e),
     }
