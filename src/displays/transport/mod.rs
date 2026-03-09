@@ -287,10 +287,7 @@ mod tests {
 
     #[test]
     fn test_transport_protocol_display_ipv6_hop_by_hop() {
-        assert_eq!(
-            TransportProtocol::Hopopt.to_string(),
-            "IPv6 Hop-by-Hop"
-        );
+        assert_eq!(TransportProtocol::Hopopt.to_string(), "IPv6 Hop-by-Hop");
     }
 
     #[test]

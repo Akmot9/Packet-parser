@@ -67,7 +67,6 @@ mod tests {
         assert_eq!(packet.to_string(), expected);
     }
 
- 
     #[test]
     fn test_packet_flow_display_omits_none_layers() {
         let payload = [0xAA];

@@ -68,10 +68,7 @@ mod tests {
     fn test_invalid_magic_display() {
         let err = BitcoinError::InvalidMagic { magic: 0xD9B4BEF9 };
 
-        assert_eq!(
-            err.to_string(),
-            "Invalid Bitcoin magic: 0xD9B4BEF9"
-        );
+        assert_eq!(err.to_string(), "Invalid Bitcoin magic: 0xD9B4BEF9");
     }
 
     #[test]

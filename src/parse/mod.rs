@@ -238,7 +238,6 @@ mod tests {
             .expect("invalid test hex fixture")
     }
 
-
     #[test]
     fn packetflow_try_from_valid_packet_should_succeed() {
         let packet = sample_ipv6_tcp_packet();
@@ -350,7 +349,10 @@ mod tests {
                 assert_eq!(owned_internet.source_ip, flow_internet.source);
                 assert_eq!(owned_internet.ip_source_type, flow_internet.source_type);
                 assert_eq!(owned_internet.destination_ip, flow_internet.destination);
-                assert_eq!(owned_internet.ip_destination_type, flow_internet.destination_type);
+                assert_eq!(
+                    owned_internet.ip_destination_type,
+                    flow_internet.destination_type
+                );
                 assert_eq!(owned_internet.protocol, flow_internet.protocol_name);
             }
             (None, None) => {}
@@ -359,9 +361,15 @@ mod tests {
 
         match (&owned.transport, &flow.transport) {
             (Some(owned_transport), Some(flow_transport)) => {
-                assert_eq!(owned_transport.protocol, format!("{:?}", flow_transport.protocol));
+                assert_eq!(
+                    owned_transport.protocol,
+                    format!("{:?}", flow_transport.protocol)
+                );
                 assert_eq!(owned_transport.source_port, flow_transport.source_port);
-                assert_eq!(owned_transport.destination_port, flow_transport.destination_port);
+                assert_eq!(
+                    owned_transport.destination_port,
+                    flow_transport.destination_port
+                );
             }
             (None, None) => {}
             _ => panic!("owned.transport and flow.transport differ"),
@@ -369,6 +377,4 @@ mod tests {
 
         assert_eq!(owned.application, flow.to_owned().application);
     }
-
-
 }

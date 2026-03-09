@@ -135,8 +135,8 @@ impl<'a> Hash for Internet<'a> {
         self.payload_protocol.hash(state);
     }
 }
- 
- #[cfg(test)]
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::parse::transport::protocols::TransportProtocol;
@@ -174,10 +174,19 @@ mod tests {
 
         let result = Internet::try_from(packet.as_slice()).unwrap();
 
-        assert_eq!(result.source, Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10))));
-        assert_eq!(result.destination, Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))));
+        assert_eq!(
+            result.source,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)))
+        );
+        assert_eq!(
+            result.destination,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)))
+        );
         assert_eq!(result.source_type, Some(IpType::from_ip("192.168.1.10")));
-        assert_eq!(result.destination_type, Some(IpType::from_ip("192.168.1.1")));
+        assert_eq!(
+            result.destination_type,
+            Some(IpType::from_ip("192.168.1.1"))
+        );
         assert_eq!(result.protocol_name, "ARP");
         assert_eq!(result.payload_protocol, None);
         assert!(result.payload.is_empty());
@@ -203,10 +212,19 @@ mod tests {
 
         let result = Internet::try_from(packet.as_slice()).unwrap();
 
-        assert_eq!(result.source, Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10))));
-        assert_eq!(result.destination, Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20))));
+        assert_eq!(
+            result.source,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)))
+        );
+        assert_eq!(
+            result.destination,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20)))
+        );
         assert_eq!(result.source_type, Some(IpType::from_ip("192.168.1.10")));
-        assert_eq!(result.destination_type, Some(IpType::from_ip("192.168.1.20")));
+        assert_eq!(
+            result.destination_type,
+            Some(IpType::from_ip("192.168.1.20"))
+        );
         assert_eq!(result.protocol_name, "IPv4");
         assert_eq!(result.payload_protocol, Some(TransportProtocol::Tcp));
         assert!(result.payload.is_empty());
@@ -221,33 +239,27 @@ mod tests {
             17,   // Next Header = UDP
             64,   // Hop Limit
             // Source IP = 2001:db8::1
-            0x20, 0x01, 0x0d, 0xb8,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x01,
-            // Destination IP = 2001:db8::2
-            0x20, 0x01, 0x0d, 0xb8,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x02,
+            0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x01, // Destination IP = 2001:db8::2
+            0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x02,
         ];
 
         let result = Internet::try_from(packet.as_slice()).unwrap();
 
         assert_eq!(
             result.source,
-            Some(IpAddr::V6(Ipv6Addr::new(
-                0x2001, 0x0db8, 0, 0, 0, 0, 0, 1
-            )))
+            Some(IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1)))
         );
         assert_eq!(
             result.destination,
-            Some(IpAddr::V6(Ipv6Addr::new(
-                0x2001, 0x0db8, 0, 0, 0, 0, 0, 2
-            )))
+            Some(IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 2)))
         );
         assert_eq!(result.source_type, Some(IpType::from_ip("2001:db8::1")));
-        assert_eq!(result.destination_type, Some(IpType::from_ip("2001:db8::2")));
+        assert_eq!(
+            result.destination_type,
+            Some(IpType::from_ip("2001:db8::2"))
+        );
         assert_eq!(result.protocol_name, "IPv6");
         assert_eq!(result.payload_protocol, Some(TransportProtocol::Udp));
         assert!(result.payload.is_empty());

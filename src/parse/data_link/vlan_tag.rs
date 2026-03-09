@@ -113,13 +113,19 @@ mod tests {
     #[test]
     fn test_vlan_tag_try_from_too_short_empty() {
         let err = VlanTag::try_from(&[][..]).unwrap_err();
-        assert_eq!(err, crate::errors::data_link::DataLinkError::DataLinkTooShort(0));
+        assert_eq!(
+            err,
+            crate::errors::data_link::DataLinkError::DataLinkTooShort(0)
+        );
     }
 
     #[test]
     fn test_vlan_tag_try_from_too_short_three_bytes() {
         let err = VlanTag::try_from(&[0x00, 0x01, 0x08][..]).unwrap_err();
-        assert_eq!(err, crate::errors::data_link::DataLinkError::DataLinkTooShort(3));
+        assert_eq!(
+            err,
+            crate::errors::data_link::DataLinkError::DataLinkTooShort(3)
+        );
     }
 
     #[test]

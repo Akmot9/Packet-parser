@@ -176,10 +176,7 @@ mod tests {
             available: 8,
         };
 
-        assert_eq!(
-            err.to_string(),
-            "MQTT topic length 20 exceeds available 8"
-        );
+        assert_eq!(err.to_string(), "MQTT topic length 20 exceeds available 8");
     }
 
     #[test]
@@ -188,10 +185,7 @@ mod tests {
             packet_type: MqttPacketType::Publish,
         };
 
-        assert_eq!(
-            err.to_string(),
-            "Unsupported MQTT packet type: Publish"
-        );
+        assert_eq!(err.to_string(), "Unsupported MQTT packet type: Publish");
     }
 
     #[test]

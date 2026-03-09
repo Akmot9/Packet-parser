@@ -260,7 +260,8 @@ mod tests {
             protocol: "ICMP".to_string(),
         };
 
-        let expected = "\n    Source Port: None,\n    Destination Port: None,\n    Protocol: ICMP\n";
+        let expected =
+            "\n    Source Port: None,\n    Destination Port: None,\n    Protocol: ICMP\n";
         assert_eq!(transport.to_string(), expected);
     }
 
