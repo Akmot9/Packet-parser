@@ -537,8 +537,8 @@ mod tests {
                 payload,
             } => {
                 // Header bits
-                assert_eq!(header.header_form_long, true);
-                assert_eq!(header.fixed_bit, true);
+                assert!(header.header_form_long);
+                assert!(header.fixed_bit);
 
                 // Type / version
                 assert!(matches!(header.packet_type, QuicPacketType::Initial));

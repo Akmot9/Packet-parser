@@ -33,7 +33,6 @@ impl Display for PacketFlow<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::parse::PacketFlow;
 
     #[test]

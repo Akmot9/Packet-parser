@@ -191,7 +191,6 @@ impl fmt::Display for TransportProtocol {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::parse::transport::{Transport, protocols::TransportProtocol};
 
     #[test]

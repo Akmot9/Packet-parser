@@ -24,7 +24,6 @@ impl fmt::Display for DataLink<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::parse::data_link::DataLink;
 
     #[test]

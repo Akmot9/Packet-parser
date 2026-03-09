@@ -1,7 +1,7 @@
 use packet_parser::{Application, DataLink, Internet, Transport};
 
 fn parse_csv_hex_bytes(s: &str) -> Vec<u8> {
-    s.split(|c| c == ',' || c == '\n' || c == '\r' || c == '\t' || c == ' ')
+    s.split([',', '\n', '\r', '\t', ' '])
         .filter(|t| !t.is_empty())
         .map(|t| u8::from_str_radix(t, 16).expect("octet hex invalide"))
         .collect()

@@ -63,7 +63,7 @@ pub fn elapsed_ns(_: ()) -> u64 {
 macro_rules! time_block_ns {
     ($dst:expr, $body:block) => {{
         let t0 = $crate::timing::now();
-        let out = (|| $body)();
+        let out = $body;
         *$dst = $crate::timing::elapsed_ns(t0);
         out
     }};
@@ -73,8 +73,8 @@ macro_rules! time_block_ns {
 #[macro_export]
 macro_rules! time_block_ns {
     ($dst:expr, $body:block) => {{
-        let _ = $dst; // évite warning
-        (|| $body)()
+        let _ = $dst;
+        $body
     }};
 }
 
@@ -184,14 +184,14 @@ mod tests {
     #[cfg(not(feature = "parse_timing"))]
     #[test]
     fn test_parse_timing_default_without_feature() {
-        let _timing = ParseTiming::default();
+        let _timing = ParseTiming;
     }
 
     #[cfg(not(feature = "parse_timing"))]
     #[test]
     fn test_now_without_feature() {
-        let t0 = now();
-        let elapsed = elapsed_ns(t0);
+        now();
+        let elapsed = elapsed_ns(());
 
         assert_eq!(elapsed, 0);
     }
@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn test_time_block_ns_without_feature_with_unit_return() {
         let mut measured = 999u64;
-        let mut value = 0u32;
+        let value: u32;
 
         time_block_ns!(&mut measured, {
             value = 7;
