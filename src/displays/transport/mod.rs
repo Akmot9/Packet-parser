@@ -35,7 +35,7 @@ impl fmt::Display for TransportProtocol {
             TransportProtocol::Ipv6Opts => "IPv6 Destination Options",
             TransportProtocol::MobilityHeader => "IPv6 Mobility Header",
             TransportProtocol::Ipv6NoNxt => "No Next Header",
-            TransportProtocol::Tcp => "TCP",
+            TransportProtocol::Tcp => "Tcp",
             TransportProtocol::Udp => "UDP",
             TransportProtocol::Icmp => "ICMP",
             TransportProtocol::Ipv6Icmp => "ICMPv6",
