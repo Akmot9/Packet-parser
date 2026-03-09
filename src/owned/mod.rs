@@ -156,3 +156,229 @@ impl Display for PacketFlowOwned {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use std::net::{IpAddr, Ipv4Addr};
+
+    fn sample_data_link_without_vlan() -> DataLinkOwned {
+        DataLinkOwned {
+            destination_mac: "AA:BB:CC:DD:EE:FF".to_string(),
+            source_mac: "11:22:33:44:55:66".to_string(),
+            ethertype: "IPv4".to_string(),
+            vlan: None,
+        }
+    }
+
+    fn sample_internet() -> InternetOwned {
+        InternetOwned {
+            source_ip: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10))),
+            ip_source_type: None,
+            destination_ip: Some(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))),
+            ip_destination_type: None,
+            protocol: "TCP".to_string(),
+        }
+    }
+
+    fn sample_transport() -> TransportOwned {
+        TransportOwned {
+            source_port: Some(12345),
+            destination_port: Some(80),
+            protocol: "TCP".to_string(),
+        }
+    }
+
+    fn sample_application() -> ApplicationOwned {
+        ApplicationOwned {
+            protocol: "HTTP".to_string(),
+        }
+    }
+
+    fn sample_packet_flow_owned() -> PacketFlowOwned {
+        PacketFlowOwned {
+            data_link: sample_data_link_without_vlan(),
+            internet: Some(sample_internet()),
+            transport: Some(sample_transport()),
+            application: Some(sample_application()),
+        }
+    }
+
+    fn hash_of<T: Hash>(value: &T) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn test_data_link_owned_display_without_vlan() {
+        let data_link = sample_data_link_without_vlan();
+
+        let expected = "\n    Destination MAC: AA:BB:CC:DD:EE:FF,\n    Source MAC: 11:22:33:44:55:66,\n    Ethertype: IPv4,\n    VLAN: None\n";
+        assert_eq!(data_link.to_string(), expected);
+    }
+
+    #[test]
+    fn test_internet_owned_display_with_ips() {
+        let internet = sample_internet();
+
+        let expected =
+            "\n    Source IP: 192.168.1.10,\n    Destination IP: 8.8.8.8,\n    Protocol: TCP\n";
+        assert_eq!(internet.to_string(), expected);
+    }
+
+    #[test]
+    fn test_internet_owned_display_with_none_ips() {
+        let internet = InternetOwned {
+            source_ip: None,
+            ip_source_type: None,
+            destination_ip: None,
+            ip_destination_type: None,
+            protocol: "UDP".to_string(),
+        };
+
+        let expected = "\n    Source IP: None,\n    Destination IP: None,\n    Protocol: UDP\n";
+        assert_eq!(internet.to_string(), expected);
+    }
+
+    #[test]
+    fn test_transport_owned_display_with_ports() {
+        let transport = sample_transport();
+
+        let expected = "\n    Source Port: 12345,\n    Destination Port: 80,\n    Protocol: TCP\n";
+        assert_eq!(transport.to_string(), expected);
+    }
+
+    #[test]
+    fn test_transport_owned_display_with_none_ports() {
+        let transport = TransportOwned {
+            source_port: None,
+            destination_port: None,
+            protocol: "ICMP".to_string(),
+        };
+
+        let expected = "\n    Source Port: None,\n    Destination Port: None,\n    Protocol: ICMP\n";
+        assert_eq!(transport.to_string(), expected);
+    }
+
+    #[test]
+    fn test_application_owned_display() {
+        let application = sample_application();
+
+        let expected = "\n    Protocol: HTTP\n";
+        assert_eq!(application.to_string(), expected);
+    }
+
+    #[test]
+    fn test_packet_flow_owned_display_full() {
+        let flow = sample_packet_flow_owned();
+
+        let expected = concat!(
+            "Packet Flow:\n",
+            "  Data Link: \n",
+            "    Destination MAC: AA:BB:CC:DD:EE:FF,\n",
+            "    Source MAC: 11:22:33:44:55:66,\n",
+            "    Ethertype: IPv4,\n",
+            "    VLAN: None\n",
+            "\n",
+            "  Internet: \n",
+            "    Source IP: 192.168.1.10,\n",
+            "    Destination IP: 8.8.8.8,\n",
+            "    Protocol: TCP\n",
+            "\n",
+            "  Transport: \n",
+            "    Source Port: 12345,\n",
+            "    Destination Port: 80,\n",
+            "    Protocol: TCP\n",
+            "\n",
+            "  Application: \n",
+            "    Protocol: HTTP\n",
+            "\n"
+        );
+
+        assert_eq!(flow.to_string(), expected);
+    }
+
+    #[test]
+    fn test_packet_flow_owned_display_only_data_link() {
+        let flow = PacketFlowOwned {
+            data_link: sample_data_link_without_vlan(),
+            internet: None,
+            transport: None,
+            application: None,
+        };
+
+        let expected = concat!(
+            "Packet Flow:\n",
+            "  Data Link: \n",
+            "    Destination MAC: AA:BB:CC:DD:EE:FF,\n",
+            "    Source MAC: 11:22:33:44:55:66,\n",
+            "    Ethertype: IPv4,\n",
+            "    VLAN: None\n",
+            "\n"
+        );
+
+        assert_eq!(flow.to_string(), expected);
+    }
+
+    #[test]
+    fn test_packet_flow_owned_clone_and_eq() {
+        let flow = sample_packet_flow_owned();
+        let cloned = flow.clone();
+
+        assert_eq!(flow, cloned);
+    }
+
+    #[test]
+    fn test_packet_flow_owned_hash_stable_for_equal_values() {
+        let flow1 = sample_packet_flow_owned();
+        let flow2 = sample_packet_flow_owned();
+
+        assert_eq!(flow1, flow2);
+        assert_eq!(hash_of(&flow1), hash_of(&flow2));
+    }
+
+    #[test]
+    fn test_data_link_owned_hash_stable_for_equal_values() {
+        let dl1 = sample_data_link_without_vlan();
+        let dl2 = sample_data_link_without_vlan();
+
+        assert_eq!(dl1, dl2);
+        assert_eq!(hash_of(&dl1), hash_of(&dl2));
+    }
+
+    #[test]
+    fn test_packet_flow_owned_serialize() {
+        let flow = sample_packet_flow_owned();
+        let json = serde_json::to_string(&flow).unwrap();
+
+        assert!(json.contains("\"destination_mac\":\"AA:BB:CC:DD:EE:FF\""));
+        assert!(json.contains("\"source_mac\":\"11:22:33:44:55:66\""));
+        assert!(json.contains("\"ethertype\":\"IPv4\""));
+        assert!(json.contains("\"source_ip\":\"192.168.1.10\""));
+        assert!(json.contains("\"destination_ip\":\"8.8.8.8\""));
+        assert!(json.contains("\"source_port\":12345"));
+        assert!(json.contains("\"destination_port\":80"));
+        assert!(json.contains("\"protocol\":\"HTTP\"") || json.contains("\"protocol\":\"TCP\""));
+    }
+
+    #[test]
+    fn test_internet_owned_serialize_none_fields() {
+        let internet = InternetOwned {
+            source_ip: None,
+            ip_source_type: None,
+            destination_ip: None,
+            ip_destination_type: None,
+            protocol: "UDP".to_string(),
+        };
+
+        let json = serde_json::to_string(&internet).unwrap();
+
+        assert!(json.contains("\"source_ip\":null"));
+        assert!(json.contains("\"destination_ip\":null"));
+        assert!(json.contains("\"protocol\":\"UDP\""));
+    }
+}

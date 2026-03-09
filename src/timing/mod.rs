@@ -163,7 +163,7 @@ mod tests {
             sum
         });
 
-        assert_eq!(result, (0..1_000u64).sum());
+        assert_eq!(result, (0..1_000u64).sum::<u64>());
         assert!(measured > 0);
     }
 

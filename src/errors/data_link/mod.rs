@@ -7,7 +7,7 @@ use thiserror::Error;
 pub mod mac_addres;
 use mac_addres::MacParseError;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum DataLinkError {
     #[error("Data link too short: {0} bytes")]
     DataLinkTooShort(u8),

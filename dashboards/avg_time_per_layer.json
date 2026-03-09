@@ -77,8 +77,8 @@
         ]
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 11,
+        "w": 24,
         "x": 0,
         "y": 0
       },
@@ -152,5 +152,5 @@
   "timezone": "browser",
   "title": "avg time per layer overt version",
   "uid": "ad8ch9p",
-  "version": 3
+  "version": 4
 }
