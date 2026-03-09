@@ -30,3 +30,67 @@ impl Display for PacketFlow<'_> {
         write!(f, "")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::PacketFlow;
+
+    #[test]
+    fn test_packet_flow_display_only_data_link() {
+        let payload = [0x01, 0x02, 0x03, 0x04];
+
+        let packet = PacketFlow {
+            data_link: crate::parse::data_link::DataLink {
+                destination_mac: "AA:BB:CC:DD:EE:FF".to_string(),
+                source_mac: "11:22:33:44:55:66".to_string(),
+                ethertype: "IPv4".to_string(),
+                vlan: None,
+                payload: &payload,
+            },
+            internet: None,
+            transport: None,
+            application: None,
+        };
+
+        let expected = concat!(
+            "ParsedPacket :\n",
+            "  Data Link Layer: \n",
+            "    Destination MAC: AA:BB:CC:DD:EE:FF,\n",
+            "    Source MAC: 11:22:33:44:55:66,\n",
+            "    Ethertype: IPv4,\n",
+            "    VLAN: None,\n",
+            "    Payload Length: 4\n",
+            "\n"
+        );
+
+        assert_eq!(packet.to_string(), expected);
+    }
+
+ 
+    #[test]
+    fn test_packet_flow_display_omits_none_layers() {
+        let payload = [0xAA];
+
+        let packet = PacketFlow {
+            data_link: crate::parse::data_link::DataLink {
+                destination_mac: "FF:FF:FF:FF:FF:FF".to_string(),
+                source_mac: "00:00:00:00:00:00".to_string(),
+                ethertype: "ARP".to_string(),
+                vlan: None,
+                payload: &payload,
+            },
+            internet: None,
+            transport: None,
+            application: None,
+        };
+
+        let rendered = packet.to_string();
+
+        assert!(rendered.contains("ParsedPacket :"));
+        assert!(rendered.contains("Data Link Layer:"));
+        assert!(!rendered.contains("Internet Layer:"));
+        assert!(!rendered.contains("Transport Layer:"));
+        assert!(!rendered.contains("Application Layer:"));
+    }
+}
