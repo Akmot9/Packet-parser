@@ -49,7 +49,6 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
             });
         }
 
-        // TODO: Add other protocol parsers here (UDP, etc.)
         if let Ok(udp_packet) = UdpPacket::try_from(packet) {
             return Ok(Transport {
                 protocol: TransportProtocol::Udp,
