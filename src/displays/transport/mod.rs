@@ -35,7 +35,7 @@ impl fmt::Display for TransportProtocol {
             TransportProtocol::Ipv6Opts => "IPv6 Destination Options",
             TransportProtocol::MobilityHeader => "IPv6 Mobility Header",
             TransportProtocol::Ipv6NoNxt => "No Next Header",
-            TransportProtocol::Tcp => "TCP",
+            TransportProtocol::Tcp => "Tcp",
             TransportProtocol::Udp => "UDP",
             TransportProtocol::Icmp => "ICMP",
             TransportProtocol::Ipv6Icmp => "ICMPv6",
@@ -186,5 +186,121 @@ impl fmt::Display for TransportProtocol {
             }
         };
         write!(f, "{protocol_str}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::parse::transport::{Transport, protocols::TransportProtocol};
+
+    #[test]
+    fn test_transport_display_with_all_fields() {
+        let payload = [0xde, 0xad, 0xbe, 0xef];
+        let transport = Transport {
+            protocol: TransportProtocol::Tcp,
+            source_port: Some(12345),
+            destination_port: Some(80),
+            payload: Some(&payload),
+        };
+
+        let displayed = format!("{transport}");
+
+        assert!(displayed.contains("protocol: Tcp"));
+        assert!(displayed.contains("source_port: 12345"));
+        assert!(displayed.contains("destination_port: 80"));
+        assert!(displayed.contains("payload_length: 4"));
+    }
+
+    #[test]
+    fn test_transport_display_with_missing_ports_and_payload() {
+        let transport = Transport {
+            protocol: TransportProtocol::Udp,
+            source_port: None,
+            destination_port: None,
+            payload: None,
+        };
+
+        let displayed = format!("{transport}");
+
+        assert!(displayed.contains("protocol: UDP"));
+        assert!(displayed.contains("source_port: N/A"));
+        assert!(displayed.contains("destination_port: N/A"));
+        assert!(displayed.contains("payload_length: 0"));
+    }
+
+    #[test]
+    fn test_transport_display_with_only_source_port() {
+        let payload = [0x01, 0x02];
+        let transport = Transport {
+            protocol: TransportProtocol::Icmp,
+            source_port: Some(42),
+            destination_port: None,
+            payload: Some(&payload),
+        };
+
+        let displayed = format!("{transport}");
+
+        assert!(displayed.contains("protocol: ICMP"));
+        assert!(displayed.contains("source_port: 42"));
+        assert!(displayed.contains("destination_port: N/A"));
+        assert!(displayed.contains("payload_length: 2"));
+    }
+
+    #[test]
+    fn test_transport_display_with_only_destination_port() {
+        let payload = [0x01];
+        let transport = Transport {
+            protocol: TransportProtocol::Icmp,
+            source_port: None,
+            destination_port: Some(443),
+            payload: Some(&payload),
+        };
+
+        let displayed = format!("{transport}");
+
+        assert!(displayed.contains("protocol: ICMP"));
+        assert!(displayed.contains("source_port: N/A"));
+        assert!(displayed.contains("destination_port: 443"));
+        assert!(displayed.contains("payload_length: 1"));
+    }
+
+    #[test]
+    fn test_transport_protocol_display_tcp() {
+        assert_eq!(TransportProtocol::Tcp.to_string(), "Tcp");
+    }
+
+    #[test]
+    fn test_transport_protocol_display_udp() {
+        assert_eq!(TransportProtocol::Udp.to_string(), "UDP");
+    }
+
+    #[test]
+    fn test_transport_protocol_display_icmp() {
+        assert_eq!(TransportProtocol::Icmp.to_string(), "ICMP");
+    }
+
+    #[test]
+    fn test_transport_protocol_display_icmpv6() {
+        assert_eq!(TransportProtocol::Ipv6Icmp.to_string(), "ICMPv6");
+    }
+
+    #[test]
+    fn test_transport_protocol_display_ipv6_hop_by_hop() {
+        assert_eq!(TransportProtocol::Hopopt.to_string(), "IPv6 Hop-by-Hop");
+    }
+
+    #[test]
+    fn test_transport_protocol_display_unknown() {
+        assert_eq!(TransportProtocol::Unknown(143).to_string(), "Unknown (143)");
+    }
+
+    #[test]
+    fn test_transport_protocol_display_reserved255() {
+        assert_eq!(TransportProtocol::Reserved255.to_string(), "RESERVED-255");
+    }
+
+    #[test]
+    fn test_transport_protocol_display_ethernet() {
+        assert_eq!(TransportProtocol::Ethernet.to_string(), "ETHERNET");
     }
 }

@@ -135,3 +135,224 @@ impl<'a> Hash for Internet<'a> {
         self.payload_protocol.hash(state);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parse::transport::protocols::TransportProtocol;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn test_internet_try_from_empty_packet() {
+        let packet: &[u8] = &[];
+        let result = Internet::try_from(packet);
+
+        assert!(matches!(result, Err(InternetError::EmptyPacket)));
+    }
+
+    #[test]
+    fn test_internet_try_from_arp() {
+        // ARP request minimal valide :
+        // HTYPE=1 (Ethernet), PTYPE=0x0800 (IPv4), HLEN=6, PLEN=4, OPER=1 (request)
+        // Sender MAC = 00:11:22:33:44:55
+        // Sender IP  = 192.168.1.10
+        // Target MAC = 00:00:00:00:00:00
+        // Target IP  = 192.168.1.1
+        let packet = vec![
+            0x00, 0x01, // HTYPE
+            0x08, 0x00, // PTYPE
+            0x06, // HLEN
+            0x04, // PLEN
+            0x00, 0x01, // OPER
+            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // Sender MAC
+            192, 168, 1, 10, // Sender IP
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Target MAC
+            192, 168, 1, 1, // Target IP
+        ];
+
+        let result = Internet::try_from(packet.as_slice()).unwrap();
+
+        assert_eq!(
+            result.source,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)))
+        );
+        assert_eq!(
+            result.destination,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)))
+        );
+        assert_eq!(result.source_type, Some(IpType::from_ip("192.168.1.10")));
+        assert_eq!(
+            result.destination_type,
+            Some(IpType::from_ip("192.168.1.1"))
+        );
+        assert_eq!(result.protocol_name, "ARP");
+        assert_eq!(result.payload_protocol, None);
+        assert!(result.payload.is_empty());
+    }
+
+    #[test]
+    fn test_internet_try_from_ipv4_tcp() {
+        // Header IPv4 minimal valide (20 octets), protocol = TCP (6)
+        // Version=4, IHL=5, Total Length=20
+        // Source=192.168.1.10, Destination=192.168.1.20
+        let packet = vec![
+            0x45, // Version + IHL
+            0x00, // DSCP/ECN
+            0x00, 0x14, // Total Length = 20
+            0x12, 0x34, // Identification
+            0x00, 0x00, // Flags + Fragment offset
+            64,   // TTL
+            6,    // Protocol = TCP
+            0x00, 0x00, // Header checksum
+            192, 168, 1, 10, // Source IP
+            192, 168, 1, 20, // Destination IP
+        ];
+
+        let result = Internet::try_from(packet.as_slice()).unwrap();
+
+        assert_eq!(
+            result.source,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)))
+        );
+        assert_eq!(
+            result.destination,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20)))
+        );
+        assert_eq!(result.source_type, Some(IpType::from_ip("192.168.1.10")));
+        assert_eq!(
+            result.destination_type,
+            Some(IpType::from_ip("192.168.1.20"))
+        );
+        assert_eq!(result.protocol_name, "IPv4");
+        assert_eq!(result.payload_protocol, Some(TransportProtocol::Tcp));
+        assert!(result.payload.is_empty());
+    }
+
+    #[test]
+    fn test_internet_try_from_ipv6_udp() {
+        // Header IPv6 minimal valide (40 octets), next_header = UDP (17), payload length = 0
+        let packet = vec![
+            0x60, 0x00, 0x00, 0x00, // Version, Traffic Class, Flow Label
+            0x00, 0x00, // Payload Length = 0
+            17,   // Next Header = UDP
+            64,   // Hop Limit
+            // Source IP = 2001:db8::1
+            0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x01, // Destination IP = 2001:db8::2
+            0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x02,
+        ];
+
+        let result = Internet::try_from(packet.as_slice()).unwrap();
+
+        assert_eq!(
+            result.source,
+            Some(IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1)))
+        );
+        assert_eq!(
+            result.destination,
+            Some(IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 2)))
+        );
+        assert_eq!(result.source_type, Some(IpType::from_ip("2001:db8::1")));
+        assert_eq!(
+            result.destination_type,
+            Some(IpType::from_ip("2001:db8::2"))
+        );
+        assert_eq!(result.protocol_name, "IPv6");
+        assert_eq!(result.payload_protocol, Some(TransportProtocol::Udp));
+        assert!(result.payload.is_empty());
+    }
+
+    #[test]
+    fn test_internet_try_from_unsupported_protocol() {
+        // Données volontairement invalides pour ARP / IPv4 / IPv6 / Profinet
+        let packet = vec![0xff, 0xaa, 0xbb, 0xcc, 0xdd, 0xee];
+
+        let result = Internet::try_from(packet.as_slice());
+
+        assert!(matches!(result, Err(InternetError::UnsupportedProtocol)));
+    }
+
+    #[test]
+    fn test_internet_partial_eq_ignores_payload() {
+        let a = Internet {
+            source: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10))),
+            source_type: Some(IpType::from_ip("192.168.1.10")),
+            destination: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20))),
+            destination_type: Some(IpType::from_ip("192.168.1.20")),
+            protocol_name: "IPv4".to_string(),
+            payload_protocol: Some(TransportProtocol::Tcp),
+            payload: &[1, 2, 3, 4],
+        };
+
+        let b = Internet {
+            source: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10))),
+            source_type: Some(IpType::from_ip("192.168.1.10")),
+            destination: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20))),
+            destination_type: Some(IpType::from_ip("192.168.1.20")),
+            protocol_name: "IPv4".to_string(),
+            payload_protocol: Some(TransportProtocol::Tcp),
+            payload: &[9, 9, 9, 9],
+        };
+
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_internet_hash_ignores_payload() {
+        let a = Internet {
+            source: Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))),
+            source_type: Some(IpType::from_ip("10.0.0.1")),
+            destination: Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2))),
+            destination_type: Some(IpType::from_ip("10.0.0.2")),
+            protocol_name: "IPv4".to_string(),
+            payload_protocol: Some(TransportProtocol::Udp),
+            payload: &[1, 2, 3],
+        };
+
+        let b = Internet {
+            source: Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))),
+            source_type: Some(IpType::from_ip("10.0.0.1")),
+            destination: Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2))),
+            destination_type: Some(IpType::from_ip("10.0.0.2")),
+            protocol_name: "IPv4".to_string(),
+            payload_protocol: Some(TransportProtocol::Udp),
+            payload: &[99, 88, 77],
+        };
+
+        let mut hasher_a = DefaultHasher::new();
+        let mut hasher_b = DefaultHasher::new();
+
+        a.hash(&mut hasher_a);
+        b.hash(&mut hasher_b);
+
+        assert_eq!(hasher_a.finish(), hasher_b.finish());
+    }
+
+    #[test]
+    fn test_internet_partial_eq_detects_difference() {
+        let a = Internet {
+            source: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10))),
+            source_type: Some(IpType::from_ip("192.168.1.10")),
+            destination: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20))),
+            destination_type: Some(IpType::from_ip("192.168.1.20")),
+            protocol_name: "IPv4".to_string(),
+            payload_protocol: Some(TransportProtocol::Tcp),
+            payload: &[],
+        };
+
+        let b = Internet {
+            source: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 11))),
+            source_type: Some(IpType::from_ip("192.168.1.11")),
+            destination: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20))),
+            destination_type: Some(IpType::from_ip("192.168.1.20")),
+            protocol_name: "IPv4".to_string(),
+            payload_protocol: Some(TransportProtocol::Tcp),
+            payload: &[],
+        };
+
+        assert_ne!(a, b);
+    }
+}

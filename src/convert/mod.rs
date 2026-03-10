@@ -83,17 +83,29 @@ pub fn bytes_to_hex_string(bytes: &[u8]) -> String {
 
 /// Retourne un tableau formaté de bytes sous forme de chaîne Rust.
 pub fn format_hex_array(bytes: &[u8]) -> String {
-    let mut formatted = String::from("[\n");
-    for (i, byte) in bytes.iter().enumerate() {
-        formatted.push_str(&format!("    0x{byte:02X},"));
-        if (i + 1) % 8 == 0 {
-            formatted.push('\n');
-        } else {
-            formatted.push(' ');
-        }
+    const BYTES_PER_LINE: usize = 8;
+
+    if bytes.is_empty() {
+        return "[\n];".to_string();
     }
-    formatted.push_str("\n];");
-    formatted
+
+    let mut out = String::from("[\n");
+
+    for chunk in bytes.chunks(BYTES_PER_LINE) {
+        out.push_str("    ");
+
+        for (i, byte) in chunk.iter().enumerate() {
+            if i > 0 {
+                out.push_str(", ");
+            }
+            write!(&mut out, "0x{:02X}", byte).unwrap();
+        }
+
+        out.push_str(",\n");
+    }
+
+    out.push_str("];");
+    out
 }
 
 /// Affiche un paquet réseau de manière lisible.
@@ -108,45 +120,132 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn test_hex_stream_to_bytes() {
-        let hex = "48656C6C6F"; // "Hello" in ASCII
-        let expected_bytes = vec![0x48, 0x65, 0x6C, 0x6C, 0x6F];
-        assert_eq!(hex_stream_to_bytes(hex), expected_bytes);
+    fn test_hex_stream_to_bytes_valid_ascii() {
+        let hex = "48656C6C6F"; // "Hello"
+        let expected = vec![0x48, 0x65, 0x6C, 0x6C, 0x6F];
+        assert_eq!(hex_stream_to_bytes(hex), expected);
     }
 
     #[test]
-    fn test_bytes_to_hex_string() {
-        let bytes = vec![0x48, 0x65, 0x6C, 0x6C, 0x6F]; // "Hello" in ASCII
-        let expected_hex = "48656C6C6F";
-        assert_eq!(bytes_to_hex_string(&bytes), expected_hex);
+    fn test_hex_stream_to_bytes_empty() {
+        let hex = "";
+        let expected: Vec<u8> = vec![];
+        assert_eq!(hex_stream_to_bytes(hex), expected);
     }
 
-    // #[test]
-    // fn test_format_hex_array() {
-    //     let bytes = vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09];
-    //     let expected_format = "[\n    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, \n    0x08, 0x09, \n];";
-    //     assert_eq!(format_hex_array(&bytes), expected_format);
-    // }
-
-    // #[test]
-    // fn test_packet_display() {
-    //     let packet = Packet::from("48656C6C6F"); // "Hello"
-    //     assert_eq!(packet.to_string(), "[\n    0x48, 0x65, 0x6C, 0x6C, 0x6F, \n];");
-    // }
+    #[test]
+    fn test_hex_stream_to_bytes_lowercase() {
+        let hex = "deadbeef";
+        let expected = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        assert_eq!(hex_stream_to_bytes(hex), expected);
+    }
 
     #[test]
-    fn test_packet_to_pcap() {
-        let packet = Packet::from("48656C6C6F"); // "Hello"
+    #[should_panic(expected = "La chaîne hexadécimale doit avoir une longueur paire")]
+    fn test_hex_stream_to_bytes_odd_length_should_panic() {
+        let _ = hex_stream_to_bytes("ABC");
+    }
+
+    #[test]
+    #[should_panic(expected = "Valeur hex invalide")]
+    fn test_hex_stream_to_bytes_invalid_hex_should_panic() {
+        let _ = hex_stream_to_bytes("ZZ");
+    }
+
+    #[test]
+    fn test_bytes_to_hex_string_ascii() {
+        let bytes = vec![0x48, 0x65, 0x6C, 0x6C, 0x6F];
+        let expected = "48656C6C6F";
+        assert_eq!(bytes_to_hex_string(&bytes), expected);
+    }
+
+    #[test]
+    fn test_bytes_to_hex_string_empty() {
+        let bytes: Vec<u8> = vec![];
+        let expected = "";
+        assert_eq!(bytes_to_hex_string(&bytes), expected);
+    }
+
+    #[test]
+    fn test_bytes_to_hex_string_uppercase_output() {
+        let bytes = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        let expected = "DEADBEEF";
+        assert_eq!(bytes_to_hex_string(&bytes), expected);
+    }
+
+    #[test]
+    fn test_format_hex_array_empty() {
+        let bytes: Vec<u8> = vec![];
+        let expected = "[\n];";
+        assert_eq!(format_hex_array(&bytes), expected);
+    }
+
+    #[test]
+    fn test_format_hex_array_single_line() {
+        let bytes = vec![0x00, 0x01, 0x02];
+        let expected = "[\n    0x00, 0x01, 0x02,\n];";
+        assert_eq!(format_hex_array(&bytes), expected);
+    }
+
+    #[test]
+    fn test_format_hex_array_exactly_one_full_line() {
+        let bytes = vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
+        let expected = "[\n    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,\n];";
+        assert_eq!(format_hex_array(&bytes), expected);
+    }
+
+    #[test]
+    fn test_format_hex_array_multiple_lines() {
+        let bytes = vec![0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09];
+        let expected = concat!(
+            "[\n",
+            "    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,\n",
+            "    0x08, 0x09,\n",
+            "];"
+        );
+        assert_eq!(format_hex_array(&bytes), expected);
+    }
+
+    #[test]
+    fn test_packet_from_str() {
+        let packet = Packet::from("48656C6C6F");
+        let expected = Packet {
+            data: vec![0x48, 0x65, 0x6C, 0x6C, 0x6F],
+        };
+        assert_eq!(packet, expected);
+    }
+
+    #[test]
+    fn test_packet_display() {
+        let packet = Packet::from("48656C6C6F");
+        let expected = "[\n    0x48, 0x65, 0x6C, 0x6C, 0x6F,\n];";
+        assert_eq!(packet.to_string(), expected);
+    }
+
+    #[test]
+    fn test_packet_clone_and_eq() {
+        let packet1 = Packet::from("DEADBEEF");
+        let packet2 = packet1.clone();
+        assert_eq!(packet1, packet2);
+    }
+
+    #[test]
+    fn test_packet_to_pcap_creates_file_and_is_non_empty() {
+        let pcap_path = Path::new("output.pcap");
+
+        if pcap_path.exists() {
+            fs::remove_file(pcap_path).unwrap();
+        }
+
+        let packet = Packet::from("48656C6C6F");
         let result = packet.packet_to_pcap();
 
-        // Ensure no error occurred
         assert!(result.is_ok());
-
-        // Check if the file was created
-        let pcap_path = Path::new("output.pcap");
         assert!(pcap_path.exists());
 
-        // Cleanup the test file
+        let metadata = fs::metadata(pcap_path).unwrap();
+        assert!(metadata.len() > 0);
+
         fs::remove_file(pcap_path).unwrap();
     }
 }
