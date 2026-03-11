@@ -2,8 +2,6 @@ use std::convert::TryFrom;
 
 use crate::errors::transport::udp::UdpError;
 
-
-
 /// Represents a UDP packet header and payload
 #[derive(Debug)]
 pub struct UdpPacket<'a> {
