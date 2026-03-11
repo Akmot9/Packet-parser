@@ -106,10 +106,7 @@ mod tests {
         ];
         match Dhcpv6Packet::try_from(invalid_payload.as_slice()) {
             Ok(_) => panic!("Expected invalid DHCPv6 packet due to invalid message type"),
-            Err(e) => assert_eq!(
-                e,
-                Dhcpv6PacketParseError::MessageType { message_type: 14 }
-            ),
+            Err(e) => assert_eq!(e, Dhcpv6PacketParseError::MessageType { message_type: 14 }),
         }
     }
 
