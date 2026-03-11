@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
-use thiserror::Error;
+
+use crate::{checks::transport::tcp::validate_tcp_min_length, errors::transport::tcp::TcpError};
 
 /// Represents a TCP header
 #[derive(Debug, PartialEq)]
@@ -32,79 +33,34 @@ pub struct TcpPacket<'a> {
     pub payload: &'a [u8],
 }
 
-#[derive(Error, Debug)]
-pub enum TcpError {
-    #[error("Packet too short to be a valid TCP header")]
-    PacketTooShort,
-
-    #[error("Invalid data offset: {0}")]
-    InvalidDataOffset(u8),
-
-    #[error("Invalid TCP header length")]
-    InvalidHeaderLength,
-}
-
 impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
     type Error = TcpError;
 
     fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
-        // Minimum TCP header size is 20 bytes
-        if packet.len() < 20 {
-            return Err(TcpError::PacketTooShort);
-        }
+        validate_tcp_min_length(packet)?;
 
         let data_offset_words = packet[12] >> 4;
-
-        // Validate data offset (must be between 5 and 15, inclusive)
         if !(5..=15).contains(&data_offset_words) {
             return Err(TcpError::InvalidDataOffset(data_offset_words));
         }
 
-        let data_offset = (data_offset_words * 4) as usize;
-
-        // Ensure packet is long enough for the header
+        let data_offset = (data_offset_words as usize) * 4;
         if packet.len() < data_offset {
             return Err(TcpError::PacketTooShort);
         }
 
-        // Validate reserved bits (must be 0)
         let reserved = (packet[12] >> 1) & 0x07;
         if reserved != 0 {
             return Err(TcpError::InvalidHeaderLength);
         }
 
-        // Check for invalid flag combinations that would never appear in real traffic
         let flags = packet[13];
 
-        // SYN and FIN should never be set together in a valid TCP packet
+        // Seule combinaison franchement invalide au niveau structurel
         if (flags & 0x03) == 0x03 {
-            // FIN and SYN both set
             return Err(TcpError::InvalidHeaderLength);
         }
 
-        // If SYN is set, the sequence number should be the initial sequence number (ISN)
-        // which is typically a random value, but we can check for all zeros which is invalid
-        if (flags & 0x02) != 0
-            && u32::from_be_bytes([packet[4], packet[5], packet[6], packet[7]]) == 0
-        {
-            return Err(TcpError::InvalidHeaderLength);
-        }
-
-        // If ACK is not set, the acknowledgment number must be zero
-        if (flags & 0x10) == 0
-            && u32::from_be_bytes([packet[8], packet[9], packet[10], packet[11]]) != 0
-        {
-            return Err(TcpError::InvalidHeaderLength);
-        }
-
-        // Check for invalid window size (0 is technically valid but usually indicates a problem)
-        let window_size = u16::from_be_bytes([packet[14], packet[15]]);
-        if window_size == 0 && (flags & 0x02) == 0 {
-            // Zero window size is only valid for SYN packets
-            return Err(TcpError::InvalidHeaderLength);
-        }
-
-        // The rest of the header parsing...
         let header = TcpHeader {
             source_port: u16::from_be_bytes([packet[0], packet[1]]),
             destination_port: u16::from_be_bytes([packet[2], packet[3]]),
@@ -123,7 +79,7 @@ impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
             rst: (flags & 0x04) != 0,
             syn: (flags & 0x02) != 0,
             fin: (flags & 0x01) != 0,
-            window_size,
+            window_size: u16::from_be_bytes([packet[14], packet[15]]),
             checksum: u16::from_be_bytes([packet[16], packet[17]]),
             urgent_pointer: u16::from_be_bytes([packet[18], packet[19]]),
             options: if data_offset > 20 {
@@ -175,6 +131,31 @@ mod tests {
         assert_eq!(tcp.header.urgent_pointer, 0);
         assert!(tcp.header.options.is_empty());
         assert_eq!(tcp.payload, &[0x01, 0x02, 0x03, 0x04]);
+    }
+
+    #[test]
+    fn test_tcp_rst_ack_zero_window_is_valid() {
+        let packet = [
+            0xED, 0x11, 0x01, 0xF6,
+            0x4F, 0x2E, 0xE0, 0xFC,
+            0x7C, 0x80, 0x69, 0xB6,
+            0x50, 0x14,
+            0x00, 0x00,
+            0x1B, 0x1D,
+            0x00, 0x00,
+        ];
+
+        let tcp = TcpPacket::try_from(&packet[..]).unwrap();
+
+        assert_eq!(tcp.header.source_port, 60689);
+        assert_eq!(tcp.header.destination_port, 502);
+        assert_eq!(tcp.header.data_offset, 5);
+        assert!(tcp.header.ack);
+        assert!(tcp.header.rst);
+        assert!(!tcp.header.syn);
+        assert!(!tcp.header.fin);
+        assert_eq!(tcp.header.window_size, 0);
+        assert!(tcp.payload.is_empty());
     }
 
     #[test]

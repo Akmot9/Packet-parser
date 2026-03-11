@@ -1,6 +1,6 @@
-use std::path::Path;
 use packet_parser::PacketFlow;
 use pcap::Capture;
+use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pcap_file_path =

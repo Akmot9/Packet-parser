@@ -7,10 +7,10 @@ use serde::Serialize;
 use thiserror::Error;
 
 pub mod bitcoin;
+pub mod dhcpv6;
 pub mod dns;
 pub mod mqtt;
 pub mod ntp;
-pub mod dhcpv6;
 
 /// Errors related to parsing an `Application`
 #[derive(Debug, Error, Clone, Serialize)]

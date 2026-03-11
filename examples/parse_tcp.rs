@@ -48,5 +48,4 @@ fn main() {
             eprintln!("Erreur Transport : {:?}", e);
         }
     }
-    
 }

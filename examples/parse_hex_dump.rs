@@ -1,7 +1,7 @@
 use hex::decode;
 use packet_parser::PacketFlow;
-use std::convert::TryFrom;
 use packet_parser::parse::application::protocols::dhcpv6::Dhcpv6Packet;
+use std::convert::TryFrom;
 fn main() {
     println!("=======================================================");
     println!("🧪 ENVIRONNEMENT DE TEST DHCPv6 (PARSER & ERRORS)");

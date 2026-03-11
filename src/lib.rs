@@ -110,10 +110,10 @@ pub use errors::ParsedPacketError;
 /// Main module for packet analysis.
 pub mod parse;
 
+pub use parse::application::Application;
 /// Exports data link layer parsing functionality.
 pub use parse::data_link::DataLink;
 pub use parse::data_link::mac_addres::MacAddress;
-pub use parse::application::Application;
 pub use parse::internet::Internet;
 pub use parse::internet::ip_type::IpType;
 pub use parse::transport::Transport;

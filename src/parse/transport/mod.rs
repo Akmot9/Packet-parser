@@ -35,6 +35,7 @@ impl<'a> Transport<'a> {
         payload_protocol: Option<TransportProtocol>,
         payload: &'a [u8],
     ) -> Result<Self, TransportError> {
+        // println!("debug try_from_parts: {:?}", payload_protocol);
         match payload_protocol {
             Some(TransportProtocol::Tcp) => {
                 let tcp_packet = TcpPacket::try_from(payload)?;
@@ -72,7 +73,7 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
         // First try to parse as TCP (most common case)
         // tempo de 100ms
         // std::thread::sleep(std::time::Duration::from_nanos(1));
-
+        // println!("debug try_from: parsing TCP");
         if let Ok(tcp_packet) = TcpPacket::try_from(packet) {
             return Ok(Transport {
                 protocol: TransportProtocol::Tcp,
@@ -82,6 +83,7 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
             });
         }
 
+        // println!("debug try_from: parsing UDP");
         // TODO: Add other protocol parsers here (UDP, etc.)
         if let Ok(udp_packet) = UdpPacket::try_from(packet) {
             return Ok(Transport {
@@ -112,6 +114,7 @@ impl<'a> Hash for Transport<'a> {
         self.destination_port.hash(state);
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
