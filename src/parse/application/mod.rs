@@ -70,6 +70,11 @@ impl TryFrom<&[u8]> for Application {
                 application_protocol: "ModbusTCP".to_string(),
             });
         }
+        if crate::parse::application::protocols::dhcpv6::Dhcpv6Packet::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "DHCPv6".to_string(),
+            });
+        }
         // if AmsPacket::try_from(packet).is_ok() {
         //     return Ok(Application {
         //         application_protocol: "AMS".to_string(),
