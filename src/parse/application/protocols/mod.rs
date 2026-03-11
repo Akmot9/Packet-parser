@@ -6,6 +6,7 @@
 use bitcoin::BitcoinPacket;
 use copt::CotpHeader;
 use dhcp::DhcpPacket;
+use dhcpv6::Dhcpv6Packet;
 use dns::DnsPacket;
 use http::HttpRequest;
 use modbus_tcp::ModbusTcpPacket;
@@ -22,6 +23,7 @@ pub mod ams;
 pub mod bitcoin;
 pub mod copt;
 pub mod dhcp;
+pub mod dhcpv6;
 pub mod dns;
 pub mod giop;
 pub mod http;
@@ -41,6 +43,7 @@ pub enum ApplicationProtocol<'a> {
     Http(HttpRequest),
     Mqtt(MqttPacket),
     Dhcp(DhcpPacket),
+    Dhcpv6(Dhcpv6Packet<'a>),
     Bitcoin(BitcoinPacket),
     Dns(DnsPacket),
     S7Comm(S7CommPacket<'a>),

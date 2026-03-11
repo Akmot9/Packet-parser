@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Cyprien Avico avicocyprien@yahoo.com
+// Copyright (c) 2026 Cyprien Avico avicocyprien@yahoo.com
 //
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
@@ -10,6 +10,7 @@ pub mod bitcoin;
 pub mod dns;
 pub mod mqtt;
 pub mod ntp;
+pub mod dhcpv6;
 
 /// Errors related to parsing an `Application`
 #[derive(Debug, Error, Clone, Serialize)]
@@ -21,6 +22,9 @@ pub enum ApplicationError {
     // ModbusParseError,
     #[error("Failed to parse NTP packet")]
     NtpParseError,
+
+    #[error("Failed to parse DHCPv6 packet")]
+    Dhcpv6ParseError,
 
     #[error("Failed to parse DNS packet")]
     DnsParseError,
