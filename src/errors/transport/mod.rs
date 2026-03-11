@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use crate::parse::transport::protocols::tcp::TcpError;
+
 /// Errors specific to UDP packet parsing
 #[derive(Error, Debug, PartialEq)]
 pub enum UdpError {
@@ -37,6 +39,9 @@ pub enum TransportError {
 
     #[error("UDP error: {0}")]
     UdpError(#[from] UdpError),
+
+    #[error("TCP error: {0}")]
+    TcpError(#[from] TcpError),
 
     #[error("Unsupported transport protocol")]
     UnsupportedProtocol,

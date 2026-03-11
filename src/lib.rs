@@ -112,10 +112,7 @@ pub mod parse;
 
 /// Exports data link layer parsing functionality.
 pub use parse::data_link::DataLink;
-
-/// Exports MAC address parsing functionality.
 pub use parse::data_link::mac_addres::MacAddress;
-
 pub use parse::application::Application;
 pub use parse::internet::Internet;
 pub use parse::internet::ip_type::IpType;

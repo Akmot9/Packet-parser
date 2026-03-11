@@ -32,7 +32,6 @@ use crate::{
     DataLink,
     errors::{ParsedPacketError, internet::InternetError, transport::TransportError},
     owned::PacketFlowOwned,
-    parse::transport::protocols::TransportProtocol,
 };
 
 pub mod application;
@@ -112,20 +111,20 @@ impl<'a> PacketFlow<'a> {
     fn parse_impl(packets: &'a [u8]) -> Result<Self, ParsedPacketError> {
         let data_link = DataLink::try_from(packets)?;
 
-        let mut internet = match Internet::try_from(data_link.payload) {
+        let internet = match Internet::try_from(data_link.payload) {
             Ok(internet) => Some(internet),
             Err(InternetError::UnsupportedProtocol) => None,
             Err(e) => return Err(e.into()),
         };
-        let transport = match internet.as_mut() {
-            Some(internet) => match Transport::try_from(internet.payload) {
-                Ok(transport) => Some(transport),
-                Err(TransportError::UnsupportedProtocol) => internet
-                    .payload_protocol
-                    .take()
-                    .map(TransportProtocol::to_transport),
-                Err(e) => return Err(e.into()),
-            },
+
+        let transport = match internet.as_ref() {
+            Some(internet) => {
+                match Transport::try_from_parts(internet.payload_protocol, internet.payload) {
+                    Ok(transport) => Some(transport),
+                    Err(TransportError::UnsupportedProtocol) => None,
+                    Err(e) => return Err(e.into()),
+                }
+            }
             None => None,
         };
 
@@ -160,36 +159,31 @@ impl<'a> PacketFlow<'a> {
 
         let total_t0 = now();
 
-        // L2
         let t0 = now();
         let data_link = DataLink::try_from(packets)?;
         timing.l2_ns = elapsed_ns(t0);
 
-        // L3 (tentative; may become None if unsupported)
         let t0 = now();
-        let mut internet = match Internet::try_from(data_link.payload) {
+        let internet = match Internet::try_from(data_link.payload) {
             Ok(internet) => Some(internet),
             Err(InternetError::UnsupportedProtocol) => None,
             Err(e) => return Err(e.into()),
         };
         timing.l3_ns = elapsed_ns(t0);
 
-        // L4 (tentative only if L3 exists)
         let t0 = now();
-        let transport = match internet.as_mut() {
-            Some(internet) => match Transport::try_from(internet.payload) {
-                Ok(transport) => Some(transport),
-                Err(TransportError::UnsupportedProtocol) => internet
-                    .payload_protocol
-                    .take()
-                    .map(TransportProtocol::to_transport),
-                Err(e) => return Err(e.into()),
-            },
+        let transport = match internet.as_ref() {
+            Some(internet) => {
+                match Transport::try_from_parts(internet.payload_protocol, internet.payload) {
+                    Ok(transport) => Some(transport),
+                    Err(TransportError::UnsupportedProtocol) => None,
+                    Err(e) => return Err(e.into()),
+                }
+            }
             None => None,
         };
         timing.l4_ns = elapsed_ns(t0);
 
-        // L7 (best-effort; attempt only if L4 payload exists)
         let t0 = now();
         let application = match &transport {
             Some(t) => match t.payload {
@@ -229,6 +223,8 @@ impl<'a> PacketFlow<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::parse::transport::protocols::TransportProtocol;
+
     use super::*;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};

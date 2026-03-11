@@ -30,6 +30,39 @@ impl<'a> Transport<'a> {
     pub fn transport_from_u8(protocol: &u8) -> TransportProtocol {
         TransportProtocol::from_u8(*protocol)
     }
+
+    pub fn try_from_parts(
+        payload_protocol: Option<TransportProtocol>,
+        payload: &'a [u8],
+    ) -> Result<Self, TransportError> {
+        match payload_protocol {
+            Some(TransportProtocol::Tcp) => {
+                let tcp_packet = TcpPacket::try_from(payload)?;
+                Ok(Transport {
+                    protocol: TransportProtocol::Tcp,
+                    source_port: Some(tcp_packet.header.source_port),
+                    destination_port: Some(tcp_packet.header.destination_port),
+                    payload: Some(tcp_packet.payload),
+                })
+            }
+            Some(TransportProtocol::Udp) => {
+                let udp_packet = UdpPacket::try_from(payload)?;
+                Ok(Transport {
+                    protocol: TransportProtocol::Udp,
+                    source_port: Some(udp_packet.source_port),
+                    destination_port: Some(udp_packet.destination_port),
+                    payload: Some(udp_packet.payload),
+                })
+            }
+            Some(other) => Ok(Transport {
+                protocol: other,
+                source_port: None,
+                destination_port: None,
+                payload: None,
+            }),
+            None => Err(TransportError::UnsupportedProtocol),
+        }
+    }
 }
 
 impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
@@ -49,6 +82,7 @@ impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
             });
         }
 
+        // TODO: Add other protocol parsers here (UDP, etc.)
         if let Ok(udp_packet) = UdpPacket::try_from(packet) {
             return Ok(Transport {
                 protocol: TransportProtocol::Udp,
@@ -78,7 +112,6 @@ impl<'a> Hash for Transport<'a> {
         self.destination_port.hash(state);
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,30 +125,22 @@ mod tests {
         hasher.finish()
     }
 
-    // fn valid_tcp_packet() -> Vec<u8> {
-    //     vec![
-    //         0x30, 0x39, // source port = 12345
-    //         0x00, 0x50, // destination port = 80
-    //         0x00, 0x00, 0x00, 0x01, // sequence number
-    //         0x00, 0x00, 0x00, 0x00, // acknowledgement number
-    //         0x50, 0x18, // data offset = 5, flags = PSH+ACK
-    //         0x04, 0x00, // window size
-    //         0x12, 0x34, // checksum
-    //         0x00, 0x00, // urgent pointer
-    //         0xDE, 0xAD, 0xBE, 0xEF, // payload
-    //     ]
-    // }
+    fn valid_tcp_packet() -> Vec<u8> {
+        vec![
+            0x30, 0x39, // source port = 12345
+            0x00, 0x50, // destination port = 80
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x50, 0x18, 0x04, 0x00, 0x12, 0x34,
+            0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF,
+        ]
+    }
 
     fn valid_udp_packet() -> Vec<u8> {
-        // UDP header minimal de 8 octets
-        // source port = 12345 (0x3039)
-        // destination port = 53 (0x0035)
-        // length = 8
         vec![
             0x30, 0x39, // source port = 12345
             0x00, 0x35, // destination port = 53
-            0x00, 0x08, // length = 8
+            0x00, 0x0c, // length = 12
             0x00, 0x00, // checksum
+            0xDE, 0xAD, 0xBE, 0xEF,
         ]
     }
 
@@ -132,30 +157,18 @@ mod tests {
     }
 
     #[test]
-    fn test_transport_try_from_tcp() {
-        // Header TCP minimal de 20 octets + 4 octets de payload
-        let packet = vec![
-            0x30, 0x39, // source port = 12345
-            0x00, 0x50, // destination port = 80
-            0x00, 0x00, 0x00, 0x01, // sequence number
-            0x00, 0x00, 0x00, 0x00, // acknowledgement number
-            0x50, 0x18, // data offset = 5, flags = PSH+ACK
-            0x04, 0x00, // window size
-            0x12, 0x34, // checksum
-            0x00, 0x00, // urgent pointer
-            0xDE, 0xAD, 0xBE, 0xEF, // payload
-        ];
+    fn test_transport_try_from_parts_tcp() {
+        let packet = valid_tcp_packet();
 
-        // Vérifie d'abord que le parser TCP natif accepte bien ce paquet
-        let tcp_packet = TcpPacket::try_from(packet.as_slice())
-            .expect("Le paquet de test doit être accepté par TcpPacket::try_from");
+        let tcp_packet =
+            TcpPacket::try_from(packet.as_slice()).expect("Le paquet TCP doit être valide");
 
         assert_eq!(tcp_packet.header.source_port, 12345);
         assert_eq!(tcp_packet.header.destination_port, 80);
         assert_eq!(tcp_packet.payload, &packet[20..]);
 
-        // Ensuite seulement on teste la conversion générique Transport
-        let transport = Transport::try_from(packet.as_slice()).unwrap();
+        let transport =
+            Transport::try_from_parts(Some(TransportProtocol::Tcp), packet.as_slice()).unwrap();
 
         assert_eq!(transport.protocol, TransportProtocol::Tcp);
         assert_eq!(transport.source_port, Some(12345));
@@ -164,10 +177,18 @@ mod tests {
     }
 
     #[test]
-    fn test_transport_try_from_udp() {
+    fn test_transport_try_from_parts_udp() {
         let packet = valid_udp_packet();
 
-        let transport = Transport::try_from(packet.as_slice()).unwrap();
+        let udp_packet =
+            UdpPacket::try_from(packet.as_slice()).expect("Le paquet UDP doit être valide");
+
+        assert_eq!(udp_packet.source_port, 12345);
+        assert_eq!(udp_packet.destination_port, 53);
+        assert_eq!(udp_packet.payload, &packet[8..]);
+
+        let transport =
+            Transport::try_from_parts(Some(TransportProtocol::Udp), packet.as_slice()).unwrap();
 
         assert_eq!(transport.protocol, TransportProtocol::Udp);
         assert_eq!(transport.source_port, Some(12345));
@@ -176,12 +197,24 @@ mod tests {
     }
 
     #[test]
-    fn test_transport_try_from_unsupported_protocol() {
+    fn test_transport_try_from_parts_without_protocol_should_fail() {
         let packet = [0x00, 0x01, 0x02, 0x03];
 
-        let err = Transport::try_from(packet.as_slice()).unwrap_err();
+        let err = Transport::try_from_parts(None, &packet).unwrap_err();
 
         assert!(matches!(err, TransportError::UnsupportedProtocol));
+    }
+
+    #[test]
+    fn test_transport_try_from_parts_other_protocol_returns_metadata_only() {
+        let packet = [0x00, 0x01, 0x02, 0x03];
+
+        let transport = Transport::try_from_parts(Some(TransportProtocol::Icmp), &packet).unwrap();
+
+        assert_eq!(transport.protocol, TransportProtocol::Icmp);
+        assert_eq!(transport.source_port, None);
+        assert_eq!(transport.destination_port, None);
+        assert_eq!(transport.payload, None);
     }
 
     #[test]

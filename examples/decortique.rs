@@ -21,10 +21,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     println!("Internet: {:?}", internet);
     let transport = match internet.as_mut() {
-        Some(internet) => match Transport::try_from(internet.payload) {
-            Ok(transport) => Some(transport),
-            Err(e) => return Err(e.into()),
-        },
+        Some(internet) => {
+            match Transport::try_from_parts(internet.payload_protocol, internet.payload) {
+                Ok(transport) => Some(transport),
+                Err(e) => return Err(e.into()),
+            }
+        }
         None => None,
     };
     println!("Transport: {:?}", transport);
