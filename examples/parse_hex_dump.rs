@@ -17,10 +17,8 @@ fn main() {
         Ok(flow) => {
             println!("✅ Full PacketFlow parsé avec succès !");
             println!("   Application Protocol détecté: {:?}", flow.application);
-            if let Some(app) = flow.application {
-                if app.application_protocol == "DHCPv6" {
-                    println!("   [C'est bien du DHCPv6!]");
-                }
+            if let Some(app) = flow.application && app.application_protocol == "DHCPv6" {
+                println!("   [C'est bien du DHCPv6!]");
             }
         }
         Err(e) => eprintln!("❌ Erreur inattendue: {:?}", e),

@@ -5,16 +5,14 @@
 
 use thiserror::Error;
 
-/// Error types for DHCPv6 packet parsing.
 #[derive(Debug, Error, PartialEq)]
-
 pub enum Dhcpv6PacketParseError {
     #[error("Invalid DHCPv6 packet length")]
-    InvalidPacketLength,
+    PacketLength,
 
-    #[error("Invalid DHCPv6 transaction ID: {transaction_id}")]
-    InvalidTransactionId { transaction_id: u32 },
+    #[error("Invalid DHCPv6 transaction ID")]
+    TransactionId,
 
     #[error("Invalid DHCPv6 message type: {message_type}")]
-    InvalidMessageType { message_type: u8 },
+    MessageType { message_type: u8 },
 }

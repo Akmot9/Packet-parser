@@ -33,14 +33,14 @@ impl<'a> TryFrom<&'a [u8]> for Dhcpv6Packet<'a> {
         // The standard DHCPv6 Client/Server message is at least 4 bytes long.
         // (1 byte message type + 3 bytes transaction ID)
         if payload.len() < 4 {
-            return Err(Dhcpv6PacketParseError::InvalidPacketLength);
+            return Err(Dhcpv6PacketParseError::PacketLength);
         }
 
         let message_type = payload[0];
 
         // Allowed message types in DHCPv6 go from 1 to 13 (including Relay Agents 12 and 13)
         if !(1..=13).contains(&message_type) {
-            return Err(Dhcpv6PacketParseError::InvalidMessageType { message_type });
+            return Err(Dhcpv6PacketParseError::MessageType { message_type });
         }
 
         // Transaction ID is 24 bits (3 bytes), so we pad it with a 0 to make a u32
@@ -92,7 +92,7 @@ mod tests {
         let short_payload = vec![0x01, 0x12, 0x34]; // Only 3 bytes
         match Dhcpv6Packet::try_from(short_payload.as_slice()) {
             Ok(_) => panic!("Expected invalid DHCPv6 packet due to short payload"),
-            Err(e) => assert_eq!(e, Dhcpv6PacketParseError::InvalidPacketLength),
+            Err(e) => assert_eq!(e, Dhcpv6PacketParseError::PacketLength),
         }
     }
 
@@ -108,7 +108,7 @@ mod tests {
             Ok(_) => panic!("Expected invalid DHCPv6 packet due to invalid message type"),
             Err(e) => assert_eq!(
                 e,
-                Dhcpv6PacketParseError::InvalidMessageType { message_type: 14 }
+                Dhcpv6PacketParseError::MessageType { message_type: 14 }
             ),
         }
     }
