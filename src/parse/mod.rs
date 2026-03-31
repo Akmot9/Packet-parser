@@ -234,6 +234,11 @@ mod tests {
             .expect("invalid test hex fixture")
     }
 
+    fn sample_ipv6_udp_dhcpv6_silicit() -> Vec<u8> {
+        hex::decode("333300010002080027fe8f9586dd60000000003c1101fe800000000000000a0027fffefe8f95ff02000000000000000000000001000202220223003cad08011008740001000e000100011c39cf88080027fe8f9500060004001700180008000200000019000c27fe8f9500000e1000001518")
+            .expect("invalid test hex fixture")
+    }
+
     #[test]
     fn packetflow_try_from_valid_packet_should_succeed() {
         let packet = sample_ipv6_tcp_packet();

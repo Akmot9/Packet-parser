@@ -10,8 +10,8 @@ use serde::Serialize;
 use crate::{
     errors::application::ApplicationError,
     parse::application::protocols::{
-        giop::GiopPacket, modbus_tcp::ModbusTcpPacket, ntp::NtpPacket, quic::QuicPacket,
-        srvloc::SrvlocPacket,
+        dhcpv6::Dhcpv6Packet, giop::GiopPacket, modbus_tcp::ModbusTcpPacket, ntp::NtpPacket,
+        quic::QuicPacket, srvloc::SrvlocPacket,
     },
 };
 
@@ -70,11 +70,11 @@ impl TryFrom<&[u8]> for Application {
                 application_protocol: "ModbusTCP".to_string(),
             });
         }
-        if crate::parse::application::protocols::dhcpv6::Dhcpv6Packet::try_from(packet).is_ok() {
-            return Ok(Application {
-                application_protocol: "DHCPv6".to_string(),
-            });
-        }
+        // if Dhcpv6Packet::try_from(packet).is_ok() {
+        //     return Ok(Application {
+        //         application_protocol: "DHCPv6".to_string(),
+        //     });
+        // }
         // if AmsPacket::try_from(packet).is_ok() {
         //     return Ok(Application {
         //         application_protocol: "AMS".to_string(),
