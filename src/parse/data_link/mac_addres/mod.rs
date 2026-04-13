@@ -128,6 +128,19 @@ impl TryFrom<&[u8]> for MacAddress {
     }
 }
 
+/// convertir une string en MacAddress
+impl TryFrom<String> for MacAddress {
+    type Error = MacParseError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let bytes = value
+            .split(':')
+            .map(|s| u8::from_str_radix(s, 16).unwrap())
+            .collect::<Vec<u8>>();
+        Self::try_from(&bytes[..])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

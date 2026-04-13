@@ -10,7 +10,7 @@ use serde::Serialize;
 use crate::{
     errors::application::ApplicationError,
     parse::application::protocols::{
-        dhcpv6::Dhcpv6Packet, giop::GiopPacket, modbus_tcp::ModbusTcpPacket, ntp::NtpPacket,
+        giop::GiopPacket, modbus_tcp::ModbusTcpPacket, ntp::NtpPacket,
         quic::QuicPacket, srvloc::SrvlocPacket,
     },
 };

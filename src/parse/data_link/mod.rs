@@ -114,8 +114,8 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
         }
 
         Ok(DataLink {
-            destination_mac: destination_mac.display_with_oui(),
-            source_mac: source_mac.display_with_oui(),
+            destination_mac: destination_mac.to_string(),
+            source_mac: source_mac.to_string(),
             vlan,
             ethertype,
             payload,
