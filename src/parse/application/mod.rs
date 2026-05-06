@@ -10,8 +10,8 @@ use serde::Serialize;
 use crate::{
     errors::application::ApplicationError,
     parse::application::protocols::{
-        giop::GiopPacket, modbus_tcp::ModbusTcpPacket, ntp::NtpPacket, quic::QuicPacket,
-        srvloc::SrvlocPacket,
+        giop::GiopPacket, modbus_tcp::ModbusTcpPacket, ntp::NtpPacket, opcua::OpcuaPacket,
+        quic::QuicPacket, srvloc::SrvlocPacket,
     },
 };
 
@@ -38,6 +38,11 @@ impl TryFrom<&[u8]> for Application {
         if BitcoinPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "Bitcoin".to_string(),
+            });
+        }
+        if OpcuaPacket::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "OPC UA".to_string(),
             });
         }
         if DnsPacket::try_from(packet).is_ok() {

@@ -4,9 +4,9 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1.49.0", features = ["full"] }
-tokio-postgres = "0.7.16"
-serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.52.2", features = ["full"] }
+tokio-postgres = "0.7.17"
+serde = { version = "1.0.228", features = ["derive"] }
 glob = "0.3.3"
-anyhow = "1.0.100"
+anyhow = "1.0.102"
 serde_json = "1.0.149"
