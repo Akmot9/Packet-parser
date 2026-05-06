@@ -205,10 +205,10 @@ fn parse_v1_packet(payload: &[u8]) -> Result<SrvlocPacket, SrvlocPacketParseErro
     let transaction_id = read_u16(payload, &mut offset)?;
     let error_code = read_u16(payload, &mut offset)?;
 
-    let url_length = read_u16(payload, &mut offset)? as u16;
+    let url_length = read_u16(payload, &mut offset)?;
     let url = read_string(payload, &mut offset, url_length as usize, "url")?;
 
-    let scope_list_lengh = read_u16(payload, &mut offset)? as u16;
+    let scope_list_lengh = read_u16(payload, &mut offset)?;
     let scope_list = read_string(
         payload,
         &mut offset,
@@ -270,7 +270,7 @@ fn parse_v2_packet(payload: &[u8]) -> Result<SrvlocPacket, SrvlocPacketParseErro
     let flags = read_u16(payload, &mut offset)?;
     let next_extension_offset = read_u24(payload, &mut offset)?;
     let xid = read_u16(payload, &mut offset)?;
-    let lang_tag_len = read_u16(payload, &mut offset)? as u16;
+    let lang_tag_len = read_u16(payload, &mut offset)?;
     let lang_tag = read_string(payload, &mut offset, lang_tag_len as usize, "lang_tag")?;
 
     let header_v2 = SrvlocHeaderV2 {
