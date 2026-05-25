@@ -1,5 +1,9 @@
 use core::convert::TryFrom;
 
+use crate::{
+    checks::application::srvloc::ensure_len, errors::application::srvloc::SrvlocPacketParseError,
+};
+
 #[derive(Debug)]
 pub struct SrvlocPacket {
     pub header: SrvlocHeader,
@@ -61,61 +65,6 @@ pub struct SrvlocHeaderV1 {
 #[derive(Debug)]
 pub enum SrvlocMessage {
     Raw(Vec<u8>),
-}
-
-/// Erreurs de parsing SRVLOC
-#[derive(Debug)]
-pub enum SrvlocPacketParseError {
-    /// Le buffer ne contient même pas une version
-    InvalidPacketLength,
-    /// Buffer tronqué alors qu’on attendait plus de données
-    Truncated {
-        expected_at_least: usize,
-        actual: usize,
-    },
-    /// Version non supportée (≠ 1 ou 2)
-    UnsupportedVersion(u8),
-    /// Erreur UTF-8 dans un champ texte
-    InvalidUtf8(&'static str),
-}
-
-impl core::fmt::Display for SrvlocPacketParseError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            SrvlocPacketParseError::InvalidPacketLength => {
-                write!(f, "SRVLOC packet too short")
-            }
-            SrvlocPacketParseError::Truncated {
-                expected_at_least,
-                actual,
-            } => {
-                write!(
-                    f,
-                    "SRVLOC packet truncated: expected at least {} bytes, got {}",
-                    expected_at_least, actual
-                )
-            }
-            SrvlocPacketParseError::UnsupportedVersion(v) => {
-                write!(f, "Unsupported SRVLOC version {}", v)
-            }
-            SrvlocPacketParseError::InvalidUtf8(field) => {
-                write!(f, "Invalid UTF-8 in SRVLOC field '{}'", field)
-            }
-        }
-    }
-}
-
-impl std::error::Error for SrvlocPacketParseError {}
-
-fn ensure_len(buf: &[u8], needed: usize) -> Result<(), SrvlocPacketParseError> {
-    if buf.len() < needed {
-        Err(SrvlocPacketParseError::Truncated {
-            expected_at_least: needed,
-            actual: buf.len(),
-        })
-    } else {
-        Ok(())
-    }
 }
 
 fn read_u16(buf: &[u8], offset: &mut usize) -> Result<u16, SrvlocPacketParseError> {

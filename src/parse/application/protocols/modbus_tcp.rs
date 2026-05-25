@@ -1,5 +1,13 @@
 use core::convert::TryFrom;
 
+use crate::{
+    checks::application::modbus_tcp::{
+        validate_declared_total_length, validate_length_field, validate_mbap_min_size,
+        validate_pdu_not_empty, validate_protocol_identifier,
+    },
+    errors::application::modbus_tcp::ModbusTcpError,
+};
+
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// Modbus/TCP Protocol Packet
 ///
@@ -28,12 +36,7 @@ impl<'a> TryFrom<&'a [u8]> for ModbusTcpPacket<'a> {
     type Error = ModbusTcpError;
 
     fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
-        if value.len() < MBAP_MIN_SIZE {
-            return Err(ModbusTcpError::BufferTooSmall {
-                needed: MBAP_MIN_SIZE,
-                actual: value.len(),
-            });
-        }
+        validate_mbap_min_size(value)?;
 
         let mut mbaps = Vec::new();
         let mut offset = 0usize;
@@ -42,12 +45,7 @@ impl<'a> TryFrom<&'a [u8]> for ModbusTcpPacket<'a> {
             let slice = &value[offset..];
 
             // Si on a des octets résiduels trop petits pour un MBAP, c'est une incohérence
-            if slice.len() < MBAP_MIN_SIZE {
-                return Err(ModbusTcpError::BufferTooSmall {
-                    needed: MBAP_MIN_SIZE,
-                    actual: slice.len(),
-                });
-            }
+            validate_mbap_min_size(slice)?;
 
             let mbap = MBAP::try_from(slice)?;
             let consumed = 6usize + mbap.length as usize;
@@ -74,67 +72,32 @@ pub struct MBAP<'a> {
     pub pdu: Modbus<'a>,
 }
 
-pub const MBAP_MIN_SIZE: usize = 7;
-
 #[derive(Debug)]
 pub struct Modbus<'a> {
     pub function_code: u8,
     pub pdu_data: &'a [u8],
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum ModbusTcpError {
-    BufferTooSmall { needed: usize, actual: usize },
-    InvalidProtocolIdentifier { got: u16 }, // en Modbus/TCP standard, c'est 0
-    InvalidLengthField { got: u16 },        // length doit être >= 1 (car inclut unit_id)
-    LengthMismatch { expected: usize, actual: usize },
-    PduTooSmall { needed: usize, actual: usize },
-}
-
 impl<'a> TryFrom<&'a [u8]> for MBAP<'a> {
     type Error = ModbusTcpError;
 
     fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
-        // MBAP minimal = 7 bytes
-        if value.len() < MBAP_MIN_SIZE {
-            return Err(ModbusTcpError::BufferTooSmall {
-                needed: MBAP_MIN_SIZE,
-                actual: value.len(),
-            });
-        }
+        validate_mbap_min_size(value)?;
 
         let transaction_identifier = u16::from_be_bytes([value[0], value[1]]);
         let protocol_identifier = u16::from_be_bytes([value[2], value[3]]);
         let length = u16::from_be_bytes([value[4], value[5]]);
         let unit_identifier = value[6];
 
-        if protocol_identifier != 0 {
-            return Err(ModbusTcpError::InvalidProtocolIdentifier {
-                got: protocol_identifier,
-            });
-        }
-
-        if length < 1 {
-            return Err(ModbusTcpError::InvalidLengthField { got: length });
-        }
+        validate_protocol_identifier(protocol_identifier)?;
+        validate_length_field(length)?;
 
         // Taille totale attendue = 6 + length
-        let expected_total = 6usize + length as usize;
-        if value.len() < expected_total {
-            return Err(ModbusTcpError::LengthMismatch {
-                expected: expected_total,
-                actual: value.len(),
-            });
-        }
+        let expected_total = validate_declared_total_length(value, length)?;
 
         // PDU = après unit id
         let pdu = &value[7..expected_total];
-        if pdu.is_empty() {
-            return Err(ModbusTcpError::PduTooSmall {
-                needed: 1,
-                actual: pdu.len(),
-            });
-        }
+        validate_pdu_not_empty(pdu)?;
 
         let function_code = pdu[0];
         let pdu_data = &pdu[1..];

@@ -1,4 +1,9 @@
-use crate::errors::application::bitcoin::BitcoinError;
+use crate::{
+    checks::application::bitcoin::{
+        check_magic_number, check_minimum_length, validate_total_length,
+    },
+    errors::application::bitcoin::BitcoinError,
+};
 
 /// The `BitcoinPacket` struct represents a parsed Bitcoin packet.
 #[derive(Debug)]
@@ -8,37 +13,6 @@ pub struct BitcoinPacket {
     pub length: u32,
     pub checksum: [u8; 4],
     pub payload: Vec<u8>,
-}
-
-/// List of valid magic numbers for different Bitcoin networks
-const VALID_MAGIC_NUMBERS: [u32; 5] = [
-    0xD9B4BEF9, // Mainnet
-    0x0709110B, // Testnet
-    0x0B110907, // Testnet3
-    0xFABFB5DA, // Regtest
-    0x40CF030A, // Signet
-];
-
-/// Checks if the payload length is at least 24 bytes (minimum length of a Bitcoin packet header)
-fn check_minimum_length(payload: &[u8]) -> Result<(), BitcoinError> {
-    if payload.len() < 24 {
-        // println!("Payload too short: {}", payload.len());
-        return Err(BitcoinError::PacketTooShort {
-            actual: (payload.len()),
-        });
-    }
-    Ok(())
-}
-
-/// Checks if the first 4 bytes match any known Bitcoin network magic number
-fn check_magic_number(payload: &[u8]) -> Result<u32, BitcoinError> {
-    let magic = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
-    if VALID_MAGIC_NUMBERS.contains(&magic) {
-        Ok(magic)
-    } else {
-        // println!("Invalid magic number: {:02X?}", magic);
-        Err(BitcoinError::InvalidMagic { magic })
-    }
 }
 
 /// Extracts the command string from the payload (12 bytes, null-padded ASCII)
@@ -75,19 +49,6 @@ fn extract_length(payload: &[u8]) -> u32 {
 /// Extracts the checksum from the header (4 bytes)
 fn extract_checksum(payload: &[u8]) -> [u8; 4] {
     [payload[20], payload[21], payload[22], payload[23]]
-}
-
-/// Ensures the payload length is consistent with the actual data length
-fn validate_total_length(packet: &[u8], payload_len: u32) -> Result<(), BitcoinError> {
-    let expected = 24usize + payload_len as usize;
-    if packet.len() != expected {
-        return Err(BitcoinError::LengthMismatch {
-            declared: payload_len,
-            actual_payload_len: packet.len() - 24,
-            actual_total_len: packet.len(),
-        });
-    }
-    Ok(())
 }
 
 /// Extracts the actual payload data

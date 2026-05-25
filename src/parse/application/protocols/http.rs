@@ -3,7 +3,13 @@
 use std::convert::TryFrom;
 use std::fmt;
 
-use crate::errors::application::http::HttpParseError;
+use crate::{
+    checks::application::http::{
+        parse_payload_as_utf8, require_header_part, require_method, require_request_line,
+        require_uri, require_version,
+    },
+    errors::application::http::HttpParseError,
+};
 
 /// The `HttpRequest` struct represents a parsed HTTP request.
 #[derive(Debug)]
@@ -35,28 +41,16 @@ impl TryFrom<&[u8]> for HttpRequest {
 
 /// Parses an HTTP request from a given payload.
 pub fn parse_http_request(payload: &[u8]) -> Result<HttpRequest, HttpParseError> {
-    let payload_str = std::str::from_utf8(payload).map_err(|_| HttpParseError::InvalidUtf8)?;
+    let payload_str = parse_payload_as_utf8(payload)?;
 
     let mut lines = payload_str.split("\r\n");
 
-    let request_line = match lines.next() {
-        Some(line) => line,
-        None => return Err(HttpParseError::MissingRequestLine),
-    };
+    let request_line = require_request_line(lines.next())?;
 
     let mut request_parts = request_line.split_whitespace();
-    let method = match request_parts.next() {
-        Some(part) => part.to_string(),
-        None => return Err(HttpParseError::MissingMethod),
-    };
-    let uri = match request_parts.next() {
-        Some(part) => part.to_string(),
-        None => return Err(HttpParseError::MissingUri),
-    };
-    let version = match request_parts.next() {
-        Some(part) => part.to_string(),
-        None => return Err(HttpParseError::MissingVersion),
-    };
+    let method = require_method(request_parts.next())?.to_string();
+    let uri = require_uri(request_parts.next())?.to_string();
+    let version = require_version(request_parts.next())?.to_string();
 
     let mut headers = Vec::new();
     for line in lines.by_ref() {
@@ -64,14 +58,8 @@ pub fn parse_http_request(payload: &[u8]) -> Result<HttpRequest, HttpParseError>
             break;
         }
         let mut header_parts = line.splitn(2, ':');
-        let name = match header_parts.next() {
-            Some(part) => part.trim().to_string(),
-            None => return Err(HttpParseError::InvalidHeader),
-        };
-        let value = match header_parts.next() {
-            Some(part) => part.trim().to_string(),
-            None => return Err(HttpParseError::InvalidHeader),
-        };
+        let name = require_header_part(header_parts.next())?.trim().to_string();
+        let value = require_header_part(header_parts.next())?.trim().to_string();
         headers.push((name, value));
     }
 

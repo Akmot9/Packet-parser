@@ -3,6 +3,7 @@ use thiserror::Error;
 pub mod arp;
 pub mod ipv4;
 pub mod ipv6;
+pub mod profinet;
 /// Errors that can occur when parsing or processing internet layer protocols
 #[derive(Debug, Error)]
 pub enum InternetError {

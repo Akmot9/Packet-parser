@@ -3,7 +3,13 @@
 use std::convert::TryFrom;
 use std::fmt;
 
-use crate::errors::application::dhcp::DhcpParseError;
+use crate::{
+    checks::application::dhcp::{
+        validate_dhcp_min_length, validate_hardware_address_length, validate_hardware_type,
+        validate_operation,
+    },
+    errors::application::dhcp::DhcpParseError,
+};
 
 /// The `DhcpPacket` struct represents a parsed DHCP packet.
 #[derive(Debug)]
@@ -60,12 +66,7 @@ impl TryFrom<&[u8]> for DhcpPacket {
 /// Parses a DHCP packet from a given payload.
 pub fn parse_dhcp_packet(payload: &[u8]) -> Result<DhcpPacket, DhcpParseError> {
     // Check minimum length
-    if payload.len() < 236 {
-        return Err(DhcpParseError::PacketTooShort {
-            expected: 236,
-            actual: payload.len(),
-        });
-    }
+    validate_dhcp_min_length(payload)?;
 
     let op = payload[0];
     let htype = payload[1];
@@ -88,15 +89,9 @@ pub fn parse_dhcp_packet(payload: &[u8]) -> Result<DhcpPacket, DhcpParseError> {
     let options = payload[236..].to_vec();
 
     // Validate DHCP packet fields
-    if !(op == 1 || op == 2) {
-        return Err(DhcpParseError::InvalidOperation { op });
-    }
-    if htype != 1 {
-        return Err(DhcpParseError::UnsupportedHardwareType { htype });
-    }
-    if hlen != 6 {
-        return Err(DhcpParseError::InvalidHardwareAddressLength { hlen });
-    }
+    validate_operation(op)?;
+    validate_hardware_type(htype)?;
+    validate_hardware_address_length(hlen)?;
 
     Ok(DhcpPacket {
         op,

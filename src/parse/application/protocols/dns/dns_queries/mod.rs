@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::{
+    checks::application::dns::check_dns_query_size,
     errors::application::dns::DnsQueryParseError,
     parse::application::protocols::dns::utils::{dns_class::DnsClass, dns_types::DnsType},
 };
@@ -20,21 +21,6 @@ impl DnsQueries {
         }
         Ok(DnsQueries { queries })
     }
-}
-
-fn check_dns_query_size(
-    bytes: &[u8],
-    offset: usize,
-    required_size: usize,
-) -> Result<(), DnsQueryParseError> {
-    if offset + required_size > bytes.len() {
-        return Err(DnsQueryParseError::InsufficientData {
-            required: required_size,
-            offset,
-            available: bytes.len() - offset,
-        });
-    }
-    Ok(())
 }
 
 impl fmt::Display for DnsQueries {

@@ -1,0 +1,35 @@
+# Changelog
+
+Tous les changements notables du projet seront documentes dans ce fichier.
+
+Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), avec des sections simples par type de changement.
+
+## [Unreleased]
+
+### Ajoute
+
+- Ajout de `METHODE_AJOUT_PROTOCOLE.md`, qui documente la methode de travail pour ajouter un nouveau protocole.
+- Ajout d'une strategie zero-copy pour les nouveaux parseurs : payloads et champs variables en references, pas de copies inutiles dans le chemin de parsing.
+- Ajout d'une exigence de rustdoc avec schema Mermaid `packet-beta` pour le type principal de chaque nouveau protocole.
+- Ajout d'erreurs applicatives dediees pour HTTP, DHCP, COTP et S7Comm.
+- Ajout de modules `src/checks/application/*` et `src/checks/internet/profinet.rs` pour centraliser les validations des parseurs.
+- Ajout de modules d'erreurs dedies pour AMS, GIOP, Modbus/TCP, OPC UA, SRVLOC, TLS et Profinet.
+
+### Change
+
+- Alignement des parseurs HTTP, DHCP, COTP et S7Comm vers une interface `TryFrom<&[u8]>`.
+- Remplacement des erreurs de parsing non typees (`bool`, `&'static str`) par des erreurs dediees.
+- Conservation des fonctions helper existantes quand elles restent utiles, mais avec des types d'erreur explicites.
+- Correction d'un commentaire Bitcoin obsolete qui mentionnait encore un retour `bool`.
+- Deplacement des validations nommees `check_*`, `validate_*` et `ensure_*` hors de `src/parse`.
+- Deplacement des enums d'erreur restantes hors des fichiers de parsing vers `src/errors`.
+- Mise a jour des parseurs AMS, Bitcoin, COTP, DHCP, DNS, GIOP, HTTP, Modbus/TCP, MQTT, OPC UA, S7Comm, SRVLOC, TLS et Profinet pour utiliser les modules `checks` et `errors`.
+
+### Validation
+
+- `cargo fmt` passe.
+- `cargo test` passe avec 258 tests unitaires et 13 doctests.
+
+## Historique avant changelog
+
+Les versions precedentes n'etaient pas encore documentees dans un changelog dedie. Consulter l'historique Git pour les changements plus anciens.

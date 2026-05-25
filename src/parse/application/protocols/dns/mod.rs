@@ -5,7 +5,9 @@ mod dns_header;
 mod dns_queries;
 pub mod utils;
 
-use crate::errors::application::dns::DnsPacketError;
+use crate::{
+    checks::application::dns::check_dns_minimum_size, errors::application::dns::DnsPacketError,
+};
 use dns_additional::AdditionalRecord;
 use dns_answers::Answer;
 use dns_authoritative::AuthoritativeNameServer;
@@ -42,17 +44,6 @@ impl TryFrom<&[u8]> for DnsPacket {
             additionals,
         })
     }
-}
-
-fn check_dns_minimum_size(bytes: &[u8]) -> Result<(), DnsPacketError> {
-    const DNS_MINIMUM_SIZE: usize = 12; // Taille minimale pour un en-tête DNS
-    if bytes.len() < DNS_MINIMUM_SIZE {
-        return Err(DnsPacketError::InsufficientData {
-            expected: DNS_MINIMUM_SIZE,
-            actual: bytes.len(),
-        });
-    }
-    Ok(())
 }
 
 impl fmt::Display for DnsPacket {
