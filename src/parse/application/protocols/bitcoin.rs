@@ -10,6 +10,21 @@ use crate::{
     errors::application::bitcoin::BitcoinError,
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// Bitcoin Network Packet
+///
+/// ```mermaid
+/// ---
+/// title: BitcoinPacket
+/// ---
+/// packet-beta
+/// 0-31: "Magic u32"
+/// 32-127: "Command bytes[12]"
+/// 128-159: "Payload Length u32"
+/// 160-191: "Checksum bytes[4]"
+/// 192-255: "Payload variable"
+/// ```
+///
 /// The `BitcoinPacket` struct represents a parsed Bitcoin packet.
 #[derive(Debug)]
 pub struct BitcoinPacket {

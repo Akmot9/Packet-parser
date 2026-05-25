@@ -13,6 +13,19 @@ use crate::{
     errors::application::opcua::OpcuaParseError,
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// OPC UA TCP Packet
+///
+/// ```mermaid
+/// ---
+/// title: OpcuaPacket
+/// ---
+/// packet-beta
+/// 0-23: "Message Type bytes[3]"
+/// 24-31: "Chunk Type u8"
+/// 32-63: "Message Size u32"
+/// 64-127: "Payload variable"
+/// ```
 #[derive(Debug)]
 pub struct OpcuaPacket<'a> {
     pub chunks: Vec<OpcuaChunk<'a>>,

@@ -7,9 +7,30 @@ use crate::errors::internet::ipv4::Ipv4Error;
 use std::convert::TryFrom;
 use std::net::Ipv4Addr;
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
 /// IPv4 Packet Structure
 ///
 /// Represents an Internet Protocol version 4 packet
+///
+/// ```mermaid
+/// ---
+/// title: Ipv4Packet
+/// ---
+/// packet-beta
+/// 0-3: "Version u4"
+/// 4-7: "IHL u4"
+/// 8-15: "DSCP/ECN u8"
+/// 16-31: "Total Length u16"
+/// 32-47: "Identification u16"
+/// 48-50: "Flags u3"
+/// 51-63: "Fragment Offset u13"
+/// 64-71: "TTL u8"
+/// 72-79: "Protocol u8"
+/// 80-95: "Header Checksum u16"
+/// 96-127: "Source IPv4 u32"
+/// 128-159: "Destination IPv4 u32"
+/// 160-191: "Options / Payload variable"
+/// ```
 #[derive(Debug, PartialEq)]
 pub struct Ipv4Packet<'a> {
     /// Version (4 for IPv4) and Internet Header Length (IHL)

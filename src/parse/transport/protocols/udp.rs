@@ -7,7 +7,20 @@ use std::convert::TryFrom;
 
 use crate::errors::transport::udp::UdpError;
 
-/// Represents a UDP packet header and payload
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// UDP Packet
+///
+/// ```mermaid
+/// ---
+/// title: UdpPacket
+/// ---
+/// packet-beta
+/// 0-15: "Source Port u16"
+/// 16-31: "Destination Port u16"
+/// 32-47: "Length u16"
+/// 48-63: "Checksum u16"
+/// 64-127: "Payload variable"
+/// ```
 #[derive(Debug)]
 pub struct UdpPacket<'a> {
     /// Source port

@@ -13,6 +13,20 @@ use crate::{
     errors::application::tls::TlsError,
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// TLS Record Packet
+///
+/// ```mermaid
+/// ---
+/// title: TlsPacket
+/// ---
+/// packet-beta
+/// 0-7: "Content Type u8"
+/// 8-23: "Protocol Version u16"
+/// 24-39: "Length u16"
+/// 40-103: "Payload variable"
+/// ```
+///
 /// Représente un enregistrement TLS (TLS Record Layer).
 #[derive(Debug)]
 pub struct TlsPacket<'a> {

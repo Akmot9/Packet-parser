@@ -20,6 +20,23 @@ use dns_header::DnsHeader;
 use dns_queries::DnsQueries;
 use std::fmt;
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// DNS Packet
+///
+/// ```mermaid
+/// ---
+/// title: DnsPacket
+/// ---
+/// packet-beta
+/// 0-15: "Transaction ID u16"
+/// 16-31: "Flags u16"
+/// 32-47: "Question Count u16"
+/// 48-63: "Answer Count u16"
+/// 64-79: "Authority Count u16"
+/// 80-95: "Additional Count u16"
+/// 96-159: "Questions variable"
+/// 160-223: "Answers / Authority / Additional variable"
+/// ```
 #[derive(Debug)]
 pub struct DnsPacket {
     pub header: DnsHeader,

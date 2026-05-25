@@ -13,6 +13,26 @@ use crate::{
     errors::application::ams::AmsParseError,
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// AMS Packet
+///
+/// ```mermaid
+/// ---
+/// title: AmsPacket
+/// ---
+/// packet-beta
+/// 0-47: "Target Net ID u48"
+/// 48-63: "Target Port u16"
+/// 64-111: "Sender Net ID u48"
+/// 112-127: "Sender Port u16"
+/// 128-143: "Command ID u16"
+/// 144-159: "State Flags u16"
+/// 160-191: "Data Length u32"
+/// 192-223: "Error Code u32"
+/// 224-255: "Invoke ID u32"
+/// 256-319: "Data variable"
+/// ```
+///
 /// Représente un paquet AMS (header + payload)
 #[derive(Debug)]
 pub struct AmsPacket<'a> {

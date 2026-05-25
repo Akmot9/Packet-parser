@@ -40,6 +40,21 @@ impl From<u8> for CotpPduType {
     }
 }
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// COTP Header
+///
+/// ```mermaid
+/// ---
+/// title: CotpHeader
+/// ---
+/// packet-beta
+/// 0-7: "Header Length u8"
+/// 8-15: "PDU Type u8"
+/// 16-31: "Destination Reference u16"
+/// 32-47: "Source Reference u16"
+/// 48-55: "Class / Options u8"
+/// 56-127: "Parameters variable"
+/// ```
 #[derive(Debug, Clone)]
 pub struct CotpHeader {
     pub length: u8,

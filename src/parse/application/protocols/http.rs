@@ -16,6 +16,20 @@ use crate::{
     errors::application::http::HttpParseError,
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// HTTP Request
+///
+/// ```mermaid
+/// ---
+/// title: HttpRequest
+/// ---
+/// packet-beta
+/// 0-63: "Request Line variable"
+/// 64-127: "Headers variable"
+/// 128-143: "CRLF separator"
+/// 144-207: "Body variable"
+/// ```
+///
 /// The `HttpRequest` struct represents a parsed HTTP request.
 #[derive(Debug)]
 pub struct HttpRequest {

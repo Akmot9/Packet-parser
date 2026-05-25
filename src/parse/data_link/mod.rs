@@ -61,8 +61,24 @@ use crate::{
 
 use ethertype::Ethertype;
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// Ethernet Frame
+///
+/// ```mermaid
+/// ---
+/// title: DataLink
+/// ---
+/// packet-beta
+/// 0-47: "Destination MAC u48"
+/// 48-95: "Source MAC u48"
+/// 96-111: "EtherType / VLAN TPID u16"
+/// 112-127: "VLAN TCI u16 if present"
+/// 128-143: "Inner EtherType u16 if VLAN"
+/// 144-191: "Payload variable"
+/// ```
+///
 /// Represents a parsed Ethernet frame, containing source and destination MAC addresses,
-/// an Ethertype, and the payload.
+/// an Ethertype, an optional VLAN tag, and the payload.
 #[derive(Debug, Clone, Serialize, Eq)]
 pub struct DataLink<'a> {
     /// The destination MAC address as a string.

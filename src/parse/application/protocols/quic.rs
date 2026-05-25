@@ -3,6 +3,27 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// QUIC Long Header Packet
+///
+/// ```mermaid
+/// ---
+/// title: QuicPacket
+/// ---
+/// packet-beta
+/// 0-0: "Header Form u1"
+/// 1-1: "Fixed Bit u1"
+/// 2-3: "Long Packet Type u2"
+/// 4-5: "Reserved u2"
+/// 6-7: "Packet Number Length u2"
+/// 8-39: "Version u32"
+/// 40-47: "DCID Length u8"
+/// 48-207: "Destination Connection ID variable"
+/// 208-215: "SCID Length u8"
+/// 216-375: "Source Connection ID variable"
+/// 376-439: "Token / Length / Packet Number / Payload variable"
+/// ```
+///
 /// Modélisation minimale d'un paquet QUIC v1 (RFC 9000/9001) avec Long Header:
 /// couvre `Initial` et `Handshake`, ainsi que quelques frames fréquentes.
 ///

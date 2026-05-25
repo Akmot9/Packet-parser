@@ -31,7 +31,26 @@ pub struct TcpHeader<'a> {
     pub options: &'a [u8],
 }
 
-/// Represents a TCP packet
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// TCP Packet
+///
+/// ```mermaid
+/// ---
+/// title: TcpPacket
+/// ---
+/// packet-beta
+/// 0-15: "Source Port u16"
+/// 16-31: "Destination Port u16"
+/// 32-63: "Sequence Number u32"
+/// 64-95: "Acknowledgment Number u32"
+/// 96-99: "Data Offset u4"
+/// 100-103: "Reserved/NS u4"
+/// 104-111: "Flags u8"
+/// 112-127: "Window Size u16"
+/// 128-143: "Checksum u16"
+/// 144-159: "Urgent Pointer u16"
+/// 160-191: "Options / Payload variable"
+/// ```
 #[derive(Debug)]
 pub struct TcpPacket<'a> {
     pub header: TcpHeader<'a>,

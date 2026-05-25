@@ -7,9 +7,26 @@ use crate::errors::internet::arp::ArpError;
 use std::convert::TryFrom;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
 /// ARP Packet Structure
 ///
 /// Represents an Address Resolution Protocol (ARP) packet
+///
+/// ```mermaid
+/// ---
+/// title: ArpPacket
+/// ---
+/// packet-beta
+/// 0-15: "Hardware Type u16"
+/// 16-31: "Protocol Type u16"
+/// 32-39: "Hardware Length u8"
+/// 40-47: "Protocol Length u8"
+/// 48-63: "Operation u16"
+/// 64-111: "Sender Hardware Address"
+/// 112-143: "Sender Protocol Address"
+/// 144-191: "Target Hardware Address"
+/// 192-223: "Target Protocol Address"
+/// ```
 #[derive(Debug, PartialEq)]
 pub struct ArpPacket {
     /// Hardware type (e.g., 1 for Ethernet)

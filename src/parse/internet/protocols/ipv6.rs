@@ -7,9 +7,26 @@ use crate::errors::internet::ipv6::Ipv6Error;
 use std::convert::TryFrom;
 use std::net::Ipv6Addr;
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
 /// IPv6 Packet Structure
 ///
 /// Represents an Internet Protocol version 6 packet
+///
+/// ```mermaid
+/// ---
+/// title: Ipv6Packet
+/// ---
+/// packet-beta
+/// 0-3: "Version u4"
+/// 4-11: "Traffic Class u8"
+/// 12-31: "Flow Label u20"
+/// 32-47: "Payload Length u16"
+/// 48-55: "Next Header u8"
+/// 56-63: "Hop Limit u8"
+/// 64-191: "Source IPv6 u128"
+/// 192-319: "Destination IPv6 u128"
+/// 320-383: "Extension Headers / Payload variable"
+/// ```
 #[derive(Debug, PartialEq)]
 pub struct Ipv6Packet<'a> {
     /// Version (6 for IPv6), Traffic Class, and Flow Label

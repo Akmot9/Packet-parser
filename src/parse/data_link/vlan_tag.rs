@@ -9,6 +9,19 @@ use serde::Serialize;
 
 use super::ethertype::Ethertype; // adapte le chemin si besoin
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// IEEE 802.1Q VLAN Tag
+///
+/// ```mermaid
+/// ---
+/// title: VlanTag
+/// ---
+/// packet-beta
+/// 0-2: "PCP u3"
+/// 3-3: "DEI u1"
+/// 4-15: "VLAN ID u12"
+/// 16-31: "Inner EtherType u16"
+/// ```
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
 pub struct VlanTag {
     /// VLAN ID sur 12 bits (0–4095)

@@ -8,6 +8,19 @@
 use crate::errors::application::dhcpv6::Dhcpv6PacketParseError;
 use std::fmt;
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// DHCPv6 Packet
+///
+/// ```mermaid
+/// ---
+/// title: Dhcpv6Packet
+/// ---
+/// packet-beta
+/// 0-7: "Message Type u8"
+/// 8-31: "Transaction ID u24"
+/// 32-95: "Options variable"
+/// ```
+///
 /// The `Dhcpv6Packet` struct represents a parsed DHCPv6 packet.
 #[derive(Debug, PartialEq)]
 pub struct Dhcpv6Packet<'a> {

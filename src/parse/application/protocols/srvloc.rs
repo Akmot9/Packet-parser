@@ -9,6 +9,23 @@ use crate::{
     checks::application::srvloc::ensure_len, errors::application::srvloc::SrvlocPacketParseError,
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// Service Location Protocol Packet
+///
+/// ```mermaid
+/// ---
+/// title: SrvlocPacket
+/// ---
+/// packet-beta
+/// 0-7: "Version u8"
+/// 8-15: "Function u8"
+/// 16-39: "Packet Length u16/u24"
+/// 40-55: "Flags / Dialect"
+/// 56-79: "Extension Offset / Language"
+/// 80-95: "Transaction ID u16"
+/// 96-111: "Language Tag Length u16"
+/// 112-175: "Language Tag / Payload variable"
+/// ```
 #[derive(Debug)]
 pub struct SrvlocPacket {
     pub header: SrvlocHeader,

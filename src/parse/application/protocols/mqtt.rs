@@ -14,6 +14,20 @@ use crate::{
     errors::application::mqtt::MqttError,
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// MQTT Control Packet
+///
+/// ```mermaid
+/// ---
+/// title: MqttPacket
+/// ---
+/// packet-beta
+/// 0-3: "Packet Type u4"
+/// 4-7: "Fixed Header Flags u4"
+/// 8-39: "Remaining Length varint"
+/// 40-103: "Variable Header variable"
+/// 104-167: "Payload variable"
+/// ```
 #[derive(Debug)]
 pub struct MqttPacket {
     pub fixed_header: MqttFixedHeader,

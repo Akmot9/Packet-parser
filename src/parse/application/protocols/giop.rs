@@ -105,6 +105,22 @@ impl TryFrom<&[u8]> for GiopHeader {
 // =========================
 //
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// GIOP Packet
+///
+/// ```mermaid
+/// ---
+/// title: GiopPacket
+/// ---
+/// packet-beta
+/// 0-31: "Magic bytes[4]"
+/// 32-39: "Major Version u8"
+/// 40-47: "Minor Version u8"
+/// 48-55: "Flags u8"
+/// 56-63: "Message Type u8"
+/// 64-95: "Message Length u32"
+/// 96-159: "Body variable"
+/// ```
 #[derive(Debug)]
 pub struct GiopPacket {
     pub header: GiopHeader,

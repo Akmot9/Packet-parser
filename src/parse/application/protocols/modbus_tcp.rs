@@ -20,18 +20,14 @@ use crate::{
 /// ---
 /// title: ModbusTcpPacket
 /// ---
-/// packet
-/// %% MBAP Header
+/// packet-beta
 /// 0-15: "Transaction Identifier u16"
 /// 16-31: "Protocol Identifier u16"
 /// 32-47: "Length u16"
-/// 48-63: "Unit Identifier u8"
-///
-/// %% PDU
-/// 64-64: "Function Code u16"
-/// 48-63: "COTP Dest Ref u16"
+/// 48-55: "Unit Identifier u8"
+/// 56-63: "Function Code u8"
+/// 64-127: "PDU Data variable"
 /// ```
-
 #[derive(Debug)]
 pub struct ModbusTcpPacket<'a> {
     pub mbaps: Vec<MBAP<'a>>, // plusieurs MBAP dans un paquet Modbus/TCP

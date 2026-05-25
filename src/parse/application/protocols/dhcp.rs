@@ -16,6 +16,31 @@ use crate::{
     errors::application::dhcp::DhcpParseError,
 };
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// DHCP Packet
+///
+/// ```mermaid
+/// ---
+/// title: DhcpPacket
+/// ---
+/// packet-beta
+/// 0-7: "Operation u8"
+/// 8-15: "Hardware Type u8"
+/// 16-23: "Hardware Address Length u8"
+/// 24-31: "Hops u8"
+/// 32-63: "Transaction ID u32"
+/// 64-79: "Seconds u16"
+/// 80-95: "Flags u16"
+/// 96-127: "Client IP Address u32"
+/// 128-159: "Your IP Address u32"
+/// 160-191: "Server IP Address u32"
+/// 192-223: "Gateway IP Address u32"
+/// 224-351: "Client Hardware Address bytes[16]"
+/// 352-863: "Server Host Name bytes[64]"
+/// 864-1887: "Boot File Name bytes[128]"
+/// 1888-1951: "Options variable"
+/// ```
+///
 /// The `DhcpPacket` struct represents a parsed DHCP packet.
 #[derive(Debug)]
 pub struct DhcpPacket {
