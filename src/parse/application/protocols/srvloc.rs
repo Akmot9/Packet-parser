@@ -6,7 +6,8 @@
 use core::convert::TryFrom;
 
 use crate::{
-    checks::application::srvloc::ensure_len, errors::application::srvloc::SrvlocPacketParseError,
+    checks::application::srvloc::{ensure_len, validate_packet_not_empty},
+    errors::application::srvloc::SrvlocPacketParseError,
 };
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
@@ -121,10 +122,7 @@ impl TryFrom<&[u8]> for SrvlocPacket {
     type Error = SrvlocPacketParseError;
 
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        // 1) taille minimale : au moins la version
-        if payload.is_empty() {
-            return Err(SrvlocPacketParseError::InvalidPacketLength);
-        }
+        validate_packet_not_empty(payload)?;
 
         let version = payload[0];
 

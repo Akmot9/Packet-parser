@@ -5,6 +5,14 @@
 
 use crate::errors::application::srvloc::SrvlocPacketParseError;
 
+pub fn validate_packet_not_empty(payload: &[u8]) -> Result<(), SrvlocPacketParseError> {
+    if payload.is_empty() {
+        return Err(SrvlocPacketParseError::InvalidPacketLength);
+    }
+
+    Ok(())
+}
+
 pub fn ensure_len(buf: &[u8], needed: usize) -> Result<(), SrvlocPacketParseError> {
     if buf.len() < needed {
         Err(SrvlocPacketParseError::Truncated {

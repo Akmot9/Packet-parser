@@ -5,7 +5,10 @@
 
 use std::convert::TryFrom;
 
-use crate::errors::transport::udp::UdpError;
+use crate::{
+    checks::transport::udp::{UDP_HEADER_SIZE, validate_udp_length, validate_udp_min_length},
+    errors::transport::udp::UdpError,
+};
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// UDP Packet
@@ -46,28 +49,14 @@ impl<'a> TryFrom<&'a [u8]> for UdpPacket<'a> {
     /// # Returns
     /// * `Result<UdpPacket, TransportError>` - The parsed UDP packet or an error
     fn try_from(data: &'a [u8]) -> Result<Self, Self::Error> {
-        // Minimum UDP header size is 8 bytes
-        const UDP_HEADER_SIZE: usize = 8;
-
-        if data.len() < UDP_HEADER_SIZE {
-            return Err(UdpError::PacketTooShort {
-                expected: UDP_HEADER_SIZE,
-                actual: data.len(),
-            });
-        }
+        validate_udp_min_length(data)?;
 
         let source_port = u16::from_be_bytes([data[0], data[1]]);
         let destination_port = u16::from_be_bytes([data[2], data[3]]);
         let length = u16::from_be_bytes([data[4], data[5]]);
         let checksum = u16::from_be_bytes([data[6], data[7]]);
 
-        // Verify the length field matches the actual data length
-        if length as usize != data.len() {
-            return Err(UdpError::InvalidLength {
-                length,
-                actual: data.len(),
-            });
-        }
+        validate_udp_length(length, data.len())?;
 
         // The payload is everything after the 8-byte header
         let payload = &data[UDP_HEADER_SIZE..];

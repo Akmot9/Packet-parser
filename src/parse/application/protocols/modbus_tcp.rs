@@ -7,8 +7,8 @@ use core::convert::TryFrom;
 
 use crate::{
     checks::application::modbus_tcp::{
-        validate_declared_total_length, validate_length_field, validate_mbap_min_size,
-        validate_pdu_not_empty, validate_protocol_identifier,
+        validate_consumed_length, validate_declared_total_length, validate_length_field,
+        validate_mbap_min_size, validate_pdu_not_empty, validate_protocol_identifier,
     },
     errors::application::modbus_tcp::ModbusTcpError,
 };
@@ -50,11 +50,7 @@ impl<'a> TryFrom<&'a [u8]> for ModbusTcpPacket<'a> {
 
             let mbap = MBAP::try_from(slice)?;
             let consumed = 6usize + mbap.length as usize;
-
-            // Sécurité: ne jamais boucler à l'infini
-            if consumed == 0 {
-                return Err(ModbusTcpError::InvalidLengthField { got: mbap.length });
-            }
+            validate_consumed_length(consumed, mbap.length)?;
 
             mbaps.push(mbap);
             offset += consumed;

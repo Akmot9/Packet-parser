@@ -58,3 +58,11 @@ pub fn validate_pdu_not_empty(pdu: &[u8]) -> Result<(), ModbusTcpError> {
 
     Ok(())
 }
+
+pub fn validate_consumed_length(consumed: usize, length: u16) -> Result<(), ModbusTcpError> {
+    if consumed == 0 {
+        return Err(ModbusTcpError::InvalidLengthField { got: length });
+    }
+
+    Ok(())
+}

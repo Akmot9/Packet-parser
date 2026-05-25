@@ -9,7 +9,8 @@ use std::convert::TryFrom;
 use crate::{
     checks::application::mqtt::{
         decode_remaining_length, parse_packet_type, validate_fixed_header_flags,
-        variable_header_len,
+        validate_mqtt_header_available, validate_mqtt_min_length,
+        validate_remaining_length_available, variable_header_len,
     },
     errors::application::mqtt::MqttError,
 };
@@ -105,12 +106,7 @@ impl TryFrom<&[u8]> for MqttPacket {
     type Error = MqttError;
 
     fn try_from(packet: &[u8]) -> Result<Self, Self::Error> {
-        if packet.len() < 2 {
-            return Err(MqttError::PacketTooShort {
-                actual: packet.len(),
-                min: 2,
-            });
-        }
+        validate_mqtt_min_length(packet)?;
 
         let first = packet[0];
         let packet_type = parse_packet_type(first)?;
@@ -119,20 +115,10 @@ impl TryFrom<&[u8]> for MqttPacket {
         let (remaining_length, rl_bytes) = decode_remaining_length(&packet[1..])?;
         let header_len = 1 + rl_bytes;
 
-        if packet.len() < header_len {
-            return Err(MqttError::PacketTooShort {
-                actual: packet.len(),
-                min: header_len,
-            });
-        }
+        validate_mqtt_header_available(packet.len(), header_len)?;
 
         let available = packet.len() - header_len;
-        if available < remaining_length as usize {
-            return Err(MqttError::RemainingLengthExceedsBuffer {
-                remaining_length,
-                available,
-            });
-        }
+        validate_remaining_length_available(remaining_length, available)?;
 
         let body = &packet[header_len..header_len + remaining_length as usize];
         let vh_len = variable_header_len(packet_type, body)?;

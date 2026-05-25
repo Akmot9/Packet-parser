@@ -7,6 +7,8 @@
 
 use serde::Serialize;
 
+use crate::checks::data_link::validate_vlan_tag_length;
+
 use super::ethertype::Ethertype; // adapte le chemin si besoin
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
@@ -46,10 +48,7 @@ impl TryFrom<&[u8]> for VlanTag {
     type Error = crate::errors::data_link::DataLinkError; // adapte si tu as un VlanError
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        // On attend au moins TCI (2 octets) + EtherType interne (2 octets)
-        if bytes.len() < 4 {
-            return Err(Self::Error::DataLinkTooShort(bytes.len() as u8));
-        }
+        validate_vlan_tag_length(bytes)?;
 
         let tci = u16::from_be_bytes([bytes[0], bytes[1]]);
         let pcp = ((tci & 0b1110_0000_0000_0000) >> 13) as u8;

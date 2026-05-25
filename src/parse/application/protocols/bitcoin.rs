@@ -5,7 +5,7 @@
 
 use crate::{
     checks::application::bitcoin::{
-        check_magic_number, check_minimum_length, validate_total_length,
+        check_magic_number, check_minimum_length, validate_command_bytes, validate_total_length,
     },
     errors::application::bitcoin::BitcoinError,
 };
@@ -38,20 +38,7 @@ pub struct BitcoinPacket {
 /// Extracts the command string from the payload (12 bytes, null-padded ASCII)
 fn extract_command(payload: &[u8]) -> Result<String, BitcoinError> {
     let bytes = &payload[4..16];
-
-    let mut saw_nul = false;
-    for &b in bytes {
-        if b == 0 {
-            saw_nul = true;
-            continue;
-        }
-        if saw_nul {
-            return Err(BitcoinError::NonZeroPaddingAfterNull);
-        }
-        if !b.is_ascii_alphanumeric() {
-            return Err(BitcoinError::InvalidCommandBytes);
-        }
-    }
+    validate_command_bytes(bytes)?;
 
     let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
     let command = std::str::from_utf8(&bytes[..end])

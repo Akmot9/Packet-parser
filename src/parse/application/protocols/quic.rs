@@ -3,6 +3,11 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
+use crate::checks::application::quic::{
+    validate_fixed_bit, validate_length_field, validate_long_header, validate_payload_available,
+    validate_version,
+};
+
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// QUIC Long Header Packet
 ///
@@ -241,15 +246,11 @@ impl TryFrom<&[u8]> for QuicPacket {
         let b0 = cur.take_u8()?;
 
         let header_form_long = (b0 & 0b1000_0000) != 0;
-        if !header_form_long {
-            return Err(err(
-                "Not a QUIC Long Header (short header not supported here)",
-            ));
-        }
+        validate_long_header(header_form_long)?;
+
         let fixed_bit = (b0 & 0b0100_0000) != 0;
-        if !fixed_bit {
-            return Err(err("Fixed bit must be 1 for QUIC v1 Long Header"));
-        }
+        validate_fixed_bit(fixed_bit)?;
+
         let lptype = (b0 >> 4) & 0b11; // Long Packet Type (2 bits)
         let _reserved = (b0 >> 2) & 0b11; // reserved
         let pn_len_code = b0 & 0b11; // PN length code
@@ -266,10 +267,7 @@ impl TryFrom<&[u8]> for QuicPacket {
         // 2) Version
         let ver_bytes = cur.take(4)?;
         let version = u32::from_be_bytes([ver_bytes[0], ver_bytes[1], ver_bytes[2], ver_bytes[3]]);
-        // Guard : ce parseur ne supporte que QUIC v1
-        if version != 1 {
-            return Err(err(format!("Unsupported QUIC version: {}", version)));
-        }
+        validate_version(version)?;
 
         // 3) DCID / SCID
         let dcid = read_cid(&mut cur)?;
@@ -308,13 +306,8 @@ impl TryFrom<&[u8]> for QuicPacket {
                 header.packet_number = Some(pn);
 
                 // Payload (length_field inclut PN + payload)
-                let remaining_for_payload = (length_field as usize)
-                    .checked_sub(header.pn_length as usize)
-                    .ok_or_else(|| err("Invalid QUIC length_field: smaller than pn_length"))?;
-
-                if cur.left() < remaining_for_payload {
-                    return Err(err("Truncated payload for Handshake packet"));
-                }
+                let remaining_for_payload = validate_length_field(length_field, header.pn_length)?;
+                validate_payload_available(cur.left(), remaining_for_payload)?;
 
                 let payload_bytes = cur.take(remaining_for_payload)?.to_vec();
 
@@ -339,13 +332,8 @@ impl TryFrom<&[u8]> for QuicPacket {
                 header.packet_number = Some(pn);
 
                 // Payload
-                let remaining_for_payload = (length_field as usize)
-                    .checked_sub(header.pn_length as usize)
-                    .ok_or_else(|| err("Invalid QUIC length_field: smaller than pn_length"))?;
-
-                if cur.left() < remaining_for_payload {
-                    return Err(err("Truncated payload for Handshake packet"));
-                }
+                let remaining_for_payload = validate_length_field(length_field, header.pn_length)?;
+                validate_payload_available(cur.left(), remaining_for_payload)?;
 
                 let payload_bytes = cur.take(remaining_for_payload)?.to_vec();
 
@@ -368,13 +356,8 @@ impl TryFrom<&[u8]> for QuicPacket {
                 header.packet_number = Some(pn);
 
                 // Payload
-                let remaining_for_payload = (length_field as usize)
-                    .checked_sub(header.pn_length as usize)
-                    .ok_or_else(|| err("Invalid QUIC length_field: smaller than pn_length"))?;
-
-                if cur.left() < remaining_for_payload {
-                    return Err(err("Truncated payload for Handshake packet"));
-                }
+                let remaining_for_payload = validate_length_field(length_field, header.pn_length)?;
+                validate_payload_available(cur.left(), remaining_for_payload)?;
 
                 let payload_bytes = cur.take(remaining_for_payload)?.to_vec();
 
@@ -422,13 +405,8 @@ impl TryFrom<&[u8]> for QuicPacket {
                 header.packet_number = Some(pn);
 
                 // Payload
-                let remaining_for_payload = (length_field as usize)
-                    .checked_sub(header.pn_length as usize)
-                    .ok_or_else(|| err("Invalid QUIC length_field: smaller than pn_length"))?;
-
-                if cur.left() < remaining_for_payload {
-                    return Err(err("Truncated payload for Handshake packet"));
-                }
+                let remaining_for_payload = validate_length_field(length_field, header.pn_length)?;
+                validate_payload_available(cur.left(), remaining_for_payload)?;
 
                 let payload_bytes = cur.take(remaining_for_payload)?.to_vec();
 

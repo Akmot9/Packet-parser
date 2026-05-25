@@ -44,3 +44,24 @@ pub fn validate_total_length(packet: &[u8], payload_len: u32) -> Result<(), Bitc
 
     Ok(())
 }
+
+pub fn validate_command_bytes(bytes: &[u8]) -> Result<(), BitcoinError> {
+    let mut saw_nul = false;
+
+    for &byte in bytes {
+        if byte == 0 {
+            saw_nul = true;
+            continue;
+        }
+
+        if saw_nul {
+            return Err(BitcoinError::NonZeroPaddingAfterNull);
+        }
+
+        if !byte.is_ascii_alphanumeric() {
+            return Err(BitcoinError::InvalidCommandBytes);
+        }
+    }
+
+    Ok(())
+}

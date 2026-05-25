@@ -4,11 +4,9 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 use std::fmt;
-mod dns_flags;
-use dns_flags::verify_dns_flags;
 
 use crate::{
-    checks::application::dns::{check_packet_length, validate_and_parse_count},
+    checks::application::dns::{check_packet_length, validate_and_parse_count, verify_dns_flags},
     errors::application::dns::DnsHeaderError,
 };
 

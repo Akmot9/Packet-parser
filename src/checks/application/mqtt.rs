@@ -7,6 +7,19 @@ use crate::{
     errors::application::mqtt::MqttError, parse::application::protocols::mqtt::MqttPacketType,
 };
 
+pub const MQTT_MIN_HEADER_LEN: usize = 2;
+
+pub fn validate_mqtt_min_length(packet: &[u8]) -> Result<(), MqttError> {
+    if packet.len() < MQTT_MIN_HEADER_LEN {
+        return Err(MqttError::PacketTooShort {
+            actual: packet.len(),
+            min: MQTT_MIN_HEADER_LEN,
+        });
+    }
+
+    Ok(())
+}
+
 pub fn parse_packet_type(first_byte: u8) -> Result<MqttPacketType, MqttError> {
     let nibble = first_byte >> 4;
     match nibble {
@@ -79,6 +92,34 @@ pub fn decode_remaining_length(buf: &[u8]) -> Result<(u32, usize), MqttError> {
     }
 
     Err(MqttError::RemainingLengthOverflow)
+}
+
+pub fn validate_mqtt_header_available(
+    packet_len: usize,
+    header_len: usize,
+) -> Result<(), MqttError> {
+    if packet_len < header_len {
+        return Err(MqttError::PacketTooShort {
+            actual: packet_len,
+            min: header_len,
+        });
+    }
+
+    Ok(())
+}
+
+pub fn validate_remaining_length_available(
+    remaining_length: u32,
+    available: usize,
+) -> Result<(), MqttError> {
+    if available < remaining_length as usize {
+        return Err(MqttError::RemainingLengthExceedsBuffer {
+            remaining_length,
+            available,
+        });
+    }
+
+    Ok(())
 }
 
 pub fn variable_header_len(packet_type: MqttPacketType, body: &[u8]) -> Result<usize, MqttError> {

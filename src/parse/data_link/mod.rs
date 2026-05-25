@@ -55,7 +55,8 @@ pub mod ethertype;
 pub mod vlan_tag;
 
 use crate::{
-    checks::data_link::validate_data_link_length, errors::data_link::DataLinkError,
+    checks::data_link::{validate_data_link_length, validate_data_link_vlan_length},
+    errors::data_link::DataLinkError,
     parse::data_link::vlan_tag::VlanTag,
 };
 
@@ -111,11 +112,7 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
         let payload: &'a [u8];
 
         if raw_ethertype == 0x8100 {
-            // On a un tag 802.1Q.
-            // Il nous faut au minimum 18 octets : header Ethernet + TCI + inner EtherType
-            if packets.len() < 18 {
-                return Err(DataLinkError::DataLinkTooShort(packets.len() as u8));
-            }
+            validate_data_link_vlan_length(packets)?;
 
             // TCI + inner EtherType : [14..18]
             let vlan_tag = VlanTag::try_from(&packets[14..18])?;
