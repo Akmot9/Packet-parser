@@ -1,3 +1,8 @@
+// Copyright (c) 2026 Cyprien Avico avicocyprien@yahoo.com
+//
+// Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
+// This file may not be copied, modified, or distributed except according to those terms.
+
 /// Modélisation minimale d'un paquet QUIC v1 (RFC 9000/9001) avec Long Header:
 /// couvre `Initial` et `Handshake`, ainsi que quelques frames fréquentes.
 ///

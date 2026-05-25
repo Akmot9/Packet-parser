@@ -1,3 +1,8 @@
+// Copyright (c) 2026 Cyprien Avico avicocyprien@yahoo.com
+//
+// Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
+// This file may not be copied, modified, or distributed except according to those terms.
+
 //! Module de parsing des paquets Profinet DCP.
 //!
 //! Ce module permet d’identifier et de parser des paquets Profinet DCP (Discovery and Configuration Protocol).

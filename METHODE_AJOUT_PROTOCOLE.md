@@ -13,6 +13,8 @@ Ce document decrit la methode a suivre pour ajouter un protocole dans la librair
 - Le parseur doit retourner une erreur specifique des qu'une valeur de structure est invalide.
 - La rustdoc du type principal doit documenter le format du paquet avec un schema Mermaid `packet-beta`.
 - Les tests doivent couvrir au minimum un paquet valide, les tailles invalides, et les champs invalides importants.
+- Chaque fichier source ajoute pour un protocole doit contenir l'en-tete de licence MIT du projet.
+- Les constantes doivent etre nommees en majuscules, avec des underscores entre les mots si necessaire.
 
 ## Strategie zero-copy et usage temps reel
 
