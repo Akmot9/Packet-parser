@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::errors::application::copt::CotpParseError;
+
 /// COTP PDU Types
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u8)]
@@ -54,16 +56,23 @@ impl CotpHeader {
     pub const MIN_SIZE: usize = 7; // 1 + 1 + 2 + 2 + 1 (for CR/CC)
 
     /// Parse a COTP header from a byte slice
-    pub fn from_bytes(data: &[u8]) -> Result<(Self, usize), &'static str> {
+    pub fn from_bytes(data: &[u8]) -> Result<(Self, usize), CotpParseError> {
         if data.len() < 3 {
-            return Err("Packet too short for COTP header");
+            return Err(CotpParseError::PacketTooShort {
+                expected: 3,
+                actual: data.len(),
+            });
         }
 
         let length = data[0];
         let pdu_type = CotpPduType::from(data[1]);
+        let declared_end = length as usize + 1;
 
-        if data.len() < length as usize + 1 {
-            return Err("Packet shorter than indicated by COTP length");
+        if data.len() < declared_end {
+            return Err(CotpParseError::LengthExceedsPacket {
+                declared: declared_end,
+                actual: data.len(),
+            });
         }
 
         let mut offset = 2; // Skip length and PDU type
@@ -73,8 +82,12 @@ impl CotpHeader {
             | CotpPduType::DisconnectRequest
             | CotpPduType::DisconnectConfirm
             | CotpPduType::TpduError => {
-                if data.len() < offset + 6 {
-                    return Err("Packet too short for COTP connection header");
+                let expected = offset + 5;
+                if declared_end < expected {
+                    return Err(CotpParseError::ConnectionHeaderTooShort {
+                        expected,
+                        actual: declared_end,
+                    });
                 }
                 let dst_ref = u16::from_be_bytes([data[offset], data[offset + 1]]);
                 let src_ref = u16::from_be_bytes([data[offset + 2], data[offset + 3]]);
@@ -95,16 +108,20 @@ impl CotpHeader {
 
         // Parse parameters
         let mut parameters = Vec::new();
-        while offset < length as usize + 1 {
-            if offset + 1 >= data.len() {
-                break;
+        while offset < declared_end {
+            if offset + 1 >= declared_end {
+                return Err(CotpParseError::ParameterHeaderTruncated { offset });
             }
 
             let param_type = data[offset];
             let param_len = data[offset + 1] as usize;
 
-            if offset + 2 + param_len > data.len() {
-                break;
+            if offset + 2 + param_len > declared_end {
+                return Err(CotpParseError::ParameterLengthExceedsPacket {
+                    offset,
+                    declared: param_len,
+                    available: declared_end.saturating_sub(offset + 2),
+                });
             }
 
             let param_data = &data[offset + 2..offset + 2 + param_len];
@@ -113,6 +130,13 @@ impl CotpHeader {
                 0xC0 => {
                     // TPDU size or TPDU number
                     if pdu_type == CotpPduType::Data {
+                        if param_data.is_empty() {
+                            return Err(CotpParseError::ParameterLengthExceedsPacket {
+                                offset,
+                                declared: 1,
+                                available: 0,
+                            });
+                        }
                         CotpParameter::TpduNumber(param_data[0])
                     } else if param_len == 1 {
                         CotpParameter::TpduSize(param_data[0])
@@ -152,6 +176,15 @@ impl CotpHeader {
             },
             offset,
         ))
+    }
+}
+
+impl TryFrom<&[u8]> for CotpHeader {
+    type Error = CotpParseError;
+
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        let (header, _) = Self::from_bytes(data)?;
+        Ok(header)
     }
 }
 

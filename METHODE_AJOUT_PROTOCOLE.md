@@ -11,6 +11,7 @@ Ce document decrit la methode a suivre pour ajouter un protocole dans la librair
 - Les erreurs doivent etre dans un fichier dedie au protocole.
 - Les validations et extractions controlees doivent etre dans un fichier separe du parseur.
 - Le parseur doit retourner une erreur specifique des qu'une valeur de structure est invalide.
+- La rustdoc du type principal doit documenter le format du paquet avec un schema Mermaid `packet-beta`.
 - Les tests doivent couvrir au minimum un paquet valide, les tailles invalides, et les champs invalides importants.
 
 ## Strategie zero-copy et usage temps reel
@@ -246,7 +247,53 @@ Points importants :
 
 Exemples existants a suivre : `src/parse/transport/protocols/tcp.rs`, `src/parse/internet/protocols/ipv4.rs`, `src/parse/application/protocols/ntp.rs`.
 
-## 4. Integrer le protocole dans les modules
+## 4. Ajouter la rustdoc avec schema Mermaid
+
+Le type principal du protocole doit avoir une rustdoc qui decrit le format du paquet. Quand le format est fixe ou partiellement fixe, ajouter un schema Mermaid `packet-beta`, comme dans `src/parse/application/protocols/s7comm.rs`.
+
+Le schema doit servir a comprendre rapidement les offsets, tailles et champs importants avant de lire le code.
+
+Exemple :
+
+````rust
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// Foo Protocol Packet
+///
+/// ```mermaid
+/// ---
+/// title: FooPacket
+/// ---
+/// packet-beta
+/// 0-3: "Version u4"
+/// 4-7: "Flags u4"
+/// 8-15: "Message Type u8"
+/// 16-31: "Length u16"
+/// 32-63: "Transaction ID u32"
+/// 64-95: "Checksum u32"
+/// 96-127: "Payload / Options"
+/// ```
+#[derive(Debug, PartialEq)]
+pub struct FooPacket<'a> {
+    pub version: u8,
+    pub flags: u8,
+    pub message_type: u8,
+    pub length: u16,
+    pub transaction_id: u32,
+    pub checksum: u32,
+    pub payload: &'a [u8],
+}
+````
+
+Regles pour le schema :
+
+- Utiliser `packet-beta`.
+- Indiquer les plages de bits ou d'octets de facon coherente avec le protocole.
+- Nommer les champs avec leur taille (`u8`, `u16`, `u32`, `slice`, etc.) quand c'est utile.
+- Documenter les champs variables avec une zone explicite, par exemple `"Payload variable"` ou `"Options variable"`.
+- Garder le schema proche de la structure parsee.
+- Ne pas remplacer les validations par la documentation : la rustdoc explique, le code valide.
+
+## 5. Integrer le protocole dans les modules
 
 Ajouter le module dans le `mod.rs` de la couche concernee.
 
@@ -287,7 +334,7 @@ if FooPacket::try_from(packet).is_ok() {
 
 Attention : l'ordre de detection compte. Un parseur trop permissif peut capturer des paquets qui appartiennent a un autre protocole. Les validations doivent donc etre assez strictes avant d'ajouter le protocole dans la detection automatique.
 
-## 5. Ajouter les tests
+## 6. Ajouter les tests
 
 Chaque protocole doit avoir des tests unitaires proches du parseur ou des checks.
 
@@ -318,11 +365,12 @@ fn test_foo_packet_too_short() {
 
 Les erreurs doivent etre testees avec `matches!` quand elles contiennent des champs.
 
-## 6. Checklist avant commit
+## 7. Checklist avant commit
 
 - Le protocole implemente `TryFrom<&[u8]>`.
 - Les erreurs sont dans un fichier dedie et utilisent `thiserror::Error`.
 - Les validations sont dans un fichier separe sous `src/checks`.
+- Le type principal a une rustdoc avec un schema Mermaid `packet-beta`.
 - Les `mod.rs` necessaires exportent le nouveau module.
 - Les enums de protocoles sont mises a jour si necessaire.
 - La detection automatique est ajoutee seulement si les validations sont strictes.

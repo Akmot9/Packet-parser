@@ -28,6 +28,8 @@
 
 use std::fmt;
 
+use crate::errors::application::s7comm::S7CommParseError;
+
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// S7Comm Protocol Packet
 ///
@@ -200,7 +202,7 @@ impl<'a> S7CommPacket<'a> {
     ///
     /// # Returns
     /// * `Ok(S7CommPacket)` if parsing was successful
-    /// * `Err(&'static str)` if the packet is malformed or incomplete
+    /// * `Err(S7CommParseError)` if the packet is malformed or incomplete
     ///
     /// # Example
     /// ```no_run
@@ -211,15 +213,18 @@ impl<'a> S7CommPacket<'a> {
     ///     Err(e) => eprintln!("Failed to parse packet: {}", e),
     /// }
     /// ```
-    pub fn try_from(packet: &'a [u8]) -> Result<Self, &'static str> {
+    fn parse(packet: &'a [u8]) -> Result<Self, S7CommParseError> {
         // println!("S7CommPacket::try_from: packet len: {:?}", packet);
         if packet.len() < Self::MIN_SIZES {
-            return Err("Packet too short for S7Comm header");
+            return Err(S7CommParseError::PacketTooShort {
+                expected: Self::MIN_SIZES,
+                actual: packet.len(),
+            });
         }
 
         // Parse TPKT Header (4 bytes)
         if packet[0] != 0x03 {
-            return Err("Invalid TPKT version, expected 0x03");
+            return Err(S7CommParseError::InvalidTpktVersion { version: packet[0] });
         }
 
         let tpkt = TpktHeader {
@@ -231,7 +236,10 @@ impl<'a> S7CommPacket<'a> {
         // Parse COTP Header (starts at offset 4)
         let cotp_len = packet[4] as usize;
         if 4 + cotp_len + 1 > packet.len() {
-            return Err("Invalid COTP header length");
+            return Err(S7CommParseError::InvalidCotpHeaderLength {
+                expected: 4 + cotp_len + 1,
+                actual: packet.len(),
+            });
         }
 
         let cotp = CotpHeader {
@@ -252,7 +260,10 @@ impl<'a> S7CommPacket<'a> {
             //     s7_start + 10,
             //     packet.len()
             // );
-            return Err("Packet too short for S7 header");
+            return Err(S7CommParseError::S7HeaderTooShort {
+                expected: s7_start + 10,
+                actual: packet.len(),
+            });
         }
 
         // First create the header without error fields
@@ -314,7 +325,10 @@ impl<'a> S7CommPacket<'a> {
                 // println!("  COTP length: {}", cotp.length);
                 // println!("  S7 parameter_length: {}", s7_header.parameter_length);
                 // println!("  S7 data_length: {}", s7_header.data_length);
-                return Err("Invalid parameter length");
+                return Err(S7CommParseError::InvalidParameterLength {
+                    expected: param_end,
+                    actual: packet.len(),
+                });
             }
 
             Self::parse_parameter(&packet[param_start..param_end])?
@@ -331,7 +345,10 @@ impl<'a> S7CommPacket<'a> {
             let data_start = param_start + s7_header.parameter_length as usize;
             let data_end = data_start + s7_header.data_length as usize;
             if data_end > packet.len() {
-                return Err("Invalid data length");
+                return Err(S7CommParseError::InvalidDataLength {
+                    expected: data_end,
+                    actual: packet.len(),
+                });
             }
             Some(&packet[data_start..data_end])
         } else {
@@ -357,10 +374,10 @@ impl<'a> S7CommPacket<'a> {
     ///
     /// # Returns
     /// * `Ok(S7Parameter)` if parsing was successful
-    /// * `Err(&'static str)` if the parameter data is invalid
-    fn parse_parameter(data: &'a [u8]) -> Result<S7Parameter<'a>, &'static str> {
+    /// * `Err(S7CommParseError)` if the parameter data is invalid
+    fn parse_parameter(data: &'a [u8]) -> Result<S7Parameter<'a>, S7CommParseError> {
         if data.is_empty() {
-            return Err("Empty parameter data");
+            return Err(S7CommParseError::EmptyParameterData);
         }
 
         // Cas "fonction seule" (ex: parameter_length = 1)
@@ -378,19 +395,19 @@ impl<'a> S7CommPacket<'a> {
 
         for _ in 0..item_count {
             if offset + 2 > data.len() {
-                return Err("Invalid parameter item header");
+                return Err(S7CommParseError::InvalidParameterItemHeader);
             }
 
             let spec_type = data[offset];
             let length = data[offset + 1] as usize;
 
             if offset + 2 + length > data.len() {
-                return Err("Invalid parameter item length");
+                return Err(S7CommParseError::InvalidParameterItemLength);
             }
 
             if spec_type == 0x12 && length >= 0x0A {
                 if offset + 12 > data.len() {
-                    return Err("S7ANY parameter too short");
+                    return Err(S7CommParseError::S7AnyParameterTooShort);
                 }
 
                 let syntax_id = data[offset + 2];
@@ -429,6 +446,14 @@ impl<'a> S7CommPacket<'a> {
 
         // Important : certains paquets ont item_count=0 => OK.
         Ok(S7Parameter { function, items })
+    }
+}
+
+impl<'a> TryFrom<&'a [u8]> for S7CommPacket<'a> {
+    type Error = S7CommParseError;
+
+    fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
+        Self::parse(packet)
     }
 }
 

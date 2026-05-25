@@ -1,6 +1,9 @@
 //! Module for parsing DHCP packets.
 
+use std::convert::TryFrom;
 use std::fmt;
+
+use crate::errors::application::dhcp::DhcpParseError;
 
 /// The `DhcpPacket` struct represents a parsed DHCP packet.
 #[derive(Debug)]
@@ -46,20 +49,22 @@ impl fmt::Display for DhcpPacket {
     }
 }
 
+impl TryFrom<&[u8]> for DhcpPacket {
+    type Error = DhcpParseError;
+
+    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
+        parse_dhcp_packet(payload)
+    }
+}
+
 /// Parses a DHCP packet from a given payload.
-///
-/// # Arguments
-///
-/// * `payload` - A byte slice representing the raw DHCP packet data.
-///
-/// # Returns
-///
-/// * `Result<DhcpPacket, bool>` - Returns `Ok(DhcpPacket)` if parsing is successful,
-///   otherwise returns `Err(false)` indicating an invalid DHCP packet.
-pub fn parse_dhcp_packet(payload: &[u8]) -> Result<DhcpPacket, bool> {
+pub fn parse_dhcp_packet(payload: &[u8]) -> Result<DhcpPacket, DhcpParseError> {
     // Check minimum length
     if payload.len() < 236 {
-        return Err(false);
+        return Err(DhcpParseError::PacketTooShort {
+            expected: 236,
+            actual: payload.len(),
+        });
     }
 
     let op = payload[0];
@@ -84,13 +89,13 @@ pub fn parse_dhcp_packet(payload: &[u8]) -> Result<DhcpPacket, bool> {
 
     // Validate DHCP packet fields
     if !(op == 1 || op == 2) {
-        return Err(false);
+        return Err(DhcpParseError::InvalidOperation { op });
     }
     if htype != 1 {
-        return Err(false);
+        return Err(DhcpParseError::UnsupportedHardwareType { htype });
     }
     if hlen != 6 {
-        return Err(false);
+        return Err(DhcpParseError::InvalidHardwareAddressLength { hlen });
     }
 
     Ok(DhcpPacket {
@@ -145,7 +150,7 @@ mod tests {
         )
         .collect::<Vec<u8>>();
 
-        match parse_dhcp_packet(&dhcp_payload) {
+        match DhcpPacket::try_from(dhcp_payload.as_slice()) {
             Ok(packet) => {
                 assert_eq!(packet.op, 1);
                 assert_eq!(packet.htype, 1);
@@ -179,9 +184,15 @@ mod tests {
     #[test]
     fn test_parse_dhcp_packet_short_payload() {
         let short_payload = vec![0x01, 0x01, 0x06, 0x00, 0x39, 0x03, 0xF3, 0x26];
-        match parse_dhcp_packet(&short_payload) {
+        match DhcpPacket::try_from(short_payload.as_slice()) {
             Ok(_) => panic!("Expected invalid DHCP packet due to short payload"),
-            Err(is_dhcp) => assert!(!is_dhcp),
+            Err(err) => assert_eq!(
+                err,
+                DhcpParseError::PacketTooShort {
+                    expected: 236,
+                    actual: 8
+                }
+            ),
         }
     }
 
@@ -204,9 +215,9 @@ mod tests {
         )
         .collect::<Vec<u8>>();
 
-        match parse_dhcp_packet(&invalid_op_payload) {
+        match DhcpPacket::try_from(invalid_op_payload.as_slice()) {
             Ok(_) => panic!("Expected invalid DHCP packet due to invalid op code"),
-            Err(is_dhcp) => assert!(!is_dhcp),
+            Err(err) => assert_eq!(err, DhcpParseError::InvalidOperation { op: 3 }),
         }
     }
 }

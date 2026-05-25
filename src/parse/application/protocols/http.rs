@@ -1,6 +1,9 @@
 //! Module for parsing HTTP packets.
 
+use std::convert::TryFrom;
 use std::fmt;
+
+use crate::errors::application::http::HttpParseError;
 
 /// The `HttpRequest` struct represents a parsed HTTP request.
 #[derive(Debug)]
@@ -22,41 +25,37 @@ impl fmt::Display for HttpRequest {
     }
 }
 
+impl TryFrom<&[u8]> for HttpRequest {
+    type Error = HttpParseError;
+
+    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
+        parse_http_request(payload)
+    }
+}
+
 /// Parses an HTTP request from a given payload.
-///
-/// # Arguments
-///
-/// * `payload` - A byte slice representing the raw HTTP packet data.
-///
-/// # Returns
-///
-/// * `Result<HttpRequest, bool>` - Returns `Ok(HttpRequest)` if parsing is successful,
-///   otherwise returns `Err(false)` indicating an invalid HTTP request.
-pub fn parse_http_request(payload: &[u8]) -> Result<HttpRequest, bool> {
-    let payload_str = match std::str::from_utf8(payload) {
-        Ok(s) => s,
-        Err(_) => return Err(false),
-    };
+pub fn parse_http_request(payload: &[u8]) -> Result<HttpRequest, HttpParseError> {
+    let payload_str = std::str::from_utf8(payload).map_err(|_| HttpParseError::InvalidUtf8)?;
 
     let mut lines = payload_str.split("\r\n");
 
     let request_line = match lines.next() {
         Some(line) => line,
-        None => return Err(false),
+        None => return Err(HttpParseError::MissingRequestLine),
     };
 
     let mut request_parts = request_line.split_whitespace();
     let method = match request_parts.next() {
         Some(part) => part.to_string(),
-        None => return Err(false),
+        None => return Err(HttpParseError::MissingMethod),
     };
     let uri = match request_parts.next() {
         Some(part) => part.to_string(),
-        None => return Err(false),
+        None => return Err(HttpParseError::MissingUri),
     };
     let version = match request_parts.next() {
         Some(part) => part.to_string(),
-        None => return Err(false),
+        None => return Err(HttpParseError::MissingVersion),
     };
 
     let mut headers = Vec::new();
@@ -67,11 +66,11 @@ pub fn parse_http_request(payload: &[u8]) -> Result<HttpRequest, bool> {
         let mut header_parts = line.splitn(2, ':');
         let name = match header_parts.next() {
             Some(part) => part.trim().to_string(),
-            None => return Err(false),
+            None => return Err(HttpParseError::InvalidHeader),
         };
         let value = match header_parts.next() {
             Some(part) => part.trim().to_string(),
-            None => return Err(false),
+            None => return Err(HttpParseError::InvalidHeader),
         };
         headers.push((name, value));
     }
@@ -94,7 +93,7 @@ mod tests {
     #[test]
     fn test_parse_http_request() {
         let http_payload = b"GET /index.html HTTP/1.1\r\nHost: www.example.com\r\nUser-Agent: curl/7.68.0\r\nAccept: */*\r\n\r\n";
-        match parse_http_request(http_payload) {
+        match HttpRequest::try_from(&http_payload[..]) {
             Ok(request) => {
                 assert_eq!(request.method, "GET");
                 assert_eq!(request.uri, "/index.html");
@@ -121,7 +120,7 @@ mod tests {
     #[test]
     fn test_parse_http_request_with_body() {
         let http_payload = b"POST /submit HTTP/1.1\r\nHost: www.example.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 13\r\n\r\nfield1=value1";
-        match parse_http_request(http_payload) {
+        match HttpRequest::try_from(&http_payload[..]) {
             Ok(request) => {
                 assert_eq!(request.method, "POST");
                 assert_eq!(request.uri, "/submit");
@@ -151,9 +150,9 @@ mod tests {
     #[test]
     fn test_parse_http_request_invalid() {
         let http_payload = b"INVALID REQUEST\r\n\r\n";
-        match parse_http_request(http_payload) {
+        match HttpRequest::try_from(&http_payload[..]) {
             Ok(_) => panic!("Expected invalid HTTP request"),
-            Err(is_http) => assert!(!is_http),
+            Err(err) => assert_eq!(err, HttpParseError::MissingVersion),
         }
     }
 }

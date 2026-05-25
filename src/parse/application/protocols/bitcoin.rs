@@ -103,8 +103,8 @@ fn extract_payload(payload: &[u8]) -> Vec<u8> {
 ///
 /// # Returns
 ///
-/// * `Result<BitcoinPacket, bool>` - Returns `Ok(BitcoinPacket)` if parsing is successful,
-///   otherwise returns `Err(false)` indicating an invalid Bitcoin packet.
+/// * `Result<BitcoinPacket, BitcoinError>` - Returns `Ok(BitcoinPacket)` if parsing is successful,
+///   otherwise returns a typed `BitcoinError`.
 impl TryFrom<&[u8]> for BitcoinPacket {
     type Error = BitcoinError;
 
