@@ -267,6 +267,13 @@ mod tests {
             .expect("invalid test hex fixture")
     }
 
+    fn sample_ipv4_tcp_ethernet_ip_register_session_non_standard_port() -> Vec<u8> {
+        hex::decode(
+            "00112233445566778899aabb0800450000440001400040060000c0a8000ac0a80014303904d20000000100000000501820000000000065000400000000000000000001020304050607080000000001000000",
+        )
+        .expect("invalid test hex fixture")
+    }
+
     // fn sample_ipv6_udp_dhcpv6_silicit() -> Vec<u8> {
     //     hex::decode("333300010002080027fe8f9586dd60000000003c1101fe800000000000000a0027fffefe8f95ff02000000000000000000000001000202220223003cad08011008740001000e000100011c39cf88080027fe8f9500060004001700180008000200000019000c27fe8f9500000e1000001518")
     //         .expect("invalid test hex fixture")
@@ -341,6 +348,21 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn packetflow_detects_ethernet_ip_without_standard_port() {
+        let packet = sample_ipv4_tcp_ethernet_ip_register_session_non_standard_port();
+
+        let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
+
+        let transport = flow.transport.as_ref().expect("transport layer");
+        assert_eq!(transport.protocol, TransportProtocol::Tcp);
+        assert_eq!(transport.source_port, Some(12345));
+        assert_eq!(transport.destination_port, Some(1234));
+
+        let application = flow.application.as_ref().expect("application layer");
+        assert_eq!(application.application_protocol, "EtherNet/IP");
     }
 
     #[test]

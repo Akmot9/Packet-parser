@@ -9,6 +9,7 @@ pub mod copt;
 pub mod dhcp;
 pub mod dhcpv6;
 pub mod dns;
+pub mod ethernet_ip;
 pub mod giop;
 pub mod http;
 pub mod modbus_tcp;

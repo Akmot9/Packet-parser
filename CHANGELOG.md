@@ -6,6 +6,17 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-06-23
+
+### Ajoute
+
+- Ajout du parsing EtherNet/IP encapsulation, detecte sans dependance au port.
+
+### Validation
+
+- `cargo fmt --check` passe.
+- `cargo test` passe avec 271 tests unitaires et 13 doctests.
+
 ## [1.4.0] - 2026-06-23
 
 ### Ajoute

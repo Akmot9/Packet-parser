@@ -12,6 +12,7 @@ pub mod copt;
 pub mod dhcp;
 pub mod dhcpv6;
 pub mod dns;
+pub mod ethernet_ip;
 pub mod giop;
 pub mod http;
 pub mod modbus_tcp;
@@ -51,4 +52,7 @@ pub enum ApplicationError {
 
     #[error("Failed to parse SNMP packet")]
     SnmpParseError,
+
+    #[error("Failed to parse EtherNet/IP packet")]
+    EtherNetIpParseError,
 }

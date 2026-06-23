@@ -5,7 +5,8 @@
 
 pub mod protocols;
 use protocols::{
-    bitcoin::BitcoinPacket, dns::DnsPacket, s7comm::S7CommPacket, snmp::SnmpPacket, tls::TlsPacket,
+    bitcoin::BitcoinPacket, dns::DnsPacket, ethernet_ip::EtherNetIpPacket, s7comm::S7CommPacket,
+    snmp::SnmpPacket, tls::TlsPacket,
 };
 use serde::Serialize;
 
@@ -45,6 +46,11 @@ impl TryFrom<&[u8]> for Application {
         if OpcuaPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "OPC UA".to_string(),
+            });
+        }
+        if EtherNetIpPacket::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "EtherNet/IP".to_string(),
             });
         }
         if DnsPacket::try_from(packet).is_ok() {

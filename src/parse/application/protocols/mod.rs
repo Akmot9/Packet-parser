@@ -8,6 +8,7 @@ use copt::CotpHeader;
 use dhcp::DhcpPacket;
 use dhcpv6::Dhcpv6Packet;
 use dns::DnsPacket;
+use ethernet_ip::EtherNetIpPacket;
 use http::HttpRequest;
 use modbus_tcp::ModbusTcpPacket;
 use mqtt::MqttPacket;
@@ -27,6 +28,7 @@ pub mod copt;
 pub mod dhcp;
 pub mod dhcpv6;
 pub mod dns;
+pub mod ethernet_ip;
 pub mod giop;
 pub mod http;
 pub mod modbus_tcp;
@@ -50,6 +52,7 @@ pub enum ApplicationProtocol<'a> {
     Dhcpv6(Dhcpv6Packet<'a>),
     Bitcoin(BitcoinPacket),
     Dns(DnsPacket),
+    EtherNetIp(EtherNetIpPacket<'a>),
     S7Comm(S7CommPacket<'a>),
     Snmp(SnmpPacket<'a>),
     Cotp(CotpHeader),
