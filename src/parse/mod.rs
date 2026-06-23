@@ -24,6 +24,7 @@
 //! It expects a complete packet buffer (e.g. from PCAP capture).
 
 use application::Application;
+use application::protocols::snmp::SnmpPacket;
 use internet::Internet;
 use serde::Serialize;
 use transport::Transport;
@@ -102,6 +103,14 @@ impl<'a> PacketFlow<'a> {
         let payload = transport.payload?;
         if payload.is_empty() {
             return None;
+        }
+
+        if (is_snmp_udp_port(transport.source_port) || is_snmp_udp_port(transport.destination_port))
+            && SnmpPacket::try_from(payload).is_ok()
+        {
+            return Some(Application {
+                application_protocol: "SNMP".to_string(),
+            });
         }
 
         let parsed = Application::try_from(payload).ok();
@@ -239,6 +248,10 @@ impl<'a> PacketFlow<'a> {
 
 fn is_opcua_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(4840 | 12001))
+}
+
+fn is_snmp_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(161 | 162))
 }
 
 #[cfg(test)]

@@ -14,6 +14,7 @@ use mqtt::MqttPacket;
 use ntp::NtpPacket;
 use opcua::OpcuaPacket;
 use s7comm::S7CommPacket;
+use snmp::SnmpPacket;
 use tls::TlsPacket;
 
 use crate::parse::application::protocols::{
@@ -34,6 +35,7 @@ pub mod ntp;
 pub mod opcua;
 pub mod quic;
 pub mod s7comm;
+pub mod snmp;
 pub mod srvloc;
 pub mod tls;
 
@@ -49,6 +51,7 @@ pub enum ApplicationProtocol<'a> {
     Bitcoin(BitcoinPacket),
     Dns(DnsPacket),
     S7Comm(S7CommPacket<'a>),
+    Snmp(SnmpPacket<'a>),
     Cotp(CotpHeader),
     Quic(QuicPacket),
     Giop(GiopPacket),

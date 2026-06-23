@@ -19,6 +19,7 @@ pub mod mqtt;
 pub mod ntp;
 pub mod opcua;
 pub mod s7comm;
+pub mod snmp;
 pub mod srvloc;
 pub mod tls;
 
@@ -47,4 +48,7 @@ pub enum ApplicationError {
 
     #[error("Failed to parse MQTT packet")]
     MqttParseError,
+
+    #[error("Failed to parse SNMP packet")]
+    SnmpParseError,
 }

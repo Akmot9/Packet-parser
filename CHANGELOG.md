@@ -6,6 +6,8 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-06-23
+
 ### Ajoute
 
 - Ajout de `METHODE_AJOUT_PROTOCOLE.md`, qui documente la methode de travail pour ajouter un nouveau protocole.
@@ -15,6 +17,7 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 - Ajout de modules `src/checks/application/*` et `src/checks/internet/profinet.rs` pour centraliser les validations des parseurs.
 - Ajout de modules d'erreurs dedies pour AMS, GIOP, Modbus/TCP, OPC UA, SRVLOC, TLS et Profinet.
 - Ajout de checks dedies pour ARP, IPv4, IPv6, UDP, DHCPv6, QUIC, DNS, Bitcoin, MQTT, Modbus/TCP et SRVLOC.
+- Ajout du parsing SNMP v1/v2c/v3 avec detection UDP 161/162, PDU standards et varbinds.
 
 ### Change
 
@@ -31,7 +34,7 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 ### Validation
 
 - `cargo fmt` passe.
-- `cargo test` passe avec 258 tests unitaires et 13 doctests.
+- `cargo test` passe avec 264 tests unitaires et 13 doctests.
 
 ## Historique avant changelog
 

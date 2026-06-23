@@ -4,7 +4,9 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 pub mod protocols;
-use protocols::{bitcoin::BitcoinPacket, dns::DnsPacket, s7comm::S7CommPacket, tls::TlsPacket};
+use protocols::{
+    bitcoin::BitcoinPacket, dns::DnsPacket, s7comm::S7CommPacket, snmp::SnmpPacket, tls::TlsPacket,
+};
 use serde::Serialize;
 
 use crate::{
@@ -48,6 +50,11 @@ impl TryFrom<&[u8]> for Application {
         if DnsPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "DNS".to_string(),
+            });
+        }
+        if SnmpPacket::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "SNMP".to_string(),
             });
         }
         if TlsPacket::try_from(packet).is_ok() {

@@ -20,6 +20,7 @@ impl<'a> fmt::Display for ApplicationProtocol<'a> {
             ApplicationProtocol::Bitcoin(_) => write!(f, "Bitcoin"),
             ApplicationProtocol::Dns(_) => write!(f, "DNS"),
             ApplicationProtocol::S7Comm(_) => write!(f, "S7Comm"),
+            ApplicationProtocol::Snmp(_) => write!(f, "SNMP"),
             ApplicationProtocol::Cotp(_) => write!(f, "COTP"),
             ApplicationProtocol::Quic(_) => write!(f, "QUIC"),
             ApplicationProtocol::Giop(_) => write!(f, "GIOP"),
