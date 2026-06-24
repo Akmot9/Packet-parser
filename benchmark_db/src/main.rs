@@ -4,7 +4,7 @@ use packet_parser::timing::ParseTiming;
 
 use std::{
     fs::{self, File},
-    io::{BufWriter, Write},
+    io::{BufWriter, Read, Write},
     path::{Path, PathBuf},
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
@@ -128,10 +128,61 @@ fn packet_hash_hex(data: &[u8]) -> String {
     blake3::hash(data).to_hex().to_string()
 }
 
+fn collect_files(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            collect_files(&path, files)?;
+        } else if path.is_file() {
+            files.push(path);
+        }
+    }
+
+    Ok(())
+}
+
+fn hash_file(root: &Path, path: &Path, hasher: &mut blake3::Hasher) -> std::io::Result<()> {
+    let rel_path = path.strip_prefix(root).unwrap_or(path);
+    hasher.update(rel_path.to_string_lossy().as_bytes());
+    hasher.update(&[0]);
+
+    let mut file = File::open(path)?;
+    let mut buf = [0_u8; 8192];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+
+    Ok(())
+}
+
+fn packet_parser_code_id() -> Result<String, PacketCaptureError> {
+    let bench_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let crate_root = bench_dir.parent().unwrap_or(bench_dir);
+    let src_dir = crate_root.join("src");
+
+    let mut files = Vec::new();
+    collect_files(&src_dir, &mut files)?;
+    files.sort();
+
+    let mut hasher = blake3::Hasher::new();
+    for path in files {
+        hash_file(crate_root, &path, &mut hasher)?;
+    }
+
+    let digest = hasher.finalize().to_hex().to_string();
+    Ok(format!("code-{}", &digest[..12]))
+}
+
 fn write_jsonl_line(
     w: &mut BufWriter<File>,
     run_id: &str,
-    crate_version: &str,
+    crate_code: &str,
     pcap: &Path,
     idx: u64,
     len: usize,
@@ -160,10 +211,11 @@ fn write_jsonl_line(
     if let Some(e) = err {
         writeln!(
             w,
-            "{{\"ts\":{},\"run_id\":\"{}\",\"crate_version\":\"{}\",\"pcap\":\"{}\",\"idx\":{},\"len\":{},\"hash\":\"{}\",\"ok\":false,\"duration_ns\":{},\"error\":\"{}\"{}}}",
+            "{{\"ts\":{},\"run_id\":\"{}\",\"crate_code\":\"{}\",\"crate_version\":\"{}\",\"pcap\":\"{}\",\"idx\":{},\"len\":{},\"hash\":\"{}\",\"ok\":false,\"duration_ns\":{},\"error\":\"{}\"{}}}",
             ts,
             escape_json_string(run_id),
-            escape_json_string(crate_version),
+            escape_json_string(crate_code),
+            escape_json_string(crate_code),
             escape_json_string(&pcap_str),
             idx,
             len,
@@ -175,10 +227,11 @@ fn write_jsonl_line(
     } else {
         writeln!(
             w,
-            "{{\"ts\":{},\"run_id\":\"{}\",\"crate_version\":\"{}\",\"pcap\":\"{}\",\"idx\":{},\"len\":{},\"hash\":\"{}\",\"ok\":true,\"duration_ns\":{}{}}}",
+            "{{\"ts\":{},\"run_id\":\"{}\",\"crate_code\":\"{}\",\"crate_version\":\"{}\",\"pcap\":\"{}\",\"idx\":{},\"len\":{},\"hash\":\"{}\",\"ok\":true,\"duration_ns\":{}{}}}",
             ts,
             escape_json_string(run_id),
-            escape_json_string(crate_version),
+            escape_json_string(crate_code),
+            escape_json_string(crate_code),
             escape_json_string(&pcap_str),
             idx,
             len,
@@ -189,7 +242,20 @@ fn write_jsonl_line(
     }
 }
 
-fn log_path_for(pcap_path: &Path) -> PathBuf {
+fn safe_filename_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn log_path_for(pcap_path: &Path, run_id: &str, crate_code: &str) -> PathBuf {
     let fname = pcap_path
         .file_name()
         .and_then(|s| s.to_str())
@@ -199,7 +265,12 @@ fn log_path_for(pcap_path: &Path) -> PathBuf {
     let dir = PathBuf::from(format!("{}/.local/share/packet_parser_bench/jsonl", home));
     let _ = std::fs::create_dir_all(&dir);
 
-    dir.join(format!("bench_{}.jsonl", fname))
+    dir.join(format!(
+        "bench_{}_{}_{}.jsonl",
+        safe_filename_component(fname),
+        safe_filename_component(crate_code),
+        safe_filename_component(run_id)
+    ))
 }
 
 fn make_run_id() -> String {
@@ -212,7 +283,8 @@ fn make_run_id() -> String {
 fn main() -> Result<(), PacketCaptureError> {
     let run_id = make_run_id();
     println!("run_id: {}", run_id);
-    let crate_version = "1.1.0";
+    let crate_code = packet_parser_code_id()?;
+    println!("crate_code: {}", crate_code);
 
     let pcap_dir = Path::new("/home/erdt-cyber/rust/ICS-Security-Tools/pcaps/ModbusTCP");
 
@@ -228,7 +300,7 @@ fn main() -> Result<(), PacketCaptureError> {
 
         let mut cap = pcap::Capture::from_file(&path)?;
 
-        let out_path = log_path_for(&path);
+        let out_path = log_path_for(&path, &run_id, &crate_code);
         let file = File::create(&out_path)?;
         let mut w = BufWriter::new(file);
 
@@ -247,7 +319,7 @@ fn main() -> Result<(), PacketCaptureError> {
                     let _ = write_jsonl_line(
                         &mut w,
                         &run_id,
-                        crate_version,
+                        &crate_code,
                         &path,
                         idx,
                         0,
@@ -277,6 +349,9 @@ fn main() -> Result<(), PacketCaptureError> {
             #[cfg(feature = "parse_timing")]
             let parsed = PacketFlow::try_from_timed(packet.data, &mut timing);
 
+            #[cfg(not(feature = "parse_timing"))]
+            let parsed = PacketFlow::try_from(packet.data);
+
             match parsed {
                 Ok(p) => {
                     let owned = p.to_owned();
@@ -296,7 +371,7 @@ fn main() -> Result<(), PacketCaptureError> {
                 write_jsonl_line(
                     &mut w,
                     &run_id,
-                    crate_version,
+                    &crate_code,
                     &path,
                     idx,
                     len,
@@ -311,7 +386,7 @@ fn main() -> Result<(), PacketCaptureError> {
                 write_jsonl_line(
                     &mut w,
                     &run_id,
-                    crate_version,
+                    &crate_code,
                     &path,
                     idx,
                     len,

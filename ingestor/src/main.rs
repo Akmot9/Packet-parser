@@ -14,7 +14,10 @@ use tokio_postgres::{Client, NoTls};
 struct JsonlEvent {
     ts: u64,
     run_id: String,
-    crate_version: String,
+    #[serde(default)]
+    crate_code: Option<String>,
+    #[serde(default)]
+    crate_version: Option<String>,
     pcap: String,
     idx: u64,
     len: u32,
@@ -30,6 +33,21 @@ struct JsonlEvent {
     parse_total_ns: Option<u64>,
 
     error: Option<String>,
+}
+
+impl JsonlEvent {
+    fn crate_code(&self) -> &str {
+        self.crate_code
+            .as_deref()
+            .or(self.crate_version.as_deref())
+            .unwrap_or("unknown")
+    }
+
+    fn crate_version_compat(&self) -> &str {
+        self.crate_version
+            .as_deref()
+            .unwrap_or_else(|| self.crate_code())
+    }
 }
 
 #[derive(Debug)]
@@ -88,6 +106,7 @@ CREATE TABLE IF NOT EXISTS packet_parse_events (
   ts_ms           BIGINT NOT NULL,
   run_id          TEXT NOT NULL,
   crate_version   TEXT NOT NULL,
+  crate_code      TEXT NOT NULL,
   pcap            TEXT NOT NULL,
   idx             BIGINT NOT NULL,
   len             INT NOT NULL,
@@ -103,11 +122,22 @@ CREATE TABLE IF NOT EXISTS packet_parse_events (
   inserted_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE packet_parse_events
+  ADD COLUMN IF NOT EXISTS crate_code TEXT;
+
+UPDATE packet_parse_events
+SET crate_code = crate_version
+WHERE crate_code IS NULL;
+
+ALTER TABLE packet_parse_events
+  ALTER COLUMN crate_code SET NOT NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_packet_event
   ON packet_parse_events (run_id, pcap, idx);
 
 CREATE INDEX IF NOT EXISTS ix_by_hash ON packet_parse_events (hash);
 CREATE INDEX IF NOT EXISTS ix_by_version ON packet_parse_events (crate_version);
+CREATE INDEX IF NOT EXISTS ix_by_crate_code ON packet_parse_events (crate_code);
 CREATE INDEX IF NOT EXISTS ix_by_pcap ON packet_parse_events (pcap);
 CREATE INDEX IF NOT EXISTS ix_by_ts ON packet_parse_events (ts_ms);
 "#;
@@ -129,11 +159,11 @@ async fn insert_batch(client: &Client, batch: &[JsonlEvent]) -> Result<()> {
         .prepare(
             r#"
 INSERT INTO packet_parse_events (
-  ts_ms, run_id, crate_version, pcap, idx, len, hash, ok, duration_ns,
+  ts_ms, run_id, crate_version, crate_code, pcap, idx, len, hash, ok, duration_ns,
   l2_ns, l3_ns, l4_ns, l7_ns, parse_total_ns, error
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,
-  $10,$11,$12,$13,$14,$15
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+  $11,$12,$13,$14,$15,$16
 )
 ON CONFLICT (run_id, pcap, idx) DO NOTHING
 "#,
@@ -141,13 +171,17 @@ ON CONFLICT (run_id, pcap, idx) DO NOTHING
         .await?;
 
     for e in batch {
+        let crate_version = e.crate_version_compat();
+        let crate_code = e.crate_code();
+
         client
             .execute(
                 &stmt,
                 &[
                     &(e.ts as i64),
                     &e.run_id,
-                    &e.crate_version,
+                    &crate_version,
+                    &crate_code,
                     &e.pcap,
                     &(e.idx as i64),
                     &(e.len as i32),
