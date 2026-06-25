@@ -22,6 +22,12 @@ Documentation
 
 For full documentation and explanations, check out the [Packet Parser Book](https://akmot9.github.io/packet-parser-book/).
 
+Rustdoc Mermaid diagrams are optional. Maintainers can render them with:
+
+```bash
+cargo doc --features doc-diagrams --no-deps
+```
+
 
 ## 🚀 Installation
 
