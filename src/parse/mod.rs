@@ -248,7 +248,7 @@ impl<'a> PacketFlow<'a> {
             })
         })();
 
-        timing.total_ns = elapsed_ns(total_t0).max(1);
+        timing.total_ns = elapsed_ns(total_t0);
         result
     }
 
@@ -512,11 +512,20 @@ mod tests {
     }
 
     #[cfg(feature = "parse_timing")]
-    fn assert_total_timing_is_recorded(packet: &[u8]) {
+    fn timed_parse(
+        packet: &[u8],
+    ) -> (
+        Result<PacketFlow<'_>, ParsedPacketError>,
+        crate::timing::ParseTiming,
+    ) {
         let mut timing = crate::timing::ParseTiming::default();
+        let result = PacketFlow::try_from_timed(packet, &mut timing);
 
-        let _ = PacketFlow::try_from_timed(packet, &mut timing);
+        (result, timing)
+    }
 
+    #[cfg(feature = "parse_timing")]
+    fn assert_total_timing_is_recorded(timing: crate::timing::ParseTiming) {
         assert!(timing.total_ns > 0);
     }
 
@@ -524,14 +533,27 @@ mod tests {
     #[test]
     fn packetflow_timing_records_total_on_success() {
         let packet = ethernet_ipv4_udp_packet(0, 12);
+        let (result, timing) = timed_parse(packet.as_slice());
 
-        assert_total_timing_is_recorded(packet.as_slice());
+        assert!(result.is_ok());
+        assert_total_timing_is_recorded(timing);
+        assert!(timing.l2_ns > 0);
+        assert!(timing.l3_ns > 0);
+        assert!(timing.l4_ns > 0);
+        assert!(timing.l7_ns > 0);
     }
 
     #[cfg(feature = "parse_timing")]
     #[test]
     fn packetflow_timing_records_total_on_l2_error() {
-        assert_total_timing_is_recorded(&[]);
+        let (result, timing) = timed_parse(&[]);
+
+        assert!(matches!(result, Err(ParsedPacketError::InvalidDataLink(_))));
+        assert_total_timing_is_recorded(timing);
+        assert!(timing.l2_ns > 0);
+        assert_eq!(timing.l3_ns, 0);
+        assert_eq!(timing.l4_ns, 0);
+        assert_eq!(timing.l7_ns, 0);
     }
 
     #[cfg(feature = "parse_timing")]
@@ -542,22 +564,57 @@ mod tests {
             0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, // Source MAC
             0x08, 0x00, // IPv4 EtherType, but no IP payload
         ];
+        let (result, timing) = timed_parse(&packet);
 
-        assert_total_timing_is_recorded(&packet);
+        assert!(matches!(result, Err(ParsedPacketError::InvalidInternet(_))));
+        assert_total_timing_is_recorded(timing);
+        assert!(timing.l2_ns > 0);
+        assert!(timing.l3_ns > 0);
+        assert_eq!(timing.l4_ns, 0);
+        assert_eq!(timing.l7_ns, 0);
     }
 
     #[cfg(feature = "parse_timing")]
     #[test]
     fn packetflow_timing_records_total_on_l4_error() {
         let packet = ethernet_ipv4_udp_packet(0, 16);
+        let (result, timing) = timed_parse(packet.as_slice());
 
-        assert_total_timing_is_recorded(packet.as_slice());
+        assert!(matches!(result, Err(ParsedPacketError::Transport(_))));
+        assert_total_timing_is_recorded(timing);
+        assert!(timing.l2_ns > 0);
+        assert!(timing.l3_ns > 0);
+        assert!(timing.l4_ns > 0);
+        assert_eq!(timing.l7_ns, 0);
+    }
+
+    #[test]
+    fn packetflow_parses_transport_for_non_fragmented_ipv4_udp() {
+        let packet = ethernet_ipv4_udp_packet(0, 12);
+
+        let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
+
+        let internet = flow.internet.as_ref().expect("internet layer");
+        assert_eq!(internet.payload_protocol, Some(TransportProtocol::Udp));
+        assert!(flow.transport.is_some());
+    }
+
+    #[test]
+    fn packetflow_skips_transport_for_initial_ipv4_fragment() {
+        let more_fragments = 0x2000;
+        let packet = ethernet_ipv4_udp_packet(more_fragments, 16);
+
+        let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
+
+        let internet = flow.internet.as_ref().expect("internet layer");
+        assert_eq!(internet.protocol_name, "IPv4");
+        assert_eq!(internet.payload_protocol, None);
+        assert!(flow.transport.is_none());
     }
 
     #[test]
     fn packetflow_skips_transport_for_non_initial_ipv4_fragment() {
-        let fragment_offset = 1;
-        let packet = ethernet_ipv4_udp_packet(fragment_offset, 16);
+        let packet = ethernet_ipv4_udp_packet(1, 16);
 
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 

@@ -16,12 +16,23 @@ use ip_type::IpType;
 
 #[derive(Debug, Clone, Serialize, Eq)]
 pub struct Internet<'a> {
+    /// Source IP address when the internet layer carries one.
     pub source: Option<IpAddr>,
+    /// Classification of the source IP address.
     pub source_type: Option<IpType>,
+    /// Destination IP address when the internet layer carries one.
     pub destination: Option<IpAddr>,
+    /// Classification of the destination IP address.
     pub destination_type: Option<IpType>,
+    /// Parsed internet-layer protocol name.
     pub protocol_name: String,
+    /// Transport protocol parsable from `payload`.
+    ///
+    /// This is not a pure copy of an IP header protocol field. For IPv4
+    /// fragments, it is `None` because parsing L4 safely requires IP
+    /// reassembly, which this crate does not perform.
     pub payload_protocol: Option<TransportProtocol>,
+    /// Internet-layer payload bytes.
     #[serde(skip_serializing)]
     pub payload: &'a [u8],
 }
@@ -52,7 +63,7 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
         }
 
         if let Ok(ipv4_packet) = ipv4::Ipv4Packet::try_from(packet) {
-            let payload_protocol = if ipv4_packet.is_non_initial_fragment() {
+            let payload_protocol = if ipv4_packet.is_fragmented() {
                 None
             } else {
                 Some(Transport::transport_from_u8(&ipv4_packet.protocol))
@@ -150,6 +161,43 @@ mod tests {
     use std::hash::{Hash, Hasher};
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+    fn ipv4_udp_packet(flags_fragment: u16) -> Vec<u8> {
+        vec![
+            0x45, // Version + IHL
+            0x00, // DSCP/ECN
+            0x00,
+            0x20, // Total Length = 32
+            0x12,
+            0x34, // Identification
+            (flags_fragment >> 8) as u8,
+            flags_fragment as u8,
+            64, // TTL
+            17, // Protocol = UDP
+            0x00,
+            0x00, // Header checksum
+            192,
+            168,
+            1,
+            10, // Source IP
+            192,
+            168,
+            1,
+            20, // Destination IP
+            0x30,
+            0x39, // UDP source port
+            0x00,
+            0x35, // UDP destination port
+            0x00,
+            0x0c, // UDP length
+            0x00,
+            0x00, // UDP checksum
+            0xde,
+            0xad,
+            0xbe,
+            0xef, // UDP payload or fragment bytes
+        ]
+    }
+
     #[test]
     fn test_internet_try_from_empty_packet() {
         let packet: &[u8] = &[];
@@ -237,28 +285,33 @@ mod tests {
     }
 
     #[test]
-    fn test_internet_try_from_ipv4_non_initial_fragment_skips_transport_protocol() {
-        // IPv4 UDP fragment with fragment offset > 0. The payload does not start
-        // with a UDP header, so the high-level parser must not attempt L4 parsing.
-        let packet = vec![
-            0x45, // Version + IHL
-            0x00, // DSCP/ECN
-            0x00, 0x18, // Total Length = 24
-            0x12, 0x34, // Identification
-            0x00, 0x01, // Flags + Fragment offset = offset 1
-            64,   // TTL
-            17,   // Protocol = UDP
-            0x00, 0x00, // Header checksum
-            192, 168, 1, 10, // Source IP
-            192, 168, 1, 20, // Destination IP
-            0xde, 0xad, 0xbe, 0xef, // Fragment payload
-        ];
+    fn test_internet_try_from_ipv4_udp_not_fragmented_keeps_transport_protocol() {
+        let packet = ipv4_udp_packet(0);
+
+        let result = Internet::try_from(packet.as_slice()).unwrap();
+
+        assert_eq!(result.protocol_name, "IPv4");
+        assert_eq!(result.payload_protocol, Some(TransportProtocol::Udp));
+    }
+
+    #[test]
+    fn test_internet_try_from_ipv4_initial_fragment_skips_transport_protocol() {
+        let packet = ipv4_udp_packet(0x2000);
 
         let result = Internet::try_from(packet.as_slice()).unwrap();
 
         assert_eq!(result.protocol_name, "IPv4");
         assert_eq!(result.payload_protocol, None);
-        assert_eq!(result.payload, &[0xde, 0xad, 0xbe, 0xef]);
+    }
+
+    #[test]
+    fn test_internet_try_from_ipv4_non_initial_fragment_skips_transport_protocol() {
+        let packet = ipv4_udp_packet(1);
+
+        let result = Internet::try_from(packet.as_slice()).unwrap();
+
+        assert_eq!(result.protocol_name, "IPv4");
+        assert_eq!(result.payload_protocol, None);
     }
 
     #[test]
