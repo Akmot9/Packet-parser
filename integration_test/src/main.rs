@@ -53,7 +53,7 @@ fn create_channel(
 }
 
 fn main() -> Result<(), PacketCaptureError> {
-    let interface_name = "en0";
+    let interface_name = "veth1";
     let interface = find_interface(interface_name)?;
     let (_tx, mut rx) = create_channel(&interface)?;
 

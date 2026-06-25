@@ -75,7 +75,7 @@ println!("OUI: {}", mac.get_oui()); // Expected output: Intel
 - **data_link**: Handles Ethernet frame parsing (MAC addresses, Ethertype, etc.).
 - **network**: Supports IPv4, IPv6, and other network-layer protocols.
 - **transport**: Parses transport layer protocols (TCP, UDP, etc.).
-- **application**: Recognizes application layer protocols such as HTTP and DNS.
+- **application**: Recognizes application layer protocols such as HTTP, DNS and PostgreSQL.
 
 ### `errors`
 Provides structured error handling for each network layer.
