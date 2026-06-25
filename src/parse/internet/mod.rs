@@ -52,13 +52,19 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
         }
 
         if let Ok(ipv4_packet) = ipv4::Ipv4Packet::try_from(packet) {
+            let payload_protocol = if ipv4_packet.is_non_initial_fragment() {
+                None
+            } else {
+                Some(Transport::transport_from_u8(&ipv4_packet.protocol))
+            };
+
             return Ok(Internet {
                 source: Some(IpAddr::V4(ipv4_packet.source_addr)),
                 source_type: Some(IpType::from_ip(&ipv4_packet.source_addr.to_string())),
                 destination: Some(IpAddr::V4(ipv4_packet.dest_addr)),
                 destination_type: Some(IpType::from_ip(&ipv4_packet.dest_addr.to_string())),
                 protocol_name: "IPv4".to_string(),
-                payload_protocol: Some(Transport::transport_from_u8(&ipv4_packet.protocol)),
+                payload_protocol,
                 payload: ipv4_packet.payload,
             });
         }
@@ -228,6 +234,31 @@ mod tests {
         assert_eq!(result.protocol_name, "IPv4");
         assert_eq!(result.payload_protocol, Some(TransportProtocol::Tcp));
         assert!(result.payload.is_empty());
+    }
+
+    #[test]
+    fn test_internet_try_from_ipv4_non_initial_fragment_skips_transport_protocol() {
+        // IPv4 UDP fragment with fragment offset > 0. The payload does not start
+        // with a UDP header, so the high-level parser must not attempt L4 parsing.
+        let packet = vec![
+            0x45, // Version + IHL
+            0x00, // DSCP/ECN
+            0x00, 0x18, // Total Length = 24
+            0x12, 0x34, // Identification
+            0x00, 0x01, // Flags + Fragment offset = offset 1
+            64,   // TTL
+            17,   // Protocol = UDP
+            0x00, 0x00, // Header checksum
+            192, 168, 1, 10, // Source IP
+            192, 168, 1, 20, // Destination IP
+            0xde, 0xad, 0xbe, 0xef, // Fragment payload
+        ];
+
+        let result = Internet::try_from(packet.as_slice()).unwrap();
+
+        assert_eq!(result.protocol_name, "IPv4");
+        assert_eq!(result.payload_protocol, None);
+        assert_eq!(result.payload, &[0xde, 0xad, 0xbe, 0xef]);
     }
 
     #[test]
