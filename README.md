@@ -35,7 +35,7 @@ Add the dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-packet_parser = "1.5.3"
+packet_parser = "1.5.4"
 ```
 
 Then, import the crate in your project:
