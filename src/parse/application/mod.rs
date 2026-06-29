@@ -14,7 +14,7 @@ use crate::{
     errors::application::ApplicationError,
     parse::application::protocols::{
         giop::GiopPacket, modbus_tcp::ModbusTcpPacket, ntp::NtpPacket, opcua::OpcuaPacket,
-        quic::QuicPacket, srvloc::SrvlocPacket,
+        postgresql::is_likely_postgresql_payload, quic::QuicPacket, srvloc::SrvlocPacket,
     },
 };
 
@@ -51,6 +51,11 @@ impl TryFrom<&[u8]> for Application {
         if EtherNetIpPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "EtherNet/IP".to_string(),
+            });
+        }
+        if is_likely_postgresql_payload(packet) {
+            return Ok(Application {
+                application_protocol: "PostgreSQL".to_string(),
             });
         }
         if DnsPacket::try_from(packet).is_ok() {
@@ -149,5 +154,27 @@ mod tests {
                 panic!("Failed to parse DNS packet: {:?}", e);
             }
         }
+    }
+
+    #[test]
+    fn test_postgresql_packet_detection_from_payload() {
+        let query = b"select 1\0";
+        let mut payload = Vec::new();
+        payload.push(b'Q');
+        payload.extend_from_slice(&(4 + query.len() as u32).to_be_bytes());
+        payload.extend_from_slice(query);
+
+        let parsed = Application::try_from(payload.as_slice()).unwrap();
+
+        assert_eq!(parsed.application_protocol, "PostgreSQL");
+    }
+
+    #[test]
+    fn test_postgresql_weak_shape_is_not_detected_from_payload() {
+        let payload = [b'S', 0x00, 0x00, 0x00, 0x04];
+
+        let parsed = Application::try_from(payload.as_slice()).unwrap();
+
+        assert_ne!(parsed.application_protocol, "PostgreSQL");
     }
 }
