@@ -41,7 +41,7 @@ use std::convert::TryFrom;
 pub mod oui;
 use oui::*;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 use crate::{checks::data_link::validate_mac_length, errors::data_link::mac_addres::MacParseError};
 
@@ -62,8 +62,35 @@ pub const MAC_LEN: usize = 6;
 /// 0-23: "OUI bytes[3]"
 /// 24-47: "NIC Specific bytes[3]"
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MacAddress(pub [u8; MAC_LEN]);
+
+/// Sérialisée sous forme de chaîne hexadécimale ("aa:bb:cc:dd:ee:ff"),
+/// comme les anciens champs `String` de `DataLink`.
+impl Serialize for MacAddress {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for MacAddress {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        let mut addr = [0u8; MAC_LEN];
+        let mut parts = s.split(':');
+        for byte in addr.iter_mut() {
+            let part = parts
+                .next()
+                .ok_or_else(|| de::Error::custom("adresse MAC invalide"))?;
+            *byte = u8::from_str_radix(part, 16)
+                .map_err(|_| de::Error::custom("adresse MAC invalide"))?;
+        }
+        if parts.next().is_some() {
+            return Err(de::Error::custom("adresse MAC invalide"));
+        }
+        Ok(Self(addr))
+    }
+}
 
 impl MacAddress {
     /// Returns a formatted string of the MAC address, including its OUI if recognized.

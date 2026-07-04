@@ -1,6 +1,6 @@
 [package]
 name = "packet_parser"
-version = "1.6.0"
+version = "2.0.0"
 edition = "2024"
 authors = ["Cyprien Avico avicocyprien@yahoo.com"]
 description = "A powerful and modular Rust crate for network packet parsing."
@@ -31,6 +31,7 @@ pcap = "2.4.0"
 
 [workspace]
 members = ["benchmark_db", "ingestor","integration_test", "see_unparsable"] # Spécifie que ta crate a un workspace avec d'autres projets
+exclude = ["tools/verbench"] # Harnais de bench multi-versions : son Cargo.toml est généré par run.sh
 
 [profile.release]
 opt-level = 3         # Highest speed optimization
