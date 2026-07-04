@@ -49,13 +49,9 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
         if let Ok(arp_packet) = ArpPacket::try_from(packet) {
             return Ok(Internet {
                 source: Some(arp_packet.sender_protocol_addr),
-                source_type: Some(IpType::from_ip(
-                    &arp_packet.sender_protocol_addr.to_string(),
-                )),
+                source_type: Some(IpType::from_addr(&arp_packet.sender_protocol_addr)),
                 destination: Some(arp_packet.target_protocol_addr),
-                destination_type: Some(IpType::from_ip(
-                    &arp_packet.target_protocol_addr.to_string(),
-                )),
+                destination_type: Some(IpType::from_addr(&arp_packet.target_protocol_addr)),
                 protocol_name: "ARP".to_string(),
                 payload_protocol: None,
                 payload: &[],
@@ -71,9 +67,9 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
 
             return Ok(Internet {
                 source: Some(IpAddr::V4(ipv4_packet.source_addr)),
-                source_type: Some(IpType::from_ip(&ipv4_packet.source_addr.to_string())),
+                source_type: Some(IpType::from_addr(&IpAddr::V4(ipv4_packet.source_addr))),
                 destination: Some(IpAddr::V4(ipv4_packet.dest_addr)),
-                destination_type: Some(IpType::from_ip(&ipv4_packet.dest_addr.to_string())),
+                destination_type: Some(IpType::from_addr(&IpAddr::V4(ipv4_packet.dest_addr))),
                 protocol_name: "IPv4".to_string(),
                 payload_protocol,
                 payload: ipv4_packet.payload,
@@ -83,9 +79,9 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
         if let Ok(ipv6_packet) = ipv6::Ipv6Packet::try_from(packet) {
             return Ok(Internet {
                 source: Some(IpAddr::V6(ipv6_packet.source_addr)),
-                source_type: Some(IpType::from_ip(&ipv6_packet.source_addr.to_string())),
+                source_type: Some(IpType::from_addr(&IpAddr::V6(ipv6_packet.source_addr))),
                 destination: Some(IpAddr::V6(ipv6_packet.dest_addr)),
-                destination_type: Some(IpType::from_ip(&ipv6_packet.dest_addr.to_string())),
+                destination_type: Some(IpType::from_addr(&IpAddr::V6(ipv6_packet.dest_addr))),
                 protocol_name: "IPv6".to_string(),
                 payload_protocol: Some(Transport::transport_from_u8(&ipv6_packet.next_header)),
                 payload: ipv6_packet.payload,
