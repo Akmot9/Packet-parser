@@ -25,7 +25,7 @@ pub struct Internet<'a> {
     /// Classification of the destination IP address.
     pub destination_type: Option<IpType>,
     /// Parsed internet-layer protocol name.
-    pub protocol_name: String,
+    pub protocol_name: &'static str,
     /// Transport protocol parsable from `payload`.
     ///
     /// This is not a pure copy of an IP header protocol field. For IPv4
@@ -52,7 +52,7 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
                 source_type: Some(IpType::from_addr(&arp_packet.sender_protocol_addr)),
                 destination: Some(arp_packet.target_protocol_addr),
                 destination_type: Some(IpType::from_addr(&arp_packet.target_protocol_addr)),
-                protocol_name: "ARP".to_string(),
+                protocol_name: "ARP",
                 payload_protocol: None,
                 payload: &[],
             });
@@ -70,7 +70,7 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
                 source_type: Some(IpType::from_addr(&IpAddr::V4(ipv4_packet.source_addr))),
                 destination: Some(IpAddr::V4(ipv4_packet.dest_addr)),
                 destination_type: Some(IpType::from_addr(&IpAddr::V4(ipv4_packet.dest_addr))),
-                protocol_name: "IPv4".to_string(),
+                protocol_name: "IPv4",
                 payload_protocol,
                 payload: ipv4_packet.payload,
             });
@@ -82,7 +82,7 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
                 source_type: Some(IpType::from_addr(&IpAddr::V6(ipv6_packet.source_addr))),
                 destination: Some(IpAddr::V6(ipv6_packet.dest_addr)),
                 destination_type: Some(IpType::from_addr(&IpAddr::V6(ipv6_packet.dest_addr))),
-                protocol_name: "IPv6".to_string(),
+                protocol_name: "IPv6",
                 payload_protocol: Some(Transport::transport_from_u8(&ipv6_packet.next_header)),
                 payload: ipv6_packet.payload,
             });
@@ -93,7 +93,7 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
                 source_type: None,
                 destination: None,
                 destination_type: None,
-                protocol_name: "Profinet".to_string(),
+                protocol_name: "Profinet",
                 payload_protocol: None,
                 payload: &[],
             });
@@ -362,7 +362,7 @@ mod tests {
             source_type: Some(IpType::from_ip("192.168.1.10")),
             destination: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20))),
             destination_type: Some(IpType::from_ip("192.168.1.20")),
-            protocol_name: "IPv4".to_string(),
+            protocol_name: "IPv4",
             payload_protocol: Some(TransportProtocol::Tcp),
             payload: &[1, 2, 3, 4],
         };
@@ -372,7 +372,7 @@ mod tests {
             source_type: Some(IpType::from_ip("192.168.1.10")),
             destination: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20))),
             destination_type: Some(IpType::from_ip("192.168.1.20")),
-            protocol_name: "IPv4".to_string(),
+            protocol_name: "IPv4",
             payload_protocol: Some(TransportProtocol::Tcp),
             payload: &[9, 9, 9, 9],
         };
@@ -387,7 +387,7 @@ mod tests {
             source_type: Some(IpType::from_ip("10.0.0.1")),
             destination: Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2))),
             destination_type: Some(IpType::from_ip("10.0.0.2")),
-            protocol_name: "IPv4".to_string(),
+            protocol_name: "IPv4",
             payload_protocol: Some(TransportProtocol::Udp),
             payload: &[1, 2, 3],
         };
@@ -397,7 +397,7 @@ mod tests {
             source_type: Some(IpType::from_ip("10.0.0.1")),
             destination: Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2))),
             destination_type: Some(IpType::from_ip("10.0.0.2")),
-            protocol_name: "IPv4".to_string(),
+            protocol_name: "IPv4",
             payload_protocol: Some(TransportProtocol::Udp),
             payload: &[99, 88, 77],
         };
@@ -418,7 +418,7 @@ mod tests {
             source_type: Some(IpType::from_ip("192.168.1.10")),
             destination: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20))),
             destination_type: Some(IpType::from_ip("192.168.1.20")),
-            protocol_name: "IPv4".to_string(),
+            protocol_name: "IPv4",
             payload_protocol: Some(TransportProtocol::Tcp),
             payload: &[],
         };
@@ -428,7 +428,7 @@ mod tests {
             source_type: Some(IpType::from_ip("192.168.1.11")),
             destination: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20))),
             destination_type: Some(IpType::from_ip("192.168.1.20")),
-            protocol_name: "IPv4".to_string(),
+            protocol_name: "IPv4",
             payload_protocol: Some(TransportProtocol::Tcp),
             payload: &[],
         };

@@ -127,7 +127,7 @@ impl<'a> From<PacketFlow<'a>> for PacketFlowOwned {
                 ip_source_type: internet.source_type,
                 destination_ip: internet.destination,
                 ip_destination_type: internet.destination_type,
-                protocol: internet.protocol_name,
+                protocol: internet.protocol_name.to_string(),
             }),
             transport: flow.transport.map(|transport| TransportOwned {
                 source_port: transport.source_port,

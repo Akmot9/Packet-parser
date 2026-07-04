@@ -21,7 +21,7 @@ use crate::{
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
 #[derive(Debug, Clone, Serialize, Eq)]
 pub struct Application {
-    pub application_protocol: String,
+    pub application_protocol: &'static str,
 }
 
 impl TryFrom<&[u8]> for Application {
@@ -34,89 +34,89 @@ impl TryFrom<&[u8]> for Application {
 
         if NtpPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "NTP".to_string(),
+                application_protocol: "NTP",
             });
         }
 
         if BitcoinPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "Bitcoin".to_string(),
+                application_protocol: "Bitcoin",
             });
         }
         if OpcuaPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "OPC UA".to_string(),
+                application_protocol: "OPC UA",
             });
         }
         if EtherNetIpPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "EtherNet/IP".to_string(),
+                application_protocol: "EtherNet/IP",
             });
         }
         if is_likely_postgresql_payload(packet) {
             return Ok(Application {
-                application_protocol: "PostgreSQL".to_string(),
+                application_protocol: "PostgreSQL",
             });
         }
         if DnsPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "DNS".to_string(),
+                application_protocol: "DNS",
             });
         }
         if SnmpPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "SNMP".to_string(),
+                application_protocol: "SNMP",
             });
         }
         if TlsPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "TLS".to_string(),
+                application_protocol: "TLS",
             });
         }
         if S7CommPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "S7Comm".to_string(),
+                application_protocol: "S7Comm",
             });
         }
         if GiopPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "GIOP".to_string(),
+                application_protocol: "GIOP",
             });
         }
         if SrvlocPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "SRVLOCK".to_string(),
+                application_protocol: "SRVLOCK",
             });
         }
         if ModbusTcpPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "ModbusTCP".to_string(),
+                application_protocol: "ModbusTCP",
             });
         }
         // if Dhcpv6Packet::try_from(packet).is_ok() {
         //     return Ok(Application {
-        //         application_protocol: "DHCPv6".to_string(),
+        //         application_protocol: "DHCPv6",
         //     });
         // }
         // if AmsPacket::try_from(packet).is_ok() {
         //     return Ok(Application {
-        //         application_protocol: "AMS".to_string(),
+        //         application_protocol: "AMS",
         //     });
         // }
 
         // if CotpHeader::from_bytes(packet).is_ok() {
         //     return Ok(Application {
-        //         application_protocol: "COTP".to_string(),
+        //         application_protocol: "COTP",
         //     });
         // }
         if QuicPacket::try_from(packet).is_ok() {
             return Ok(Application {
-                application_protocol: "QUIQ".to_string(),
+                application_protocol: "QUIQ",
             });
         }
         // If no parser matches, return a "None" protocol
         Ok(Application {
-            application_protocol: "Unknown".to_string(),
+            application_protocol: "Unknown",
         })
     }
 }

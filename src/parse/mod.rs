@@ -111,19 +111,19 @@ impl<'a> PacketFlow<'a> {
             && SnmpPacket::try_from(payload).is_ok()
         {
             return Some(Application {
-                application_protocol: "SNMP".to_string(),
+                application_protocol: "SNMP",
             });
         }
 
         if transport.protocol == TransportProtocol::Tcp && is_likely_postgresql_payload(payload) {
             return Some(Application {
-                application_protocol: "PostgreSQL".to_string(),
+                application_protocol: "PostgreSQL",
             });
         }
 
         let parsed = Application::try_from(payload).ok();
         if matches!(
-            parsed.as_ref().map(|app| app.application_protocol.as_str()),
+            parsed.as_ref().map(|app| app.application_protocol),
             Some("OPC UA")
         ) {
             return parsed;
@@ -132,7 +132,7 @@ impl<'a> PacketFlow<'a> {
         if is_opcua_tcp_port(transport.source_port) || is_opcua_tcp_port(transport.destination_port)
         {
             return Some(Application {
-                application_protocol: "OPC UA".to_string(),
+                application_protocol: "OPC UA",
             });
         }
 
