@@ -1216,3 +1216,356 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod detection_tests {
+    use super::*;
+
+    fn typed(kind: u8, body: &[u8]) -> Vec<u8> {
+        let mut payload = vec![kind];
+        payload.extend_from_slice(&((4 + body.len()) as u32).to_be_bytes());
+        payload.extend_from_slice(body);
+        payload
+    }
+
+    #[test]
+    fn message_type_mapping_is_complete() {
+        let cases: &[(u8, PostgreSqlMessageType, &str)] = &[
+            (b'R', PostgreSqlMessageType::Authentication, "Authentication"),
+            (b'K', PostgreSqlMessageType::BackendKeyData, "BackendKeyData"),
+            (b'B', PostgreSqlMessageType::Bind, "Bind"),
+            (b'2', PostgreSqlMessageType::BindComplete, "BindComplete"),
+            (b'C', PostgreSqlMessageType::CloseOrCommandComplete, "CloseOrCommandComplete"),
+            (b'3', PostgreSqlMessageType::CloseComplete, "CloseComplete"),
+            (b'W', PostgreSqlMessageType::CopyBothResponse, "CopyBothResponse"),
+            (b'd', PostgreSqlMessageType::CopyData, "CopyData"),
+            (b'c', PostgreSqlMessageType::CopyDone, "CopyDone"),
+            (b'f', PostgreSqlMessageType::CopyFail, "CopyFail"),
+            (b'G', PostgreSqlMessageType::CopyInResponse, "CopyInResponse"),
+            (b'D', PostgreSqlMessageType::DataRowOrDescribe, "DataRowOrDescribe"),
+            (b'I', PostgreSqlMessageType::EmptyQueryResponse, "EmptyQueryResponse"),
+            (b'E', PostgreSqlMessageType::ErrorResponseOrExecute, "ErrorResponseOrExecute"),
+            (b'H', PostgreSqlMessageType::FlushOrCopyOutResponse, "FlushOrCopyOutResponse"),
+            (b'F', PostgreSqlMessageType::FunctionCall, "FunctionCall"),
+            (b'V', PostgreSqlMessageType::FunctionCallResponse, "FunctionCallResponse"),
+            (b'n', PostgreSqlMessageType::NoData, "NoData"),
+            (b'N', PostgreSqlMessageType::NoticeResponse, "NoticeResponse"),
+            (b'A', PostgreSqlMessageType::NotificationResponse, "NotificationResponse"),
+            (b't', PostgreSqlMessageType::ParameterDescription, "ParameterDescription"),
+            (b'S', PostgreSqlMessageType::ParameterStatusOrSync, "ParameterStatusOrSync"),
+            (b'P', PostgreSqlMessageType::Parse, "Parse"),
+            (b'1', PostgreSqlMessageType::ParseComplete, "ParseComplete"),
+            (b's', PostgreSqlMessageType::PortalSuspended, "PortalSuspended"),
+            (b'Q', PostgreSqlMessageType::Query, "Query"),
+            (b'Z', PostgreSqlMessageType::ReadyForQuery, "ReadyForQuery"),
+            (b'T', PostgreSqlMessageType::RowDescription, "RowDescription"),
+            (b'X', PostgreSqlMessageType::Terminate, "Terminate"),
+        ];
+
+        for (byte, expected, expected_name) in cases {
+            let message_type = PostgreSqlMessageType::try_from(*byte).unwrap();
+            assert_eq!(message_type, *expected);
+            assert_eq!(message_type.name(), *expected_name);
+        }
+
+        assert!(matches!(
+            PostgreSqlMessageType::try_from(b'@'),
+            Err(PostgreSqlError::InvalidMessageType(_))
+        ));
+
+        // Types sans octet sur le fil, juste le nom
+        assert_eq!(PostgreSqlMessageType::CancelRequest.name(), "CancelRequest");
+        assert_eq!(PostgreSqlMessageType::GssEncRequest.name(), "GssEncRequest");
+        assert_eq!(PostgreSqlMessageType::SslRequest.name(), "SslRequest");
+        assert_eq!(PostgreSqlMessageType::StartupMessage.name(), "StartupMessage");
+    }
+
+    #[test]
+    fn parses_startup_message_with_parameters() {
+        let mut body = Vec::new();
+        body.extend_from_slice(b"user\0admin\0database\0app\0");
+        body.push(0); // terminateur de liste
+
+        let mut payload = ((8 + body.len()) as u32).to_be_bytes().to_vec();
+        payload.extend_from_slice(&POSTGRESQL_PROTOCOL_VERSION_3_0.to_be_bytes());
+        payload.extend_from_slice(&body);
+
+        let packet = PostgreSqlPacket::try_from(payload.as_slice()).unwrap();
+        assert_eq!(packet.messages.len(), 1);
+        assert_eq!(
+            packet.messages[0].message_type,
+            PostgreSqlMessageType::StartupMessage
+        );
+        match &packet.messages[0].body {
+            PostgreSqlMessageBody::Startup(startup) => {
+                assert_eq!(startup.protocol_version, POSTGRESQL_PROTOCOL_VERSION_3_0);
+                assert_eq!(
+                    startup.parameters,
+                    vec![("user", "admin"), ("database", "app")]
+                );
+            }
+            other => panic!("attendu Startup, obtenu {other:?}"),
+        }
+
+        assert!(is_likely_postgresql_payload(payload.as_slice()));
+    }
+
+    #[test]
+    fn parses_ssl_and_gssenc_requests() {
+        for (code, expected) in [
+            (POSTGRESQL_SSL_REQUEST_CODE, PostgreSqlMessageType::SslRequest),
+            (POSTGRESQL_GSSENC_REQUEST_CODE, PostgreSqlMessageType::GssEncRequest),
+        ] {
+            let mut payload = 8u32.to_be_bytes().to_vec();
+            payload.extend_from_slice(&code.to_be_bytes());
+
+            let packet = PostgreSqlPacket::try_from(payload.as_slice()).unwrap();
+            assert_eq!(packet.messages[0].message_type, expected);
+            assert_eq!(packet.messages[0].body, PostgreSqlMessageBody::Empty);
+            assert!(is_likely_postgresql_payload(payload.as_slice()));
+        }
+    }
+
+    #[test]
+    fn parses_cancel_request() {
+        let mut payload = 16u32.to_be_bytes().to_vec();
+        payload.extend_from_slice(&POSTGRESQL_CANCEL_REQUEST_CODE.to_be_bytes());
+        payload.extend_from_slice(&1234u32.to_be_bytes()); // process id
+        payload.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]); // secret key
+
+        let packet = PostgreSqlPacket::try_from(payload.as_slice()).unwrap();
+        match &packet.messages[0].body {
+            PostgreSqlMessageBody::CancelRequest {
+                process_id,
+                secret_key,
+            } => {
+                assert_eq!(*process_id, 1234);
+                assert_eq!(*secret_key, &[0xAA, 0xBB, 0xCC, 0xDD]);
+            }
+            other => panic!("attendu CancelRequest, obtenu {other:?}"),
+        }
+        assert!(is_likely_postgresql_payload(payload.as_slice()));
+    }
+
+    #[test]
+    fn rejects_unsupported_startup_code() {
+        let mut payload = 8u32.to_be_bytes().to_vec();
+        payload.extend_from_slice(&12345u32.to_be_bytes());
+        assert!(PostgreSqlPacket::try_from(payload.as_slice()).is_err());
+    }
+
+    #[test]
+    fn likely_payload_accepts_backend_session_establishment() {
+        // Authentication OK + BackendKeyData + ParameterStatus + ReadyForQuery,
+        // avec un CommandComplete SQL comme preuve forte
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&typed(b'R', &0u32.to_be_bytes())); // auth ok
+        let mut key_body = 42u32.to_be_bytes().to_vec();
+        key_body.extend_from_slice(&[1, 2, 3, 4]);
+        payload.extend_from_slice(&typed(b'K', &key_body));
+        payload.extend_from_slice(&typed(b'S', b"TimeZone\0UTC\0"));
+        payload.extend_from_slice(&typed(b'C', b"SELECT 1\0"));
+        payload.extend_from_slice(&typed(b'Z', b"I"));
+
+        assert!(is_likely_postgresql_payload(payload.as_slice()));
+    }
+
+    #[test]
+    fn likely_payload_accepts_error_response() {
+        let error_body = b"SERROR\0C42P01\0Mrelation does not exist\0\0";
+        let payload = typed(b'E', error_body);
+        assert!(is_likely_postgresql_payload(payload.as_slice()));
+
+        let notice = typed(b'N', error_body);
+        assert!(is_likely_postgresql_payload(notice.as_slice()));
+    }
+
+    #[test]
+    fn likely_payload_accepts_sasl_authentication() {
+        // Authentication code 10 (SASL) suivi d'une liste de mécanismes
+        let mut body = 10u32.to_be_bytes().to_vec();
+        body.extend_from_slice(b"SCRAM-SHA-256\0\0"); // liste terminée par un NUL supplémentaire
+        let payload = typed(b'R', &body);
+        assert!(is_likely_postgresql_payload(payload.as_slice()));
+    }
+
+    #[test]
+    fn likely_payload_rejects_garbage() {
+        assert!(!is_likely_postgresql_payload(&[0xDE, 0xAD, 0xBE, 0xEF]));
+        assert!(!is_likely_postgresql_payload(&[]));
+    }
+
+    #[test]
+    fn parses_bind_with_parameter_values() {
+        let mut body = Vec::new();
+        body.extend_from_slice(b"portal\0stmt\0");
+        body.extend_from_slice(&1u16.to_be_bytes()); // 1 format
+        body.extend_from_slice(&1u16.to_be_bytes()); // format binaire
+        body.extend_from_slice(&2u16.to_be_bytes()); // 2 valeurs
+        body.extend_from_slice(&3i32.to_be_bytes());
+        body.extend_from_slice(b"abc");
+        body.extend_from_slice(&(-1i32).to_be_bytes()); // NULL
+        body.extend_from_slice(&1u16.to_be_bytes()); // 1 format résultat
+        body.extend_from_slice(&0u16.to_be_bytes());
+
+        let payload = typed(b'B', &body);
+        let packet = PostgreSqlPacket::try_from(payload.as_slice()).unwrap();
+        match &packet.messages[0].body {
+            PostgreSqlMessageBody::Bind(bind) => {
+                assert_eq!(bind.portal, "portal");
+                assert_eq!(bind.statement, "stmt");
+                assert_eq!(bind.parameter_formats, vec![1]);
+                assert_eq!(bind.parameter_values, vec![Some(&b"abc"[..]), None]);
+                assert_eq!(bind.result_formats, vec![0]);
+            }
+            other => panic!("attendu Bind, obtenu {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_parse_with_parameter_oids() {
+        let mut body = Vec::new();
+        body.extend_from_slice(b"s1\0SELECT $1\0");
+        body.extend_from_slice(&1u16.to_be_bytes());
+        body.extend_from_slice(&23u32.to_be_bytes()); // oid int4
+
+        let payload = typed(b'P', &body);
+        let packet = PostgreSqlPacket::try_from(payload.as_slice()).unwrap();
+        match &packet.messages[0].body {
+            PostgreSqlMessageBody::Parse(parse) => {
+                assert_eq!(parse.statement, "s1");
+                assert_eq!(parse.query, "SELECT $1");
+                assert_eq!(parse.parameter_type_oids, vec![23]);
+            }
+            other => panic!("attendu Parse, obtenu {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bind_rejects_negative_value_length() {
+        let mut body = Vec::new();
+        body.extend_from_slice(b"\0\0");
+        body.extend_from_slice(&0u16.to_be_bytes());
+        body.extend_from_slice(&1u16.to_be_bytes());
+        body.extend_from_slice(&(-2i32).to_be_bytes());
+
+        let payload = typed(b'B', &body);
+        assert!(PostgreSqlPacket::try_from(payload.as_slice()).is_err());
+    }
+
+    #[test]
+    fn query_rejects_missing_null_terminator() {
+        let payload = typed(b'Q', b"SELECT 1"); // pas de NUL final
+        assert!(PostgreSqlPacket::try_from(payload.as_slice()).is_err());
+    }
+
+    #[test]
+    fn query_rejects_invalid_utf8() {
+        let payload = typed(b'Q', &[0xFF, 0xFE, 0x00]);
+        assert!(PostgreSqlPacket::try_from(payload.as_slice()).is_err());
+    }
+
+    #[test]
+    fn empty_query_response_and_terminate() {
+        let mut payload = typed(b'I', &[]);
+        payload.extend_from_slice(&typed(b'X', &[]));
+        let packet = PostgreSqlPacket::try_from(payload.as_slice()).unwrap();
+        assert_eq!(packet.messages[0].body, PostgreSqlMessageBody::Empty);
+        assert_eq!(packet.messages[1].body, PostgreSqlMessageBody::Empty);
+    }
+
+    #[test]
+    fn flush_with_body_stays_raw() {
+        let payload = typed(b'H', &[0x01]);
+        let packet = PostgreSqlPacket::try_from(payload.as_slice()).unwrap();
+        assert!(matches!(
+            packet.messages[0].body,
+            PostgreSqlMessageBody::Raw(_)
+        ));
+    }
+
+    #[test]
+    fn first_ascii_token_handles_comments() {
+        assert_eq!(first_ascii_token("SELECT 1"), Some("SELECT"));
+        assert_eq!(first_ascii_token("  -- comment\nSELECT 1"), Some("SELECT"));
+        assert_eq!(first_ascii_token("/* bloc */ UPDATE t"), Some("UPDATE"));
+        assert_eq!(first_ascii_token("123"), None);
+        assert_eq!(first_ascii_token(""), None);
+        assert_eq!(first_ascii_token("-- sans fin"), None);
+        assert_eq!(first_ascii_token("/* sans fin"), None);
+    }
+
+    #[test]
+    fn looks_like_sql_matches_keywords_case_insensitive() {
+        assert!(looks_like_sql("select * from t"));
+        assert!(looks_like_sql("INSERT INTO t VALUES (1)"));
+        assert!(!looks_like_sql("bonjour"));
+        assert!(!looks_like_sql(""));
+    }
+
+    #[test]
+    fn authentication_body_compatibility_codes() {
+        for code in [0u32, 2, 3, 6, 7, 8] {
+            assert!(authentication_body_is_compatible(&code.to_be_bytes()));
+            // longueur incorrecte
+            let mut long = code.to_be_bytes().to_vec();
+            long.push(0);
+            assert!(!authentication_body_is_compatible(&long));
+        }
+
+        // MD5 : code 5 + sel de 4 octets
+        let mut md5 = 5u32.to_be_bytes().to_vec();
+        md5.extend_from_slice(&[1, 2, 3, 4]);
+        assert!(authentication_body_is_compatible(&md5));
+
+        // SASL continue/final : codes 11 et 12
+        assert!(authentication_body_is_compatible(&11u32.to_be_bytes()));
+        assert!(authentication_body_is_compatible(&12u32.to_be_bytes()));
+
+        // code inconnu, corps trop court
+        assert!(!authentication_body_is_compatible(&99u32.to_be_bytes()));
+        assert!(!authentication_body_is_compatible(&[0, 0]));
+    }
+
+    #[test]
+    fn error_body_heuristic_edge_cases() {
+        assert!(!error_or_notice_body_is_likely(&[]));
+        assert!(!error_or_notice_body_is_likely(b"M")); // pas de NUL final
+        assert!(!error_or_notice_body_is_likely(&[0x01, b'x', 0, 0])); // champ non alpha
+        assert!(!error_or_notice_body_is_likely(b"M\0\0")); // valeur vide
+        assert!(!error_or_notice_body_is_likely(b"Zvalue\0\0")); // aucun champ significatif
+        assert!(error_or_notice_body_is_likely(b"Mmessage\0\0"));
+    }
+
+    #[test]
+    fn cstring_helpers_edge_cases() {
+        assert!(has_cstring_list(b"one\0two\0\0")); // liste terminée par un NUL supplémentaire
+        assert!(!has_cstring_list(b"one\0two\0")); // sans terminateur de liste
+        assert!(!has_cstring_list(b""));
+        assert!(!has_cstring_list(b"one"));
+        assert!(!has_cstring_list(b"\0\0"));
+
+        assert_eq!(parse_single_cstring(b"tag\0"), Some("tag"));
+        assert_eq!(parse_single_cstring(b""), None);
+        assert_eq!(parse_single_cstring(b"a\0b\0"), None); // NUL au milieu
+
+        assert_eq!(parse_two_cstrings(b"k\0v\0"), Some(("k", "v")));
+        assert_eq!(parse_two_cstrings(b"k\0"), None);
+
+        assert!(close_body_is_likely(b"Sstmt\0"));
+        assert!(close_body_is_likely(b"Pportal\0"));
+        assert!(!close_body_is_likely(b"Xstmt\0"));
+
+        assert!(command_complete_body_is_likely(b"SELECT 1\0"));
+        assert!(!command_complete_body_is_likely(b"NOPE 1\0"));
+        assert!(!command_complete_body_is_likely(b""));
+    }
+
+    #[test]
+    fn secret_key_length_bounds() {
+        assert!(!postgresql_secret_key_len_is_valid(3));
+        assert!(postgresql_secret_key_len_is_valid(4));
+        assert!(postgresql_secret_key_len_is_valid(256));
+        assert!(!postgresql_secret_key_len_is_valid(257));
+    }
+}

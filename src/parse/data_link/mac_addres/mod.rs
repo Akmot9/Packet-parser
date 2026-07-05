@@ -261,3 +261,52 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod serde_tests {
+    use super::*;
+
+    #[test]
+    fn serialize_as_hex_string() {
+        let mac = MacAddress([0x2C, 0xFD, 0xA1, 0x3C, 0x4D, 0x5E]);
+        let json = serde_json::to_string(&mac).unwrap();
+        assert_eq!(json, "\"2c:fd:a1:3c:4d:5e\"");
+    }
+
+    #[test]
+    fn deserialize_from_hex_string() {
+        let mac: MacAddress = serde_json::from_str("\"2c:fd:a1:3c:4d:5e\"").unwrap();
+        assert_eq!(mac, MacAddress([0x2C, 0xFD, 0xA1, 0x3C, 0x4D, 0x5E]));
+    }
+
+    #[test]
+    fn serde_round_trip() {
+        let mac = MacAddress([0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E]);
+        let json = serde_json::to_string(&mac).unwrap();
+        let back: MacAddress = serde_json::from_str(&json).unwrap();
+        assert_eq!(mac, back);
+    }
+
+    #[test]
+    fn deserialize_rejects_invalid_strings() {
+        // trop court, trop long, hex invalide, pas une chaîne
+        for bad in ["\"2c:fd:a1:3c:4d\"", "\"2c:fd:a1:3c:4d:5e:6f\"", "\"zz:fd:a1:3c:4d:5e\""] {
+            assert!(
+                serde_json::from_str::<MacAddress>(bad).is_err(),
+                "aurait dû échouer : {bad}"
+            );
+        }
+        assert!(serde_json::from_str::<MacAddress>("[0,1,2,3,4,5]").is_err());
+    }
+
+    #[test]
+    fn try_from_string_valid() {
+        let mac = MacAddress::try_from("00:1a:2b:3c:4d:5e".to_string()).unwrap();
+        assert_eq!(mac, MacAddress([0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E]));
+    }
+
+    #[test]
+    fn try_from_string_wrong_length() {
+        assert!(MacAddress::try_from("00:1a:2b".to_string()).is_err());
+    }
+}

@@ -54,7 +54,10 @@ impl Ethertype {
 
 /// Sérialise un Ethertype sous forme de nom lisible ("IPv4", "Unknown (0xABCD)"…),
 /// comme l'ancien champ `String` de `DataLink`.
-pub fn serialize_name<S: Serializer>(ethertype: &Ethertype, serializer: S) -> Result<S::Ok, S::Error> {
+pub fn serialize_name<S: Serializer>(
+    ethertype: &Ethertype,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
     match ethertype.static_name() {
         Some(name) => serializer.serialize_str(name),
         None => serializer.collect_str(&format_args!("Unknown (0x{:04X})", ethertype.0)),

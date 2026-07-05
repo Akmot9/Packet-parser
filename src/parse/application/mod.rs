@@ -177,4 +177,87 @@ mod tests {
 
         assert_ne!(parsed.application_protocol, "PostgreSQL");
     }
+
+    #[test]
+    fn test_detects_giop() {
+        let mut packet = b"GIOP".to_vec();
+        packet.extend_from_slice(&[1, 2, 0, 1]); // version 1.2, big-endian, Reply
+        packet.extend_from_slice(&0u32.to_be_bytes()); // body vide
+
+        let parsed = Application::try_from(packet.as_slice()).unwrap();
+        assert_eq!(parsed.application_protocol, "GIOP");
+    }
+
+    #[test]
+    fn test_detects_srvloc() {
+        // SLP v2 header minimal, lang tag "en"
+        let mut packet = vec![2u8, 8];
+        packet.extend_from_slice(&[0, 0, 16]); // packet length u24
+        packet.extend_from_slice(&[0x20, 0x00]); // flags
+        packet.extend_from_slice(&[0, 0, 0]); // next ext offset
+        packet.extend_from_slice(&[0x42, 0x42]); // xid
+        packet.extend_from_slice(&[0, 2]); // lang tag len
+        packet.extend_from_slice(b"en");
+
+        let parsed = Application::try_from(packet.as_slice()).unwrap();
+        assert_eq!(parsed.application_protocol, "SRVLOCK");
+    }
+
+    #[test]
+    fn test_detects_quic() {
+        let mut packet = vec![0xC0u8]; // Initial, PN len 1
+        packet.extend_from_slice(&1u32.to_be_bytes());
+        packet.push(0); // dcid len
+        packet.push(0); // scid len
+        packet.push(0); // token len
+        packet.push(1); // length = PN seul
+        packet.push(0); // PN
+
+        let parsed = Application::try_from(packet.as_slice()).unwrap();
+        assert_eq!(parsed.application_protocol, "QUIQ");
+    }
+
+    #[test]
+    fn test_detects_snmp() {
+        // SNMPv2c GetRequest minimal : seq(version, community, pdu)
+        let packet: &[u8] = &[
+            0x30, 0x18, // SEQUENCE
+            0x02, 0x01, 0x01, // version 2c
+            0x04, 0x06, b'p', b'u', b'b', b'l', b'i', b'c', // community
+            0xA0, 0x0B, // GetRequest
+            0x02, 0x01, 0x01, // request id
+            0x02, 0x01, 0x00, // error status
+            0x02, 0x01, 0x00, // error index
+            0x30, 0x00, // varbind list vide
+        ];
+
+        let parsed = Application::try_from(packet).unwrap();
+        assert_eq!(parsed.application_protocol, "SNMP");
+    }
+
+    #[test]
+    fn test_detects_postgresql() {
+        let mut packet = vec![b'Q'];
+        let query = b"select 1\0";
+        packet.extend_from_slice(&((4 + query.len()) as u32).to_be_bytes());
+        packet.extend_from_slice(query);
+
+        let parsed = Application::try_from(packet.as_slice()).unwrap();
+        assert_eq!(parsed.application_protocol, "PostgreSQL");
+    }
+
+    #[test]
+    fn test_unknown_payload_falls_through() {
+        let packet = [0xFFu8, 0xFE, 0xFD, 0xFC, 0xFB];
+        let parsed = Application::try_from(&packet[..]).unwrap();
+        assert_eq!(parsed.application_protocol, "Unknown");
+    }
+
+    #[test]
+    fn test_empty_packet_is_an_error() {
+        assert!(matches!(
+            Application::try_from(&[][..]),
+            Err(crate::errors::application::ApplicationError::EmptyPacket)
+        ));
+    }
 }
