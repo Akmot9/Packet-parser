@@ -5,14 +5,16 @@
 [![Crates.io](https://img.shields.io/crates/v/packet_parser.svg)](https://crates.io/crates/packet_parser)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
-`packet_parser` est une crate Rust de parsing de paquets reseau. Elle prend une
-trame brute, commence a la couche liaison, puis remonte progressivement les
-couches internet, transport et application.
+`packet_parser` is a Rust crate for parsing raw network packets. It starts at
+the data-link layer and progressively decodes internet, transport and
+application-layer information.
 
-Le coeur de l'API est `PacketFlow`: une representation empruntee, zero-copy, du
-paquet parse. Les protocoles inconnus ou non supportes ne font pas echouer tout
-le parsing: la crate conserve les couches deja decodees et laisse les couches
-suivantes a `None` quand c'est necessaire.
+The main API is `PacketFlow`: a borrowed, zero-copy representation of a parsed
+packet. Unknown or unsupported protocols do not make the whole parse fail. The
+crate keeps the layers it could decode and leaves the next layers as `None`
+when parsing cannot safely continue.
+
+[Version francaise](README-fr.md)
 
 ![Packet parser overview](images/packet_parser.png)
 
@@ -20,18 +22,18 @@ suivantes a `None` quand c'est necessaire.
 
 ```toml
 [dependencies]
-packet_parser = "3.0.0"
+packet_parser = "3.0.1"
 ```
 
-Pour reproduire les exemples qui decodent de l'hexadecimal:
+For examples that decode hexadecimal packet dumps:
 
 ```toml
 [dependencies]
 hex = "0.4"
-packet_parser = "3.0.0"
+packet_parser = "3.0.1"
 ```
 
-## Exemple rapide
+## Quick Example
 
 ```rust
 use packet_parser::PacketFlow;
@@ -69,19 +71,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## API principale
+## Main API
 
-| Besoin | API |
+| Need | API |
 | --- | --- |
-| Parser une trame complete | `PacketFlow::try_from(&[u8])` |
-| Parser seulement Ethernet/VLAN | `DataLink::try_from(&[u8])` |
-| Parser seulement L3 | `Internet::try_from(&[u8])` |
-| Parser seulement L4 | `Transport::try_from(&[u8])` ou `Transport::try_from_parts(...)` |
-| Detacher le resultat du buffer d'origine | `flow.to_owned()` |
-| Recuperer les flux encapsules | `flow.flatten()` |
-| Mesurer le temps de parsing par couche | `PacketFlow::try_from_timed(...)` avec la feature `parse_timing` |
+| Parse a full Ethernet frame | `PacketFlow::try_from(&[u8])` |
+| Parse only Ethernet/VLAN | `DataLink::try_from(&[u8])` |
+| Parse only L3 | `Internet::try_from(&[u8])` |
+| Parse only L4 | `Transport::try_from(&[u8])` or `Transport::try_from_parts(...)` |
+| Detach the result from the original buffer | `flow.to_owned()` |
+| Iterate over encapsulated flows | `flow.flatten()` |
+| Measure parsing time per layer | `PacketFlow::try_from_timed(...)` with the `parse_timing` feature |
 
-`PacketFlow` contient:
+`PacketFlow` contains:
 
 ```rust
 pub struct PacketFlow<'a> {
@@ -93,13 +95,13 @@ pub struct PacketFlow<'a> {
 }
 ```
 
-## Protocoles
+## Protocol Support
 
-### Liaison
+### Data Link
 
 - Ethernet II
 - VLAN 802.1Q
-- Adresses MAC et resolution OUI interne
+- MAC addresses and internal OUI resolution
 
 ### Internet
 
@@ -108,23 +110,22 @@ pub struct PacketFlow<'a> {
 - IPv6
 - Profinet
 
-Pour IPv4 fragmente, la crate ne fait pas de reassemblage IP. Dans ce cas,
-`payload_protocol` vaut `None` pour eviter de parser une couche transport
-incomplete.
+For fragmented IPv4 packets, the crate does not perform IP reassembly. In that
+case `payload_protocol` is set to `None` so the transport layer is not parsed
+from incomplete data.
 
 ### Transport
 
 - TCP
 - UDP
-- Mapping de nombreux numeros de protocoles IP vers `TransportProtocol`
+- Mapping from many IP protocol numbers to `TransportProtocol`
 
-Les protocoles autres que TCP/UDP peuvent etre representes par leur enum, mais
-ils ne fournissent pas toujours ports et payload applicatif.
+Protocols other than TCP/UDP can be represented by the enum, but they do not
+always expose ports or application payloads.
 
 ### Application
 
-La detection applicative est volontairement best-effort. Les modules de parsing
-incluent notamment:
+Application detection is intentionally best-effort. Parser modules include:
 
 - DNS
 - TLS
@@ -145,22 +146,22 @@ incluent notamment:
 - QUIC
 - Bitcoin
 
-`PacketFlow` remonte actuellement un nom de protocole applicatif simple dans
-`Application { application_protocol }`. Pour un parsing detaille d'un protocole
-precis, utilisez directement le module correspondant dans
+`PacketFlow` currently exposes a lightweight application protocol name through
+`Application { application_protocol }`. For detailed protocol-specific parsing,
+use the corresponding module under
 `packet_parser::parse::application::protocols`.
 
 ## Tunnels
 
-`PacketFlow` peut representer plusieurs niveaux de flux via `inner`.
+`PacketFlow` can represent several flow levels through `inner`.
 
-Le tunnel supporte aujourd'hui:
+The currently supported tunnel path is:
 
-- CAPWAP-Data sur UDP/5247
-- IEEE 802.11 encapsule
-- LLC/SNAP vers la couche L3 interne
+- CAPWAP-Data over UDP/5247
+- Encapsulated IEEE 802.11
+- LLC/SNAP to the inner L3 packet
 
-Exemple:
+Example:
 
 ```rust
 let flow = PacketFlow::try_from(packet.as_slice())?;
@@ -172,15 +173,15 @@ for level in flow.flatten() {
 
 ## Features
 
-| Feature | Effet |
+| Feature | Effect |
 | --- | --- |
-| `doc-diagrams` | Active les diagrammes Rustdoc via `aquamarine` |
-| `parse_timing` | Expose `ParseTiming` et `PacketFlow::try_from_timed` |
+| `doc-diagrams` | Enables Rustdoc diagrams through `aquamarine` |
+| `parse_timing` | Exposes `ParseTiming` and `PacketFlow::try_from_timed` |
 
-La feature `parse_timing` est faite pour les benchmarks. Le chemin normal
-`PacketFlow::try_from` ne mesure pas le temps de parsing.
+The `parse_timing` feature is intended for benchmarks. The normal
+`PacketFlow::try_from` path does not measure parsing time.
 
-Exemple:
+Example:
 
 ```rust
 use packet_parser::{PacketFlow, timing::ParseTiming};
@@ -197,75 +198,76 @@ println!("L2={}ns L3={}ns L4={}ns L7={}ns total={}ns",
 );
 ```
 
-Activation:
+Enable it with:
 
 ```bash
 cargo test --features parse_timing
 ```
 
-## Benchmarks et rapport HTML
+## Benchmarks and HTML Report
 
-Le harnais de benchmark principal est `tools/verbench`. Il compare les versions
-publiees de la crate sur crates.io avec la copie locale, puis genere:
+The main benchmark harness is `tools/verbench`. It compares published crate
+versions from crates.io with the local working copy, then generates:
 
 - `perf_by_version.json`
 - `perf_by_version.html`
 
-Execution complete:
+Run the full benchmark:
 
 ```bash
 tools/verbench/run.sh
 ```
 
-Regenerer seulement le rapport HTML depuis le JSON existant:
+Regenerate only the HTML report from an existing JSON file:
 
 ```bash
 python3 tools/verbench/report.py
 ```
 
-Le rapport HTML est autonome: il s'ouvre directement dans le navigateur et ne
-depend pas de Docker, Postgres, Grafana ou d'un CDN.
+The HTML report is standalone. It opens directly in a browser and does not need
+Docker, Postgres, Grafana or any CDN.
 
 ```bash
 xdg-open perf_by_version.html
 ```
 
-`tools/verbench` mesure les moyennes `l2_ns`, `l3_ns`, `l4_ns`, `l7_ns` et
-`total_ns` sur un paquet de reference, apres warmup. Les chiffres servent a
-comparer les tendances entre versions sur une meme machine, pas a publier une
-latence absolue universelle.
+`tools/verbench` reports average `l2_ns`, `l3_ns`, `l4_ns`, `l7_ns` and
+`total_ns` values on a fixed reference packet after warmup. Use these numbers to
+compare trends between versions on the same machine, not as universal absolute
+latency claims.
 
-## Pipeline PCAP optionnel
+## Optional PCAP Pipeline
 
-Le workspace contient aussi `benchmark_db`, un binaire qui parse des PCAP locaux
-et ecrit des evenements JSONL avec:
+The workspace also contains `benchmark_db`, a binary that parses local PCAP
+files and writes JSONL events containing:
 
 - `run_id`
 - `crate_code`
 - `pcap`
-- index du paquet
-- hash du paquet
-- duree totale
-- timings OSI si `parse_timing` est active
+- packet index
+- packet hash
+- total duration
+- OSI timings when `parse_timing` is enabled
 
-Commande:
+Run it with:
 
 ```bash
 cargo run -p benchmark_db --release
 ```
 
-Les fichiers sont ecrits dans:
+Output files are written to:
 
 ```text
 ~/.local/share/packet_parser_bench/jsonl/
 ```
 
-Le pipeline Docker `docker-compose.yml` peut ensuite ingester ces JSONL dans
-Postgres et les afficher dans Grafana, mais il est optionnel.
+The optional `docker-compose.yml` pipeline can ingest those JSONL files into
+Postgres and display them in Grafana. This is not required for the standalone
+`verbench` HTML report.
 
-## Exemples
+## Examples
 
-Le dossier `examples/` contient plusieurs points d'entree utiles:
+The `examples/` directory contains several useful entry points:
 
 ```bash
 cargo run --example parse_tcp
@@ -274,9 +276,9 @@ cargo run --example pars_quic
 cargo run --example parse_pgadm
 ```
 
-## Tests et qualite
+## Tests and Quality
 
-Commandes courantes:
+Common checks:
 
 ```bash
 cargo fmt -- --check
@@ -285,23 +287,23 @@ cargo test --all-features
 cargo build --release
 ```
 
-Pour les binaires qui lisent des PCAP via la crate `pcap`, installez aussi les
-dependances systeme de libpcap. Sur Debian/Ubuntu:
+For binaries that read PCAP files through the `pcap` crate, install the system
+libpcap development package. On Debian/Ubuntu:
 
 ```bash
 sudo apt-get install libpcap-dev
 ```
 
-## Limites connues
+## Known Limitations
 
-- Pas de reassemblage TCP.
-- Pas de reassemblage IP.
-- La detection applicative est heuristique et best-effort.
-- Le chemin `parse_timing` est dedie aux mesures et ne doit pas etre confondu
-  avec le chemin de parsing standard.
-- Le parsing timé ne mesure pas encore recursivement les flux `inner` issus des
-  tunnels.
+- No TCP reassembly.
+- No IP reassembly.
+- Application detection is heuristic and best-effort.
+- The `parse_timing` path is dedicated to measurement and should not be treated
+  as the standard parsing path.
+- Timed parsing does not yet recursively measure `inner` flows produced by
+  tunnel parsing.
 
-## Licence
+## License
 
-Distribue sous licence MIT. Voir [LICENSE.md](LICENSE.md).
+Distributed under the MIT license. See [LICENSE.md](LICENSE.md).
