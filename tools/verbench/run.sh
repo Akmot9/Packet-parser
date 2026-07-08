@@ -89,4 +89,6 @@ with open(sys.argv[2], "w") as f:
     f.write("\n")
 ' "$RESULTS" "$OUT_JSON"
 
+python3 report.py "$OUT_JSON"
+
 echo "OK : $(grep -c . "$RESULTS") versions mesurées -> $OUT_JSON" >&2

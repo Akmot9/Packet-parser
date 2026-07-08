@@ -9,7 +9,12 @@ crates.io, plus la copie de travail locale, et produit un JSON comparatif.
 ```bash
 tools/verbench/run.sh                 # écrit perf_by_version.json à la racine du repo
 tools/verbench/run.sh /chemin/out.json
+python3 tools/verbench/report.py      # génère perf_by_version.html depuis le JSON existant
 ```
+
+`run.sh` génère aussi automatiquement un rapport HTML autonome à côté du JSON
+(`perf_by_version.html` par défaut). Le fichier s'ouvre directement dans un
+navigateur et ne dépend pas de Docker, Postgres, Grafana ou d'un CDN.
 
 ## Sortie
 
@@ -31,6 +36,8 @@ tools/verbench/run.sh /chemin/out.json
 - `run.sh` régénère le `Cargo.toml` du harnais pour chaque version (c'est
   pourquoi il est dans `.gitignore` et le dossier est exclu du workspace),
   compile en release et agrège les résultats.
+- `report.py` transforme le JSON agrégé en rapport HTML statique avec
+  graphiques SVG, résumé des deltas et tableau détaillé.
 
 ## Prérequis
 

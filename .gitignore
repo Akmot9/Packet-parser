@@ -1,9 +1,12 @@
 /target
 */target
 *.lock
+__pycache__/
+*.pyc
 /integration_test/target
 Cargo.lock
 /lock
 output.pcap
 *.pcap
 /vendor
+/perf_by_version.html
