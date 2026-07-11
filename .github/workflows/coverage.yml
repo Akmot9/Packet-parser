@@ -11,6 +11,11 @@ jobs:
   coverage:
     name: Compute Coverage
     runs-on: ubuntu-latest
+    # workflow_run fires on every CI completion, including failures:
+    # only run when CI actually succeeded (or on manual dispatch).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout repository
@@ -30,9 +35,3 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./lcov.info
-
-      - name: Trigger publish workflow
-        if: success()
-        run: gh workflow run publish.yml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

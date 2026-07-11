@@ -1,11 +1,12 @@
 name: Publish Crate
 
+# Publishing is deliberate: it only happens for an explicit version tag
+# (v1.2.3) or a manual dispatch — never as a side effect of CI/Coverage runs.
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Coverage"]
-    types:
-      - completed
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
   publish:
@@ -18,6 +19,16 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Check tag matches crate version
+        if: github.event_name == 'push'
+        run: |
+          crate_version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "packet_parser") | .version')"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$crate_version" != "$tag_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $crate_version" >&2
+            exit 1
+          fi
 
       - name: Publish crate
         run: cargo publish --registry crates-io

@@ -110,17 +110,15 @@ fn now_unix_ms() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_millis() as u128
+        .as_millis()
 }
 
 fn escape_json_string(s: &str) -> String {
     // minimal+ : échappe \, ", et retours ligne
     let s = s.replace('\\', "\\\\").replace('"', "\\\"");
-    let s = s
-        .replace('\n', "\\n")
+    s.replace('\n', "\\n")
         .replace('\r', "\\r")
-        .replace('\t', "\\t");
-    s
+        .replace('\t', "\\t")
 }
 
 fn packet_hash_hex(data: &[u8]) -> String {
@@ -179,6 +177,7 @@ fn packet_parser_code_id() -> Result<String, PacketCaptureError> {
     Ok(format!("code-{}", &digest[..12]))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_jsonl_line(
     w: &mut BufWriter<File>,
     run_id: &str,
@@ -286,7 +285,14 @@ fn main() -> Result<(), PacketCaptureError> {
     let crate_code = packet_parser_code_id()?;
     println!("crate_code: {}", crate_code);
 
-    let pcap_dir = Path::new("/home/erdt-cyber/rust/ICS-Security-Tools/pcaps/ModbusTCP");
+    // Répertoire des PCAP : premier argument CLI, sinon variable PCAP_DIR,
+    // sinon le dossier pcaps/ du dépôt.
+    let pcap_dir = std::env::args()
+        .nth(1)
+        .or_else(|| std::env::var("PCAP_DIR").ok())
+        .unwrap_or_else(|| "pcaps".to_string());
+    let pcap_dir = Path::new(&pcap_dir);
+    println!("pcap_dir: {}", pcap_dir.display());
 
     let mut global_stats = Stats::new();
 
@@ -399,7 +405,7 @@ fn main() -> Result<(), PacketCaptureError> {
             }
 
             // flush promtail
-            if idx % 10_000 == 0 {
+            if idx.is_multiple_of(10_000) {
                 w.flush()?;
             }
         }

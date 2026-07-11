@@ -208,10 +208,8 @@ fn list_jsonl_files(dir: &Path) -> Result<Vec<PathBuf>> {
     eprintln!("pattern={}", pattern);
 
     let mut out = Vec::new();
-    for entry in glob(&pattern).context("glob failed")? {
-        if let Ok(path) = entry {
-            out.push(path);
-        }
+    for path in glob(&pattern).context("glob failed")?.flatten() {
+        out.push(path);
     }
     out.sort();
     Ok(out)
@@ -306,10 +304,10 @@ async fn main() -> Result<()> {
                 .or_insert(FileState { offset_bytes: 0 });
 
             // si truncate: reset
-            if let (Ok(len), Some(st)) = (file_len(&path), states.get_mut(&path)) {
-                if len < st.offset_bytes {
-                    st.offset_bytes = 0;
-                }
+            if let (Ok(len), Some(st)) = (file_len(&path), states.get_mut(&path))
+                && len < st.offset_bytes
+            {
+                st.offset_bytes = 0;
             }
 
             let offset = states.get(&path).unwrap().offset_bytes;
@@ -322,25 +320,24 @@ async fn main() -> Result<()> {
                 }
             };
 
-            if let Some(st) = states.get_mut(&path) {
-                st.offset_bytes = new_offset;
-            }
-
-            if events.is_empty() {
-                continue;
-            }
-
             // insert en batches
             let mut start = 0usize;
+            let mut all_inserted = true;
             while start < events.len() {
                 let end = (start + batch_size).min(events.len());
                 if let Err(e) = insert_batch(&client, &events[start..end]).await {
                     eprintln!("insert batch error: {e}");
-                    // si PG down temporaire : on ne perd pas les lignes (elles restent dans le fichier)
-                    // mais on risque de réinsérer au prochain scan; ON CONFLICT DO NOTHING protège.
+                    all_inserted = false;
                     break;
                 }
                 start = end;
+            }
+
+            // L'offset n'est validé qu'après insertion réussie de tous les
+            // batches : si PG est down, le prochain scan relit les mêmes
+            // lignes (ON CONFLICT DO NOTHING dédoublonne celles déjà insérées).
+            if all_inserted && let Some(st) = states.get_mut(&path) {
+                st.offset_bytes = new_offset;
             }
         }
 

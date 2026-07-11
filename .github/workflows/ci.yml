@@ -41,9 +41,3 @@ jobs:
 
       - name: Build
         run: cargo build --release
-
-      - name: Trigger coverage workflow
-        if: success()
-        run: gh workflow run coverage.yml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

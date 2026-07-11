@@ -29,15 +29,12 @@ fn find_interface(interface_name: &str) -> Result<NetworkInterface, PacketCaptur
         .ok_or_else(|| PacketCaptureError::InterfaceNotFound(interface_name.to_string()))
 }
 
-fn create_channel(
-    interface: &NetworkInterface,
-) -> Result<
-    (
-        Box<dyn datalink::DataLinkSender>,
-        Box<dyn datalink::DataLinkReceiver>,
-    ),
-    PacketCaptureError,
-> {
+type DataLinkChannel = (
+    Box<dyn datalink::DataLinkSender>,
+    Box<dyn datalink::DataLinkReceiver>,
+);
+
+fn create_channel(interface: &NetworkInterface) -> Result<DataLinkChannel, PacketCaptureError> {
     match datalink::channel(interface, Default::default()) {
         Ok(Ethernet(tx, rx)) => Ok((tx, rx)),
         Ok(_) => Err(PacketCaptureError::ChannelCreationError(
