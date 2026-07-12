@@ -51,6 +51,7 @@ réellement capturées sur un réseau.
 | `tcp/` | — | ✅ handshake, teardown, RST, retransmissions, zero window — source Chris Sanders |
 | `ip/` | — | ✅ fragmentation v4/v6, TTL — source Chris Sanders |
 | `ieee80211/` | — | ✅ beacon, auth WEP/WPA (ok + échec) — source Chris Sanders |
+| `mqtt/` | — | ✅ session Paho → m2m.eclipse.org:1883 (v3.1 « MQIsdp ») ; source des golden tests anti-faux positifs — voir `SOURCE.md` |
 
 ## Crédits
 
