@@ -8,5 +8,6 @@ Cargo.lock
 /lock
 output.pcap
 *.pcap
+!pcaps_exemple/**/*.pcap
 /vendor
 /perf_by_version.html

@@ -44,6 +44,21 @@ réellement capturées sur un réseau.
 | `umas/` | #10 | trafic UMAS (Schneider, sur Modbus/502) |
 | `ntp/` | — | existant : `integration_test/pcap/ntp/ntp.pcap` (à migrer ici) |
 | `tls/` | — | ✅ `tls12-dsb.pcapng` (sample Wireshark, TLS 1.2 + secrets) et `dump.pcapng` (loopback 4430-4433) — voir `SOURCE.md` |
+| `dns/` | #2 | ✅ 11 captures (requête/réponse, NXDOMAIN, récursif, PTR, TCP, AXFR, hijack) — source Chris Sanders, voir `SOURCE.md` |
+| `arp/` | — | ✅ résolution, gratuitous, poisoning — source Chris Sanders |
+| `dhcp/` | — | ✅ DORA, renouvellement, DHCPv6 — source Chris Sanders |
+| `icmp/` | — | ✅ echo, traceroute, NDP ICMPv6 — source Chris Sanders |
+| `tcp/` | — | ✅ handshake, teardown, RST, retransmissions, zero window — source Chris Sanders |
+| `ip/` | — | ✅ fragmentation v4/v6, TTL — source Chris Sanders |
+| `ieee80211/` | — | ✅ beacon, auth WEP/WPA (ok + échec) — source Chris Sanders |
+
+## Crédits
+
+Les captures marquées « source Chris Sanders » proviennent de
+<https://github.com/chrissanders/packets> ; leur README impose de **citer
+l'auteur** (Chris Sanders, chris@chrissanders.org). Chaque dossier concerné
+porte un `SOURCE.md` avec cette citation. Toute doc ou test qui réutilise ces
+trames doit conserver la référence.
 
 ## Utilisation dans les tests
 
