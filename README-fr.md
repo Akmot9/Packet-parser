@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let flow = PacketFlow::try_from(raw.as_slice())?;
 
-    println!("L2: {:?}", flow.data_link.ethertype);
+    println!("L2: {}", flow.data_link);
 
     if let Some(internet) = &flow.internet {
         println!(
@@ -101,6 +101,7 @@ Etat actuel de la branche de developpement:
 | --- | ---: | --- |
 | Ethernet | 1 | Supporte |
 | RAW IP | 101 | Identifie, explicitement non supporte pour le moment |
+| IEEE 802.11 natif | 105 | Modelise pour les flux internes CAPWAP ; decodeur de capture non disponible |
 | Linux SLL v1 | 113 | Identifie, explicitement non supporte pour le moment |
 | Bluetooth H4 avec pseudo-en-tete | 201 | Identifie, explicitement non supporte |
 | Linux SLL v2 | 276 | Identifie, explicitement non supporte pour le moment |
@@ -109,6 +110,22 @@ Etat actuel de la branche de developpement:
 Un LINKTYPE non supporte est refuse avant de decoder les octets du paquet. Les
 protocoles inconnus des couches superieures conservent le comportement gracieux
 `None`/`corrupted` decrit plus haut.
+
+Chaque flux parse transporte maintenant un `LinkLayer` generique. Ses
+accesseurs communs ne supposent pas Ethernet:
+
+```rust
+println!("LINKTYPE={}", flow.data_link.link_type());
+println!("suivant={:?}", flow.data_link.network_protocol());
+
+if let Some(ethernet) = flow.data_link.as_ethernet() {
+    println!("{} -> {}", ethernet.source_mac, ethernet.destination_mac);
+}
+```
+
+`network_payload()` retourne le slice L3 emprunte. Les vues propres au format
+sont explicites (`as_ethernet()`, `as_ieee80211()`), afin que RAW, SLL ou SLL2
+ne puissent jamais fabriquer silencieusement des champs Ethernet.
 
 ## API principale
 
@@ -129,11 +146,30 @@ protocoles inconnus des couches superieures conservent le comportement gracieux
 
 ```rust
 pub struct PacketFlow<'a> {
-    pub data_link: DataLink<'a>,
+    pub data_link: LinkLayer<'a>,
     pub internet: Option<Internet<'a>>,
     pub transport: Option<Transport<'a>>,
     pub application: Option<Application>,
     pub inner: Option<Box<PacketFlow<'a>>>,
+}
+```
+
+Le schema de serialisation 7.0 imbrique la liaison et utilise des tags stables.
+Les modeles emprunte et owned de la liaison produisent le meme JSON (les octets
+du payload ne sont pas serialises):
+
+```json
+{
+  "data_link": {
+    "link_type": 1,
+    "network_protocol": { "kind": "ipv4" },
+    "link_kind": "ethernet",
+    "link_details": {
+      "destination_mac": "00:11:22:33:44:55",
+      "source_mac": "66:77:88:99:aa:bb",
+      "ethertype": "IPv4"
+    }
+  }
 }
 ```
 
@@ -144,6 +180,8 @@ pub struct PacketFlow<'a> {
 - Ethernet II
 - VLAN 802.1Q
 - Adresses MAC et resolution OUI interne
+- Representation IEEE 802.11 native pour les flux internes CAPWAP (pas encore
+  de decodeur LINKTYPE de premier niveau)
 
 ### Internet
 

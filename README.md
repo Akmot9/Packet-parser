@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let flow = PacketFlow::try_from(raw.as_slice())?;
 
-    println!("L2: {:?}", flow.data_link.ethertype);
+    println!("L2: {}", flow.data_link);
 
     if let Some(internet) = &flow.internet {
         println!(
@@ -102,6 +102,7 @@ Current status on the development branch:
 | --- | ---: | --- |
 | Ethernet | 1 | Supported |
 | RAW IP | 101 | Identified, explicitly unsupported for now |
+| Native IEEE 802.11 | 105 | Modelled for CAPWAP inner flows; top-level decoder not yet supported |
 | Linux SLL v1 | 113 | Identified, explicitly unsupported for now |
 | Bluetooth H4 with pseudo-header | 201 | Identified, explicitly unsupported |
 | Linux SLL v2 | 276 | Identified, explicitly unsupported for now |
@@ -110,6 +111,22 @@ Current status on the development branch:
 An unsupported LINKTYPE is rejected before packet bytes are decoded. Unknown
 upper-layer protocols still use the graceful `None`/`corrupted` behaviour
 described above.
+
+Every parsed flow now carries a generic `LinkLayer`. Its common accessors do
+not assume Ethernet:
+
+```rust
+println!("LINKTYPE={}", flow.data_link.link_type());
+println!("next={:?}", flow.data_link.network_protocol());
+
+if let Some(ethernet) = flow.data_link.as_ethernet() {
+    println!("{} -> {}", ethernet.source_mac, ethernet.destination_mac);
+}
+```
+
+`network_payload()` returns the borrowed L3 slice. Format-specific views are
+explicit (`as_ethernet()`, `as_ieee80211()`), so adding RAW, SLL or SLL2 cannot
+silently manufacture Ethernet fields.
 
 ## Main API
 
@@ -130,11 +147,30 @@ described above.
 
 ```rust
 pub struct PacketFlow<'a> {
-    pub data_link: DataLink<'a>,
+    pub data_link: LinkLayer<'a>,
     pub internet: Option<Internet<'a>>,
     pub transport: Option<Transport<'a>>,
     pub application: Option<Application>,
     pub inner: Option<Box<PacketFlow<'a>>>,
+}
+```
+
+The 7.0 serialization schema nests the link layer and uses stable tags. The
+borrowed and owned link models serialize identically (payload bytes are not
+serialized):
+
+```json
+{
+  "data_link": {
+    "link_type": 1,
+    "network_protocol": { "kind": "ipv4" },
+    "link_kind": "ethernet",
+    "link_details": {
+      "destination_mac": "00:11:22:33:44:55",
+      "source_mac": "66:77:88:99:aa:bb",
+      "ethertype": "IPv4"
+    }
+  }
 }
 ```
 
@@ -145,6 +181,8 @@ pub struct PacketFlow<'a> {
 - Ethernet II
 - VLAN 802.1Q
 - MAC addresses and internal OUI resolution
+- Native IEEE 802.11 representation for CAPWAP inner flows (not yet a
+  top-level LINKTYPE decoder)
 
 ### Internet
 

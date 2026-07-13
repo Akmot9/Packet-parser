@@ -5,13 +5,34 @@
 
 mod ethernet;
 
-use crate::{LinkType, PacketFlow, ParseError};
+use crate::{LinkLayer, LinkType, NetworkProtocol, ParseError};
 
 use ethernet::EthernetDecoder;
 
 #[derive(Clone, Copy)]
 enum DecoderKind {
     Ethernet,
+}
+
+/// Format-neutral output consumed by the shared L3/L4/L7 pipeline.
+pub(crate) struct DecodedLink<'a> {
+    layer: LinkLayer<'a>,
+    network_protocol: NetworkProtocol,
+    network_payload: &'a [u8],
+}
+
+impl<'a> DecodedLink<'a> {
+    pub(crate) fn new(layer: LinkLayer<'a>) -> Self {
+        Self {
+            network_protocol: layer.network_protocol(),
+            network_payload: layer.network_payload(),
+            layer,
+        }
+    }
+
+    pub(crate) fn into_parts(self) -> (LinkLayer<'a>, NetworkProtocol, &'a [u8]) {
+        (self.layer, self.network_protocol, self.network_payload)
+    }
 }
 
 /// Single source of truth for the link types backed by a decoder.
@@ -31,20 +52,21 @@ pub(crate) const fn is_supported(link_type: LinkType) -> bool {
 
 /// Internal contract implemented by each supported link-layer decoder.
 pub(crate) trait LinkDecoder {
-    fn decode<'a>(bytes: &'a [u8]) -> Result<PacketFlow<'a>, ParseError>;
-
-    #[cfg(feature = "parse_timing")]
-    fn decode_timed<'a>(
-        bytes: &'a [u8],
-        timing: &mut crate::timing::ParseTiming,
-    ) -> Result<PacketFlow<'a>, ParseError>;
+    fn decode<'a>(bytes: &'a [u8]) -> Result<DecodedLink<'a>, ParseError>;
 }
 
-/// Selects a decoder from the numeric link type.
 #[inline(always)]
-pub(crate) fn decode(link_type: LinkType, bytes: &[u8]) -> Result<PacketFlow<'_>, ParseError> {
+fn decode_with<'a>(kind: DecoderKind, bytes: &'a [u8]) -> Result<DecodedLink<'a>, ParseError> {
+    match kind {
+        DecoderKind::Ethernet => EthernetDecoder::decode(bytes),
+    }
+}
+
+/// Selects a link decoder from the numeric link type.
+#[inline(always)]
+pub(crate) fn decode(link_type: LinkType, bytes: &[u8]) -> Result<DecodedLink<'_>, ParseError> {
     match decoder_for(link_type) {
-        Some(DecoderKind::Ethernet) => EthernetDecoder::decode(bytes),
+        Some(kind) => decode_with(kind, bytes),
         None => Err(ParseError::UnsupportedLinkType(link_type)),
     }
 }
@@ -55,17 +77,10 @@ pub(crate) fn decode_timed<'a>(
     link_type: LinkType,
     bytes: &'a [u8],
     timing: &mut crate::timing::ParseTiming,
-) -> Result<PacketFlow<'a>, ParseError> {
-    use crate::timing::{elapsed_ns, now};
-
-    *timing = crate::timing::ParseTiming::default();
-    let total_t0 = now();
-
-    let result = match decoder_for(link_type) {
-        Some(DecoderKind::Ethernet) => EthernetDecoder::decode_timed(bytes, timing),
-        None => Err(ParseError::UnsupportedLinkType(link_type)),
-    };
-
-    timing.total_ns = elapsed_ns(total_t0);
+) -> Result<DecodedLink<'a>, ParseError> {
+    let kind = decoder_for(link_type).ok_or(ParseError::UnsupportedLinkType(link_type))?;
+    let t0 = crate::timing::now();
+    let result = decode_with(kind, bytes);
+    timing.l2_ns = crate::timing::elapsed_ns(t0);
     result
 }

@@ -6,8 +6,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Unreleased]
 
-Cette section prepare une version majeure 7.0.0. L'API multi-LINKTYPE ne doit
-pas etre publiee tant que les modeles emprunte et owned restent Ethernet-only.
+Cette section prepare une version majeure 7.0.0. Le modele est maintenant
+extensible, mais la publication reste bloquee jusqu'aux decodeurs RAW, SLL et
+SLL2 et a la fermeture du contrat d'erreur du sprint.
 
 ### Rupture
 
@@ -15,6 +16,18 @@ pas etre publiee tant que les modeles emprunte et owned restent Ethernet-only.
   `#[non_exhaustive]`. `ParsedPacketError` reste un alias de compatibilite, mais
   les `match` exhaustifs existants doivent ajouter un cas generique. Ce
   changement est reserve a la version majeure 7.0.0.
+- `PacketFlow::data_link` devient `LinkLayer` et
+  `PacketFlowOwned::data_link` devient `LinkLayerOwned`. Les acces directs
+  Ethernet (`flow.data_link.ethertype`, MAC, VLAN) migrent vers
+  `flow.data_link.as_ethernet()` ou les accesseurs communs. Les constructions
+  par litteral doivent utiliser `LinkLayer::ethernet` / `From<DataLink>`.
+- Le JSON de la liaison n'est plus aplati a la racine : `data_link` contient
+  `link_type`, `network_protocol`, `link_kind` et `link_details`. Le modele
+  emprunte et son miroir owned produisent la meme forme.
+- `DataLinkOwned` conserve des `MacAddress` et un `Ethertype` types au lieu de
+  chaines. Leur representation JSON lisible reste une chaine.
+- Les flux internes CAPWAP ne sont plus presentes comme un faux Ethernet : ils
+  utilisent le variant IEEE 802.11 natif et le LINKTYPE 105.
 
 ### Ajoute
 
@@ -29,9 +42,18 @@ pas etre publiee tant que les modeles emprunte et owned restent Ethernet-only.
   les chemins normal/instrumente. Ethernet est le seul decodeur actif dans ce
   premier jalon ; `PacketFlow::try_from` et `try_from_timed` restent ses
   raccourcis de compatibilite.
+- `LinkLayer`, `LinkLayerKind`, `NetworkProtocol` et leurs miroirs owned. Le
+  payload L3 reste zero-copy et est exclu de `Eq`, `Hash` et de la
+  serialisation ; les protocoles inconnus conservent leur valeur numerique.
+- Sortie interne `DecodedLink` commune aux decodeurs. Le pipeline L3/L4/L7
+  recoit desormais un protocole reseau et un payload independants d'Ethernet ;
+  les chemins normal et instrumente appellent le meme decodeur.
+- Modele `Ieee80211Link` pour les trames decapsulees de CAPWAP, avec adresses
+  ToDS/FromDS effectives et vrai protocole LLC/SNAP.
 - Tests publics de conservation des identifiants, refus ferme des LINKTYPE non
-  supportes, equivalence Ethernet sur les trames trop courtes et parite du
-  dispatch instrumente.
+  supportes, equivalence Ethernet IPv4/IPv6/VLAN/corruptions, erreurs Ethernet
+  et VLAN tronquees, parite du dispatch instrumente, schema borrowed/owned et
+  identite de flux independante des octets de payload.
 
 ### Documentation
 

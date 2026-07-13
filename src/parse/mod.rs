@@ -42,7 +42,7 @@ use transport::Transport;
 use transport::protocols::TransportProtocol;
 
 use crate::{
-    DataLink, LinkType, ParseError,
+    LinkLayer, LinkType, NetworkProtocol, ParseError,
     errors::{ParsedPacketError, internet::InternetError, transport::TransportError},
     owned::PacketFlowOwned,
 };
@@ -51,6 +51,7 @@ pub mod application;
 pub mod data_link;
 pub mod internet;
 mod link;
+pub mod link_layer;
 pub mod transport;
 pub(crate) mod tunnel;
 
@@ -70,7 +71,7 @@ pub const fn is_supported(link_type: LinkType) -> bool {
 /// bytes, without a PCAP or PCAPNG record header.
 #[inline(always)]
 pub fn parse(link_type: LinkType, bytes: &[u8]) -> Result<PacketFlow<'_>, ParseError> {
-    link::decode(link_type, bytes)
+    PacketFlow::parse_decoded(link::decode(link_type, bytes)?, 0)
 }
 
 /// Timed counterpart of [`parse`], using the exact same link-type dispatcher.
@@ -81,7 +82,16 @@ pub fn parse_timed<'a>(
     bytes: &'a [u8],
     timing: &mut crate::timing::ParseTiming,
 ) -> Result<PacketFlow<'a>, ParseError> {
-    link::decode_timed(link_type, bytes, timing)
+    use crate::timing::{elapsed_ns, now};
+
+    *timing = crate::timing::ParseTiming::default();
+    let total_t0 = now();
+    let result = (|| {
+        let decoded = link::decode_timed(link_type, bytes, timing)?;
+        PacketFlow::parse_decoded_timed(decoded, timing, 0)
+    })();
+    timing.total_ns = elapsed_ns(total_t0);
+    result
 }
 
 /// Layer at which recognized-but-invalid bytes stopped the parsing.
@@ -130,9 +140,8 @@ pub struct CorruptedLayer {
 /// therefore compare equal and hash identically.
 #[derive(Debug, Clone, Serialize, Eq)]
 pub struct PacketFlow<'a> {
-    /// Data link layer (mandatory).
-    #[serde(flatten)]
-    pub data_link: DataLink<'a>,
+    /// Link layer (mandatory), tagged with its canonical LINKTYPE.
+    pub data_link: LinkLayer<'a>,
 
     /// Internet layer (optional).
     #[serde(flatten)]
@@ -292,8 +301,11 @@ impl<'a> PacketFlow<'a> {
     /// EtherType with a corrupt payload yields `(None, Some(corruption))` —
     /// never a hard error, so the data-link information is preserved.
     #[inline(always)]
-    fn parse_l3(data_link: &DataLink<'a>) -> (Option<Internet<'a>>, Option<CorruptedLayer>) {
-        match Internet::try_from_parts(data_link.ethertype, data_link.payload) {
+    fn parse_l3(
+        network_protocol: NetworkProtocol,
+        network_payload: &'a [u8],
+    ) -> (Option<Internet<'a>>, Option<CorruptedLayer>) {
+        match Internet::try_from_network_parts(network_protocol, network_payload) {
             Ok(internet) => (Some(internet), None),
             Err(InternetError::UnsupportedProtocol) => (None, None),
             Err(e) => (
@@ -350,14 +362,14 @@ impl<'a> PacketFlow<'a> {
         }
     }
 
-    /// Parses the L3/L4/L7 layers from a data-link layer, then recurses into any
-    /// tunnel. `depth` bounds tunnel nesting. Shared by the top-level entry and
-    /// by tunnel peeling (which supplies a rebuilt inner data-link layer).
-    pub(crate) fn parse_layers(
-        data_link: DataLink<'a>,
+    /// Parses the shared L3/L4/L7 pipeline from a normalized link decoder
+    /// output. `depth` bounds tunnel nesting.
+    pub(crate) fn parse_decoded(
+        decoded: link::DecodedLink<'a>,
         depth: u8,
     ) -> Result<Self, ParsedPacketError> {
-        let (internet, l3_corruption) = Self::parse_l3(&data_link);
+        let (data_link, network_protocol, network_payload) = decoded.into_parts();
+        let (internet, l3_corruption) = Self::parse_l3(network_protocol, network_payload);
         let (transport, l4_corruption) = Self::parse_l4(internet.as_ref());
         let (application, inner) = Self::parse_l7_and_inner(transport.as_ref(), depth);
 
@@ -378,14 +390,16 @@ impl<'a> PacketFlow<'a> {
 
     #[cfg(feature = "parse_timing")]
     #[inline(always)]
-    pub(crate) fn parse_layers_timed(
-        data_link: DataLink<'a>,
+    pub(crate) fn parse_decoded_timed(
+        decoded: link::DecodedLink<'a>,
         timing: &mut crate::timing::ParseTiming,
+        depth: u8,
     ) -> Result<Self, ParsedPacketError> {
         use crate::timing::{elapsed_ns, now};
 
+        let (data_link, network_protocol, network_payload) = decoded.into_parts();
         let t0 = now();
-        let internet = Self::parse_l3(&data_link);
+        let internet = Self::parse_l3(network_protocol, network_payload);
         timing.l3_ns = elapsed_ns(t0);
         let (internet, l3_corruption) = internet;
 
@@ -396,7 +410,7 @@ impl<'a> PacketFlow<'a> {
         // l7_ns includes tunnel detection and the recursive parsing of any
         // encapsulated packet.
         let t0 = now();
-        let (application, inner) = Self::parse_l7_and_inner(transport.as_ref(), 0);
+        let (application, inner) = Self::parse_l7_and_inner(transport.as_ref(), depth);
         timing.l7_ns = elapsed_ns(t0);
 
         Ok(PacketFlow {
@@ -659,7 +673,7 @@ mod tests {
         let packet = sample_ipv6_tcp_packet();
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
-        assert!(!flow.data_link.payload.is_empty());
+        assert!(!flow.data_link.network_payload().is_empty());
     }
 
     #[test]
@@ -1098,12 +1112,18 @@ mod tests {
         assert_eq!(inner_tcp.destination_port, Some(445));
 
         // MAC internes = adresses 802.11 (station Intel -> destination VMware).
+        let inner_wifi = inner
+            .data_link
+            .as_ieee80211()
+            .expect("native IEEE 802.11 inner link");
+        assert_eq!(inner.data_link.link_type(), LinkType::IEEE802_11);
+        assert!(inner.data_link.as_ethernet().is_none());
         assert_eq!(
-            inner.data_link.source_mac,
+            inner_wifi.source_mac,
             MacAddress([0xe0, 0xc2, 0x64, 0x2f, 0xa3, 0xb4])
         );
         assert_eq!(
-            inner.data_link.destination_mac,
+            inner_wifi.destination_mac,
             MacAddress([0x00, 0x0c, 0x29, 0x96, 0x7c, 0xa4])
         );
 
@@ -1213,7 +1233,7 @@ mod tests {
 
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
-        assert_eq!(flow.data_link.ethertype.0, 0x0800);
+        assert_eq!(flow.data_link.as_ethernet().unwrap().ethertype.0, 0x0800);
         assert!(flow.internet.is_none());
         assert!(flow.transport.is_none());
         let corrupted = flow.corrupted.as_ref().expect("corruption report");
@@ -1295,6 +1315,13 @@ mod tests {
             "CAPWAP"
         );
         let inner = owned.inner.as_deref().expect("inner owned flow");
+        let borrowed_inner = flow.inner.as_deref().expect("inner borrowed flow");
+        assert_eq!(inner.data_link.link_type(), LinkType::IEEE802_11);
+        assert!(inner.data_link.as_ieee80211().is_some());
+        assert_eq!(
+            serde_json::to_value(&borrowed_inner.data_link).unwrap(),
+            serde_json::to_value(&inner.data_link).unwrap()
+        );
         let inner_transport = inner.transport.as_ref().expect("inner transport");
         assert_eq!(inner_transport.source_port, Some(56699));
         assert_eq!(inner_transport.destination_port, Some(445));
@@ -1368,12 +1395,17 @@ mod tests {
         assert_eq!(inner_tcp.destination_port, Some(56699));
 
         // FromDS : DA = Address1 (station), SA = Address3 (hôte serveur).
+        let inner_wifi = inner
+            .data_link
+            .as_ieee80211()
+            .expect("native IEEE 802.11 inner link");
+        assert_eq!(inner.data_link.link_type(), LinkType::IEEE802_11);
         assert_eq!(
-            inner.data_link.destination_mac,
+            inner_wifi.destination_mac,
             MacAddress([0xe0, 0xc2, 0x64, 0x2f, 0xa3, 0xb4])
         );
         assert_eq!(
-            inner.data_link.source_mac,
+            inner_wifi.source_mac,
             MacAddress([0x00, 0x0c, 0x29, 0x96, 0x7c, 0xa4])
         );
 

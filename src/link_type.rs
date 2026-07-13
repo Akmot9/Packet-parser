@@ -25,6 +25,9 @@ impl LinkType {
     /// Raw IPv4 or IPv6 packet (LINKTYPE_RAW).
     pub const RAW: Self = Self(101);
 
+    /// Native IEEE 802.11 wireless frame (LINKTYPE_IEEE802_11).
+    pub const IEEE802_11: Self = Self(105);
+
     /// Linux cooked capture v1 (LINKTYPE_LINUX_SLL).
     pub const LINUX_SLL: Self = Self(113);
 
@@ -75,6 +78,7 @@ mod tests {
     fn canonical_constants_keep_their_linktype_values() {
         assert_eq!(LinkType::ETHERNET.0, 1);
         assert_eq!(LinkType::RAW.0, 101);
+        assert_eq!(LinkType::IEEE802_11.0, 105);
         assert_eq!(LinkType::LINUX_SLL.0, 113);
         assert_eq!(LinkType::BLUETOOTH_HCI_H4_WITH_PHDR.0, 201);
         assert_eq!(LinkType::LINUX_SLL2.0, 276);

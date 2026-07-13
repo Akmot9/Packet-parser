@@ -62,15 +62,17 @@ Ethernet. Il retourne une vue normalisee equivalente a :
 
 ```rust
 pub(crate) struct DecodedLink<'a> {
-    pub layer: LinkLayer<'a>,
-    pub network_protocol: NetworkProtocol,
-    pub network_payload: &'a [u8],
+    layer: LinkLayer<'a>,
+    network_protocol: NetworkProtocol,
+    network_payload: &'a [u8],
 }
 ```
 
 Le pipeline commun construit ensuite `PacketFlow` et execute le parsing
-L3/L4/L7. Les noms exacts peuvent evoluer, mais cette separation est un
-invariant du sprint.
+L3/L4/L7. Les champs restent prives et sont derives de `LinkLayer` par un
+constructeur unique afin qu'un futur decodeur ne puisse pas annoncer un
+protocole ou un payload incoherent. Les noms exacts peuvent evoluer, mais cette
+separation est un invariant du sprint.
 
 ### Modele public de liaison
 
@@ -111,11 +113,13 @@ interface PCAPNG ne contient aucun paquet.
 | RAW IP | 101 | Support IPv4 et IPv6, sans adresses MAC inventees |
 | Linux SLL v1 | 113 | Support complet des champs SLL utiles et du payload reseau |
 | Linux SLL v2 | 276 | Support complet des champs SLL2 utiles et du payload reseau |
+| IEEE 802.11 | 105 | Modele fidele pour l'inner CAPWAP ; decodeur top-level hors perimetre |
 | Bluetooth H4 avec pseudo-header | 201 | Identifie mais refuse explicitement tant qu'aucun decodeur n'existe |
 | Toute autre valeur | valeur brute | Preservee puis `UnsupportedLinkType` |
 
-Les futurs decodeurs loopback/NULL, radiotap/802.11 et Bluetooth sont prepares
-par l'architecture, mais leur implementation n'est pas requise dans ce sprint.
+Les futurs decodeurs top-level loopback/NULL, radiotap/802.11 et Bluetooth sont
+prepares par l'architecture, mais leur implementation n'est pas requise dans
+ce sprint.
 
 ## API attendue
 
@@ -162,20 +166,20 @@ Avant publication :
 
 ### Phase 1 - Stabiliser la frontiere de liaison
 
-- [ ] Introduire la sortie normalisee du decodeur.
-- [ ] Faire passer Ethernet par cette sortie sans changer son resultat.
-- [ ] Generaliser le modele de liaison emprunte et owned.
-- [ ] Fixer le schema de serialisation et la strategie de migration majeure.
+- [x] Introduire la sortie normalisee du decodeur.
+- [x] Faire passer Ethernet par cette sortie sans changer son resultat.
+- [x] Generaliser le modele de liaison emprunte et owned.
+- [x] Fixer le schema de serialisation et la strategie de migration majeure.
 - [ ] Remplacer les erreurs de liaison provisoires par le contrat final.
 
 ### Phase 2 - Fermer la compatibilite Ethernet
 
-- [ ] Prouver `parse(LinkType::ETHERNET, bytes) == PacketFlow::try_from(bytes)`
+- [x] Prouver `parse(LinkType::ETHERNET, bytes) == PacketFlow::try_from(bytes)`
   sur succes et erreur.
-- [ ] Couvrir IPv4/UDP, IPv6, VLAN valide et tronque, EtherType inconnu,
+- [x] Couvrir IPv4/UDP, IPv6, VLAN valide et tronque, EtherType inconnu,
   corruption L3/L4 et tunnels CAPWAP.
-- [ ] Tester toutes les longueurs Ethernet de 0 a 13 octets.
-- [ ] Prouver la parite du chemin `parse_timing`.
+- [x] Tester toutes les longueurs Ethernet de 0 a 13 octets.
+- [x] Prouver la parite du chemin `parse_timing`.
 
 ### Phase 3 - Ajouter RAW IP
 
@@ -204,7 +208,7 @@ Avant publication :
 - [ ] Completer `CHANGELOG.md` et preparer la version majeure.
 - [ ] Ajouter les cas multi-decodeur aux cibles de fuzzing.
 
-## Etat au demarrage
+## Etat courant apres MW-02
 
 - [x] `LinkType(u32)` ouvert introduit dans le worktree.
 - [x] Entree explicite `parse(LinkType, &[u8])` introduite.
@@ -220,11 +224,13 @@ Avant publication :
 - [x] Refus ferme prouve : RAW ou une valeur inconnue ne retombe jamais sur le
   decodeur Ethernet.
 - [x] Equivalence des erreurs Ethernet prouvee pour les longueurs 0 a 13.
-- [ ] Modele de liaison generalise : non commence.
+- [x] Modele de liaison generalise emprunte/owned, avec schema JSON commun.
+- [x] Ethernet utilise la sortie normalisee et le pipeline L3/L4/L7 commun.
+- [x] L'inner CAPWAP est represente comme IEEE 802.11 (`LINKTYPE 105`) et non
+  comme un faux Ethernet.
 - [ ] RAW, SLL et SLL2 : non commences.
 
-Cet etat decrit le worktree observe au cadrage ; les cases ne remplacent pas
-les validations de la Definition de termine.
+Ces cases ne remplacent pas les validations de la Definition de termine.
 
 ## Journal des micro-wins
 
@@ -254,27 +260,68 @@ SLL2 sont connus du catalogue public mais `is_supported` renvoie `false` et le
 parsing retourne `UnsupportedLinkType`. La regle de livraison reste donc
 active.
 
+### MW-02 - Sortie normalisee et modele LinkLayer extensible (2026-07-13)
+
+Statut : valide localement ; ce journal et le code forment le commit dedie de
+ce micro-win sur la branche `agent/multi-linktype-parser`.
+
+- [x] Les decodeurs produisent un `DecodedLink` coherent dont les champs sont
+  prives ; un seul pipeline construit ensuite L3/L4/L7 et `PacketFlow`.
+- [x] `PacketFlow` et `PacketFlowOwned` utilisent des modeles `LinkLayer`
+  extensibles au lieu d'imposer Ethernet.
+- [x] `NetworkProtocol` transporte la semantique IPv4, IPv6, ARP, Profinet ou
+  une valeur inconnue sans fabriquer d'EtherType.
+- [x] Le schema JSON imbrique et tagge est identique pour les vues empruntee et
+  owned ; les payloads restent exclus de la serialisation, de l'egalite et du
+  hash.
+- [x] L'inner CAPWAP expose une liaison IEEE 802.11 canonique (`LINKTYPE 105`)
+  avec ses adresses resolues et son vrai protocole LLC/SNAP.
+- [x] Les structures et enums publics destines a gagner des champs ou variants
+  sont `#[non_exhaustive]`.
+- [x] README anglais/francais et `CHANGELOG.md` documentent la rupture de
+  modele et de schema reservee a la 7.0.
+
+Validations du micro-win :
+
+- `cargo test` : 641 tests unitaires, 9 tests d'API publique et 13 doctests ;
+- `cargo test --features parse_timing` : 650 tests unitaires, 11 tests d'API
+  publique et 13 doctests ;
+- `cargo test --workspace --all-targets --all-features` : les 650 tests
+  unitaires, 11 tests d'API publique, binaires et exemples du workspace sont
+  valides ;
+- `cargo test --doc --all-features` : 13 doctests valides ;
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` :
+  aucune alerte ;
+- `cargo check --manifest-path fuzz/Cargo.toml --all-targets` : les trois
+  cibles fuzz existantes compilent avec le nouveau modele ;
+- `cargo fmt --all -- --check` et `git diff --check` : valides.
+
+Limite volontaire du jalon : seul Ethernet dispose encore d'un decodeur
+top-level. Le modele IEEE 802.11 est utilise pour le paquet interne CAPWAP,
+mais `parse(LinkType::IEEE802_11, ...)` reste refuse. RAW, SLL et SLL2 restent
+`UnsupportedLinkType` jusqu'aux micro-wins suivants.
+
 ## Definition de termine
 
-- [ ] Aucun chemin de parsing ne suppose Ethernet sans le demander
+- [x] Aucun chemin de parsing ne suppose Ethernet sans le demander
   explicitement.
 - [ ] Ethernet, RAW, SLL et SLL2 produisent des representations fideles, sans
   MAC, EtherType ou metadonnees inventes.
-- [ ] Un LINKTYPE inconnu ou non supporte echoue de facon deterministe en
+- [x] Un LINKTYPE inconnu ou non supporte echoue de facon deterministe en
   conservant son identifiant.
-- [ ] Ajouter un futur LINKTYPE ne demande pas de modifier le pipeline
+- [x] Ajouter un futur LINKTYPE ne demande pas de modifier le pipeline
   L3/L4/L7 ni les consommateurs de `PacketFlow`.
-- [ ] Les modeles emprunte et owned ainsi que leur serialisation representent
-  les memes informations.
-- [ ] Les chemins normal et `parse_timing` sont fonctionnellement identiques.
+- [x] Les modeles emprunte et owned ainsi que leur serialisation representent
+  les memes metadonnees de liaison ; les payloads exclus restent empruntes.
+- [x] Les chemins normal et `parse_timing` sont fonctionnellement identiques.
 - [ ] Les tests de compatibilite Ethernet, RAW, SLL, SLL2, erreurs et zero-copy
   sont presents.
-- [ ] La matrice de support et la migration sont documentees en anglais et en
+- [x] La matrice de support et la migration sont documentees en anglais et en
   francais.
-- [ ] `cargo fmt --check` passe.
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings` passe.
-- [ ] `cargo test` passe.
-- [ ] `cargo test --features parse_timing` passe.
+- [x] `cargo fmt --check` passe.
+- [x] `cargo clippy --all-targets --all-features -- -D warnings` passe.
+- [x] `cargo test` passe.
+- [x] `cargo test --features parse_timing` passe.
 - [ ] Les cibles de fuzzing du parsing paquet et des nouveaux decodeurs ne
   paniquent pas sur le corpus de regression.
 
