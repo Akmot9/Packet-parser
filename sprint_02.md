@@ -183,12 +183,12 @@ Avant publication :
 
 ### Phase 3 - Ajouter RAW IP
 
-- [ ] Ajouter les constantes et le decodeur LINKTYPE_RAW.
-- [ ] Detecter IPv4/IPv6 depuis la version IP sans fabriquer d'EtherType.
-- [ ] Tester IPv4, IPv6, paquet vide, version invalide et header tronque.
-- [ ] Utiliser des paquets extraits de la fixture RAW synthetique ; le lecteur
+- [x] Ajouter les constantes et le decodeur LINKTYPE_RAW.
+- [x] Detecter IPv4/IPv6 depuis la version IP sans fabriquer d'EtherType.
+- [x] Tester IPv4, IPv6, paquet vide, version invalide et header tronque.
+- [x] Utiliser un paquet extrait de la fixture RAW fournie ; le lecteur
   du conteneur PCAPNG reste un outil de test ou un test d'integration externe.
-- [ ] Prouver que les slices retournees restent zero-copy.
+- [x] Prouver que les slices retournees restent zero-copy.
 
 ### Phase 4 - Ajouter Linux SLL et SLL2
 
@@ -208,7 +208,7 @@ Avant publication :
 - [ ] Completer `CHANGELOG.md` et preparer la version majeure.
 - [ ] Ajouter les cas multi-decodeur aux cibles de fuzzing.
 
-## Etat courant apres MW-02
+## Etat courant apres MW-03
 
 - [x] `LinkType(u32)` ouvert introduit dans le worktree.
 - [x] Entree explicite `parse(LinkType, &[u8])` introduite.
@@ -221,14 +221,23 @@ Avant publication :
   avec pseudo-en-tete et SLL2.
 - [x] Preflight `is_supported` et entree `parse_timed` exposes depuis le meme
   catalogue de decodeurs que le chemin normal.
-- [x] Refus ferme prouve : RAW ou une valeur inconnue ne retombe jamais sur le
-  decodeur Ethernet.
+- [x] Refus ferme prouve : SLL, SLL2 ou une valeur inconnue ne retombent jamais
+  sur le decodeur Ethernet.
 - [x] Equivalence des erreurs Ethernet prouvee pour les longueurs 0 a 13.
 - [x] Modele de liaison generalise emprunte/owned, avec schema JSON commun.
 - [x] Ethernet utilise la sortie normalisee et le pipeline L3/L4/L7 commun.
 - [x] L'inner CAPWAP est represente comme IEEE 802.11 (`LINKTYPE 105`) et non
   comme un faux Ethernet.
-- [ ] RAW, SLL et SLL2 : non commences.
+- [x] RAW IPv4/IPv6 est decode sans faux en-tete L2, faux EtherType ni fausse
+  adresse MAC ; le paquet entier devient le payload reseau zero-copy.
+- [x] Les vues `RawIpLink` empruntee et owned partagent le meme schema JSON et
+  conservent explicitement la version IP.
+- [x] Une liaison RAW vide ou avec une version IP invalide produit une erreur
+  L2 structuree ; un header IP reconnu puis tronque reste un flux partiel
+  marque corrompu au niveau Internet.
+- [x] Le chemin RAW normal et le chemin `parse_timing` sont fonctionnellement
+  identiques sur les succes, corruptions L3 et erreurs fatales L2.
+- [ ] SLL et SLL2 : non commences.
 
 Ces cases ne remplacent pas les validations de la Definition de termine.
 
@@ -301,6 +310,49 @@ top-level. Le modele IEEE 802.11 est utilise pour le paquet interne CAPWAP,
 mais `parse(LinkType::IEEE802_11, ...)` reste refuse. RAW, SLL et SLL2 restent
 `UnsupportedLinkType` jusqu'aux micro-wins suivants.
 
+### MW-03 - Decodage LINKTYPE_RAW IPv4/IPv6 (2026-07-13)
+
+Statut : valide localement dans une copie propre de `ea21dc6` contenant
+uniquement ce micro-win ; le fichier `src/parse/mod.rs`, modifie en parallele
+par une autre session, est explicitement exclu de ce jalon et de son commit.
+
+- [x] Le catalogue active `LINKTYPE_RAW` (`101`) et route IPv4 ou IPv6 depuis
+  le premier nibble, sans fabriquer de MAC ni d'EtherType.
+- [x] `RawIpLink` conserve le paquet complet par emprunt zero-copy ;
+  `RawIpLinkOwned` et la vue empruntee produisent le meme JSON tagge.
+- [x] `LinkLayerError` distingue la troncature L2 (paquet vide) d'une version
+  IP invalide et conserve le LINKTYPE, les tailles ou le nibble observes.
+- [x] Une version 4 ou 6 reconnue est transmise une seule fois au pipeline
+  commun : un header IP tronque retourne un `PacketFlow` marque corrompu au
+  niveau Internet plutot qu'une erreur fatale de liaison.
+- [x] Le vecteur IPv4/ICMP provient de `raw_ip.pcapng` fourni par Sonar ; le
+  vecteur IPv6/UDP est synthetique et reutilise une fixture deja eprouvee.
+- [x] Les tests prouvent l'absence de fallback Ethernet, la preservation
+  zero-copy, la parite borrowed/owned et la parite normale/instrumentee.
+
+Validations du micro-win :
+
+- `cargo test` : 648 tests unitaires, 14 tests d'API publique et 13 doctests ;
+- `cargo test --features parse_timing` : 657 tests unitaires, 18 tests d'API
+  publique et 13 doctests ;
+- `cargo test --workspace --all-targets --all-features` : les 657 tests
+  unitaires, 18 tests d'API publique, binaires et exemples du workspace sont
+  valides ;
+- `cargo test --doc --all-features` : 13 doctests valides ;
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` :
+  aucune alerte ;
+- `cargo check --manifest-path fuzz/Cargo.toml --all-targets` : les trois
+  cibles fuzz existantes compilent avec le decodeur RAW ;
+- `cargo fmt --all -- --check` et `git diff --check` : valides.
+
+Limites volontaires du jalon : SLL et SLL2 restent non supportes, les erreurs
+Ethernet historiques ne sont pas encore migrees vers le contrat L2 final, et
+aucune vraie fixture RAW IPv6 n'est encore disponible. Les checksums de la
+fixture IPv4 fournie sont invalides selon Tshark ; elle sert donc uniquement a
+valider le parsing structurel, pas une future verification des checksums. Les
+cibles fuzz compilent, mais leur corpus multi-decodeur sera complete en phase
+5.
+
 ## Definition de termine
 
 - [x] Aucun chemin de parsing ne suppose Ethernet sans le demander
@@ -338,8 +390,9 @@ mais `parse(LinkType::IEEE802_11, ...)` reste refuse. RAW, SLL et SLL2 restent
 
 ## Regle de livraison
 
-Ne pas publier la nouvelle API tant que le modele de liaison public et owned
-reste Ethernet-only. Le premier jalon acceptable est un refactor Ethernet sans
-regression qui traverse la sortie normalisee ; RAW valide ensuite que
-l'architecture est reellement extensible, puis SLL/SLL2 ferment le besoin du
-consommateur Sonar.
+Ne pas publier la nouvelle API tant que SLL et SLL2 ne ferment pas la matrice
+requise par Sonar, que le contrat d'erreur L2 final n'est pas applique de facon
+coherente et que les cibles de fuzzing ne couvrent pas les decodeurs ajoutes.
+Ethernet et RAW prouvent desormais que le pipeline et le modele sont
+extensibles ; les micro-wins suivants doivent completer la couverture sans
+regression de ces deux chemins.

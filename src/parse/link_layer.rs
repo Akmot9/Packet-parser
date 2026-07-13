@@ -28,6 +28,51 @@ pub enum NetworkProtocol {
     Other(u16),
 }
 
+impl fmt::Display for NetworkProtocol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ipv4 => f.write_str("IPv4"),
+            Self::Ipv6 => f.write_str("IPv6"),
+            Self::Arp => f.write_str("ARP"),
+            Self::Profinet => f.write_str("Profinet"),
+            Self::Other(value) => write!(f, "0x{value:04X}"),
+        }
+    }
+}
+
+/// LINKTYPE_RAW carries an IP packet directly and has no link-layer header.
+///
+/// The version nibble is the only format-specific metadata. No MAC address or
+/// EtherType exists on the wire.
+#[non_exhaustive]
+#[derive(Debug, Clone, Serialize, Eq)]
+pub struct RawIpLink<'a> {
+    pub ip_version: u8,
+    #[serde(skip_serializing)]
+    pub payload: &'a [u8],
+}
+
+impl<'a> RawIpLink<'a> {
+    const fn new(ip_version: u8, payload: &'a [u8]) -> Self {
+        Self {
+            ip_version,
+            payload,
+        }
+    }
+}
+
+impl PartialEq for RawIpLink<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.ip_version == other.ip_version
+    }
+}
+
+impl Hash for RawIpLink<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.ip_version.hash(state);
+    }
+}
+
 /// Effective addresses and LLC/SNAP payload of a decoded IEEE 802.11 frame.
 ///
 /// The addresses have already been resolved according to the ToDS/FromDS bits.
@@ -97,6 +142,7 @@ impl From<Ethertype> for NetworkProtocol {
 #[serde(tag = "link_kind", content = "link_details", rename_all = "snake_case")]
 pub enum LinkLayerKind<'a> {
     Ethernet(DataLink<'a>),
+    RawIp(RawIpLink<'a>),
     Ieee80211(Ieee80211Link<'a>),
 }
 
@@ -143,6 +189,25 @@ impl<'a> LinkLayer<'a> {
         }
     }
 
+    fn raw_ip(network_protocol: NetworkProtocol, ip_version: u8, payload: &'a [u8]) -> Self {
+        Self {
+            link_type: LinkType::RAW,
+            network_protocol,
+            network_payload: payload,
+            kind: LinkLayerKind::RawIp(RawIpLink::new(ip_version, payload)),
+        }
+    }
+
+    /// Wraps a decoder-validated LINKTYPE_RAW IPv4 packet.
+    pub(crate) fn raw_ipv4(payload: &'a [u8]) -> Self {
+        Self::raw_ip(NetworkProtocol::Ipv4, 4, payload)
+    }
+
+    /// Wraps a decoder-validated LINKTYPE_RAW IPv6 packet.
+    pub(crate) fn raw_ipv6(payload: &'a [u8]) -> Self {
+        Self::raw_ip(NetworkProtocol::Ipv6, 6, payload)
+    }
+
     /// Wraps a decoded native IEEE 802.11 frame without inventing Ethernet.
     pub fn ieee80211(frame: Ieee80211Link<'a>) -> Self {
         Self {
@@ -172,7 +237,16 @@ impl<'a> LinkLayer<'a> {
     pub const fn as_ethernet(&self) -> Option<&DataLink<'a>> {
         match &self.kind {
             LinkLayerKind::Ethernet(frame) => Some(frame),
+            LinkLayerKind::RawIp(_) => None,
             LinkLayerKind::Ieee80211(_) => None,
+        }
+    }
+
+    /// RAW IP details when this packet was decoded as LINKTYPE_RAW.
+    pub const fn as_raw_ip(&self) -> Option<&RawIpLink<'a>> {
+        match &self.kind {
+            LinkLayerKind::RawIp(details) => Some(details),
+            LinkLayerKind::Ethernet(_) | LinkLayerKind::Ieee80211(_) => None,
         }
     }
 
@@ -180,6 +254,7 @@ impl<'a> LinkLayer<'a> {
     pub const fn as_ieee80211(&self) -> Option<&Ieee80211Link<'a>> {
         match &self.kind {
             LinkLayerKind::Ethernet(_) => None,
+            LinkLayerKind::RawIp(_) => None,
             LinkLayerKind::Ieee80211(frame) => Some(frame),
         }
     }
@@ -200,6 +275,11 @@ impl fmt::Display for LinkLayer<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.kind {
             LinkLayerKind::Ethernet(frame) => frame.fmt(f),
+            LinkLayerKind::RawIp(details) => write!(
+                f,
+                "\n    RAW IP Version: {},\n    Protocol: {}\n",
+                details.ip_version, self.network_protocol
+            ),
             LinkLayerKind::Ieee80211(frame) => write!(
                 f,
                 "\n    IEEE 802.11 Destination MAC: {},\n    Source MAC: {},\n    SNAP Protocol: {},\n    Payload Length: {}\n",
@@ -265,6 +345,39 @@ mod tests {
 
         assert_eq!(first, second);
         assert_eq!(hash_of(&first), hash_of(&second));
+    }
+
+    #[test]
+    fn raw_ip_details_are_zero_copy_and_ignore_payload_in_flow_identity() {
+        let first_bytes = [0x45, 1, 2];
+        let second_bytes = [0x45, 9, 8, 7];
+        let first = LinkLayer::raw_ipv4(&first_bytes);
+        let second = LinkLayer::raw_ipv4(&second_bytes);
+        let raw = first.as_raw_ip().unwrap();
+
+        assert_eq!(first.link_type(), LinkType::RAW);
+        assert_eq!(first.network_protocol(), NetworkProtocol::Ipv4);
+        assert_eq!(raw.ip_version, 4);
+        assert_eq!(raw.payload.as_ptr(), first_bytes.as_ptr());
+        assert_eq!(first.network_payload().as_ptr(), first_bytes.as_ptr());
+        assert_eq!(first, second);
+        assert_eq!(hash_of(&first), hash_of(&second));
+        assert_ne!(first, LinkLayer::raw_ipv6(&first_bytes));
+    }
+
+    #[test]
+    fn raw_ip_serialization_has_no_fabricated_ethernet_fields() {
+        let value = serde_json::to_value(LinkLayer::raw_ipv4(&[0x45])).unwrap();
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "link_type": 101,
+                "network_protocol": { "kind": "ipv4" },
+                "link_kind": "raw_ip",
+                "link_details": { "ip_version": 4 }
+            })
+        );
     }
 
     #[test]

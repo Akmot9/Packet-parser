@@ -101,7 +101,7 @@ Current status on the development branch:
 | LINKTYPE | Value | Decoder status |
 | --- | ---: | --- |
 | Ethernet | 1 | Supported |
-| RAW IP | 101 | Identified, explicitly unsupported for now |
+| RAW IP | 101 | Supported for IPv4 and IPv6 |
 | Native IEEE 802.11 | 105 | Modelled for CAPWAP inner flows; top-level decoder not yet supported |
 | Linux SLL v1 | 113 | Identified, explicitly unsupported for now |
 | Bluetooth H4 with pseudo-header | 201 | Identified, explicitly unsupported |
@@ -111,6 +111,11 @@ Current status on the development branch:
 An unsupported LINKTYPE is rejected before packet bytes are decoded. Unknown
 upper-layer protocols still use the graceful `None`/`corrupted` behaviour
 described above.
+
+For RAW IP, an empty packet or a version nibble other than 4/6 returns a
+structured `InvalidLinkLayer(LinkLayerError)`. Once IPv4 or IPv6 is identified,
+an invalid or truncated IP header remains a successful partial flow with
+`corrupted: Internet`; the link layer and its accounting are preserved.
 
 Every parsed flow now carries a generic `LinkLayer`. Its common accessors do
 not assume Ethernet:
@@ -125,8 +130,8 @@ if let Some(ethernet) = flow.data_link.as_ethernet() {
 ```
 
 `network_payload()` returns the borrowed L3 slice. Format-specific views are
-explicit (`as_ethernet()`, `as_ieee80211()`), so adding RAW, SLL or SLL2 cannot
-silently manufacture Ethernet fields.
+explicit (`as_ethernet()`, `as_raw_ip()`, `as_ieee80211()`), so RAW and future
+SLL/SLL2 decoders cannot silently manufacture Ethernet fields.
 
 ## Main API
 
@@ -180,6 +185,7 @@ serialized):
 
 - Ethernet II
 - VLAN 802.1Q
+- RAW IPv4/IPv6 (`LINKTYPE_RAW`)
 - MAC addresses and internal OUI resolution
 - Native IEEE 802.11 representation for CAPWAP inner flows (not yet a
   top-level LINKTYPE decoder)

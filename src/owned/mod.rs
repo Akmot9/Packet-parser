@@ -12,7 +12,9 @@ use std::{
 use crate::parse::CorruptedLayer;
 use crate::parse::data_link::vlan_tag::VlanTag;
 use crate::parse::data_link::{ethertype, ethertype::Ethertype, mac_addres::MacAddress};
-use crate::parse::link_layer::{Ieee80211Link, LinkLayer, LinkLayerKind, NetworkProtocol};
+use crate::parse::link_layer::{
+    Ieee80211Link, LinkLayer, LinkLayerKind, NetworkProtocol, RawIpLink,
+};
 use crate::{DataLink, IpType, LinkType, PacketFlow};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
@@ -51,7 +53,15 @@ pub struct DataLinkOwned {
 #[serde(tag = "link_kind", content = "link_details", rename_all = "snake_case")]
 pub enum LinkLayerOwnedKind {
     Ethernet(DataLinkOwned),
+    RawIp(RawIpLinkOwned),
     Ieee80211(Ieee80211LinkOwned),
+}
+
+/// Owned RAW IP metadata. RAW has no link-layer addresses or EtherType.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Hash, Eq)]
+pub struct RawIpLinkOwned {
+    pub ip_version: u8,
 }
 
 /// Owned IEEE 802.11 fields produced by tunnel peeling.
@@ -96,6 +106,22 @@ impl LinkLayerOwned {
         }
     }
 
+    fn raw_ip(network_protocol: NetworkProtocol, details: RawIpLinkOwned) -> Self {
+        Self {
+            link_type: LinkType::RAW,
+            network_protocol,
+            kind: LinkLayerOwnedKind::RawIp(details),
+        }
+    }
+
+    pub fn raw_ipv4() -> Self {
+        Self::raw_ip(NetworkProtocol::Ipv4, RawIpLinkOwned { ip_version: 4 })
+    }
+
+    pub fn raw_ipv6() -> Self {
+        Self::raw_ip(NetworkProtocol::Ipv6, RawIpLinkOwned { ip_version: 6 })
+    }
+
     pub fn ieee80211(frame: Ieee80211LinkOwned) -> Self {
         Self {
             link_type: LinkType::IEEE802_11,
@@ -119,13 +145,22 @@ impl LinkLayerOwned {
     pub const fn as_ethernet(&self) -> Option<&DataLinkOwned> {
         match &self.kind {
             LinkLayerOwnedKind::Ethernet(frame) => Some(frame),
+            LinkLayerOwnedKind::RawIp(_) => None,
             LinkLayerOwnedKind::Ieee80211(_) => None,
+        }
+    }
+
+    pub const fn as_raw_ip(&self) -> Option<&RawIpLinkOwned> {
+        match &self.kind {
+            LinkLayerOwnedKind::RawIp(details) => Some(details),
+            LinkLayerOwnedKind::Ethernet(_) | LinkLayerOwnedKind::Ieee80211(_) => None,
         }
     }
 
     pub const fn as_ieee80211(&self) -> Option<&Ieee80211LinkOwned> {
         match &self.kind {
             LinkLayerOwnedKind::Ethernet(_) => None,
+            LinkLayerOwnedKind::RawIp(_) => None,
             LinkLayerOwnedKind::Ieee80211(frame) => Some(frame),
         }
     }
@@ -154,6 +189,11 @@ impl Display for LinkLayerOwned {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self.kind {
             LinkLayerOwnedKind::Ethernet(frame) => frame.fmt(f),
+            LinkLayerOwnedKind::RawIp(details) => write!(
+                f,
+                "\n    RAW IP Version: {},\n    Protocol: {}\n",
+                details.ip_version, self.network_protocol
+            ),
             LinkLayerOwnedKind::Ieee80211(frame) => write!(
                 f,
                 "\n    IEEE 802.11 Destination MAC: {},\n    Source MAC: {},\n    SNAP Protocol: {}\n",
@@ -280,10 +320,21 @@ impl From<&Ieee80211Link<'_>> for Ieee80211LinkOwned {
     }
 }
 
+impl From<&RawIpLink<'_>> for RawIpLinkOwned {
+    fn from(details: &RawIpLink<'_>) -> Self {
+        Self {
+            ip_version: details.ip_version,
+        }
+    }
+}
+
 impl From<&LinkLayer<'_>> for LinkLayerOwned {
     fn from(layer: &LinkLayer<'_>) -> Self {
         match layer.kind() {
             LinkLayerKind::Ethernet(frame) => Self::ethernet(DataLinkOwned::from(frame)),
+            LinkLayerKind::RawIp(details) => {
+                Self::raw_ip(layer.network_protocol(), RawIpLinkOwned::from(details))
+            }
             LinkLayerKind::Ieee80211(frame) => Self::ieee80211(Ieee80211LinkOwned::from(frame)),
         }
     }

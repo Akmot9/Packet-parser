@@ -110,7 +110,7 @@ mod displays;
 /// and match the per-layer error types (e.g.
 /// `errors::internet::InternetError`, `errors::transport::TransportError`).
 pub mod errors;
-pub use errors::{ParseError, ParsedPacketError};
+pub use errors::{LinkLayerError, ParseError, ParsedPacketError};
 
 /// Main module for packet analysis.
 pub mod parse;
@@ -124,7 +124,7 @@ pub use parse::data_link::DataLink;
 pub use parse::data_link::mac_addres::MacAddress;
 pub use parse::internet::Internet;
 pub use parse::internet::ip_type::IpType;
-pub use parse::link_layer::{Ieee80211Link, LinkLayer, LinkLayerKind, NetworkProtocol};
+pub use parse::link_layer::{Ieee80211Link, LinkLayer, LinkLayerKind, NetworkProtocol, RawIpLink};
 pub use parse::transport::Transport;
 
 /// Exports data link layer parsing functionality.

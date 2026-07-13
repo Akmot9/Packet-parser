@@ -6,9 +6,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Unreleased]
 
-Cette section prepare une version majeure 7.0.0. Le modele est maintenant
-extensible, mais la publication reste bloquee jusqu'aux decodeurs RAW, SLL et
-SLL2 et a la fermeture du contrat d'erreur du sprint.
+Cette section prepare une version majeure 7.0.0. Le modele et le decodeur RAW
+sont maintenant disponibles, mais la publication reste bloquee jusqu'aux
+decodeurs SLL/SLL2 et a la fermeture du contrat d'erreur du sprint.
 
 ### Rupture
 
@@ -50,10 +50,20 @@ SLL2 et a la fermeture du contrat d'erreur du sprint.
   les chemins normal et instrumente appellent le meme decodeur.
 - Modele `Ieee80211Link` pour les trames decapsulees de CAPWAP, avec adresses
   ToDS/FromDS effectives et vrai protocole LLC/SNAP.
+- Decodeur `LINKTYPE_RAW` (101) : le nibble de version selectionne IPv4 ou IPv6
+  et le paquet complet est transmis zero-copy au pipeline commun, sans MAC ni
+  EtherType invente. Un header IP reconnu mais invalide reste une corruption
+  L3 non fatale.
+- `RawIpLink` / `RawIpLinkOwned` exposent la version IP et partagent le meme
+  schema JSON. `LinkLayerError` conserve le LINKTYPE, les tailles de troncature
+  et les versions IP invalides pour la comptabilite des echecs de liaison.
 - Tests publics de conservation des identifiants, refus ferme des LINKTYPE non
   supportes, equivalence Ethernet IPv4/IPv6/VLAN/corruptions, erreurs Ethernet
   et VLAN tronquees, parite du dispatch instrumente, schema borrowed/owned et
   identite de flux independante des octets de payload.
+- Tests RAW issus d'un paquet IPv4/ICMP de la fixture Sonar et d'un vecteur
+  IPv6/UDP, avec parite normale/instrumentee, zero-copy, erreurs structurees et
+  degradation L3 pour chaque longueur inferieure aux headers IP minimaux.
 
 ### Documentation
 

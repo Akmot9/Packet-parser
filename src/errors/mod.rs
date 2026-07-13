@@ -8,11 +8,13 @@
 pub(crate) mod application;
 pub(crate) mod data_link;
 pub(crate) mod internet;
+mod link_layer;
 pub(crate) mod transport;
 
 use application::ApplicationError;
 use data_link::DataLinkError;
 use internet::InternetError;
+pub use link_layer::LinkLayerError;
 use thiserror::Error;
 use transport::TransportError;
 
@@ -35,6 +37,9 @@ pub enum ParseError {
 
     #[error("Invalid DataLink segment: {0}")]
     InvalidDataLink(#[from] DataLinkError),
+
+    #[error("Invalid link layer: {0}")]
+    InvalidLinkLayer(#[from] LinkLayerError),
 
     #[error("Invalid Internet segment: {0}")]
     InvalidInternet(#[from] InternetError),
