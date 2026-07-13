@@ -259,7 +259,9 @@ mod tests {
         assert!(is_plausible_short_header(&packet));
 
         // Trop court d'un octet.
-        assert!(!is_plausible_short_header(&packet[..QUIC_SHORT_HEADER_MIN_LEN - 1]));
+        assert!(!is_plausible_short_header(
+            &packet[..QUIC_SHORT_HEADER_MIN_LEN - 1]
+        ));
 
         // Long Header (form=1) : pas un Short Header.
         packet[0] = 0xC0;

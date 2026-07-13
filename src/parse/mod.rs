@@ -30,12 +30,12 @@
 //! This module does **not** perform stream reassembly or session tracking.
 //! It expects a complete packet buffer (e.g. from PCAP capture).
 
+use crate::checks::application::quic::is_plausible_short_header;
 use application::Application;
 use application::protocols::ams::AmsPacket;
 use application::protocols::copt::CotpHeader;
 use application::protocols::dhcpv6::Dhcpv6Packet;
 use application::protocols::postgresql::is_likely_postgresql_payload;
-use crate::checks::application::quic::is_plausible_short_header;
 use application::protocols::snmp::SnmpPacket;
 use internet::Internet;
 use serde::Serialize;
