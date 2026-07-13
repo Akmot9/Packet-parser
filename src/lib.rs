@@ -125,8 +125,8 @@ pub use parse::data_link::mac_addres::MacAddress;
 pub use parse::internet::Internet;
 pub use parse::internet::ip_type::IpType;
 pub use parse::link_layer::{
-    Ieee80211Link, LinkLayer, LinkLayerKind, LinuxArphrdType, LinuxCookedPacketType, LinuxSllLink,
-    NetworkProtocol, RawIpLink,
+    Ieee80211Link, LinkLayer, LinkLayerKind, LinuxArphrdType, LinuxCookedPacketType, LinuxSll2Link,
+    LinuxSllLink, NetworkProtocol, RawIpLink,
 };
 pub use parse::transport::Transport;
 

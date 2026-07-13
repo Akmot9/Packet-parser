@@ -20,6 +20,13 @@ const SLL_IPV4_LOOPBACK_FIXTURE_HEX: &str = concat!(
     "c5dcb1a946153113a2f2baf280100040fe2800000101080a9704fe139704fa13"
 );
 
+/// Synthetic SLL2/IPv4 vector cross-checked with Tshark 4.6.6.
+/// It uses a locally administered source address and RFC 5737 TEST-NET IPs.
+const SLL2_IPV4_TSHARK_VECTOR_HEX: &str = concat!(
+    "0800000000000001000100060200000000010000",
+    "450000140000000040fd8db6c0000201c6336402"
+);
+
 fn ethernet_frame_with_unknown_ethertype() -> [u8; 14] {
     [
         0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // destination MAC
@@ -70,6 +77,10 @@ fn sll_ipv4_loopback_fixture() -> Vec<u8> {
     hex::decode(SLL_IPV4_LOOPBACK_FIXTURE_HEX).expect("valid SLL fixture hex")
 }
 
+fn sll2_ipv4_tshark_vector() -> Vec<u8> {
+    hex::decode(SLL2_IPV4_TSHARK_VECTOR_HEX).expect("valid SLL2 vector hex")
+}
+
 fn linux_sll_packet(
     packet_type: u16,
     hardware_type: u16,
@@ -90,6 +101,39 @@ fn linux_sll_packet(
     packet[4..6].copy_from_slice(&address_length.to_be_bytes());
     packet[6..6 + source_address.len()].copy_from_slice(source_address);
     packet[14..16].copy_from_slice(&protocol.to_be_bytes());
+    packet.extend_from_slice(payload);
+    packet
+}
+
+#[derive(Clone, Copy)]
+struct SyntheticSll2Header {
+    protocol: u16,
+    reserved_mbz: u16,
+    interface_index: u32,
+    hardware_type: u16,
+    packet_type: u8,
+    address_length: u8,
+}
+
+fn linux_sll2_packet(
+    header: SyntheticSll2Header,
+    source_address: &[u8],
+    payload: &[u8],
+) -> Vec<u8> {
+    assert_eq!(
+        source_address.len(),
+        usize::from(header.address_length).min(8),
+        "the synthetic address must match the bytes available in the SLL2 slot"
+    );
+
+    let mut packet = vec![0_u8; 20];
+    packet[0..2].copy_from_slice(&header.protocol.to_be_bytes());
+    packet[2..4].copy_from_slice(&header.reserved_mbz.to_be_bytes());
+    packet[4..8].copy_from_slice(&header.interface_index.to_be_bytes());
+    packet[8..10].copy_from_slice(&header.hardware_type.to_be_bytes());
+    packet[10] = header.packet_type;
+    packet[11] = header.address_length;
+    packet[12..12 + source_address.len()].copy_from_slice(source_address);
     packet.extend_from_slice(payload);
     packet
 }
@@ -121,6 +165,7 @@ fn assert_raw_link<'a>(
     assert_eq!(raw.payload.as_ptr(), bytes.as_ptr());
     assert!(flow.data_link.as_ethernet().is_none());
     assert!(flow.data_link.as_linux_sll().is_none());
+    assert!(flow.data_link.as_linux_sll2().is_none());
     assert!(flow.data_link.as_ieee80211().is_none());
 
     flow
@@ -144,6 +189,31 @@ fn assert_sll_link<'a>(bytes: &'a [u8], expected_protocol: NetworkProtocol) -> P
     }
     assert!(flow.data_link.as_ethernet().is_none());
     assert!(flow.data_link.as_raw_ip().is_none());
+    assert!(flow.data_link.as_linux_sll2().is_none());
+    assert!(flow.data_link.as_ieee80211().is_none());
+
+    flow
+}
+
+fn assert_sll2_link<'a>(bytes: &'a [u8], expected_protocol: NetworkProtocol) -> PacketFlow<'a> {
+    let flow = parse(LinkType::LINUX_SLL2, bytes).unwrap();
+    let sll2 = flow.data_link.as_linux_sll2().expect("Linux SLL v2 view");
+
+    assert_eq!(flow.data_link.link_type(), LinkType::LINUX_SLL2);
+    assert_eq!(flow.data_link.network_protocol(), expected_protocol);
+    assert_eq!(flow.data_link.network_payload(), &bytes[20..]);
+    assert_eq!(
+        flow.data_link.network_payload().as_ptr(),
+        bytes[20..].as_ptr()
+    );
+    assert_eq!(sll2.payload, &bytes[20..]);
+    assert_eq!(sll2.payload.as_ptr(), bytes[20..].as_ptr());
+    if let Some(address) = sll2.source_address {
+        assert_eq!(address.as_ptr(), bytes[12..].as_ptr());
+    }
+    assert!(flow.data_link.as_ethernet().is_none());
+    assert!(flow.data_link.as_raw_ip().is_none());
+    assert!(flow.data_link.as_linux_sll().is_none());
     assert!(flow.data_link.as_ieee80211().is_none());
 
     flow
@@ -538,6 +608,236 @@ fn recognized_but_truncated_sll_network_payload_degrades_at_l3() {
 }
 
 #[test]
+fn linux_sll2_tshark_vector_and_anonymized_protocols_use_the_shared_pipeline() {
+    let ipv4_bytes = sll2_ipv4_tshark_vector();
+    let ipv4 = assert_sll2_link(&ipv4_bytes, NetworkProtocol::Ipv4);
+    let ipv4_sll2 = ipv4.data_link.as_linux_sll2().unwrap();
+    assert_eq!(ipv4_sll2.protocol, 0x0800);
+    assert_eq!(ipv4_sll2.reserved_mbz, 0);
+    assert!(ipv4_sll2.reserved_is_zero());
+    assert_eq!(ipv4_sll2.interface_index, 1);
+    assert_eq!(ipv4_sll2.hardware_type, LinuxArphrdType::ETHERNET);
+    assert_eq!(ipv4_sll2.packet_type, LinuxCookedPacketType::HOST);
+    assert_eq!(ipv4_sll2.address_length, 6);
+    assert_eq!(ipv4_sll2.source_address, Some(&[0x02, 0, 0, 0, 0, 1][..]));
+    assert!(!ipv4_sll2.address_is_truncated());
+    let ipv4_internet = ipv4.internet.as_ref().unwrap();
+    assert_eq!(
+        ipv4_internet.source,
+        Some(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)))
+    );
+    assert_eq!(
+        ipv4_internet.destination,
+        Some(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 2)))
+    );
+    assert!(ipv4.corrupted.is_none());
+
+    let ipv6_payload = raw_ipv6_udp();
+    let ipv6_bytes = linux_sll2_packet(
+        SyntheticSll2Header {
+            protocol: 0x86dd,
+            reserved_mbz: 0,
+            interface_index: 2,
+            hardware_type: LinuxArphrdType::ETHERNET.0,
+            packet_type: LinuxCookedPacketType::OUTGOING.0 as u8,
+            address_length: 6,
+        },
+        &[0x02, 0, 0, 0, 0, 1],
+        &ipv6_payload,
+    );
+    let ipv6 = assert_sll2_link(&ipv6_bytes, NetworkProtocol::Ipv6);
+    assert_eq!(ipv6.internet.as_ref().unwrap().protocol_name, "IPv6");
+    assert_eq!(
+        ipv6.transport.as_ref().unwrap().protocol,
+        TransportProtocol::Udp
+    );
+    assert!(ipv6.corrupted.is_none());
+
+    let arp_bytes = linux_sll2_packet(
+        SyntheticSll2Header {
+            protocol: 0x0806,
+            reserved_mbz: 0,
+            interface_index: 3,
+            hardware_type: LinuxArphrdType::ETHERNET.0,
+            packet_type: LinuxCookedPacketType::BROADCAST.0 as u8,
+            address_length: 6,
+        },
+        &[0x02, 0, 0, 0, 0, 1],
+        &synthetic_arp_request(),
+    );
+    let arp = assert_sll2_link(&arp_bytes, NetworkProtocol::Arp);
+    assert_eq!(arp.internet.as_ref().unwrap().protocol_name, "ARP");
+    assert!(arp.corrupted.is_none());
+
+    let unknown_bytes = linux_sll2_packet(
+        SyntheticSll2Header {
+            protocol: 0x88b5,
+            reserved_mbz: 0,
+            interface_index: 4,
+            hardware_type: LinuxArphrdType::ETHERNET.0,
+            packet_type: LinuxCookedPacketType::MULTICAST.0 as u8,
+            address_length: 6,
+        },
+        &[0x02, 0, 0, 0, 0, 1],
+        &[0xde, 0xad, 0xbe, 0xef],
+    );
+    let unknown = assert_sll2_link(&unknown_bytes, NetworkProtocol::Other(0x88b5));
+    assert!(unknown.internet.is_none());
+    assert!(unknown.transport.is_none());
+    assert!(unknown.application.is_none());
+    assert!(unknown.corrupted.is_none());
+}
+
+#[test]
+fn linux_sll2_borrowed_and_owned_models_share_a_non_ethernet_schema() {
+    let bytes = sll2_ipv4_tshark_vector();
+    let flow = assert_sll2_link(&bytes, NetworkProtocol::Ipv4);
+    let borrowed = serde_json::to_value(&flow.data_link).unwrap();
+    let owned_link = flow.to_owned().data_link;
+    let owned = serde_json::to_value(&owned_link).unwrap();
+
+    assert_eq!(borrowed, owned);
+    assert!(owned_link.as_linux_sll2().is_some());
+    assert!(owned_link.as_ethernet().is_none());
+    assert_eq!(
+        borrowed,
+        serde_json::json!({
+            "link_type": 276,
+            "network_protocol": { "kind": "ipv4" },
+            "link_kind": "linux_sll2",
+            "link_details": {
+                "protocol": 2048,
+                "reserved_mbz": 0,
+                "interface_index": 1,
+                "hardware_type": 1,
+                "packet_type": 0,
+                "address_length": 6,
+                "source_address": [2, 0, 0, 0, 0, 1]
+            }
+        })
+    );
+}
+
+#[test]
+fn every_short_linux_sll2_header_is_a_structured_link_error() {
+    let bytes = sll2_ipv4_tshark_vector();
+
+    for len in 0..20 {
+        assert!(matches!(
+            parse(LinkType::LINUX_SLL2, &bytes[..len]),
+            Err(ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+                link_type: LinkType::LINUX_SLL2,
+                required: 20,
+                actual,
+            })) if actual == len
+        ));
+    }
+}
+
+#[test]
+fn linux_sll2_preserves_reserved_and_future_values() {
+    let oversized = linux_sll2_packet(
+        SyntheticSll2Header {
+            protocol: 0x9999,
+            reserved_mbz: 0x1234,
+            interface_index: u32::MAX,
+            hardware_type: 0xffff,
+            packet_type: u8::MAX,
+            address_length: u8::MAX,
+        },
+        &[1, 2, 3, 4, 5, 6, 7, 8],
+        &[],
+    );
+    let oversized_flow = assert_sll2_link(&oversized, NetworkProtocol::Other(0x9999));
+    let oversized_sll2 = oversized_flow.data_link.as_linux_sll2().unwrap();
+    assert_eq!(oversized_sll2.reserved_mbz, 0x1234);
+    assert!(!oversized_sll2.reserved_is_zero());
+    assert_eq!(oversized_sll2.interface_index, u32::MAX);
+    assert_eq!(oversized_sll2.hardware_type, LinuxArphrdType(0xffff));
+    assert_eq!(oversized_sll2.packet_type, LinuxCookedPacketType(0xff));
+    assert_eq!(oversized_sll2.address_length, u8::MAX);
+    assert_eq!(
+        oversized_sll2.source_address,
+        Some(&[1, 2, 3, 4, 5, 6, 7, 8][..])
+    );
+    assert!(oversized_sll2.address_is_truncated());
+
+    let absent = linux_sll2_packet(
+        SyntheticSll2Header {
+            protocol: 0x88b5,
+            reserved_mbz: 0,
+            interface_index: 0,
+            hardware_type: LinuxArphrdType::LOOPBACK.0,
+            packet_type: LinuxCookedPacketType::HOST.0 as u8,
+            address_length: 0,
+        },
+        &[],
+        &[],
+    );
+    let absent_flow = assert_sll2_link(&absent, NetworkProtocol::Other(0x88b5));
+    let absent_sll2 = absent_flow.data_link.as_linux_sll2().unwrap();
+    assert_eq!(absent_sll2.interface_index, 0);
+    assert_eq!(absent_sll2.source_address, None);
+    assert!(!absent_sll2.address_is_truncated());
+}
+
+#[test]
+fn recognized_but_truncated_sll2_network_payload_degrades_at_l3() {
+    let ipv6 = raw_ipv6_udp();
+    let arp = synthetic_arp_request();
+
+    for (wire_protocol, expected, complete_payload, minimum_length) in [
+        (
+            0x0800,
+            NetworkProtocol::Ipv4,
+            RAW_IPV4_ICMP_FIXTURE.as_slice(),
+            20,
+        ),
+        (0x86dd, NetworkProtocol::Ipv6, ipv6.as_slice(), 40),
+        (0x0806, NetworkProtocol::Arp, arp.as_slice(), 28),
+    ] {
+        for len in 0..minimum_length {
+            let bytes = linux_sll2_packet(
+                SyntheticSll2Header {
+                    protocol: wire_protocol,
+                    reserved_mbz: 0,
+                    interface_index: 1,
+                    hardware_type: LinuxArphrdType::LOOPBACK.0,
+                    packet_type: LinuxCookedPacketType::HOST.0 as u8,
+                    address_length: 0,
+                },
+                &[],
+                &complete_payload[..len],
+            );
+            let flow = assert_sll2_link(&bytes, expected);
+
+            assert!(flow.internet.is_none());
+            assert!(flow.transport.is_none());
+            assert!(flow.application.is_none());
+            let corrupted = flow
+                .corrupted
+                .expect("recognized but corrupt network header");
+            assert_eq!(corrupted.layer, CorruptedLayerKind::Internet);
+            assert!(!corrupted.error.is_empty());
+        }
+    }
+}
+
+#[test]
+fn ethernet_bytes_labelled_as_linux_sll2_never_fall_back_to_ethernet() {
+    let bytes = ethernet_frame_with_unknown_ethertype();
+
+    assert!(matches!(
+        parse(LinkType::LINUX_SLL2, bytes.as_slice()),
+        Err(ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+            link_type: LinkType::LINUX_SLL2,
+            required: 20,
+            actual: 14,
+        }))
+    ));
+}
+
+#[test]
 fn unsupported_link_type_preserves_its_numeric_value() {
     let unsupported = LinkType(0xdead_beef);
 
@@ -596,7 +896,7 @@ fn support_preflight_matches_the_decoder_catalogue() {
     assert!(is_supported(LinkType::RAW));
     assert!(!is_supported(LinkType::IEEE802_11));
     assert!(is_supported(LinkType::LINUX_SLL));
-    assert!(!is_supported(LinkType::LINUX_SLL2));
+    assert!(is_supported(LinkType::LINUX_SLL2));
     assert!(!is_supported(LinkType::BLUETOOTH_HCI_H4_WITH_PHDR));
     assert!(!is_supported(LinkType(u32::MAX)));
 }
@@ -734,6 +1034,62 @@ fn explicit_timed_linux_sll_error_matches_the_normal_error() {
         total_ns: 1,
     };
     let timed = parse_timed(LinkType::LINUX_SLL, bytes, &mut timing).unwrap_err();
+
+    assert_eq!(normal.to_string(), timed.to_string());
+    assert_eq!(timing.l3_ns, 0);
+    assert_eq!(timing.l4_ns, 0);
+    assert_eq!(timing.l7_ns, 0);
+    assert!(timing.total_ns >= timing.l2_ns);
+}
+
+#[cfg(feature = "parse_timing")]
+#[test]
+fn explicit_timed_linux_sll2_api_matches_success_and_l3_corruption() {
+    use packet_parser::{parse_timed, timing::ParseTiming};
+
+    let success = sll2_ipv4_tshark_vector();
+    let corrupt = linux_sll2_packet(
+        SyntheticSll2Header {
+            protocol: 0x0800,
+            reserved_mbz: 0,
+            interface_index: 1,
+            hardware_type: LinuxArphrdType::LOOPBACK.0,
+            packet_type: LinuxCookedPacketType::HOST.0 as u8,
+            address_length: 0,
+        },
+        &[],
+        &[0x45],
+    );
+
+    for bytes in [success.as_slice(), corrupt.as_slice()] {
+        let normal = parse(LinkType::LINUX_SLL2, bytes).unwrap();
+        let mut timing = ParseTiming::default();
+        let timed = parse_timed(LinkType::LINUX_SLL2, bytes, &mut timing).unwrap();
+
+        assert_eq!(normal, timed);
+        assert!(timing.total_ns >= timing.l2_ns);
+        assert!(timing.total_ns >= timing.l3_ns);
+        assert!(timing.total_ns >= timing.l4_ns);
+        assert!(timing.total_ns >= timing.l7_ns);
+    }
+}
+
+#[cfg(feature = "parse_timing")]
+#[test]
+fn explicit_timed_linux_sll2_error_matches_the_normal_error() {
+    use packet_parser::{parse_timed, timing::ParseTiming};
+
+    let bytes = sll2_ipv4_tshark_vector();
+    let bytes = &bytes[..19];
+    let normal = parse(LinkType::LINUX_SLL2, bytes).unwrap_err();
+    let mut timing = ParseTiming {
+        l2_ns: 1,
+        l3_ns: 1,
+        l4_ns: 1,
+        l7_ns: 1,
+        total_ns: 1,
+    };
+    let timed = parse_timed(LinkType::LINUX_SLL2, bytes, &mut timing).unwrap_err();
 
     assert_eq!(normal.to_string(), timed.to_string());
     assert_eq!(timing.l3_ns, 0);

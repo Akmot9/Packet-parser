@@ -13,8 +13,8 @@ use crate::parse::CorruptedLayer;
 use crate::parse::data_link::vlan_tag::VlanTag;
 use crate::parse::data_link::{ethertype, ethertype::Ethertype, mac_addres::MacAddress};
 use crate::parse::link_layer::{
-    Ieee80211Link, LinkLayer, LinkLayerKind, LinuxArphrdType, LinuxCookedPacketType, LinuxSllLink,
-    NetworkProtocol, RawIpLink,
+    Ieee80211Link, LinkLayer, LinkLayerKind, LinuxArphrdType, LinuxCookedPacketType, LinuxSll2Link,
+    LinuxSllLink, NetworkProtocol, RawIpLink,
 };
 use crate::{DataLink, IpType, LinkType, PacketFlow};
 
@@ -56,6 +56,7 @@ pub enum LinkLayerOwnedKind {
     Ethernet(DataLinkOwned),
     RawIp(RawIpLinkOwned),
     LinuxSll(LinuxSllLinkOwned),
+    LinuxSll2(LinuxSll2LinkOwned),
     Ieee80211(Ieee80211LinkOwned),
 }
 
@@ -78,6 +79,29 @@ pub struct LinuxSllLinkOwned {
 }
 
 impl LinuxSllLinkOwned {
+    pub const fn address_is_truncated(&self) -> bool {
+        self.address_length > 8
+    }
+}
+
+/// Owned Linux cooked capture v2 metadata.
+#[non_exhaustive]
+#[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
+pub struct LinuxSll2LinkOwned {
+    pub protocol: u16,
+    pub reserved_mbz: u16,
+    pub interface_index: u32,
+    pub hardware_type: LinuxArphrdType,
+    pub packet_type: LinuxCookedPacketType,
+    pub address_length: u8,
+    pub source_address: Option<Vec<u8>>,
+}
+
+impl LinuxSll2LinkOwned {
+    pub const fn reserved_is_zero(&self) -> bool {
+        self.reserved_mbz == 0
+    }
+
     pub const fn address_is_truncated(&self) -> bool {
         self.address_length > 8
     }
@@ -149,6 +173,14 @@ impl LinkLayerOwned {
         }
     }
 
+    fn linux_sll2(details: LinuxSll2LinkOwned) -> Self {
+        Self {
+            link_type: LinkType::LINUX_SLL2,
+            network_protocol: NetworkProtocol::from_link_protocol(details.protocol),
+            kind: LinkLayerOwnedKind::LinuxSll2(details),
+        }
+    }
+
     pub fn ieee80211(frame: Ieee80211LinkOwned) -> Self {
         Self {
             link_type: LinkType::IEEE802_11,
@@ -174,6 +206,7 @@ impl LinkLayerOwned {
             LinkLayerOwnedKind::Ethernet(frame) => Some(frame),
             LinkLayerOwnedKind::RawIp(_) => None,
             LinkLayerOwnedKind::LinuxSll(_) => None,
+            LinkLayerOwnedKind::LinuxSll2(_) => None,
             LinkLayerOwnedKind::Ieee80211(_) => None,
         }
     }
@@ -183,6 +216,7 @@ impl LinkLayerOwned {
             LinkLayerOwnedKind::RawIp(details) => Some(details),
             LinkLayerOwnedKind::Ethernet(_)
             | LinkLayerOwnedKind::LinuxSll(_)
+            | LinkLayerOwnedKind::LinuxSll2(_)
             | LinkLayerOwnedKind::Ieee80211(_) => None,
         }
     }
@@ -192,6 +226,17 @@ impl LinkLayerOwned {
             LinkLayerOwnedKind::LinuxSll(details) => Some(details),
             LinkLayerOwnedKind::Ethernet(_)
             | LinkLayerOwnedKind::RawIp(_)
+            | LinkLayerOwnedKind::LinuxSll2(_)
+            | LinkLayerOwnedKind::Ieee80211(_) => None,
+        }
+    }
+
+    pub const fn as_linux_sll2(&self) -> Option<&LinuxSll2LinkOwned> {
+        match &self.kind {
+            LinkLayerOwnedKind::LinuxSll2(details) => Some(details),
+            LinkLayerOwnedKind::Ethernet(_)
+            | LinkLayerOwnedKind::RawIp(_)
+            | LinkLayerOwnedKind::LinuxSll(_)
             | LinkLayerOwnedKind::Ieee80211(_) => None,
         }
     }
@@ -201,6 +246,7 @@ impl LinkLayerOwned {
             LinkLayerOwnedKind::Ethernet(_) => None,
             LinkLayerOwnedKind::RawIp(_) => None,
             LinkLayerOwnedKind::LinuxSll(_) => None,
+            LinkLayerOwnedKind::LinuxSll2(_) => None,
             LinkLayerOwnedKind::Ieee80211(frame) => Some(frame),
         }
     }
@@ -241,6 +287,16 @@ impl Display for LinkLayerOwned {
                 details.hardware_type,
                 details.address_length,
                 details.protocol
+            ),
+            LinkLayerOwnedKind::LinuxSll2(details) => write!(
+                f,
+                "\n    Linux SLL2 Interface Index: {},\n    Packet Type: {},\n    Hardware Type: {},\n    Address Length: {},\n    Protocol: 0x{:04X},\n    Reserved MBZ: 0x{:04X}\n",
+                details.interface_index,
+                details.packet_type,
+                details.hardware_type,
+                details.address_length,
+                details.protocol,
+                details.reserved_mbz
             ),
             LinkLayerOwnedKind::Ieee80211(frame) => write!(
                 f,
@@ -388,6 +444,20 @@ impl From<&LinuxSllLink<'_>> for LinuxSllLinkOwned {
     }
 }
 
+impl From<&LinuxSll2Link<'_>> for LinuxSll2LinkOwned {
+    fn from(details: &LinuxSll2Link<'_>) -> Self {
+        Self {
+            protocol: details.protocol,
+            reserved_mbz: details.reserved_mbz,
+            interface_index: details.interface_index,
+            hardware_type: details.hardware_type,
+            packet_type: details.packet_type,
+            address_length: details.address_length,
+            source_address: details.source_address.map(<[u8]>::to_vec),
+        }
+    }
+}
+
 impl From<&LinkLayer<'_>> for LinkLayerOwned {
     fn from(layer: &LinkLayer<'_>) -> Self {
         match layer.kind() {
@@ -396,6 +466,9 @@ impl From<&LinkLayer<'_>> for LinkLayerOwned {
                 Self::raw_ip(layer.network_protocol(), RawIpLinkOwned::from(details))
             }
             LinkLayerKind::LinuxSll(details) => Self::linux_sll(LinuxSllLinkOwned::from(details)),
+            LinkLayerKind::LinuxSll2(details) => {
+                Self::linux_sll2(LinuxSll2LinkOwned::from(details))
+            }
             LinkLayerKind::Ieee80211(frame) => Self::ieee80211(Ieee80211LinkOwned::from(frame)),
         }
     }

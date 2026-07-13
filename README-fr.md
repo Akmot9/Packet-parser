@@ -104,7 +104,7 @@ Etat actuel de la branche de developpement:
 | IEEE 802.11 natif | 105 | Modelise pour les flux internes CAPWAP ; decodeur de capture non disponible |
 | Linux SLL v1 | 113 | Supporte |
 | Bluetooth H4 avec pseudo-en-tete | 201 | Identifie, explicitement non supporte |
-| Linux SLL v2 | 276 | Identifie, explicitement non supporte pour le moment |
+| Linux SLL v2 | 276 | Supporte |
 | Toute autre valeur | Preservee telle quelle | `ParseError::UnsupportedLinkType` |
 
 Un LINKTYPE non supporte est refuse avant de decoder les octets du paquet. Les
@@ -124,6 +124,15 @@ de huit octets est signalee tronquee plutot que rejetee. Utiliser le
 `LinkType::LINUX_SLL` canonique (113) : la valeur 25 affichee par certains
 champs Wireshark est un identifiant d'encapsulation WTAP interne.
 
+Linux SLL v2 decode independamment son en-tete de 20 octets et conserve en plus
+l'index numerique de l'interface de la machine de capture ainsi que le champ
+reserve MBZ. Une valeur reservee non nulle est preservee et signalee par
+`reserved_is_zero()` plutot que de perdre un paquet autrement decodable, comme
+le fait le dissecteur tolerant de Tshark. Les noms d'interface ne sont pas
+resolus, car ils appartiennent a la machine de capture. Utiliser le
+`LinkType::LINUX_SLL2` canonique (276) ; l'identifiant d'encapsulation WTAP
+interne actuellement affiche par Wireshark pour ce format vaut 210.
+
 Chaque flux parse transporte maintenant un `LinkLayer` generique. Ses
 accesseurs communs ne supposent pas Ethernet:
 
@@ -138,8 +147,8 @@ if let Some(ethernet) = flow.data_link.as_ethernet() {
 
 `network_payload()` retourne le slice L3 emprunte. Les vues propres au format
 sont explicites (`as_ethernet()`, `as_raw_ip()`, `as_linux_sll()`,
-`as_ieee80211()`), afin que RAW, SLL et le futur decodeur SLL2 ne puissent
-jamais fabriquer silencieusement des champs Ethernet.
+`as_linux_sll2()`, `as_ieee80211()`), afin que RAW et les deux formats SLL ne
+puissent jamais fabriquer silencieusement des champs Ethernet.
 
 ## API principale
 
@@ -195,6 +204,7 @@ du payload ne sont pas serialises):
 - VLAN 802.1Q
 - RAW IPv4/IPv6 (`LINKTYPE_RAW`)
 - Linux cooked capture v1 (`LINKTYPE_LINUX_SLL`)
+- Linux cooked capture v2 (`LINKTYPE_LINUX_SLL2`)
 - Adresses MAC et resolution OUI interne
 - Representation IEEE 802.11 native pour les flux internes CAPWAP (pas encore
   de decodeur LINKTYPE de premier niveau)

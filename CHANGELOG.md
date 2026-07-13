@@ -6,9 +6,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Unreleased]
 
-Cette section prepare une version majeure 7.0.0. Les decodeurs RAW et Linux SLL
-v1 sont maintenant disponibles, mais la publication reste bloquee jusqu'au
-decodeur SLL2 et a la fermeture du contrat d'erreur du sprint.
+Cette section prepare une version majeure 7.0.0. Les decodeurs RAW, Linux SLL
+v1 et Linux SLL2 sont maintenant disponibles. La publication reste bloquee
+jusqu'a la fermeture du contrat d'erreur et du corpus fuzz du sprint.
 
 ### Rupture
 
@@ -65,6 +65,13 @@ decodeur SLL2 et a la fermeture du contrat d'erreur du sprint.
   `LinuxArphrdType` conservent les metadonnees SLL. Une longueur d'adresse
   superieure au slot wire de huit octets est preservee avec une vue bornee et
   un indicateur de troncature, conformement au comportement de Tshark.
+- Decodeur `LINKTYPE_LINUX_SLL2` (276) distinct : son en-tete cooked de 20
+  octets preserve le protocole, le champ reserve MBZ, l'index d'interface,
+  l'ARPHRD, le type de paquet, la longueur declaree et l'adresse disponible.
+- `LinuxSll2Link` / `LinuxSll2LinkOwned` conservent les valeurs futures et
+  exposent `reserved_is_zero()` sans rendre fatale une valeur reservee non
+  nulle que Tshark sait encore dissecter. L'index reste numerique et n'est pas
+  resolu contre les interfaces de la machine d'analyse.
 - Tests publics de conservation des identifiants, refus ferme des LINKTYPE non
   supportes, equivalence Ethernet IPv4/IPv6/VLAN/corruptions, erreurs Ethernet
   et VLAN tronquees, parite du dispatch instrumente, schema borrowed/owned et
@@ -76,6 +83,10 @@ decodeur SLL2 et a la fermeture du contrat d'erreur du sprint.
   vecteurs IPv6/ARP anonymises : endianness, zero-copy, valeurs futures,
   adresses absentes ou bornees, padding, schema borrowed/owned, erreurs L2 et
   degradation L3 exhaustive sous les tailles minimales IPv4/IPv6/ARP.
+- Tests SLL2 fondes sur un vecteur IPv4 anonymise valide avec Tshark et des
+  vecteurs IPv6/ARP/inconnu synthetiques : offsets, endianness, index
+  d'interface, reserved MBZ nul ou non nul, valeurs futures, zero-copy, schema,
+  troncatures L2/L3 et parite normale/instrumentee.
 
 ### Documentation
 

@@ -105,7 +105,7 @@ Current status on the development branch:
 | Native IEEE 802.11 | 105 | Modelled for CAPWAP inner flows; top-level decoder not yet supported |
 | Linux SLL v1 | 113 | Supported |
 | Bluetooth H4 with pseudo-header | 201 | Identified, explicitly unsupported |
-| Linux SLL v2 | 276 | Identified, explicitly unsupported for now |
+| Linux SLL v2 | 276 | Supported |
 | Any other value | Preserved as-is | `ParseError::UnsupportedLinkType` |
 
 An unsupported LINKTYPE is rejected before packet bytes are decoded. Unknown
@@ -124,6 +124,14 @@ an address longer than the eight-byte wire slot is reported as truncated rather
 than rejected. Use canonical `LinkType::LINUX_SLL` (113): the value 25 displayed
 by some Wireshark fields is an internal WTAP encapsulation identifier.
 
+Linux SLL v2 independently decodes its 20-byte header and additionally keeps
+the numeric capture-machine interface index and the reserved-MBZ field. A
+non-zero reserved value is preserved and reported by `reserved_is_zero()`
+rather than discarding an otherwise decodable packet, matching Tshark's
+tolerant dissection. Interface names are not resolved because they belong to
+the capture machine. Use canonical `LinkType::LINUX_SLL2` (276); Wireshark's
+current internal WTAP encapsulation identifier for this format is 210.
+
 Every parsed flow now carries a generic `LinkLayer`. Its common accessors do
 not assume Ethernet:
 
@@ -138,8 +146,8 @@ if let Some(ethernet) = flow.data_link.as_ethernet() {
 
 `network_payload()` returns the borrowed L3 slice. Format-specific views are
 explicit (`as_ethernet()`, `as_raw_ip()`, `as_linux_sll()`,
-`as_ieee80211()`), so RAW, SLL and future SLL2 decoders cannot silently
-manufacture Ethernet fields.
+`as_linux_sll2()`, `as_ieee80211()`), so RAW and both SLL formats cannot
+silently manufacture Ethernet fields.
 
 ## Main API
 
@@ -195,6 +203,7 @@ serialized):
 - VLAN 802.1Q
 - RAW IPv4/IPv6 (`LINKTYPE_RAW`)
 - Linux cooked capture v1 (`LINKTYPE_LINUX_SLL`)
+- Linux cooked capture v2 (`LINKTYPE_LINUX_SLL2`)
 - MAC addresses and internal OUI resolution
 - Native IEEE 802.11 representation for CAPWAP inner flows (not yet a
   top-level LINKTYPE decoder)

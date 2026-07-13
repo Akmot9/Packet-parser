@@ -5,12 +5,14 @@
 
 mod ethernet;
 mod linux_sll;
+mod linux_sll2;
 mod raw_ip;
 
 use crate::{LinkLayer, LinkType, NetworkProtocol, ParseError};
 
 use ethernet::EthernetDecoder;
 use linux_sll::LinuxSllDecoder;
+use linux_sll2::LinuxSll2Decoder;
 use raw_ip::RawIpDecoder;
 
 #[derive(Clone, Copy)]
@@ -18,6 +20,7 @@ enum DecoderKind {
     Ethernet,
     RawIp,
     LinuxSll,
+    LinuxSll2,
 }
 
 /// Format-neutral output consumed by the shared L3/L4/L7 pipeline.
@@ -48,6 +51,7 @@ const fn decoder_for(link_type: LinkType) -> Option<DecoderKind> {
         LinkType::ETHERNET => Some(DecoderKind::Ethernet),
         LinkType::RAW => Some(DecoderKind::RawIp),
         LinkType::LINUX_SLL => Some(DecoderKind::LinuxSll),
+        LinkType::LINUX_SLL2 => Some(DecoderKind::LinuxSll2),
         _ => None,
     }
 }
@@ -69,6 +73,7 @@ fn decode_with<'a>(kind: DecoderKind, bytes: &'a [u8]) -> Result<DecodedLink<'a>
         DecoderKind::Ethernet => EthernetDecoder::decode(bytes),
         DecoderKind::RawIp => RawIpDecoder::decode(bytes),
         DecoderKind::LinuxSll => LinuxSllDecoder::decode(bytes),
+        DecoderKind::LinuxSll2 => LinuxSll2Decoder::decode(bytes),
     }
 }
 

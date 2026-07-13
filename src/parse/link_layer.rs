@@ -54,6 +54,9 @@ impl fmt::Display for NetworkProtocol {
 
 /// Open numeric packet-direction value carried by Linux cooked captures.
 ///
+/// SLL v1 stores this value in 16 bits; SLL2 stores one byte, widened into
+/// this shared representation. Values from either format remain numeric.
+///
 /// Values beyond the five historical libpcap constants are deliberately
 /// preserved so newer kernels do not become fatal parsing errors.
 #[repr(transparent)]
@@ -172,6 +175,62 @@ impl Hash for LinuxSllLink<'_> {
     }
 }
 
+/// LINKTYPE_LINUX_SLL2 metadata decoded from its 20-byte cooked header.
+///
+/// `reserved_mbz` is preserved even when non-zero so capture consumers can
+/// account for non-conforming input without losing the packet. Interface
+/// indices remain numeric because resolving a capture-machine interface name
+/// is outside this crate's packet-level contract.
+#[non_exhaustive]
+#[derive(Debug, Clone, Serialize, Eq)]
+pub struct LinuxSll2Link<'a> {
+    pub protocol: u16,
+    pub reserved_mbz: u16,
+    pub interface_index: u32,
+    pub hardware_type: LinuxArphrdType,
+    pub packet_type: LinuxCookedPacketType,
+    pub address_length: u8,
+    pub source_address: Option<&'a [u8]>,
+    #[serde(skip_serializing)]
+    pub payload: &'a [u8],
+}
+
+impl LinuxSll2Link<'_> {
+    /// Whether the field marked "must be zero" by the SLL2 format is valid.
+    pub const fn reserved_is_zero(&self) -> bool {
+        self.reserved_mbz == 0
+    }
+
+    /// Whether the declared address is longer than the eight-byte wire slot.
+    pub const fn address_is_truncated(&self) -> bool {
+        self.address_length > 8
+    }
+}
+
+impl PartialEq for LinuxSll2Link<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.protocol == other.protocol
+            && self.reserved_mbz == other.reserved_mbz
+            && self.interface_index == other.interface_index
+            && self.hardware_type == other.hardware_type
+            && self.packet_type == other.packet_type
+            && self.address_length == other.address_length
+            && self.source_address == other.source_address
+    }
+}
+
+impl Hash for LinuxSll2Link<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.protocol.hash(state);
+        self.reserved_mbz.hash(state);
+        self.interface_index.hash(state);
+        self.hardware_type.hash(state);
+        self.packet_type.hash(state);
+        self.address_length.hash(state);
+        self.source_address.hash(state);
+    }
+}
+
 /// LINKTYPE_RAW carries an IP packet directly and has no link-layer header.
 ///
 /// The version nibble is the only format-specific metadata. No MAC address or
@@ -270,6 +329,7 @@ pub enum LinkLayerKind<'a> {
     Ethernet(DataLink<'a>),
     RawIp(RawIpLink<'a>),
     LinuxSll(LinuxSllLink<'a>),
+    LinuxSll2(LinuxSll2Link<'a>),
     Ieee80211(Ieee80211Link<'a>),
 }
 
@@ -345,6 +405,16 @@ impl<'a> LinkLayer<'a> {
         }
     }
 
+    /// Wraps a decoder-validated LINKTYPE_LINUX_SLL2 header.
+    pub(crate) fn linux_sll2(frame: LinuxSll2Link<'a>) -> Self {
+        Self {
+            link_type: LinkType::LINUX_SLL2,
+            network_protocol: NetworkProtocol::from_link_protocol(frame.protocol),
+            network_payload: frame.payload,
+            kind: LinkLayerKind::LinuxSll2(frame),
+        }
+    }
+
     /// Wraps a decoded native IEEE 802.11 frame without inventing Ethernet.
     pub fn ieee80211(frame: Ieee80211Link<'a>) -> Self {
         Self {
@@ -376,6 +446,7 @@ impl<'a> LinkLayer<'a> {
             LinkLayerKind::Ethernet(frame) => Some(frame),
             LinkLayerKind::RawIp(_) => None,
             LinkLayerKind::LinuxSll(_) => None,
+            LinkLayerKind::LinuxSll2(_) => None,
             LinkLayerKind::Ieee80211(_) => None,
         }
     }
@@ -386,6 +457,7 @@ impl<'a> LinkLayer<'a> {
             LinkLayerKind::RawIp(details) => Some(details),
             LinkLayerKind::Ethernet(_)
             | LinkLayerKind::LinuxSll(_)
+            | LinkLayerKind::LinuxSll2(_)
             | LinkLayerKind::Ieee80211(_) => None,
         }
     }
@@ -394,9 +466,21 @@ impl<'a> LinkLayer<'a> {
     pub const fn as_linux_sll(&self) -> Option<&LinuxSllLink<'a>> {
         match &self.kind {
             LinkLayerKind::LinuxSll(details) => Some(details),
-            LinkLayerKind::Ethernet(_) | LinkLayerKind::RawIp(_) | LinkLayerKind::Ieee80211(_) => {
-                None
-            }
+            LinkLayerKind::Ethernet(_)
+            | LinkLayerKind::RawIp(_)
+            | LinkLayerKind::LinuxSll2(_)
+            | LinkLayerKind::Ieee80211(_) => None,
+        }
+    }
+
+    /// Linux cooked capture v2 details when decoded as LINKTYPE_LINUX_SLL2.
+    pub const fn as_linux_sll2(&self) -> Option<&LinuxSll2Link<'a>> {
+        match &self.kind {
+            LinkLayerKind::LinuxSll2(details) => Some(details),
+            LinkLayerKind::Ethernet(_)
+            | LinkLayerKind::RawIp(_)
+            | LinkLayerKind::LinuxSll(_)
+            | LinkLayerKind::Ieee80211(_) => None,
         }
     }
 
@@ -406,6 +490,7 @@ impl<'a> LinkLayer<'a> {
             LinkLayerKind::Ethernet(_) => None,
             LinkLayerKind::RawIp(_) => None,
             LinkLayerKind::LinuxSll(_) => None,
+            LinkLayerKind::LinuxSll2(_) => None,
             LinkLayerKind::Ieee80211(frame) => Some(frame),
         }
     }
@@ -438,6 +523,16 @@ impl fmt::Display for LinkLayer<'_> {
                 details.hardware_type,
                 details.address_length,
                 details.protocol
+            ),
+            LinkLayerKind::LinuxSll2(details) => write!(
+                f,
+                "\n    Linux SLL2 Interface Index: {},\n    Packet Type: {},\n    Hardware Type: {},\n    Address Length: {},\n    Protocol: 0x{:04X},\n    Reserved MBZ: 0x{:04X}\n",
+                details.interface_index,
+                details.packet_type,
+                details.hardware_type,
+                details.address_length,
+                details.protocol,
+                details.reserved_mbz
             ),
             LinkLayerKind::Ieee80211(frame) => write!(
                 f,
@@ -574,6 +669,49 @@ mod tests {
             &second_payload,
         ));
         assert_ne!(first, different_direction);
+    }
+
+    #[test]
+    fn linux_sll2_flow_identity_keeps_interface_but_ignores_payload() {
+        let first_address = [1, 2, 3, 4];
+        let second_address = [1, 2, 3, 4];
+        let first_payload = [0x45, 1, 2];
+        let second_payload = [0x45, 9, 8, 7];
+        let first = LinkLayer::linux_sll2(LinuxSll2Link {
+            protocol: 0x0800,
+            reserved_mbz: 0,
+            interface_index: 7,
+            hardware_type: LinuxArphrdType::ETHERNET,
+            packet_type: LinuxCookedPacketType::HOST,
+            address_length: 4,
+            source_address: Some(&first_address),
+            payload: &first_payload,
+        });
+        let second = LinkLayer::linux_sll2(LinuxSll2Link {
+            protocol: 0x0800,
+            reserved_mbz: 0,
+            interface_index: 7,
+            hardware_type: LinuxArphrdType::ETHERNET,
+            packet_type: LinuxCookedPacketType::HOST,
+            address_length: 4,
+            source_address: Some(&second_address),
+            payload: &second_payload,
+        });
+
+        assert_eq!(first, second);
+        assert_eq!(hash_of(&first), hash_of(&second));
+
+        let different_interface = LinkLayer::linux_sll2(LinuxSll2Link {
+            protocol: 0x0800,
+            reserved_mbz: 0,
+            interface_index: 8,
+            hardware_type: LinuxArphrdType::ETHERNET,
+            packet_type: LinuxCookedPacketType::HOST,
+            address_length: 4,
+            source_address: Some(&second_address),
+            payload: &second_payload,
+        });
+        assert_ne!(first, different_interface);
     }
 
     #[test]
