@@ -192,11 +192,18 @@ Avant publication :
 
 ### Phase 4 - Ajouter Linux SLL et SLL2
 
-- [ ] Implementer les deux formats dans des modules distincts.
-- [ ] Exposer leurs champs utiles sans les convertir en faux Ethernet.
-- [ ] Router IPv4, IPv6, ARP et protocole inconnu correctement.
-- [ ] Couvrir les tailles minimales, champs invalides et payloads tronques.
-- [ ] Ajouter des fixtures minimales, synthetiques et anonymisees.
+- [x] Implementer Linux SLL v1 dans un module distinct.
+- [ ] Implementer Linux SLL2 dans un module distinct.
+- [x] Exposer les champs utiles de SLL v1 sans les convertir en faux Ethernet.
+- [ ] Exposer les champs utiles de SLL2 sans les convertir en faux Ethernet.
+- [x] Router SLL v1 vers IPv4, IPv6, ARP ou un protocole inconnu.
+- [ ] Router SLL2 vers IPv4, IPv6, ARP ou un protocole inconnu.
+- [x] Couvrir les tailles minimales, valeurs futures et payloads tronques de
+  SLL v1.
+- [ ] Couvrir les tailles minimales, champs reserves et payloads tronques de
+  SLL2.
+- [x] Ajouter des vecteurs SLL v1 minimaux, synthetiques et anonymises.
+- [ ] Ajouter une fixture ou des vecteurs SLL2 representatifs et anonymises.
 
 ### Phase 5 - Capacites, documentation et durcissement
 
@@ -208,7 +215,7 @@ Avant publication :
 - [ ] Completer `CHANGELOG.md` et preparer la version majeure.
 - [ ] Ajouter les cas multi-decodeur aux cibles de fuzzing.
 
-## Etat courant apres MW-03
+## Etat courant apres MW-04
 
 - [x] `LinkType(u32)` ouvert introduit dans le worktree.
 - [x] Entree explicite `parse(LinkType, &[u8])` introduite.
@@ -221,8 +228,8 @@ Avant publication :
   avec pseudo-en-tete et SLL2.
 - [x] Preflight `is_supported` et entree `parse_timed` exposes depuis le meme
   catalogue de decodeurs que le chemin normal.
-- [x] Refus ferme prouve : SLL, SLL2 ou une valeur inconnue ne retombent jamais
-  sur le decodeur Ethernet.
+- [x] Refus ferme prouve : SLL2, Bluetooth H4 ou une valeur inconnue ne
+  retombent jamais sur le decodeur Ethernet.
 - [x] Equivalence des erreurs Ethernet prouvee pour les longueurs 0 a 13.
 - [x] Modele de liaison generalise emprunte/owned, avec schema JSON commun.
 - [x] Ethernet utilise la sortie normalisee et le pipeline L3/L4/L7 commun.
@@ -237,7 +244,13 @@ Avant publication :
   marque corrompu au niveau Internet.
 - [x] Le chemin RAW normal et le chemin `parse_timing` sont fonctionnellement
   identiques sur les succes, corruptions L3 et erreurs fatales L2.
-- [ ] SLL et SLL2 : non commences.
+- [x] SLL v1 preserve son en-tete cooked, son adresse brute optionnelle et son
+  protocole, puis reutilise le pipeline reseau commun sans faux Ethernet.
+- [x] Les valeurs SLL v1 futures restent acceptables ; une longueur d'adresse
+  superieure a huit est preservee et explicitement signalee comme tronquee.
+- [x] Le chemin SLL v1 normal et le chemin `parse_timing` sont
+  fonctionnellement identiques sur les succes, corruptions L3 et erreurs L2.
+- [ ] SLL2 : non commence.
 
 Ces cases ne remplacent pas les validations de la Definition de termine.
 
@@ -353,6 +366,57 @@ valider le parsing structurel, pas une future verification des checksums. Les
 cibles fuzz compilent, mais leur corpus multi-decodeur sera complete en phase
 5.
 
+### MW-04 - Decodage LINKTYPE_LINUX_SLL v1 (2026-07-13)
+
+Statut : valide localement dans une copie propre de `2f2b72c` contenant
+uniquement ce micro-win. Les modifications concurrentes de
+`src/parse/mod.rs` et `src/checks/application/quic.rs` sont explicitement
+exclues de ce jalon et de son commit.
+
+- [x] Le catalogue active `LINKTYPE_LINUX_SLL` (`113`) et decode exactement
+  son en-tete fixe de 16 octets en big-endian.
+- [x] `LinuxSllLink` preserve les valeurs numeriques de type de paquet,
+  ARPHRD, longueur d'adresse et protocole sans fabriquer de MAC, de
+  destination ou d'EtherType.
+- [x] L'adresse est optionnelle et empruntee directement depuis l'en-tete. Une
+  longueur declaree superieure aux huit octets disponibles reste preservee,
+  expose les huit octets capturables et active `address_is_truncated()`.
+- [x] IPv4, IPv6, ARP et Profinet reutilisent le pipeline reseau commun ; un
+  protocole inconnu reste un flux L2 propre avec sa valeur brute.
+- [x] Un en-tete de moins de 16 octets produit une erreur L2 structuree. Un
+  protocole reseau reconnu avec un payload tronque conserve SLL et produit un
+  flux partiel marque corrompu au niveau Internet.
+- [x] Les vues empruntee et owned partagent le meme schema JSON ; adresse et
+  payload prouvent le comportement zero-copy attendu, et `parse_timing` reste
+  fonctionnellement equivalent.
+- [x] Un paquet loopback reel, non sensible, est extrait de la fixture Sonar.
+  Les vecteurs IPv6, ARP, protocole inconnu et valeurs futures sont
+  synthetiques ou anonymises ; le lecteur PCAPNG reste hors de la crate.
+
+Validations du micro-win dans la copie propre :
+
+- `cargo test` : 654 tests unitaires, 20 tests d'API publique et 13 doctests ;
+- `cargo test --features parse_timing` : 663 tests unitaires, 26 tests d'API
+  publique et 13 doctests ;
+- `cargo test --workspace --all-targets --all-features` : les 663 tests
+  unitaires, 26 tests d'API publique, binaires et exemples du workspace sont
+  valides ;
+- `cargo test --doc --all-features` : 13 doctests valides ;
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` :
+  aucune alerte ;
+- `cargo check --manifest-path fuzz/Cargo.toml --all-targets` : les trois
+  cibles fuzz existantes compilent avec le decodeur SLL v1 ;
+- `cargo fmt --all -- --check` et `git diff --check` : valides.
+
+Limites volontaires du jalon : SLL2 reste non supporte et aucune fixture SLL2
+n'est encore disponible. Les variantes VLAN, Netlink et les dissections
+dependant d'un ARPHRD precis restent hors perimetre ; leurs valeurs sont
+cependant preservees. Les troncatures SLL v1 sont couvertes par des vecteurs
+synthetiques, car la fixture fournie ne contient aucun paquet tronque. Le `25`
+affiche par les outils Wireshark est leur identifiant d'encapsulation interne ;
+l'API de la crate conserve le LINKTYPE canonique `113`. Le contrat d'erreur
+Ethernet final et le corpus fuzz multi-decodeur restent a terminer.
+
 ## Definition de termine
 
 - [x] Aucun chemin de parsing ne suppose Ethernet sans le demander
@@ -390,9 +454,9 @@ cibles fuzz compilent, mais leur corpus multi-decodeur sera complete en phase
 
 ## Regle de livraison
 
-Ne pas publier la nouvelle API tant que SLL et SLL2 ne ferment pas la matrice
-requise par Sonar, que le contrat d'erreur L2 final n'est pas applique de facon
+Ne pas publier la nouvelle API tant que SLL2 ne ferme pas la matrice requise
+par Sonar, que le contrat d'erreur L2 final n'est pas applique de facon
 coherente et que les cibles de fuzzing ne couvrent pas les decodeurs ajoutes.
-Ethernet et RAW prouvent desormais que le pipeline et le modele sont
+Ethernet, RAW et SLL v1 prouvent desormais que le pipeline et le modele sont
 extensibles ; les micro-wins suivants doivent completer la couverture sans
-regression de ces deux chemins.
+regression de ces trois chemins.

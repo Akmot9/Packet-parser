@@ -103,7 +103,7 @@ Current status on the development branch:
 | Ethernet | 1 | Supported |
 | RAW IP | 101 | Supported for IPv4 and IPv6 |
 | Native IEEE 802.11 | 105 | Modelled for CAPWAP inner flows; top-level decoder not yet supported |
-| Linux SLL v1 | 113 | Identified, explicitly unsupported for now |
+| Linux SLL v1 | 113 | Supported |
 | Bluetooth H4 with pseudo-header | 201 | Identified, explicitly unsupported |
 | Linux SLL v2 | 276 | Identified, explicitly unsupported for now |
 | Any other value | Preserved as-is | `ParseError::UnsupportedLinkType` |
@@ -116,6 +116,13 @@ For RAW IP, an empty packet or a version nibble other than 4/6 returns a
 structured `InvalidLinkLayer(LinkLayerError)`. Once IPv4 or IPv6 is identified,
 an invalid or truncated IP header remains a successful partial flow with
 `corrupted: Internet`; the link layer and its accounting are preserved.
+
+Linux SLL v1 decodes its 16-byte cooked header in network byte order and keeps
+the packet type, raw ARPHRD hardware type, declared address length, available
+source-address bytes and protocol value. Unknown numeric values are preserved;
+an address longer than the eight-byte wire slot is reported as truncated rather
+than rejected. Use canonical `LinkType::LINUX_SLL` (113): the value 25 displayed
+by some Wireshark fields is an internal WTAP encapsulation identifier.
 
 Every parsed flow now carries a generic `LinkLayer`. Its common accessors do
 not assume Ethernet:
@@ -130,8 +137,9 @@ if let Some(ethernet) = flow.data_link.as_ethernet() {
 ```
 
 `network_payload()` returns the borrowed L3 slice. Format-specific views are
-explicit (`as_ethernet()`, `as_raw_ip()`, `as_ieee80211()`), so RAW and future
-SLL/SLL2 decoders cannot silently manufacture Ethernet fields.
+explicit (`as_ethernet()`, `as_raw_ip()`, `as_linux_sll()`,
+`as_ieee80211()`), so RAW, SLL and future SLL2 decoders cannot silently
+manufacture Ethernet fields.
 
 ## Main API
 
@@ -186,6 +194,7 @@ serialized):
 - Ethernet II
 - VLAN 802.1Q
 - RAW IPv4/IPv6 (`LINKTYPE_RAW`)
+- Linux cooked capture v1 (`LINKTYPE_LINUX_SLL`)
 - MAC addresses and internal OUI resolution
 - Native IEEE 802.11 representation for CAPWAP inner flows (not yet a
   top-level LINKTYPE decoder)

@@ -28,6 +28,18 @@ pub enum NetworkProtocol {
     Other(u16),
 }
 
+impl NetworkProtocol {
+    pub(crate) const fn from_link_protocol(protocol: u16) -> Self {
+        match protocol {
+            0x0800 => Self::Ipv4,
+            0x86dd => Self::Ipv6,
+            0x0806 => Self::Arp,
+            0x8892 => Self::Profinet,
+            other => Self::Other(other),
+        }
+    }
+}
+
 impl fmt::Display for NetworkProtocol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -37,6 +49,126 @@ impl fmt::Display for NetworkProtocol {
             Self::Profinet => f.write_str("Profinet"),
             Self::Other(value) => write!(f, "0x{value:04X}"),
         }
+    }
+}
+
+/// Open numeric packet-direction value carried by Linux cooked captures.
+///
+/// Values beyond the five historical libpcap constants are deliberately
+/// preserved so newer kernels do not become fatal parsing errors.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct LinuxCookedPacketType(pub u16);
+
+impl LinuxCookedPacketType {
+    pub const HOST: Self = Self(0);
+    pub const BROADCAST: Self = Self(1);
+    pub const MULTICAST: Self = Self(2);
+    pub const OTHER_HOST: Self = Self(3);
+    pub const OUTGOING: Self = Self(4);
+
+    pub const fn name(self) -> Option<&'static str> {
+        match self {
+            Self::HOST => Some("Host"),
+            Self::BROADCAST => Some("Broadcast"),
+            Self::MULTICAST => Some("Multicast"),
+            Self::OTHER_HOST => Some("Other host"),
+            Self::OUTGOING => Some("Outgoing"),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for LinuxCookedPacketType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.name() {
+            Some(name) => write!(f, "{name} ({})", self.0),
+            None => write!(f, "Unknown ({})", self.0),
+        }
+    }
+}
+
+/// Open numeric ARPHRD hardware type carried by Linux cooked captures.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct LinuxArphrdType(pub u16);
+
+impl LinuxArphrdType {
+    pub const ETHERNET: Self = Self(1);
+    pub const LOOPBACK: Self = Self(772);
+}
+
+impl fmt::Display for LinuxArphrdType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Self::ETHERNET => write!(f, "Ethernet ({})", self.0),
+            Self::LOOPBACK => write!(f, "Loopback ({})", self.0),
+            _ => write!(f, "ARPHRD {}", self.0),
+        }
+    }
+}
+
+/// LINKTYPE_LINUX_SLL (v1) metadata decoded from its 16-byte cooked header.
+///
+/// `source_address` contains the bytes available in the fixed eight-byte wire
+/// slot, limited by `address_length`. If the declared length is greater than
+/// eight, the declaration is preserved and [`Self::address_is_truncated`]
+/// reports that only the first eight bytes can exist in this format.
+#[non_exhaustive]
+#[derive(Debug, Clone, Serialize, Eq)]
+pub struct LinuxSllLink<'a> {
+    pub packet_type: LinuxCookedPacketType,
+    pub hardware_type: LinuxArphrdType,
+    pub address_length: u16,
+    pub source_address: Option<&'a [u8]>,
+    pub protocol: u16,
+    #[serde(skip_serializing)]
+    pub payload: &'a [u8],
+}
+
+impl<'a> LinuxSllLink<'a> {
+    pub(crate) const fn new(
+        packet_type: LinuxCookedPacketType,
+        hardware_type: LinuxArphrdType,
+        address_length: u16,
+        source_address: Option<&'a [u8]>,
+        protocol: u16,
+        payload: &'a [u8],
+    ) -> Self {
+        Self {
+            packet_type,
+            hardware_type,
+            address_length,
+            source_address,
+            protocol,
+            payload,
+        }
+    }
+
+    pub const fn address_is_truncated(&self) -> bool {
+        self.address_length > 8
+    }
+}
+
+impl PartialEq for LinuxSllLink<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.packet_type == other.packet_type
+            && self.hardware_type == other.hardware_type
+            && self.address_length == other.address_length
+            && self.source_address == other.source_address
+            && self.protocol == other.protocol
+    }
+}
+
+impl Hash for LinuxSllLink<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.packet_type.hash(state);
+        self.hardware_type.hash(state);
+        self.address_length.hash(state);
+        self.source_address.hash(state);
+        self.protocol.hash(state);
     }
 }
 
@@ -124,13 +256,7 @@ impl Hash for Ieee80211Link<'_> {
 
 impl From<Ethertype> for NetworkProtocol {
     fn from(ethertype: Ethertype) -> Self {
-        match ethertype.0 {
-            0x0800 => Self::Ipv4,
-            0x86dd => Self::Ipv6,
-            0x0806 => Self::Arp,
-            0x8892 => Self::Profinet,
-            other => Self::Other(other),
-        }
+        Self::from_link_protocol(ethertype.0)
     }
 }
 
@@ -143,6 +269,7 @@ impl From<Ethertype> for NetworkProtocol {
 pub enum LinkLayerKind<'a> {
     Ethernet(DataLink<'a>),
     RawIp(RawIpLink<'a>),
+    LinuxSll(LinuxSllLink<'a>),
     Ieee80211(Ieee80211Link<'a>),
 }
 
@@ -208,6 +335,16 @@ impl<'a> LinkLayer<'a> {
         Self::raw_ip(NetworkProtocol::Ipv6, 6, payload)
     }
 
+    /// Wraps a decoder-validated LINKTYPE_LINUX_SLL v1 header.
+    pub(crate) fn linux_sll(frame: LinuxSllLink<'a>) -> Self {
+        Self {
+            link_type: LinkType::LINUX_SLL,
+            network_protocol: NetworkProtocol::from_link_protocol(frame.protocol),
+            network_payload: frame.payload,
+            kind: LinkLayerKind::LinuxSll(frame),
+        }
+    }
+
     /// Wraps a decoded native IEEE 802.11 frame without inventing Ethernet.
     pub fn ieee80211(frame: Ieee80211Link<'a>) -> Self {
         Self {
@@ -238,6 +375,7 @@ impl<'a> LinkLayer<'a> {
         match &self.kind {
             LinkLayerKind::Ethernet(frame) => Some(frame),
             LinkLayerKind::RawIp(_) => None,
+            LinkLayerKind::LinuxSll(_) => None,
             LinkLayerKind::Ieee80211(_) => None,
         }
     }
@@ -246,7 +384,19 @@ impl<'a> LinkLayer<'a> {
     pub const fn as_raw_ip(&self) -> Option<&RawIpLink<'a>> {
         match &self.kind {
             LinkLayerKind::RawIp(details) => Some(details),
-            LinkLayerKind::Ethernet(_) | LinkLayerKind::Ieee80211(_) => None,
+            LinkLayerKind::Ethernet(_)
+            | LinkLayerKind::LinuxSll(_)
+            | LinkLayerKind::Ieee80211(_) => None,
+        }
+    }
+
+    /// Linux cooked capture v1 details when decoded as LINKTYPE_LINUX_SLL.
+    pub const fn as_linux_sll(&self) -> Option<&LinuxSllLink<'a>> {
+        match &self.kind {
+            LinkLayerKind::LinuxSll(details) => Some(details),
+            LinkLayerKind::Ethernet(_) | LinkLayerKind::RawIp(_) | LinkLayerKind::Ieee80211(_) => {
+                None
+            }
         }
     }
 
@@ -255,6 +405,7 @@ impl<'a> LinkLayer<'a> {
         match &self.kind {
             LinkLayerKind::Ethernet(_) => None,
             LinkLayerKind::RawIp(_) => None,
+            LinkLayerKind::LinuxSll(_) => None,
             LinkLayerKind::Ieee80211(frame) => Some(frame),
         }
     }
@@ -279,6 +430,14 @@ impl fmt::Display for LinkLayer<'_> {
                 f,
                 "\n    RAW IP Version: {},\n    Protocol: {}\n",
                 details.ip_version, self.network_protocol
+            ),
+            LinkLayerKind::LinuxSll(details) => write!(
+                f,
+                "\n    Linux SLL Packet Type: {},\n    Hardware Type: {},\n    Address Length: {},\n    Protocol: 0x{:04X}\n",
+                details.packet_type,
+                details.hardware_type,
+                details.address_length,
+                details.protocol
             ),
             LinkLayerKind::Ieee80211(frame) => write!(
                 f,
@@ -378,6 +537,43 @@ mod tests {
                 "link_details": { "ip_version": 4 }
             })
         );
+    }
+
+    #[test]
+    fn linux_sll_flow_identity_uses_metadata_but_ignores_payload() {
+        let first_address = [1, 2, 3, 4];
+        let second_address = [1, 2, 3, 4];
+        let first_payload = [0x45, 1, 2];
+        let second_payload = [0x45, 9, 8, 7];
+        let first = LinkLayer::linux_sll(LinuxSllLink::new(
+            LinuxCookedPacketType::HOST,
+            LinuxArphrdType::ETHERNET,
+            4,
+            Some(&first_address),
+            0x0800,
+            &first_payload,
+        ));
+        let second = LinkLayer::linux_sll(LinuxSllLink::new(
+            LinuxCookedPacketType::HOST,
+            LinuxArphrdType::ETHERNET,
+            4,
+            Some(&second_address),
+            0x0800,
+            &second_payload,
+        ));
+
+        assert_eq!(first, second);
+        assert_eq!(hash_of(&first), hash_of(&second));
+
+        let different_direction = LinkLayer::linux_sll(LinuxSllLink::new(
+            LinuxCookedPacketType::OUTGOING,
+            LinuxArphrdType::ETHERNET,
+            4,
+            Some(&second_address),
+            0x0800,
+            &second_payload,
+        ));
+        assert_ne!(first, different_direction);
     }
 
     #[test]

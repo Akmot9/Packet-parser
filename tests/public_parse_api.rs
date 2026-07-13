@@ -2,8 +2,8 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use packet_parser::parse::transport::protocols::TransportProtocol;
 use packet_parser::{
-    CorruptedLayerKind, LinkLayerError, LinkType, NetworkProtocol, PacketFlow, ParseError,
-    ParsedPacketError, is_supported, parse,
+    CorruptedLayerKind, LinkLayerError, LinkType, LinuxArphrdType, LinuxCookedPacketType,
+    NetworkProtocol, PacketFlow, ParseError, ParsedPacketError, is_supported, parse,
 };
 
 /// Packet #1 extracted from Sonar's `test_files/raw_ip.pcapng` fixture.
@@ -11,6 +11,14 @@ const RAW_IPV4_ICMP_FIXTURE: [u8; 28] = [
     0x45, 0x00, 0x00, 0x1c, 0x00, 0x01, 0x00, 0x00, 0x40, 0x01, 0x7c, 0xde, 0x0a, 0xc8, 0x00, 0x01,
     0x0a, 0xc8, 0x00, 0x02, 0x08, 0x00, 0xf7, 0xff, 0x00, 0x01, 0x00, 0x01,
 ];
+
+/// Packet #1 extracted from Sonar's `test_files/sll.pcapng` fixture.
+/// It contains only loopback addresses and is safe to keep as a regression vector.
+const SLL_IPV4_LOOPBACK_FIXTURE_HEX: &str = concat!(
+    "00000304000600000000000000000800",
+    "4500003464d540004006d7ec7f0000017f000001",
+    "c5dcb1a946153113a2f2baf280100040fe2800000101080a9704fe139704fa13"
+);
 
 fn ethernet_frame_with_unknown_ethertype() -> [u8; 14] {
     [
@@ -58,6 +66,44 @@ fn raw_ipv6_udp() -> Vec<u8> {
     ethernet_ipv6_udp()[14..].to_vec()
 }
 
+fn sll_ipv4_loopback_fixture() -> Vec<u8> {
+    hex::decode(SLL_IPV4_LOOPBACK_FIXTURE_HEX).expect("valid SLL fixture hex")
+}
+
+fn linux_sll_packet(
+    packet_type: u16,
+    hardware_type: u16,
+    address_length: u16,
+    source_address: &[u8],
+    protocol: u16,
+    payload: &[u8],
+) -> Vec<u8> {
+    assert_eq!(
+        source_address.len(),
+        usize::from(address_length).min(8),
+        "the synthetic address must match the bytes available in the SLL slot"
+    );
+
+    let mut packet = vec![0_u8; 16];
+    packet[0..2].copy_from_slice(&packet_type.to_be_bytes());
+    packet[2..4].copy_from_slice(&hardware_type.to_be_bytes());
+    packet[4..6].copy_from_slice(&address_length.to_be_bytes());
+    packet[6..6 + source_address.len()].copy_from_slice(source_address);
+    packet[14..16].copy_from_slice(&protocol.to_be_bytes());
+    packet.extend_from_slice(payload);
+    packet
+}
+
+fn synthetic_arp_request() -> [u8; 28] {
+    [
+        0x00, 0x01, 0x08, 0x00, 0x06, 0x04, 0x00, 0x01, // Ethernet/IPv4 request
+        0x02, 0x00, 0x00, 0x00, 0x00, 0x01, // sender address
+        192, 0, 2, 1, // TEST-NET-1 sender
+        0, 0, 0, 0, 0, 0, // unknown target address
+        198, 51, 100, 2, // TEST-NET-2 target
+    ]
+}
+
 fn assert_raw_link<'a>(
     bytes: &'a [u8],
     expected_protocol: NetworkProtocol,
@@ -74,6 +120,30 @@ fn assert_raw_link<'a>(
     assert_eq!(raw.payload, bytes);
     assert_eq!(raw.payload.as_ptr(), bytes.as_ptr());
     assert!(flow.data_link.as_ethernet().is_none());
+    assert!(flow.data_link.as_linux_sll().is_none());
+    assert!(flow.data_link.as_ieee80211().is_none());
+
+    flow
+}
+
+fn assert_sll_link<'a>(bytes: &'a [u8], expected_protocol: NetworkProtocol) -> PacketFlow<'a> {
+    let flow = parse(LinkType::LINUX_SLL, bytes).unwrap();
+    let sll = flow.data_link.as_linux_sll().expect("Linux SLL v1 view");
+
+    assert_eq!(flow.data_link.link_type(), LinkType::LINUX_SLL);
+    assert_eq!(flow.data_link.network_protocol(), expected_protocol);
+    assert_eq!(flow.data_link.network_payload(), &bytes[16..]);
+    assert_eq!(
+        flow.data_link.network_payload().as_ptr(),
+        bytes[16..].as_ptr()
+    );
+    assert_eq!(sll.payload, &bytes[16..]);
+    assert_eq!(sll.payload.as_ptr(), bytes[16..].as_ptr());
+    if let Some(address) = sll.source_address {
+        assert_eq!(address.as_ptr(), bytes[6..].as_ptr());
+    }
+    assert!(flow.data_link.as_ethernet().is_none());
+    assert!(flow.data_link.as_raw_ip().is_none());
     assert!(flow.data_link.as_ieee80211().is_none());
 
     flow
@@ -288,6 +358,186 @@ fn recognized_but_truncated_raw_ip_headers_degrade_at_l3() {
 }
 
 #[test]
+fn linux_sll_real_loopback_and_anonymized_protocols_use_the_shared_pipeline() {
+    let loopback_bytes = sll_ipv4_loopback_fixture();
+    let loopback = assert_sll_link(&loopback_bytes, NetworkProtocol::Ipv4);
+    let loopback_sll = loopback.data_link.as_linux_sll().unwrap();
+    assert_eq!(loopback_sll.packet_type, LinuxCookedPacketType::HOST);
+    assert_eq!(loopback_sll.hardware_type, LinuxArphrdType::LOOPBACK);
+    assert_eq!(loopback_sll.address_length, 6);
+    assert_eq!(loopback_sll.source_address, Some(&[0; 6][..]));
+    assert_eq!(loopback_sll.protocol, 0x0800);
+    assert!(!loopback_sll.address_is_truncated());
+    let loopback_internet = loopback.internet.as_ref().unwrap();
+    assert_eq!(
+        loopback_internet.source,
+        Some(IpAddr::V4(Ipv4Addr::LOCALHOST))
+    );
+    assert_eq!(
+        loopback_internet.destination,
+        Some(IpAddr::V4(Ipv4Addr::LOCALHOST))
+    );
+    assert_eq!(
+        loopback.transport.as_ref().unwrap().protocol,
+        TransportProtocol::Tcp
+    );
+    assert!(loopback.corrupted.is_none());
+
+    let ipv6_payload = raw_ipv6_udp();
+    let ipv6_bytes = linux_sll_packet(
+        LinuxCookedPacketType::OUTGOING.0,
+        LinuxArphrdType::ETHERNET.0,
+        6,
+        &[0x02, 0, 0, 0, 0, 1],
+        0x86dd,
+        &ipv6_payload,
+    );
+    let ipv6 = assert_sll_link(&ipv6_bytes, NetworkProtocol::Ipv6);
+    assert_eq!(ipv6.internet.as_ref().unwrap().protocol_name, "IPv6");
+    assert_eq!(
+        ipv6.transport.as_ref().unwrap().protocol,
+        TransportProtocol::Udp
+    );
+    assert!(ipv6.corrupted.is_none());
+
+    let arp_bytes = linux_sll_packet(
+        LinuxCookedPacketType::BROADCAST.0,
+        LinuxArphrdType::ETHERNET.0,
+        6,
+        &[0x02, 0, 0, 0, 0, 1],
+        0x0806,
+        &synthetic_arp_request(),
+    );
+    let arp = assert_sll_link(&arp_bytes, NetworkProtocol::Arp);
+    assert_eq!(arp.internet.as_ref().unwrap().protocol_name, "ARP");
+    assert!(arp.corrupted.is_none());
+
+    let unknown_bytes = linux_sll_packet(
+        LinuxCookedPacketType::MULTICAST.0,
+        LinuxArphrdType::ETHERNET.0,
+        6,
+        &[0x02, 0, 0, 0, 0, 1],
+        0x893a,
+        &[0xde, 0xad, 0xbe, 0xef],
+    );
+    let unknown = assert_sll_link(&unknown_bytes, NetworkProtocol::Other(0x893a));
+    assert!(unknown.internet.is_none());
+    assert!(unknown.transport.is_none());
+    assert!(unknown.application.is_none());
+    assert!(unknown.corrupted.is_none());
+}
+
+#[test]
+fn linux_sll_borrowed_and_owned_models_share_a_non_ethernet_schema() {
+    let bytes = sll_ipv4_loopback_fixture();
+    let flow = assert_sll_link(&bytes, NetworkProtocol::Ipv4);
+    let borrowed = serde_json::to_value(&flow.data_link).unwrap();
+    let owned_link = flow.to_owned().data_link;
+    let owned = serde_json::to_value(&owned_link).unwrap();
+
+    assert_eq!(borrowed, owned);
+    assert!(owned_link.as_linux_sll().is_some());
+    assert!(owned_link.as_ethernet().is_none());
+    assert_eq!(
+        borrowed,
+        serde_json::json!({
+            "link_type": 113,
+            "network_protocol": { "kind": "ipv4" },
+            "link_kind": "linux_sll",
+            "link_details": {
+                "packet_type": 0,
+                "hardware_type": 772,
+                "address_length": 6,
+                "source_address": [0, 0, 0, 0, 0, 0],
+                "protocol": 2048
+            }
+        })
+    );
+}
+
+#[test]
+fn every_short_linux_sll_header_is_a_structured_link_error() {
+    let bytes = sll_ipv4_loopback_fixture();
+
+    for len in 0..16 {
+        assert!(matches!(
+            parse(LinkType::LINUX_SLL, &bytes[..len]),
+            Err(ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+                link_type: LinkType::LINUX_SLL,
+                required: 16,
+                actual,
+            })) if actual == len
+        ));
+    }
+}
+
+#[test]
+fn linux_sll_preserves_future_values_and_optional_bounded_addresses() {
+    let oversized = linux_sll_packet(0x1234, 0xffff, 20, &[1, 2, 3, 4, 5, 6, 7, 8], 0x9999, &[]);
+    let oversized_flow = assert_sll_link(&oversized, NetworkProtocol::Other(0x9999));
+    let oversized_sll = oversized_flow.data_link.as_linux_sll().unwrap();
+    assert_eq!(oversized_sll.packet_type, LinuxCookedPacketType(0x1234));
+    assert_eq!(oversized_sll.hardware_type, LinuxArphrdType(0xffff));
+    assert_eq!(oversized_sll.address_length, 20);
+    assert_eq!(
+        oversized_sll.source_address,
+        Some(&[1, 2, 3, 4, 5, 6, 7, 8][..])
+    );
+    assert!(oversized_sll.address_is_truncated());
+
+    let absent = linux_sll_packet(
+        LinuxCookedPacketType::HOST.0,
+        LinuxArphrdType::LOOPBACK.0,
+        0,
+        &[],
+        0x893a,
+        &[],
+    );
+    let absent_flow = assert_sll_link(&absent, NetworkProtocol::Other(0x893a));
+    let absent_sll = absent_flow.data_link.as_linux_sll().unwrap();
+    assert_eq!(absent_sll.source_address, None);
+    assert!(!absent_sll.address_is_truncated());
+}
+
+#[test]
+fn recognized_but_truncated_sll_network_payload_degrades_at_l3() {
+    let ipv6 = raw_ipv6_udp();
+    let arp = synthetic_arp_request();
+
+    for (wire_protocol, expected, complete_payload, minimum_length) in [
+        (
+            0x0800,
+            NetworkProtocol::Ipv4,
+            RAW_IPV4_ICMP_FIXTURE.as_slice(),
+            20,
+        ),
+        (0x86dd, NetworkProtocol::Ipv6, ipv6.as_slice(), 40),
+        (0x0806, NetworkProtocol::Arp, arp.as_slice(), 28),
+    ] {
+        for len in 0..minimum_length {
+            let bytes = linux_sll_packet(
+                LinuxCookedPacketType::HOST.0,
+                LinuxArphrdType::LOOPBACK.0,
+                0,
+                &[],
+                wire_protocol,
+                &complete_payload[..len],
+            );
+            let flow = assert_sll_link(&bytes, expected);
+
+            assert!(flow.internet.is_none());
+            assert!(flow.transport.is_none());
+            assert!(flow.application.is_none());
+            let corrupted = flow
+                .corrupted
+                .expect("recognized but corrupt network header");
+            assert_eq!(corrupted.layer, CorruptedLayerKind::Internet);
+            assert!(!corrupted.error.is_empty());
+        }
+    }
+}
+
+#[test]
 fn unsupported_link_type_preserves_its_numeric_value() {
     let unsupported = LinkType(0xdead_beef);
 
@@ -302,11 +552,12 @@ fn unsupported_link_type_preserves_its_numeric_value() {
 #[test]
 fn unsupported_link_type_never_falls_back_to_ethernet() {
     let bytes = ethernet_frame_with_unknown_ethertype();
-    let error = parse(LinkType::LINUX_SLL, bytes.as_slice()).unwrap_err();
+    let error = parse(LinkType::BLUETOOTH_HCI_H4_WITH_PHDR, bytes.as_slice()).unwrap_err();
 
     assert!(matches!(
         error,
-        ParseError::UnsupportedLinkType(actual) if actual == LinkType::LINUX_SLL
+        ParseError::UnsupportedLinkType(actual)
+            if actual == LinkType::BLUETOOTH_HCI_H4_WITH_PHDR
     ));
 }
 
@@ -326,11 +577,25 @@ fn ethernet_bytes_labelled_as_raw_never_fall_back_to_ethernet() {
 }
 
 #[test]
+fn ethernet_bytes_labelled_as_linux_sll_never_fall_back_to_ethernet() {
+    let bytes = ethernet_frame_with_unknown_ethertype();
+
+    assert!(matches!(
+        parse(LinkType::LINUX_SLL, bytes.as_slice()),
+        Err(ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+            link_type: LinkType::LINUX_SLL,
+            required: 16,
+            actual: 14,
+        }))
+    ));
+}
+
+#[test]
 fn support_preflight_matches_the_decoder_catalogue() {
     assert!(is_supported(LinkType::ETHERNET));
     assert!(is_supported(LinkType::RAW));
     assert!(!is_supported(LinkType::IEEE802_11));
-    assert!(!is_supported(LinkType::LINUX_SLL));
+    assert!(is_supported(LinkType::LINUX_SLL));
     assert!(!is_supported(LinkType::LINUX_SLL2));
     assert!(!is_supported(LinkType::BLUETOOTH_HCI_H4_WITH_PHDR));
     assert!(!is_supported(LinkType(u32::MAX)));
@@ -427,6 +692,58 @@ fn explicit_timed_raw_errors_match_normal_errors() {
 
 #[cfg(feature = "parse_timing")]
 #[test]
+fn explicit_timed_linux_sll_api_matches_success_and_l3_corruption() {
+    use packet_parser::{parse_timed, timing::ParseTiming};
+
+    let success = sll_ipv4_loopback_fixture();
+    let corrupt = linux_sll_packet(
+        LinuxCookedPacketType::HOST.0,
+        LinuxArphrdType::LOOPBACK.0,
+        0,
+        &[],
+        0x0800,
+        &[0x45],
+    );
+
+    for bytes in [success.as_slice(), corrupt.as_slice()] {
+        let normal = parse(LinkType::LINUX_SLL, bytes).unwrap();
+        let mut timing = ParseTiming::default();
+        let timed = parse_timed(LinkType::LINUX_SLL, bytes, &mut timing).unwrap();
+
+        assert_eq!(normal, timed);
+        assert!(timing.total_ns >= timing.l2_ns);
+        assert!(timing.total_ns >= timing.l3_ns);
+        assert!(timing.total_ns >= timing.l4_ns);
+        assert!(timing.total_ns >= timing.l7_ns);
+    }
+}
+
+#[cfg(feature = "parse_timing")]
+#[test]
+fn explicit_timed_linux_sll_error_matches_the_normal_error() {
+    use packet_parser::{parse_timed, timing::ParseTiming};
+
+    let bytes = sll_ipv4_loopback_fixture();
+    let bytes = &bytes[..15];
+    let normal = parse(LinkType::LINUX_SLL, bytes).unwrap_err();
+    let mut timing = ParseTiming {
+        l2_ns: 1,
+        l3_ns: 1,
+        l4_ns: 1,
+        l7_ns: 1,
+        total_ns: 1,
+    };
+    let timed = parse_timed(LinkType::LINUX_SLL, bytes, &mut timing).unwrap_err();
+
+    assert_eq!(normal.to_string(), timed.to_string());
+    assert_eq!(timing.l3_ns, 0);
+    assert_eq!(timing.l4_ns, 0);
+    assert_eq!(timing.l7_ns, 0);
+    assert!(timing.total_ns >= timing.l2_ns);
+}
+
+#[cfg(feature = "parse_timing")]
+#[test]
 fn timed_api_rejects_unsupported_link_type_before_decoding() {
     use packet_parser::{parse_timed, timing::ParseTiming};
 
@@ -438,11 +755,17 @@ fn timed_api_rejects_unsupported_link_type_before_decoding() {
         l7_ns: 1,
         total_ns: 1,
     };
-    let error = parse_timed(LinkType::LINUX_SLL, bytes.as_slice(), &mut timing).unwrap_err();
+    let error = parse_timed(
+        LinkType::BLUETOOTH_HCI_H4_WITH_PHDR,
+        bytes.as_slice(),
+        &mut timing,
+    )
+    .unwrap_err();
 
     assert!(matches!(
         error,
-        ParseError::UnsupportedLinkType(actual) if actual == LinkType::LINUX_SLL
+        ParseError::UnsupportedLinkType(actual)
+            if actual == LinkType::BLUETOOTH_HCI_H4_WITH_PHDR
     ));
     assert_eq!(timing.l2_ns, 0);
     assert_eq!(timing.l3_ns, 0);

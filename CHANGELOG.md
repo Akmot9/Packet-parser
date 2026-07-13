@@ -6,9 +6,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Unreleased]
 
-Cette section prepare une version majeure 7.0.0. Le modele et le decodeur RAW
-sont maintenant disponibles, mais la publication reste bloquee jusqu'aux
-decodeurs SLL/SLL2 et a la fermeture du contrat d'erreur du sprint.
+Cette section prepare une version majeure 7.0.0. Les decodeurs RAW et Linux SLL
+v1 sont maintenant disponibles, mais la publication reste bloquee jusqu'au
+decodeur SLL2 et a la fermeture du contrat d'erreur du sprint.
 
 ### Rupture
 
@@ -57,6 +57,14 @@ decodeurs SLL/SLL2 et a la fermeture du contrat d'erreur du sprint.
 - `RawIpLink` / `RawIpLinkOwned` exposent la version IP et partagent le meme
   schema JSON. `LinkLayerError` conserve le LINKTYPE, les tailles de troncature
   et les versions IP invalides pour la comptabilite des echecs de liaison.
+- Decodeur `LINKTYPE_LINUX_SLL` (113) : l'en-tete cooked v1 de 16 octets est
+  decode en ordre reseau et son payload est transmis zero-copy au pipeline
+  commun. Les types de paquet, ARPHRD, longueurs d'adresse et protocoles
+  inconnus restent comptables sans etre convertis en faux Ethernet.
+- `LinuxSllLink` / `LinuxSllLinkOwned`, `LinuxCookedPacketType` et
+  `LinuxArphrdType` conservent les metadonnees SLL. Une longueur d'adresse
+  superieure au slot wire de huit octets est preservee avec une vue bornee et
+  un indicateur de troncature, conformement au comportement de Tshark.
 - Tests publics de conservation des identifiants, refus ferme des LINKTYPE non
   supportes, equivalence Ethernet IPv4/IPv6/VLAN/corruptions, erreurs Ethernet
   et VLAN tronquees, parite du dispatch instrumente, schema borrowed/owned et
@@ -64,6 +72,10 @@ decodeurs SLL/SLL2 et a la fermeture du contrat d'erreur du sprint.
 - Tests RAW issus d'un paquet IPv4/ICMP de la fixture Sonar et d'un vecteur
   IPv6/UDP, avec parite normale/instrumentee, zero-copy, erreurs structurees et
   degradation L3 pour chaque longueur inferieure aux headers IP minimaux.
+- Tests SLL issus d'un paquet IPv4/TCP loopback de la fixture Sonar et de
+  vecteurs IPv6/ARP anonymises : endianness, zero-copy, valeurs futures,
+  adresses absentes ou bornees, padding, schema borrowed/owned, erreurs L2 et
+  degradation L3 exhaustive sous les tailles minimales IPv4/IPv6/ARP.
 
 ### Documentation
 

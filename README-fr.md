@@ -102,7 +102,7 @@ Etat actuel de la branche de developpement:
 | Ethernet | 1 | Supporte |
 | RAW IP | 101 | Supporte pour IPv4 et IPv6 |
 | IEEE 802.11 natif | 105 | Modelise pour les flux internes CAPWAP ; decodeur de capture non disponible |
-| Linux SLL v1 | 113 | Identifie, explicitement non supporte pour le moment |
+| Linux SLL v1 | 113 | Supporte |
 | Bluetooth H4 avec pseudo-en-tete | 201 | Identifie, explicitement non supporte |
 | Linux SLL v2 | 276 | Identifie, explicitement non supporte pour le moment |
 | Toute autre valeur | Preservee telle quelle | `ParseError::UnsupportedLinkType` |
@@ -115,6 +115,14 @@ Pour RAW IP, un paquet vide ou un nibble de version different de 4/6 retourne
 un `InvalidLinkLayer(LinkLayerError)` structure. Des qu'IPv4 ou IPv6 est
 identifie, un header IP invalide ou tronque reste un flux partiel reussi avec
 `corrupted: Internet` ; la liaison et sa comptabilite sont conservees.
+
+Linux SLL v1 decode son en-tete cooked de 16 octets en ordre reseau et conserve
+le type de paquet, le type materiel ARPHRD brut, la longueur d'adresse declaree,
+les octets d'adresse source disponibles et la valeur du protocole. Les valeurs
+numeriques inconnues sont preservees ; une adresse plus longue que le slot wire
+de huit octets est signalee tronquee plutot que rejetee. Utiliser le
+`LinkType::LINUX_SLL` canonique (113) : la valeur 25 affichee par certains
+champs Wireshark est un identifiant d'encapsulation WTAP interne.
 
 Chaque flux parse transporte maintenant un `LinkLayer` generique. Ses
 accesseurs communs ne supposent pas Ethernet:
@@ -129,9 +137,9 @@ if let Some(ethernet) = flow.data_link.as_ethernet() {
 ```
 
 `network_payload()` retourne le slice L3 emprunte. Les vues propres au format
-sont explicites (`as_ethernet()`, `as_raw_ip()`, `as_ieee80211()`), afin que RAW
-et les futurs decodeurs SLL/SLL2 ne puissent jamais fabriquer silencieusement
-des champs Ethernet.
+sont explicites (`as_ethernet()`, `as_raw_ip()`, `as_linux_sll()`,
+`as_ieee80211()`), afin que RAW, SLL et le futur decodeur SLL2 ne puissent
+jamais fabriquer silencieusement des champs Ethernet.
 
 ## API principale
 
@@ -186,6 +194,7 @@ du payload ne sont pas serialises):
 - Ethernet II
 - VLAN 802.1Q
 - RAW IPv4/IPv6 (`LINKTYPE_RAW`)
+- Linux cooked capture v1 (`LINKTYPE_LINUX_SLL`)
 - Adresses MAC et resolution OUI interne
 - Representation IEEE 802.11 native pour les flux internes CAPWAP (pas encore
   de decodeur LINKTYPE de premier niveau)
