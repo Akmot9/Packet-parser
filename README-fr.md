@@ -20,7 +20,7 @@ decodees et laisse les couches suivantes a `None` quand c'est necessaire.
 
 ```toml
 [dependencies]
-packet_parser = "6.0.0"
+packet_parser = "7.0.0"
 ```
 
 Pour reproduire les exemples qui decodent de l'hexadecimal:
@@ -28,7 +28,7 @@ Pour reproduire les exemples qui decodent de l'hexadecimal:
 ```toml
 [dependencies]
 hex = "0.4"
-packet_parser = "6.0.0"
+packet_parser = "7.0.0"
 ```
 
 ## Exemple rapide
@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 Cet exemple utilise l'API de compatibilite Ethernet disponible dans la version
-6.0.0 publiee.
+7.0.0 publiee.
 
 ## API LINKTYPE explicite (non publiee, cible 7.0.0)
 

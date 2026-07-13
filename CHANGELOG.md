@@ -4,11 +4,11 @@ Tous les changements notables du projet seront documentes dans ce fichier.
 
 Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), avec des sections simples par type de changement.
 
-## [Unreleased]
+## [7.0.0] - 2026-07-13
 
-Cette section prepare une version majeure 7.0.0. Les decodeurs RAW, Linux SLL
-v1 et Linux SLL2 sont maintenant disponibles. La publication reste bloquee
-jusqu'a la fermeture du contrat d'erreur et du corpus fuzz du sprint.
+Version majeure : dispatch multi-LINKTYPE. Les decodeurs RAW, Linux SLL v1 et
+Linux SLL2 sont maintenant disponibles, avec le nouveau contrat d'erreur
+`ParseError` et les cibles fuzz du sprint.
 
 ### Rupture
 
