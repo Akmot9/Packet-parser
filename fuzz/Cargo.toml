@@ -33,3 +33,17 @@ path = "fuzz_targets/parse_application.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_linktype"
+path = "fuzz_targets/parse_linktype.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_quic"
+path = "fuzz_targets/parse_quic.rs"
+test = false
+doc = false
+bench = false
