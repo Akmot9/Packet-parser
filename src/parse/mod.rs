@@ -1502,4 +1502,140 @@ mod tests {
 
         assert_eq!(flow.flatten().len(), 2);
     }
+
+    fn sample_tlsv3_client_hello() -> Vec<u8> {
+        hex::decode(
+            "44152420a564e0d55e289bd40800450002398fa340004006d42cc0a801b523dfeeb2c40a01bb462b3ca1cdac346c8018003fd71a00000101080a7032e8b2c27b69501603010200010001fc0303900986c5d29c4072ed85dec8067e2dd2cd3e8f3ee763e4ae030986410e5b1e8d20046d7d07df148587017273a2b93bfd1f061ffc3a42066ce3bfccced6f2f7db2e0024130113021303c02fc02bc030c02cc027cca9cca8c009c013c00ac014009c009d002f00350100018f000000180016000013756e6c656173682e636f646569756d2e636f6d00170000ff01000100000a00080006001d00170018000b0002010000230000000d00140012040308040401050308050501080606010201003300260024001d002019e36da4275dad5fe69c13a2c7cd81991f0d4bd0fdfe0d7daa390876845db21b002d00020101002b00050403040303001500a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000029005b00260020432e29c0ce0e79f70e48238f7d619ec9e7e9c9def0f8df4b53c965d4935c443700a48f55003130966f759b98683dd7d866812f9e8d5af8ea8ad65045e20ec0e0f0d1af9b01b376c0b9d2c31667cb1dbd67bac24ccd500a",
+        )
+        .expect("invalid test hex fixture")
+    }
+
+    fn sample_tlsv3_application_data() -> Vec<u8> {
+        hex::decode(
+            "e0d55e289bd444152420a564080045000083e1e9400034068f9c23dfeeb2c0a801b501bbc40acdac4697462b43c080180147197500000101080ac27b6a397032e928170303004af6f608f9e2ea0f10ec3600a8b501d4bca660ede5ac4c38b8b96619074c3b9cdba55ba0322d268d134717f68c7494b039558dbb64a548beffc08fc6a7b004539850fd033556c0f7e30fc0",
+        )
+        .expect("invalid test hex fixture")
+    }
+
+    fn sample_tlsv3_change_cypher_spec() -> Vec<u8> {
+        hex::decode(
+            "44152420a564e0d55e289bd408004500054e8fa740004006d113c0a801b523dfeeb2c40a01bb462b3ea6cdac46978018004ada2f00000101080a7032e928c27b69c51403030001011703030045f3522c5e7f0066f2114d9cda08200e8004ab4479131d21652176e9568a0b104dc5574f2771c78fdaf2bb64b580aaaa7c4f7ef89276bd6a4c3c1efc7b88ec697e960a9a567017030304c5460dce3ff2ce077824a83d82032fcf94fef1108b8ac9845d639b20e6af2439407c8c7d550e2c51a208ab4616bf5b8e7aad5039fde57ffa99f69649ce6e4e3b624c3997b6a8dec02c3ea225d048c596212c926eaae010e7ebb5d3847e63f916d5b4c9244262c944b57882e69178eb4934e8e299aeeb9817d98d5a1f3528f8506fa7bb70ddc9b678c89d72ffb6b5632337364a6dce47fbb67aba30b77d416833fb3211211489693fef1322a7f97610eb9e98f7f61e2d909424871f11118ef484e64049cf742c085ef4e177003636c9fff0f553a35eb24ce815f8cf27d3c59317e87ab835669e3816bc23ff0041b08fd85ff5afbb4f938f60e98a761006664cdcef8200a04bd32463471e251b68598e597bacc87fec4bb310b01197484475d35f93ebb13ff5118720591055b38258504f20cc75ba4b7593f56f1a411d9a491cf256cf84ae8d43e1e047129033eeaf4740c982a63b2285c460b4688c5fd62247db4e1ff00681baa5e17a383029ecda528855641669117f214b9cd637b1d70309174de35e94947641b232b9ea0198b80a774d66b4a26bf0fab3d9c0d130fae20d3a95b359d4c07fac55fa6ca004e2cfd1a81dc02e8dbd7a2c91dbbbca2bbb8c516bc76bdb60f9a5b6d7608db947cb3427c233755d5461af1eee32a246101113539298ad1439ec217479670d3130efcf13bc7269d77e1fbdcf863258d8e35b102b9029de47dc0e2c086fd936ee18cb1336223f465a0da12890814c963602f3f5b2f5f4090d8c08b82e67db8b75f19e148839723506cc11fe0aa8715ca3408f8da802503a65fd87a603a4a66e7789ff00c1e01ade1b28b5dff848321ae1c08880e37fbdfc155b8c49c1354b1ef987c5de1bba12970f566815f0d796842a862de2705d63ad767fb8fb5e9b755f349676df8532ff7ca2fa5655be7bb93e730e2bc231720bdc88b4b4ae962b9426ef0b2146c1bbdd452701c2be368c67d79b9841959f4c5911070d77d4b009403209663f8c89632cf8bae415ebefc661b7a4260f970f8cc8066f092279cc8a757324adf6366367228b4b6b31e9eec45887ab7912f676d5c324d10b33bb5228b2238548e3d508ae92229ae85cea83adf8adcbe20d02c6dd10b0ffebd081a061327ea00a69ff9b3810b2c8bf79e6421a1dfefc0f46a59f3e59bee028947136edc9adce010bc38f2355ec5b38f7b9f8238f836f3293d61f6a2a70d72f9484ce145217f68a94870a30c576e960739f3dfcfb386f6384a65121a96f442b315d3e780edc806caa12c7f448ebf843467e599ee5507415d18092d9fc371bd22c42363da71d8ea9c0490bf4e4182ce466d7e53a18ced1323fbe8369b729d2bbfd306eb44cdb708473a35f2c0a8d1397e34f9887f739fd61c4c08df928b65653c782a25662bbfaa34a19f454002f388af266c961a9c1a2254a972dc34d0e0bf848727cea059f1eea86de5827387e995cbcfcf3834543ab423d3877fa73906c39ba6940616908c86bcb1ebe906e6c045af839cbc4ba9270bd385ae03ab1579a6e6191492adec54e7454cb27df74a722a9f83593fbbbec2eec077ad74b2f9e25b45d8ae633c2514b408b8df76bdfa9df5f40b67db488bda6a16cad6a9626138be623c792d8d22960749fab9b3a7dd80fb7190bd9ed19e6210d07f23b5c42cf4ebab8810c1b03b13a3badae91fd61a8e9f675999617ab672a4328b027fcb780230b475d",
+        )
+        .expect("invalid test hex fixture")
+    }
+
+    /// Trame réelle : ClientHello TLSv1.3 (trame 199 capturée sur eno1,
+    /// 192.168.1.181:50186 -> 35.223.238.178:443, SNI unleash.codeium.com).
+    /// Dissection tshark complète documentée en fin de
+    /// src/parse/application/protocols/tls.rs.
+    #[test]
+    fn packetflow_detects_tlsv3() {
+        use crate::parse::application::protocols::tls::{
+            TlsContentType, TlsVersion, parse_tls_records,
+        };
+
+        let packet = sample_tlsv3_client_hello();
+        let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
+
+        let internet = flow.internet.as_ref().expect("internet layer");
+        assert_eq!(internet.protocol_name, "IPv4");
+        assert_eq!(
+            internet.source,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 181)))
+        );
+        assert_eq!(
+            internet.destination,
+            Some(IpAddr::V4(Ipv4Addr::new(35, 223, 238, 178)))
+        );
+
+        let transport = flow.transport.as_ref().expect("transport layer");
+        assert_eq!(transport.protocol, TransportProtocol::Tcp);
+        assert_eq!(transport.source_port, Some(50186));
+        assert_eq!(transport.destination_port, Some(443));
+
+        let application = flow.application.as_ref().expect("application layer");
+        assert_eq!(application.application_protocol, "TLS");
+
+        // Le payload TCP est exactement un record TLS complet de 517 octets :
+        // 5 d'en-tête + 512 de ClientHello.
+        let payload = transport.payload.expect("tcp payload");
+        assert_eq!(payload.len(), 517);
+
+        let records = parse_tls_records(payload);
+        assert_eq!(records.len(), 1);
+        let record = &records[0];
+        assert_eq!(record.content_type, TlsContentType::Handshake);
+        // Legacy version du record layer : 0x0301. La version TLS 1.3 réelle
+        // se négocie dans l'extension supported_versions du ClientHello.
+        assert_eq!(record.version, TlsVersion { major: 3, minor: 1 });
+        assert_eq!(record.length, 512);
+        // Handshake Type: Client Hello (1), Length: 508.
+        assert_eq!(record.payload[0], 1);
+        assert_eq!(record.payload[1..4], [0x00, 0x01, 0xfc]);
+    }
+
+    /// Trame réelle : record TLSv1.3 Application Data (retour serveur,
+    /// 35.223.238.178:443 -> 192.168.1.181:50186, même session que la
+    /// trame 199).
+    #[test]
+    fn packetflow_detects_tlsv3_application_data() {
+        use crate::parse::application::protocols::tls::{
+            TlsContentType, TlsVersion, parse_tls_records,
+        };
+
+        let packet = sample_tlsv3_application_data();
+        let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
+
+        let transport = flow.transport.as_ref().expect("transport layer");
+        assert_eq!(transport.source_port, Some(443));
+        assert_eq!(transport.destination_port, Some(50186));
+
+        let application = flow.application.as_ref().expect("application layer");
+        assert_eq!(application.application_protocol, "TLS");
+
+        // Un seul record Application Data ; en TLS 1.3 les records chiffrés
+        // s'annoncent en version legacy 0x0303 (TLS 1.2).
+        let records = parse_tls_records(transport.payload.expect("tcp payload"));
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].content_type, TlsContentType::ApplicationData);
+        assert_eq!(records[0].version, TlsVersion { major: 3, minor: 3 });
+        assert_eq!(records[0].length, 74);
+    }
+
+    /// Trame réelle : fin de handshake client TLSv1.3 (même session que la
+    /// trame 199) — trois records consécutifs dans le même segment TCP :
+    /// ChangeCipherSpec puis deux Application Data (Finished chiffré + data).
+    #[test]
+    fn packetflow_detects_tlsv3_change_cypher_spec() {
+        use crate::parse::application::protocols::tls::{
+            TlsContentType, TlsVersion, parse_tls_records,
+        };
+
+        let packet = sample_tlsv3_change_cypher_spec();
+        let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
+
+        let transport = flow.transport.as_ref().expect("transport layer");
+        assert_eq!(transport.source_port, Some(50186));
+        assert_eq!(transport.destination_port, Some(443));
+
+        let application = flow.application.as_ref().expect("application layer");
+        assert_eq!(application.application_protocol, "TLS");
+
+        let records = parse_tls_records(transport.payload.expect("tcp payload"));
+        assert_eq!(records.len(), 3);
+
+        assert_eq!(records[0].content_type, TlsContentType::ChangeCipherSpec);
+        assert_eq!(records[0].length, 1);
+        assert_eq!(records[0].payload, &[0x01]);
+
+        assert_eq!(records[1].content_type, TlsContentType::ApplicationData);
+        assert_eq!(records[1].length, 69);
+
+        assert_eq!(records[2].content_type, TlsContentType::ApplicationData);
+        assert_eq!(records[2].length, 1221);
+
+        for record in &records {
+            assert_eq!(record.version, TlsVersion { major: 3, minor: 3 });
+        }
+    }
 }
