@@ -6,6 +6,39 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Unreleased]
 
+Cette section prepare une version majeure 7.0.0. L'API multi-LINKTYPE ne doit
+pas etre publiee tant que les modeles emprunte et owned restent Ethernet-only.
+
+### Rupture
+
+- L'erreur de parsing principale est renommee `ParseError` et devient
+  `#[non_exhaustive]`. `ParsedPacketError` reste un alias de compatibilite, mais
+  les `match` exhaustifs existants doivent ajouter un cas generique. Ce
+  changement est reserve a la version majeure 7.0.0.
+
+### Ajoute
+
+- `LinkType(u32)`, identifiant ouvert dans l'espace canonique `LINKTYPE_*`, avec
+  constantes Ethernet (1), RAW (101), Linux SLL (113), Bluetooth H4 avec
+  pseudo-en-tete (201) et Linux SLL2 (276). Les valeurs inconnues et leur
+  serialisation numerique sont preservees.
+- Entrees `parse(LinkType, &[u8])`, `is_supported(LinkType)` et, avec la feature
+  `parse_timing`, `parse_timed(...)`. Un LINKTYPE sans decodeur retourne
+  `ParseError::UnsupportedLinkType` avant toute interpretation des octets.
+- Catalogue interne de decodeurs avec une source unique pour le preflight et
+  les chemins normal/instrumente. Ethernet est le seul decodeur actif dans ce
+  premier jalon ; `PacketFlow::try_from` et `try_from_timed` restent ses
+  raccourcis de compatibilite.
+- Tests publics de conservation des identifiants, refus ferme des LINKTYPE non
+  supportes, equivalence Ethernet sur les trames trop courtes et parite du
+  dispatch instrumente.
+
+### Documentation
+
+- Distinction entre les `LINKTYPE_*` de fichiers et les `DLT_*` de captures
+  live, responsabilite de normalisation du lecteur, octets attendus par paquet
+  et matrice de support courante documentes dans les deux README.
+
 ## [6.0.0] - 2026-07-12
 
 Durcissement de la detection MQTT : sur le corpus de pcaps du depot, un

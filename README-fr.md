@@ -10,9 +10,9 @@ trame brute, commence a la couche liaison, puis remonte progressivement les
 couches internet, transport et application.
 
 Le coeur de l'API est `PacketFlow`: une representation empruntee, zero-copy, du
-paquet parse. Les protocoles inconnus ou non supportes ne font pas echouer tout
-le parsing: la crate conserve les couches deja decodees et laisse les couches
-suivantes a `None` quand c'est necessaire.
+paquet parse. Les protocoles inconnus ou non supportes au-dessus de la couche
+liaison ne font pas echouer tout le parsing: la crate conserve les couches deja
+decodees et laisse les couches suivantes a `None` quand c'est necessaire.
 
 ![Packet parser overview](images/packet_parser.png)
 
@@ -69,17 +69,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+Cet exemple utilise l'API de compatibilite Ethernet disponible dans la version
+6.0.0 publiee.
+
+## API LINKTYPE explicite (non publiee, cible 7.0.0)
+
+La branche de developpement introduit une entree explicite et fermee par defaut
+pour les lecteurs de captures:
+
+```rust
+use packet_parser::{LinkType, is_supported, parse};
+
+let link_type = LinkType::ETHERNET;
+if !is_supported(link_type) {
+    return Err(format!("LINKTYPE non supporte: {}", link_type).into());
+}
+
+let flow = parse(link_type, packet_bytes)?;
+```
+
+`packet_bytes` doit contenir exactement un paquet, sans en-tete d'enregistrement
+PCAP ou PCAPNG. `LinkType` utilise l'espace canonique `LINKTYPE_*` stocke dans
+les fichiers. Un adaptateur de capture live doit d'abord normaliser les valeurs
+`DLT_*` lorsque leur valeur numerique differe. Pour PCAPNG, le lecteur resout
+l'interface referencee par chaque paquet et transmet le LINKTYPE de cette
+interface.
+
+Etat actuel de la branche de developpement:
+
+| LINKTYPE | Valeur | Etat du decodeur |
+| --- | ---: | --- |
+| Ethernet | 1 | Supporte |
+| RAW IP | 101 | Identifie, explicitement non supporte pour le moment |
+| Linux SLL v1 | 113 | Identifie, explicitement non supporte pour le moment |
+| Bluetooth H4 avec pseudo-en-tete | 201 | Identifie, explicitement non supporte |
+| Linux SLL v2 | 276 | Identifie, explicitement non supporte pour le moment |
+| Toute autre valeur | Preservee telle quelle | `ParseError::UnsupportedLinkType` |
+
+Un LINKTYPE non supporte est refuse avant de decoder les octets du paquet. Les
+protocoles inconnus des couches superieures conservent le comportement gracieux
+`None`/`corrupted` decrit plus haut.
+
 ## API principale
 
 | Besoin | API |
 | --- | --- |
-| Parser une trame complete | `PacketFlow::try_from(&[u8])` |
+| Verifier la presence d'un decodeur (cible 7.0.0) | `is_supported(LinkType)` |
+| Parser un paquet avec un type de liaison explicite (cible 7.0.0) | `parse(LinkType, &[u8])` |
+| Parser Ethernet avec le raccourci de compatibilite | `PacketFlow::try_from(&[u8])` |
 | Parser seulement Ethernet/VLAN | `DataLink::try_from(&[u8])` |
 | Parser seulement L3 | `Internet::try_from(&[u8])` |
 | Parser seulement L4 | `Transport::try_from(&[u8])` ou `Transport::try_from_parts(...)` |
 | Detacher le resultat du buffer d'origine | `flow.to_owned()` |
 | Recuperer les flux encapsules | `flow.flatten()` |
-| Mesurer le temps de parsing par couche | `PacketFlow::try_from_timed(...)` avec la feature `parse_timing` |
+| Mesurer un LINKTYPE explicite (cible 7.0.0) | `parse_timed(...)` avec la feature `parse_timing` |
+| Mesurer Ethernet via l'API de compatibilite | `PacketFlow::try_from_timed(...)` avec la feature `parse_timing` |
 
 `PacketFlow` contient:
 
@@ -175,7 +219,7 @@ for level in flow.flatten() {
 | Feature | Effet |
 | --- | --- |
 | `doc-diagrams` | Active les diagrammes Rustdoc via `aquamarine` |
-| `parse_timing` | Expose `ParseTiming` et `PacketFlow::try_from_timed` |
+| `parse_timing` | Expose `ParseTiming`, `PacketFlow::try_from_timed` et, sur la branche de developpement, `parse_timed` |
 
 La feature `parse_timing` est faite pour les benchmarks. Le chemin normal
 `PacketFlow::try_from` ne mesure pas le temps de parsing.

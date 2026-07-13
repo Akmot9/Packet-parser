@@ -16,8 +16,20 @@ use internet::InternetError;
 use thiserror::Error;
 use transport::TransportError;
 
+use crate::LinkType;
+
+/// Error returned by the top-level packet parsing APIs.
+///
+/// The legacy variants remain available so that introducing explicit link
+/// types does not alter the behaviour of Ethernet parsing. New link decoders
+/// can add link-aware variants without forcing downstream exhaustive matches
+/// to change again.
 #[derive(Error, Debug)]
-pub enum ParsedPacketError {
+#[non_exhaustive]
+pub enum ParseError {
+    #[error("Unsupported link type: {0}")]
+    UnsupportedLinkType(LinkType),
+
     #[error("Packet too short: {0} bytes")]
     PacketTooShort(u8),
 
@@ -33,3 +45,6 @@ pub enum ParsedPacketError {
     #[error("Application layer error: {0}")]
     Application(#[from] ApplicationError),
 }
+
+/// Backward-compatible name for [`ParseError`].
+pub type ParsedPacketError = ParseError;

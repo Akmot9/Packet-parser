@@ -42,7 +42,7 @@ use transport::Transport;
 use transport::protocols::TransportProtocol;
 
 use crate::{
-    DataLink,
+    DataLink, LinkType, ParseError,
     errors::{ParsedPacketError, internet::InternetError, transport::TransportError},
     owned::PacketFlowOwned,
 };
@@ -50,8 +50,39 @@ use crate::{
 pub mod application;
 pub mod data_link;
 pub mod internet;
+mod link;
 pub mod transport;
 pub(crate) mod tunnel;
+
+/// Returns whether this build has a decoder for the canonical link type.
+///
+/// This can be used to reject an unsupported capture interface before reading
+/// or mutating packet-derived state.
+#[inline(always)]
+pub const fn is_supported(link_type: LinkType) -> bool {
+    link::is_supported(link_type)
+}
+
+/// Parses one packet using the decoder selected by its explicit link type.
+///
+/// [`LinkType`] uses canonical `LINKTYPE_*` values. The caller is responsible
+/// for mapping its capture source to that namespace and passing only packet
+/// bytes, without a PCAP or PCAPNG record header.
+#[inline(always)]
+pub fn parse(link_type: LinkType, bytes: &[u8]) -> Result<PacketFlow<'_>, ParseError> {
+    link::decode(link_type, bytes)
+}
+
+/// Timed counterpart of [`parse`], using the exact same link-type dispatcher.
+#[cfg(feature = "parse_timing")]
+#[inline(always)]
+pub fn parse_timed<'a>(
+    link_type: LinkType,
+    bytes: &'a [u8],
+    timing: &mut crate::timing::ParseTiming,
+) -> Result<PacketFlow<'a>, ParseError> {
+    link::decode_timed(link_type, bytes, timing)
+}
 
 /// Layer at which recognized-but-invalid bytes stopped the parsing.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash)]
@@ -130,11 +161,11 @@ pub struct PacketFlow<'a> {
 }
 
 impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
-    type Error = ParsedPacketError;
+    type Error = ParseError;
 
     #[inline(always)]
-    fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
-        Self::parse_impl(packets)
+    fn try_from(bytes: &'a [u8]) -> Result<Self, Self::Error> {
+        parse(LinkType::ETHERNET, bytes)
     }
 }
 
@@ -256,12 +287,6 @@ impl<'a> PacketFlow<'a> {
         out
     }
 
-    #[inline(always)]
-    fn parse_impl(packets: &'a [u8]) -> Result<Self, ParsedPacketError> {
-        let data_link = DataLink::try_from(packets)?;
-        Self::parse_layers(data_link, 0)
-    }
-
     /// Parses the internet layer from the data-link layer, dispatching on the
     /// EtherType. An unknown EtherType yields `(None, None)`; a known
     /// EtherType with a corrupt payload yields `(None, Some(corruption))` —
@@ -353,55 +378,35 @@ impl<'a> PacketFlow<'a> {
 
     #[cfg(feature = "parse_timing")]
     #[inline(always)]
-    fn parse_impl_timed(
-        packets: &'a [u8],
+    pub(crate) fn parse_layers_timed(
+        data_link: DataLink<'a>,
         timing: &mut crate::timing::ParseTiming,
     ) -> Result<Self, ParsedPacketError> {
         use crate::timing::{elapsed_ns, now};
 
-        let total_t0 = now();
+        let t0 = now();
+        let internet = Self::parse_l3(&data_link);
+        timing.l3_ns = elapsed_ns(t0);
+        let (internet, l3_corruption) = internet;
 
-        // Same layer functions as parse_layers(): the timed path returns
-        // exactly what the normal path returns (tunnels included) and only
-        // adds instrumentation around each layer.
-        let result = (|| {
-            let t0 = now();
-            let data_link = match DataLink::try_from(packets) {
-                Ok(data_link) => data_link,
-                Err(e) => {
-                    timing.l2_ns = elapsed_ns(t0);
-                    return Err(e.into());
-                }
-            };
-            timing.l2_ns = elapsed_ns(t0);
+        let t0 = now();
+        let (transport, l4_corruption) = Self::parse_l4(internet.as_ref());
+        timing.l4_ns = elapsed_ns(t0);
 
-            let t0 = now();
-            let internet = Self::parse_l3(&data_link);
-            timing.l3_ns = elapsed_ns(t0);
-            let (internet, l3_corruption) = internet;
+        // l7_ns includes tunnel detection and the recursive parsing of any
+        // encapsulated packet.
+        let t0 = now();
+        let (application, inner) = Self::parse_l7_and_inner(transport.as_ref(), 0);
+        timing.l7_ns = elapsed_ns(t0);
 
-            let t0 = now();
-            let (transport, l4_corruption) = Self::parse_l4(internet.as_ref());
-            timing.l4_ns = elapsed_ns(t0);
-
-            // l7_ns includes tunnel detection and the recursive parsing of
-            // any encapsulated packet.
-            let t0 = now();
-            let (application, inner) = Self::parse_l7_and_inner(transport.as_ref(), 0);
-            timing.l7_ns = elapsed_ns(t0);
-
-            Ok(PacketFlow {
-                data_link,
-                internet,
-                transport,
-                application,
-                inner,
-                corrupted: l3_corruption.or(l4_corruption),
-            })
-        })();
-
-        timing.total_ns = elapsed_ns(total_t0);
-        result
+        Ok(PacketFlow {
+            data_link,
+            internet,
+            transport,
+            application,
+            inner,
+            corrupted: l3_corruption.or(l4_corruption),
+        })
     }
 
     /// Parses a raw packet buffer into a [`PacketFlow`] and fills timing data.
@@ -413,11 +418,10 @@ impl<'a> PacketFlow<'a> {
     #[cfg(feature = "parse_timing")]
     #[inline(always)]
     pub fn try_from_timed(
-        packets: &'a [u8],
+        bytes: &'a [u8],
         timing: &mut crate::timing::ParseTiming,
-    ) -> Result<Self, ParsedPacketError> {
-        *timing = crate::timing::ParseTiming::default();
-        Self::parse_impl_timed(packets, timing)
+    ) -> Result<Self, ParseError> {
+        parse_timed(LinkType::ETHERNET, bytes, timing)
     }
 }
 
