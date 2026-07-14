@@ -1311,6 +1311,317 @@ mod tests {
         }
     }
 
+    /// Trames réelles : pcaps_exemple/sll.pcap (Linux cooked v1, capture
+    /// `tcpdump -i any`) — requêtes DNS vers 192.168.1.254:53 et
+    /// systemd-resolved (127.0.0.53). Trames 98 (IPv4, sortante, hatype
+    /// Ethernet), 96 (IPv6, sortante), 93 (IPv4 via loopback, hatype 772).
+    #[test]
+    fn sll_v1_real_capture_dispatches_ipv4_ipv6_and_loopback_to_dns() {
+        use crate::{LinuxArphrdType, LinuxCookedPacketType};
+        use std::net::Ipv6Addr;
+
+        struct Expected {
+            name: &'static str,
+            hex: &'static str,
+            packet_type: LinuxCookedPacketType,
+            hardware_type: LinuxArphrdType,
+            source_address: &'static [u8],
+            sll_protocol: u16,
+            source: IpAddr,
+            destination: IpAddr,
+            source_port: u16,
+        }
+
+        let frames = [
+            Expected {
+                name: "trame 98 (IPv4 sortante)",
+                hex: "000400010006e0d55e289bd4000008004500004c717200004011842bc0a801b5c0a801fe8ef100350038854d3a4d0100000100000000000107756e6c6561736807636f646569756d03636f6d000041000100002905c0000000000000",
+                packet_type: LinuxCookedPacketType::OUTGOING,
+                hardware_type: LinuxArphrdType::ETHERNET,
+                source_address: &[0xe0, 0xd5, 0x5e, 0x28, 0x9b, 0xd4],
+                sll_protocol: 0x0800,
+                source: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 181)),
+                destination: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 254)),
+                source_port: 36593,
+            },
+            Expected {
+                name: "trame 96 (IPv6 sortante)",
+                hex: "000400010006e0d55e289bd4000086dd600f037800381140200108613fc79b00d48220dc0d4c71e6200108613fc79b00461524fffe20a5648db30035003889c8dee70100000100000000000107756e6c6561736807636f646569756d03636f6d000041000100002905ac000000000000",
+                packet_type: LinuxCookedPacketType::OUTGOING,
+                hardware_type: LinuxArphrdType::ETHERNET,
+                source_address: &[0xe0, 0xd5, 0x5e, 0x28, 0x9b, 0xd4],
+                sll_protocol: 0x86dd,
+                source: IpAddr::V6(Ipv6Addr::new(
+                    0x2001, 0x0861, 0x3fc7, 0x9b00, 0xd482, 0x20dc, 0x0d4c, 0x71e6,
+                )),
+                destination: IpAddr::V6(Ipv6Addr::new(
+                    0x2001, 0x0861, 0x3fc7, 0x9b00, 0x4615, 0x24ff, 0xfe20, 0xa564,
+                )),
+                source_port: 36275,
+            },
+            Expected {
+                name: "trame 93 (loopback vers systemd-resolved)",
+                hex: "0000030400060000000000000000080045000041445540004011f8207f0000017f00003541470035002dfe74c1470100000100000000000007756e6c6561736807636f646569756d03636f6d0000410001",
+                packet_type: LinuxCookedPacketType::HOST,
+                hardware_type: LinuxArphrdType::LOOPBACK,
+                source_address: &[0, 0, 0, 0, 0, 0],
+                sll_protocol: 0x0800,
+                source: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                destination: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 53)),
+                source_port: 16711,
+            },
+        ];
+
+        for expected in &frames {
+            let name = expected.name;
+            let packet = hex::decode(expected.hex).expect("invalid test hex fixture");
+            let flow = parse(LinkType::LINUX_SLL, packet.as_slice()).unwrap();
+
+            let sll = flow
+                .data_link
+                .as_linux_sll()
+                .unwrap_or_else(|| panic!("{name}: lien SLL attendu"));
+            assert_eq!(flow.data_link.link_type(), LinkType::LINUX_SLL, "{name}");
+            assert_eq!(sll.packet_type, expected.packet_type, "{name}");
+            assert_eq!(sll.hardware_type, expected.hardware_type, "{name}");
+            assert_eq!(sll.address_length, 6, "{name}");
+            assert_eq!(sll.source_address, Some(expected.source_address), "{name}");
+            assert_eq!(sll.protocol, expected.sll_protocol, "{name}");
+
+            let internet = flow
+                .internet
+                .as_ref()
+                .unwrap_or_else(|| panic!("{name}: pas de L3"));
+            assert_eq!(internet.source, Some(expected.source), "{name}");
+            assert_eq!(internet.destination, Some(expected.destination), "{name}");
+
+            let transport = flow
+                .transport
+                .as_ref()
+                .unwrap_or_else(|| panic!("{name}: pas de L4"));
+            assert_eq!(transport.protocol, TransportProtocol::Udp, "{name}");
+            assert_eq!(transport.source_port, Some(expected.source_port), "{name}");
+            assert_eq!(transport.destination_port, Some(53), "{name}");
+
+            assert_eq!(
+                flow.application
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("{name}: pas de L7"))
+                    .application_protocol,
+                "DNS",
+                "{name} doit être détecté DNS"
+            );
+        }
+    }
+
+    /// Trame réelle : pcaps_exemple/sll.pcap, trame 1864 — requête ARP
+    /// « Who has 192.168.1.108? Tell 192.168.1.254 » vue à travers
+    /// l'en-tête cooked v1 (le padding d'adresse non nul du noyau ne doit
+    /// pas fuiter dans la vue de l'adresse).
+    #[test]
+    fn sll_v1_real_capture_dispatches_arp_without_transport() {
+        use crate::parse::internet::InternetDetails;
+        use crate::{LinuxArphrdType, LinuxCookedPacketType};
+
+        let packet = hex::decode(
+            "00000001000644152420a564742d0806000108000604000144152420a564c0a801fe000000000000c0a8016c00000000000000000000",
+        )
+        .expect("invalid test hex fixture");
+        let flow = parse(LinkType::LINUX_SLL, packet.as_slice()).unwrap();
+
+        let sll = flow.data_link.as_linux_sll().expect("lien SLL attendu");
+        assert_eq!(sll.packet_type, LinuxCookedPacketType::HOST);
+        assert_eq!(sll.hardware_type, LinuxArphrdType::ETHERNET);
+        // Le slot d'adresse sur le fil contient 44:15:24:20:a5:64 suivi de
+        // deux octets de padding non nuls (74:2d) : address_length = 6 doit
+        // borner la vue.
+        assert_eq!(
+            sll.source_address,
+            Some(&[0x44, 0x15, 0x24, 0x20, 0xa5, 0x64][..])
+        );
+        assert_eq!(sll.protocol, 0x0806);
+
+        let internet = flow.internet.as_ref().expect("pas de L3");
+        let InternetDetails::Arp(arp) = internet.details.as_ref().expect("détails ARP") else {
+            panic!("détails ARP attendus, obtenu {:?}", internet.details);
+        };
+        assert_eq!(arp.operation, 1);
+        assert_eq!(
+            arp.sender_hardware_addr,
+            [0x44, 0x15, 0x24, 0x20, 0xa5, 0x64]
+        );
+        assert_eq!(
+            internet.source,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 254)))
+        );
+        assert_eq!(
+            internet.destination,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 108)))
+        );
+
+        assert!(flow.transport.is_none());
+        assert!(flow.application.is_none());
+        assert!(flow.corrupted.is_none());
+    }
+
+    /// Trames réelles : pcaps_exemple/capture_sll2.pcap (Linux cooked v2,
+    /// capture dumpcap `-i any`) — requêtes DNS vers 192.168.1.254:53 et
+    /// systemd-resolved (127.0.0.53). Trames 87 (IPv4, sortante, ifindex 2),
+    /// 86 (IPv6, sortante, ifindex 2), 83 (IPv4 via loopback, hatype 772,
+    /// ifindex 1).
+    #[test]
+    fn sll2_real_capture_dispatches_ipv4_ipv6_and_loopback_to_dns() {
+        use crate::{LinuxArphrdType, LinuxCookedPacketType};
+        use std::net::Ipv6Addr;
+
+        struct Expected {
+            name: &'static str,
+            hex: &'static str,
+            sll_protocol: u16,
+            interface_index: u32,
+            packet_type: LinuxCookedPacketType,
+            hardware_type: LinuxArphrdType,
+            source_address: &'static [u8],
+            source: IpAddr,
+            destination: IpAddr,
+            source_port: u16,
+        }
+
+        let frames = [
+            Expected {
+                name: "trame 87 (IPv4 sortante)",
+                hex: "080000000000000200010406e0d55e289bd400004500004c6e84000040118719c0a801b5c0a801fed8e100350038854d0c5a01000001000000000001086163636f756e747306676f6f676c6503636f6d000041000100002905c0000000000000",
+                sll_protocol: 0x0800,
+                interface_index: 2,
+                packet_type: LinuxCookedPacketType::OUTGOING,
+                hardware_type: LinuxArphrdType::ETHERNET,
+                source_address: &[0xe0, 0xd5, 0x5e, 0x28, 0x9b, 0xd4],
+                source: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 181)),
+                destination: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 254)),
+                source_port: 55521,
+            },
+            Expected {
+                name: "trame 86 (IPv6 sortante)",
+                hex: "86dd00000000000200010406e0d55e289bd4000060073f1c00381140200108613fc79b00d48220dc0d4c71e6200108613fc79b00461524fffe20a56498140035003889c8575801000001000000000001086163636f756e747306676f6f676c6503636f6d000041000100002905ac000000000000",
+                sll_protocol: 0x86dd,
+                interface_index: 2,
+                packet_type: LinuxCookedPacketType::OUTGOING,
+                hardware_type: LinuxArphrdType::ETHERNET,
+                source_address: &[0xe0, 0xd5, 0x5e, 0x28, 0x9b, 0xd4],
+                source: IpAddr::V6(Ipv6Addr::new(
+                    0x2001, 0x0861, 0x3fc7, 0x9b00, 0xd482, 0x20dc, 0x0d4c, 0x71e6,
+                )),
+                destination: IpAddr::V6(Ipv6Addr::new(
+                    0x2001, 0x0861, 0x3fc7, 0x9b00, 0x4615, 0x24ff, 0xfe20, 0xa564,
+                )),
+                source_port: 38932,
+            },
+            Expected {
+                name: "trame 83 (loopback vers systemd-resolved)",
+                hex: "08000000000000010304000600000000000000004500004191e640004011aa8f7f0000017f000035aaf60035002dfe74136201000001000000000000086163636f756e747306676f6f676c6503636f6d0000410001",
+                sll_protocol: 0x0800,
+                interface_index: 1,
+                packet_type: LinuxCookedPacketType::HOST,
+                hardware_type: LinuxArphrdType::LOOPBACK,
+                source_address: &[0, 0, 0, 0, 0, 0],
+                source: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                destination: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 53)),
+                source_port: 43766,
+            },
+        ];
+
+        for expected in &frames {
+            let name = expected.name;
+            let packet = hex::decode(expected.hex).expect("invalid test hex fixture");
+            let flow = parse(LinkType::LINUX_SLL2, packet.as_slice()).unwrap();
+
+            let sll2 = flow
+                .data_link
+                .as_linux_sll2()
+                .unwrap_or_else(|| panic!("{name}: lien SLL2 attendu"));
+            assert_eq!(flow.data_link.link_type(), LinkType::LINUX_SLL2, "{name}");
+            assert_eq!(sll2.protocol, expected.sll_protocol, "{name}");
+            assert!(sll2.reserved_is_zero(), "{name}");
+            assert_eq!(sll2.interface_index, expected.interface_index, "{name}");
+            assert_eq!(sll2.packet_type, expected.packet_type, "{name}");
+            assert_eq!(sll2.hardware_type, expected.hardware_type, "{name}");
+            assert_eq!(sll2.address_length, 6, "{name}");
+            assert_eq!(sll2.source_address, Some(expected.source_address), "{name}");
+
+            let internet = flow
+                .internet
+                .as_ref()
+                .unwrap_or_else(|| panic!("{name}: pas de L3"));
+            assert_eq!(internet.source, Some(expected.source), "{name}");
+            assert_eq!(internet.destination, Some(expected.destination), "{name}");
+
+            let transport = flow
+                .transport
+                .as_ref()
+                .unwrap_or_else(|| panic!("{name}: pas de L4"));
+            assert_eq!(transport.protocol, TransportProtocol::Udp, "{name}");
+            assert_eq!(transport.source_port, Some(expected.source_port), "{name}");
+            assert_eq!(transport.destination_port, Some(53), "{name}");
+
+            assert_eq!(
+                flow.application
+                    .as_ref()
+                    .unwrap_or_else(|| panic!("{name}: pas de L7"))
+                    .application_protocol,
+                "DNS",
+                "{name} doit être détecté DNS"
+            );
+        }
+    }
+
+    /// Trame réelle : pcaps_exemple/capture_sll2.pcap, trame 121 — requête
+    /// ARP « Who has 192.168.1.181? Tell 192.168.1.254 » reçue sur
+    /// l'ifindex 2 à travers l'en-tête cooked v2.
+    #[test]
+    fn sll2_real_capture_dispatches_arp_without_transport() {
+        use crate::parse::internet::InternetDetails;
+        use crate::{LinuxArphrdType, LinuxCookedPacketType};
+
+        let packet = hex::decode(
+            "08060000000000020001000644152420a5640000000108000604000144152420a564c0a801fe000000000000c0a801b5000000000000000000000000000000000000",
+        )
+        .expect("invalid test hex fixture");
+        let flow = parse(LinkType::LINUX_SLL2, packet.as_slice()).unwrap();
+
+        let sll2 = flow.data_link.as_linux_sll2().expect("lien SLL2 attendu");
+        assert_eq!(sll2.protocol, 0x0806);
+        assert!(sll2.reserved_is_zero());
+        assert_eq!(sll2.interface_index, 2);
+        assert_eq!(sll2.packet_type, LinuxCookedPacketType::HOST);
+        assert_eq!(sll2.hardware_type, LinuxArphrdType::ETHERNET);
+        assert_eq!(
+            sll2.source_address,
+            Some(&[0x44, 0x15, 0x24, 0x20, 0xa5, 0x64][..])
+        );
+
+        let internet = flow.internet.as_ref().expect("pas de L3");
+        let InternetDetails::Arp(arp) = internet.details.as_ref().expect("détails ARP") else {
+            panic!("détails ARP attendus, obtenu {:?}", internet.details);
+        };
+        assert_eq!(arp.operation, 1);
+        assert_eq!(
+            arp.sender_hardware_addr,
+            [0x44, 0x15, 0x24, 0x20, 0xa5, 0x64]
+        );
+        assert_eq!(
+            internet.source,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 254)))
+        );
+        assert_eq!(
+            internet.destination,
+            Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 181)))
+        );
+
+        assert!(flow.transport.is_none());
+        assert!(flow.application.is_none());
+        assert!(flow.corrupted.is_none());
+    }
+
     /// EtherType IPv4 annoncé mais en-tête IP invalide : le L2 doit être
     /// conservé et la corruption signalée, sans échec du parsing.
     #[test]
