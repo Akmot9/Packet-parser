@@ -4,6 +4,22 @@ Tous les changements notables du projet seront documentes dans ce fichier.
 
 Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), avec des sections simples par type de changement.
 
+## [8.1.0] - 2026-07-14
+
+Reconstruction owned SLL/SLL2 hors parseur, pour les consommateurs qui
+rebatissent une couche liaison depuis des champs serialises (ex. reimport
+d'une matrice de flux SONAR, issue Sonar#150).
+
+### Ajoute
+
+- `LinuxSllLinkOwned::new` et `LinuxSll2LinkOwned::new` : constructeurs
+  publics des metadonnees cooked owned (les structs restent
+  `#[non_exhaustive]`, le constructeur est le chemin supporte).
+- `LinkLayerOwned::linux_sll` et `LinkLayerOwned::linux_sll2` deviennent
+  publics : le protocole reseau est derive du champ `protocol` cooked, avec
+  la meme derivation que le decodeur live — une couche rebatie est egale
+  (Eq/Hash) a celle produite par le parseur, tests d'aller-retour a l'appui.
+
 ## [8.0.0] - 2026-07-14
 
 Version majeure : exposition des en-tetes parses complets via `details` et
