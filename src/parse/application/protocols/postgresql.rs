@@ -773,6 +773,11 @@ fn parse_bind(body: &[u8]) -> Result<PostgreSqlBind<'_>, PostgreSqlError> {
     }
 
     let value_count = cur.read_u16("parameter_value_count")? as usize;
+    // Symétrique de `parameter_type_oids` (l.746), `parameter_formats` (l.768)
+    // et `result_formats` (l.796) : chaque valeur porte au minimum son préfixe
+    // de longueur de 4 octets. Sans cette garde, `value_count = 0xFFFF` sur
+    // 11 octets de payload pré-alloue 1 Mo.
+    validate_remaining(cur.remaining(), value_count * 4, "parameter_values")?;
     let mut parameter_values = Vec::with_capacity(value_count);
     for _ in 0..value_count {
         let len = cur.read_i32("parameter_value_length")?;
