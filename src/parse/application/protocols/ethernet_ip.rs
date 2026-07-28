@@ -14,6 +14,7 @@ use crate::{
         validate_register_session_length,
     },
     errors::application::ethernet_ip::EtherNetIpError,
+    parse::application::protocols::bounded_capacity,
 };
 
 #[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
@@ -214,7 +215,10 @@ fn parse_common_packet_format<'a>(
     let item_count = u16::from_le_bytes([data[6], data[7]]) as usize;
 
     let mut offset = 8usize;
-    let mut items = Vec::with_capacity(item_count);
+    // Un item CPF pèse au minimum 4 octets : type_id 2 + length 2.
+    const MIN_CPF_ITEM_LEN: usize = 4;
+    let remaining = data.len().saturating_sub(offset);
+    let mut items = Vec::with_capacity(bounded_capacity(item_count, remaining, MIN_CPF_ITEM_LEN));
 
     for _ in 0..item_count {
         let item_header_end = offset + 4;

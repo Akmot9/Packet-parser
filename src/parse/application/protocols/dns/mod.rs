@@ -12,6 +12,7 @@ pub mod utils;
 
 use crate::{
     checks::application::dns::check_dns_minimum_size, errors::application::dns::DnsPacketError,
+    parse::application::protocols::bounded_capacity,
 };
 use dns_additional::AdditionalRecord;
 use dns_answers::Answer;
@@ -85,7 +86,12 @@ fn parse_record_section<T: From<RawRecord>>(
     if count == 0 {
         return Ok(None);
     }
-    let mut records = Vec::with_capacity(count as usize);
+    // Un RR pèse au minimum 11 octets : nom racine 1 + type 2 + classe 2
+    // + TTL 4 + rdlength 2.
+    const MIN_RECORD_LEN: usize = 11;
+    let remaining = message.len().saturating_sub(*offset);
+    let mut records =
+        Vec::with_capacity(bounded_capacity(count as usize, remaining, MIN_RECORD_LEN));
     for _ in 0..count {
         records.push(T::from(parse_resource_record(message, offset)?));
     }

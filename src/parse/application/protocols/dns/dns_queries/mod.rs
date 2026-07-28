@@ -8,6 +8,7 @@ use std::fmt;
 use crate::{
     checks::application::dns::check_dns_query_size,
     errors::application::dns::DnsQueryParseError,
+    parse::application::protocols::bounded_capacity,
     parse::application::protocols::dns::utils::{
         dns_class::DnsClass, dns_types::DnsType, name::parse_dns_name,
     },
@@ -34,7 +35,12 @@ impl DnsQueries {
         offset: &mut usize,
         count: u16,
     ) -> Result<Self, DnsQueryParseError> {
-        let mut queries = Vec::with_capacity(count as usize);
+        // Une question pèse au minimum 5 octets : nom racine 1 + type 2
+        // + classe 2.
+        const MIN_QUERY_LEN: usize = 5;
+        let remaining = message.len().saturating_sub(*offset);
+        let mut queries =
+            Vec::with_capacity(bounded_capacity(count as usize, remaining, MIN_QUERY_LEN));
         for _ in 0..count {
             check_dns_query_size(message, *offset, 1)?;
             queries.push(DnsQuery::from_bytes(message, offset)?);
