@@ -1,0 +1,21 @@
+version: 2
+
+updates:
+  # Les actions GitHub étaient bloquées en v4 alors que v5+ était sorti, avec
+  # une dépréciation Node annoncée par les runners. Sans surveillance, ça finit
+  # par casser la CI — ou pire, le workflow de publication.
+  #
+  # Cadence mensuelle et groupée : une PR par mois, pas un flux continu. La
+  # protection de branche exige la CI verte, donc une PR Dependabot ne peut
+  # pas casser main même sans relecture immédiate.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
