@@ -1,0 +1,79 @@
+name: Fuzz
+
+# Fuzzing planifié : la seule chose qui trouve les panics auxquels personne
+# n'a pensé. Tourne la nuit, ne dit rien quand tout va bien, échoue (donc
+# notifie) uniquement sur crash — avec l'entrée fautive en artefact.
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Durée par cible, en secondes"
+        required: false
+        default: "600"
+  schedule:
+    # 03:17 UTC, décalé de l'heure ronde pour éviter la congestion des runners.
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    # Ne pas arrêter les autres cibles quand une trouve un crash : on veut
+    # savoir en une seule nuit tout ce qui casse, pas seulement le premier.
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - parse_linktype
+          - parse_packetflow
+          - parse_application
+          - parse_dns
+          - parse_quic
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\nfuzz -> fuzz/target"
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      # Le corpus est conservé d'une nuit sur l'autre : sans lui, chaque run
+      # repart de zéro et ne dépasse jamais la surface la plus superficielle.
+      # La clé porte le run_id pour toujours réécrire ; restore-keys récupère
+      # le corpus de la veille.
+      - name: Restore corpus
+        uses: actions/cache@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+
+      - name: Run fuzzer
+        run: |
+          cargo +nightly fuzz run ${{ matrix.target }} -- \
+            -max_total_time=${{ github.event.inputs.duration || '600' }} \
+            -print_final_stats=1
+
+      # `if: failure()` : ne se déclenche que si le fuzzer a trouvé un crash.
+      # L'entrée fautive suffit à reproduire :
+      #   cargo +nightly fuzz run <cible> <fichier>
+      - name: Upload crashing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+          retention-days: 90

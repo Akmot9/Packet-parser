@@ -6,9 +6,11 @@ on:
       - main
   pull_request:
 
-# permissions:
-#   contents: read
-#   actions: write 
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   check:
@@ -18,7 +20,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
+
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libpcap-dev
 
@@ -27,17 +29,50 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Check formatting
-        run: cargo fmt -- --check
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
 
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      # --workspace : les 4 crates membres (benchmark_db, ingestor,
+      # integration_test, see_unparsable) n'étaient lintées par rien.
+      # --all-features : la feature parse_timing duplique le pipeline ;
+      # sans ce drapeau, cette moitié du code n'était jamais vérifiée.
       - name: Lint with Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Run tests
-        run: cargo test --all-features --verbose
+        run: cargo test --workspace --all-features --verbose
 
       - name: Security audit
-        run: cargo install cargo-audit && cargo audit
+        run: cargo install cargo-audit --locked && cargo audit
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --all-features
+
+  # `fuzz/` est exclu du workspace (il exige cargo-fuzz et nightly), donc rien
+  # ne le compilait : les cibles pourrissaient en silence dès qu'une signature
+  # publique changeait. Ce job ne fuzze pas, il vérifie seulement qu'elles
+  # compilent encore — ~1 min, et le fuzzing planifié reste utilisable.
+  fuzz-targets-build:
+    name: Fuzz targets still compile
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\nfuzz -> fuzz/target"
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Build fuzz targets
+        run: cargo +nightly fuzz build
