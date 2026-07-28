@@ -75,7 +75,7 @@ pub fn parse(link_type: LinkType, bytes: &[u8]) -> Result<PacketFlow<'_>, ParseE
     PacketFlow::parse_decoded(link::decode(link_type, bytes)?, 0)
 }
 
-/// Timed counterpart of [`parse`], using the exact same link-type dispatcher.
+/// Timed counterpart of [`fn@parse`], using the exact same link-type dispatcher.
 #[cfg(feature = "parse_timing")]
 #[inline(always)]
 pub fn parse_timed<'a>(
@@ -170,6 +170,23 @@ pub struct PacketFlow<'a> {
     pub corrupted: Option<CorruptedLayer>,
 }
 
+/// Parses `bytes` **assuming [`LinkType::ETHERNET`]**.
+///
+/// Kept for compatibility; prefer [`fn@parse`], which takes the LINKTYPE the
+/// capture actually declares. This impl will be removed in a future major
+/// release.
+///
+/// # This does not fail on a non-Ethernet capture — it fabricates data
+///
+/// There is no plausibility check: any buffer of at least 14 bytes is read as
+/// an Ethernet header. Given a `LINKTYPE_LINUX_SLL` frame — what a capture on
+/// the Linux `any` interface produces — the 16 cooked-header bytes are
+/// reinterpreted as MAC addresses and an EtherType. The call returns `Ok` with
+/// invented MAC addresses, `internet: None` and `corrupted: None`. **Nothing
+/// signals the mistake**, and a flow matrix built from it fills up with
+/// addresses that never existed on the wire.
+///
+/// Reach for this only when the capture is known to be Ethernet.
 impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
     type Error = ParseError;
 
