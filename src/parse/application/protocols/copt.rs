@@ -136,12 +136,6 @@ pub enum CotpParameter<'a> {
 }
 
 impl<'a> CotpHeader<'a> {
-    /// Full size of a CR/CC connection header: length + PDU type +
-    /// destination/source references + class (7 bytes). Note that the
-    /// parser's actual length pre-check uses `COTP_MIN_LENGTH` (2 bytes)
-    /// from `checks::application::copt`, not this constant.
-    pub const MIN_SIZE: usize = 7; // 1 + 1 + 2 + 2 + 1 (for CR/CC)
-
     fn parse_parameters(
         data: &'a [u8],
         mut offset: usize,
