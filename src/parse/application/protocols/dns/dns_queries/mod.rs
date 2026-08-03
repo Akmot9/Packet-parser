@@ -35,6 +35,23 @@ impl DnsQueries {
         offset: &mut usize,
         count: u16,
     ) -> Result<Self, DnsQueryParseError> {
+        Self::parse_with_mode(message, offset, count, false)
+    }
+
+    pub(crate) fn parse_mdns(
+        message: &[u8],
+        offset: &mut usize,
+        count: u16,
+    ) -> Result<Self, DnsQueryParseError> {
+        Self::parse_with_mode(message, offset, count, true)
+    }
+
+    fn parse_with_mode(
+        message: &[u8],
+        offset: &mut usize,
+        count: u16,
+        mdns: bool,
+    ) -> Result<Self, DnsQueryParseError> {
         // Une question pèse au minimum 5 octets : nom racine 1 + type 2
         // + classe 2.
         const MIN_QUERY_LEN: usize = 5;
@@ -43,7 +60,12 @@ impl DnsQueries {
             Vec::with_capacity(bounded_capacity(count as usize, remaining, MIN_QUERY_LEN));
         for _ in 0..count {
             check_dns_query_size(message, *offset, 1)?;
-            queries.push(DnsQuery::from_bytes(message, offset)?);
+            let query = if mdns {
+                DnsQuery::from_bytes_mdns(message, offset)?
+            } else {
+                DnsQuery::from_bytes(message, offset)?
+            };
+            queries.push(query);
         }
         Ok(DnsQueries { queries })
     }
@@ -68,13 +90,33 @@ pub struct DnsQuery {
 
 impl DnsQuery {
     pub fn from_bytes(bytes: &[u8], offset: &mut usize) -> Result<Self, DnsQueryParseError> {
+        Self::from_bytes_with_mode(bytes, offset, false)
+    }
+
+    pub(crate) fn from_bytes_mdns(
+        bytes: &[u8],
+        offset: &mut usize,
+    ) -> Result<Self, DnsQueryParseError> {
+        Self::from_bytes_with_mode(bytes, offset, true)
+    }
+
+    fn from_bytes_with_mode(
+        bytes: &[u8],
+        offset: &mut usize,
+        mdns: bool,
+    ) -> Result<Self, DnsQueryParseError> {
         let (name, new_offset) = parse_dns_name(bytes, *offset)?;
         *offset = new_offset;
 
         check_dns_query_size(bytes, *offset, 4)?;
 
         let qtype = DnsType::new(u16::from_be_bytes([bytes[*offset], bytes[*offset + 1]]));
-        let qclass = DnsClass::new(u16::from_be_bytes([bytes[*offset + 2], bytes[*offset + 3]]));
+        let raw_qclass = u16::from_be_bytes([bytes[*offset + 2], bytes[*offset + 3]]);
+        let qclass = if mdns {
+            DnsClass::from_mdns(raw_qclass)
+        } else {
+            DnsClass::new(raw_qclass)
+        };
         *offset += 4;
 
         Ok(DnsQuery {
@@ -158,5 +200,25 @@ mod tests {
         assert_eq!(queries.queries[1].name, "foo.bar.com");
         assert_eq!(queries.queries[1].qtype, DnsType(2));
         assert_eq!(queries.queries[1].qclass, DnsClass(1));
+    }
+
+    #[test]
+    fn test_mdns_query_splits_qu_bit_from_class() {
+        let data = [5, b'l', b'o', b'c', b'a', b'l', 0, 0x00, 0x01, 0x80, 0x01];
+        let mut offset = 0;
+
+        let query = DnsQuery::from_bytes_mdns(&data, &mut offset).unwrap();
+
+        assert_eq!(query.qclass, DnsClass(1));
+    }
+
+    #[test]
+    fn test_class_high_bit_remains_part_of_class_in_classic_dns() {
+        let data = [5, b'l', b'o', b'c', b'a', b'l', 0, 0x00, 0x01, 0x80, 0x01];
+        let mut offset = 0;
+
+        let query = DnsQuery::from_bytes(&data, &mut offset).unwrap();
+
+        assert_eq!(query.qclass, DnsClass(0x8001));
     }
 }

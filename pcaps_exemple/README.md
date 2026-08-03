@@ -36,7 +36,7 @@ réellement capturées sur un réseau.
 | Dossier | Issue | Attendu |
 |---|---|---|
 | `dns/` | #2 | requêtes/réponses DNS classiques (port 53) |
-| `mdns_llmnr_ssdp/` | #2 | mDNS (5353), LLMNR (5355), SSDP (1900) pour lever la confusion avec DNS |
+| `mdns_llmnr_ssdp/` | #2 | ✅ mDNS (requete, QU, annonce et cache-flush) ; LLMNR/SSDP restent a ajouter — voir `SOURCE.md` |
 | `netbios/` | #8 | NBNS (137), Datagram (138), Session (139) |
 | `openvpn/` | #5 | handshake OpenVPN UDP et/ou TCP |
 | `stp/` | #4 | BPDU STP, RSTP, MSTP |
@@ -52,6 +52,9 @@ réellement capturées sur un réseau.
 | `ip/` | — | ✅ fragmentation v4/v6, TTL — source Chris Sanders |
 | `ieee80211/` | — | ✅ beacon, auth WEP/WPA (ok + échec) — source Chris Sanders |
 | `mqtt/` | — | ✅ session Paho → m2m.eclipse.org:1883 (v3.1 « MQIsdp ») ; source des golden tests anti-faux positifs — voir `SOURCE.md` |
+| `ftp/` | — | ✅ commandes de controle FTP sur IPv6, extraites des samples Wireshark sans authentification — voir `SOURCE.md` |
+| `smtp/` | — | ✅ echange de controle SMTP, tronque avant authentification et corps du message — voir `SOURCE.md` |
+| `nntp/` | — | ✅ commandes/statut NNTP, sans corps d'article — voir `SOURCE.md` |
 
 ## Crédits
 

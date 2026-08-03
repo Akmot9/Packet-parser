@@ -247,7 +247,7 @@ ils ne fournissent pas toujours ports et payload applicatif.
 La detection applicative est volontairement best-effort. Les modules de parsing
 incluent notamment:
 
-- DNS
+- DNS (mDNS inclus via `DnsPacket::try_from_mdns`)
 - TLS
 - SNMP
 - NTP
@@ -255,6 +255,9 @@ incluent notamment:
 - HTTP
 - MQTT
 - PostgreSQL
+- FTP
+- SMTP
+- NNTP
 - Modbus TCP
 - EtherNet/IP
 - OPC UA
@@ -265,6 +268,10 @@ incluent notamment:
 - SRVLOC
 - QUIC
 - Bitcoin
+
+FTP, SMTP et NNTP ne sont detectes que sur leurs ports de controle en clair
+(TCP 21, 25/587 et 119 respectivement). Les ports TLS implicites 465 et 563
+restent classes TLS tant que leurs donnees applicatives ne sont pas dechiffrees.
 
 `PacketFlow` remonte actuellement un nom de protocole applicatif simple dans
 `Application { application_protocol }`. Pour un parsing detaille d'un protocole

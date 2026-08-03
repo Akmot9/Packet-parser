@@ -244,7 +244,7 @@ always expose ports or application payloads.
 
 Application detection is intentionally best-effort. Parser modules include:
 
-- DNS
+- DNS (including mDNS through `DnsPacket::try_from_mdns`)
 - TLS
 - SNMP
 - NTP
@@ -252,6 +252,9 @@ Application detection is intentionally best-effort. Parser modules include:
 - HTTP
 - MQTT
 - PostgreSQL
+- FTP
+- SMTP
+- NNTP
 - Modbus TCP
 - EtherNet/IP
 - OPC UA
@@ -262,6 +265,10 @@ Application detection is intentionally best-effort. Parser modules include:
 - SRVLOC
 - QUIC
 - Bitcoin
+
+FTP, SMTP and NNTP are detected only on their plaintext control ports (TCP
+21, 25/587 and 119 respectively). Implicit-TLS ports 465 and 563 remain TLS
+unless their application data is decrypted first.
 
 `PacketFlow` currently exposes a lightweight application protocol name through
 `Application { application_protocol }`. For detailed protocol-specific parsing,
