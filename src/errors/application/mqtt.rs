@@ -43,9 +43,6 @@ pub enum MqttError {
     #[error("MQTT topic length {declared} exceeds available {available}")]
     InvalidTopicLength { declared: usize, available: usize },
 
-    #[error("Unsupported MQTT packet type: {packet_type:?}")]
-    UnsupportedPacketType { packet_type: MqttPacketType },
-
     /// CONNECT dont le nom de protocole n'est ni "MQTT" ni "MQIsdp".
     #[error("Invalid MQTT protocol name in CONNECT")]
     InvalidProtocolName,
@@ -171,15 +168,6 @@ mod tests {
         };
 
         assert_eq!(err.to_string(), "MQTT topic length 20 exceeds available 8");
-    }
-
-    #[test]
-    fn test_unsupported_packet_type_display() {
-        let err = MqttError::UnsupportedPacketType {
-            packet_type: MqttPacketType::Publish,
-        };
-
-        assert_eq!(err.to_string(), "Unsupported MQTT packet type: Publish");
     }
 
     #[test]
