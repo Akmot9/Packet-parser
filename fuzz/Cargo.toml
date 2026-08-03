@@ -47,3 +47,17 @@ path = "fuzz_targets/parse_quic.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_s7comm"
+path = "fuzz_targets/parse_s7comm.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_cotp"
+path = "fuzz_targets/parse_cotp.rs"
+test = false
+doc = false
+bench = false

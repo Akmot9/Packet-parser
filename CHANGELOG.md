@@ -4,6 +4,62 @@ Tous les changements notables du projet seront documentes dans ce fichier.
 
 Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), avec des sections simples par type de changement.
 
+## [Non publie]
+
+### Rupture
+
+- Toutes les structures S7Comm publiques et `S7CommParseError` deviennent
+  `#[non_exhaustive]`. `S7Parameter` expose desormais `item_count` et la
+  section `raw` zero-copy ; `S7AnyParameterTooShort` est remplace par
+  `InvalidS7AnyLength`. Le rendu `Display` de `S7CommPacket` est egalement
+  precise.
+- `CotpPduType`, `CotpParameter`, `CotpHeader` et `CotpParseError` deviennent
+  `#[non_exhaustive]`. Les nouveaux TPDU ED, EA, AK et RJ, les formats de
+  numerotation, six champs d'en-tete et six variantes de parametre etendent
+  l'API publique ; la classification des codes portant un credit change.
+- La constante publique `COTP_MIN_LENGTH` passe de 3 a 2 : deux octets
+  suffisent pour lire LI et le code TPDU, chaque disposition connue imposant
+  ensuite sa propre taille fixe.
+
+### Ajoute
+
+- Tests de regression issus de six captures S7Comm : 10 310 PDU S7Comm et
+  168 PDU COTP verifies par numeros de trame et empreintes deterministes, dont
+  Read/Write Var, Setup Communication, Userdata et
+  les echanges COTP CR/CC.
+- Oracle negatif sur 2 818 trames d'autres protocoles, qui exige zero label
+  S7Comm ou COTP parasite.
+- Cibles de fuzz dediees S7Comm et COTP, avec graines structurees pour les
+  differents TPDU et invariants de transport S7Comm/COTP dans le fuzz du
+  parseur de flux.
+- Decodage COTP des formats normal, etendu et classe 0/1, avec donnees
+  utilisateur zero-copy, credit, raison de deconnexion, cause de rejet,
+  checksums ISO/ATN et informations additionnelles.
+
+### Corrige
+
+- Validation stricte des enveloppes TPKT, COTP-DT et S7 : octets reserves,
+  longueurs et frontiere du premier TPKT, LI/type/EOT COTP, identifiant,
+  ROSCTR et champ reserve S7, ainsi que les deux octets d'erreur des ACK.
+- Les reponses ACK-Data Read/Write ne sont plus interpretees comme des listes
+  de descripteurs S7ANY ; leurs valeurs restent dans la section data brute.
+- Les parametres Setup Communication, Userdata et les syntaxes inconnues sont
+  preserves sans perte, avec gestion du remplissage entre items et longueur
+  S7ANY exacte.
+- `PacketFlow` reconnait S7Comm uniquement sur TCP, y compris hors port 102
+  lorsque toute la signature est valide, et decode TPKT avant COTP sur le
+  port 102.
+- Le DT COTP normal `02 f0 xx` est decode sans prendre le debut de ses donnees
+  utilisateur pour des parametres TLV. Les parties fixes de CR, CC, DR, DC,
+  DT, ED, AK, EA, RJ et ER, leurs longueurs, references, numeros, credits,
+  options et listes de parametres sont maintenant controles selon leur propre
+  disposition wire, y compris les PDU de controle concatenes.
+- Le parseur COTP generique conserve les codes TPDU inconnus sans les utiliser
+  comme empreinte ; la detection `PacketFlow` exige TCP/102, TPKT et une
+  disposition COTP connue et complete.
+- Mise a jour de `anyhow` dans l'outil d'ingestion afin de supprimer l'avis
+  RustSec visant la version precedente.
+
 ## [9.0.0] - 2026-08-03
 
 Version majeure : correction du decodage S7Comm et ajout des parseurs FTP,

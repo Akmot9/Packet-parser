@@ -32,6 +32,8 @@ jobs:
           - parse_application
           - parse_dns
           - parse_quic
+          - parse_s7comm
+          - parse_cotp
 
     steps:
       - name: Checkout repository
