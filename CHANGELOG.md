@@ -4,7 +4,12 @@ Tous les changements notables du projet seront documentes dans ce fichier.
 
 Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), avec des sections simples par type de changement.
 
-## [Non publie]
+## [10.0.0] - 2026-08-04
+
+Version majeure : decodage COTP complet et validation stricte de l'enveloppe
+S7Comm (verifies contre 10 310 PDU reels et un oracle negatif de 2 818
+trames), detection S7Comm par contenu sur tout port TCP, et nettoyage de
+l'API morte accumulee (issues #39 a #45).
 
 ### Rupture
 
