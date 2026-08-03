@@ -20,6 +20,14 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 - La constante publique `COTP_MIN_LENGTH` passe de 3 a 2 : deux octets
   suffisent pour lire LI et le code TPDU, chaque disposition connue imposant
   ensuite sa propre taille fixe.
+- Nettoyage de l'API morte et des variants fourre-tout (issues #39 a #45) :
+  suppression des variants jamais construits `HttpParseError::MissingRequestLine`
+  (et de `require_request_line`), `MqttError::UnsupportedPacketType`,
+  `Dhcpv6PacketParseError::TransactionId` et de la constante
+  `CotpHeader::MIN_SIZE` ; le champ `SrvlocHeaderV1::scope_list_lengh` devient
+  `scope_list_length` ; `SnmpError::InvalidPduStructure` est scinde en
+  `NonEmptyNull`/`NonEmptyException` et `MqttError::InvalidTopic` en
+  `EmptyTopic`/`TopicNotUtf8`/`ControlCharacterInTopic`/`WildcardInPublishTopic`.
 
 ### Ajoute
 
