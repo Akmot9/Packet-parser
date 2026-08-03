@@ -466,7 +466,7 @@ mod tests {
 
     #[test]
     fn test_extract_lang_tag() {
-        let buf = [b'e', b'n'];
+        let buf = *b"en";
         let mut offset = 0;
         assert_eq!(extract_lang_tag(&buf, &mut offset, 2), Ok("en"));
         assert_eq!(offset, 2);
