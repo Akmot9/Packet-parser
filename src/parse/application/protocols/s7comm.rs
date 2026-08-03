@@ -185,6 +185,9 @@ pub struct S7ParameterItem<'a> {
     /// Transport size (0x02 = BYTE, 0x04 = WORD, etc.)
     pub transport_size: u8,
 
+    /// Number of elements to read/write (in transport-size units)
+    pub count: u16,
+
     /// DB number (0 for non-DB areas)
     pub db_number: u16,
 
@@ -350,6 +353,41 @@ mod tests {
         );
 
         // Add more assertions based on the expected values from your packet
+    }
+
+    /// Golden test : trame 11 de
+    /// pcaps_exemple/protocols/s7comm/s7comm_varservice_libnodavedemo.pcap,
+    /// requete Read Var "DB 1.DBX 0.0 BYTE 64". Valeurs attendues verifiees
+    /// avec Wireshark (tshark -O s7comm).
+    #[test]
+    fn test_s7comm_read_var_real_frame_decodes_s7any_item() {
+        let hex_str = "0300001f02f080320100000000000e00000401120a10020040000184000000";
+        let bytes = hex::decode(hex_str).expect("Failed to decode hex string");
+
+        let packet = S7CommPacket::try_from(&bytes[..]).expect("valid Read Var frame");
+
+        assert_eq!(packet.tpkt.length, 0x1f);
+        assert_eq!(packet.cotp.pdu_type, 0xf0);
+        // DT TPDU : pas de references, bit EOT positionne.
+        assert_eq!(packet.cotp.destination_reference, 0);
+        assert_eq!(packet.cotp.source_reference, 0);
+        assert!(packet.cotp.last_data_unit);
+
+        assert_eq!(packet.s7_header.protocol_id, 0x32);
+        assert_eq!(packet.s7_header.rosctr, 0x01); // Job
+        assert_eq!(packet.s7_header.pduref, 0);
+        assert_eq!(packet.s7_header.parameter_length, 14);
+        assert_eq!(packet.s7_header.data_length, 0);
+
+        assert_eq!(packet.parameter.function, 0x04); // Read Var
+        assert_eq!(packet.parameter.items.len(), 1);
+        let item = &packet.parameter.items[0];
+        assert_eq!(item.syntax_id, 0x10); // S7ANY
+        assert_eq!(item.transport_size, 0x02); // BYTE
+        assert_eq!(item.count, 64);
+        assert_eq!(item.db_number, 1);
+        assert_eq!(item.area, 0x84); // Data blocks (DB)
+        assert_eq!(item.address, 0);
     }
 
     #[test]
