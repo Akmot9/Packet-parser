@@ -22,7 +22,7 @@ next layers as `None` when parsing cannot safely continue.
 
 ```toml
 [dependencies]
-packet_parser = "8.1.0"
+packet_parser = "9.0.0"
 ```
 
 For examples that decode hexadecimal packet dumps:
@@ -30,7 +30,7 @@ For examples that decode hexadecimal packet dumps:
 ```toml
 [dependencies]
 hex = "0.4"
-packet_parser = "8.1.0"
+packet_parser = "9.0.0"
 ```
 
 ## Quick Example
@@ -266,9 +266,13 @@ Application detection is intentionally best-effort. Parser modules include:
 - QUIC
 - Bitcoin
 
-FTP, SMTP and NNTP are detected only on their plaintext control ports (TCP
-21, 25/587 and 119 respectively). Implicit-TLS ports 465 and 563 remain TLS
-unless their application data is decrypted first.
+FTP, SMTP and NNTP detection in `PacketFlow` is both parser-validated and
+restricted to their plaintext control ports (TCP 21, 25/587 and 119
+respectively). Payloads on other ports are not labelled as these protocols:
+their line-oriented syntax can also occur inside another text protocol's body.
+Complete TLS records on implicit-TLS ports such as 465, 563 and 990 are
+reported as TLS. To inspect externally decrypted application data, call the
+detailed protocol parser directly.
 
 `PacketFlow` currently exposes a lightweight application protocol name through
 `Application { application_protocol }`. For detailed protocol-specific parsing,

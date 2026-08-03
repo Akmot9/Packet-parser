@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 tokio = { version = "1.52.2", features = ["full"] }
-tokio-postgres = "0.7.17"
+tokio-postgres = "0.7.18"
 serde = { version = "1.0.228", features = ["derive"] }
 glob = "0.3.3"
 anyhow = "1.0.102"

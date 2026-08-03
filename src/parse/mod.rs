@@ -262,9 +262,9 @@ impl<'a> PacketFlow<'a> {
         }
 
         // FTP, SMTP et NNTP partagent la meme forme de reponse ("code SP
-        // texte CRLF") : un contenu seul ne permet pas de les distinguer, ni
-        // meme certaines commandes (QUIT, LIST, MODE...). Comme DHCPv6/AMS/
-        // COTP, ils ne sont detectes que sur leurs ports standards.
+        // texte CRLF") et plusieurs commandes (QUIT, LIST, MODE...). Meme un
+        // verbe distinctif peut apparaitre dans un corps SMTP ou un article
+        // NNTP : ces protocoles restent donc strictement gardes par port.
         if transport.protocol == TransportProtocol::Tcp
             && (is_ftp_tcp_port(transport.source_port)
                 || is_ftp_tcp_port(transport.destination_port))
@@ -1194,14 +1194,70 @@ mod tests {
 
     #[test]
     fn packetflow_does_not_detect_ftp_off_the_standard_port() {
-        // Same FTP command bytes, but resent on an arbitrary port: FTP's
-        // reply/command shapes are shared with SMTP/NNTP, so without a port
-        // gate this would be an unreliable, ambiguous guess.
-        let payload = b"USER csanders\r\n";
-        let packet = ethernet_ipv4_tcp_packet(51845, 2121, payload);
-        let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
-        let application = flow.application.as_ref();
-        assert_ne!(application.map(|app| app.application_protocol), Some("FTP"));
+        // Regression synthetique : meme des commandes FTP distinctives ne
+        // suffisent pas sans TCP/21, car un protocole textuel peut transporter
+        // exactement les memes octets dans son contenu.
+        for payload in [
+            &b"USER alice\r\n"[..],
+            &b"PASV\r\n"[..],
+            &b"epsv ALL\r\n"[..],
+            &b"PORT 192,0,2,1,7,138\r\n"[..],
+            &b"EPRT |2|2001:db8::1|1930|\r\n"[..],
+            &b"LPRT 6,16,32,2,81,131,67,131,0,0,0,0,0,0,81,131,67,131,2,4,7\r\n"[..],
+            &b"220 Ready\r\n"[..],
+        ] {
+            let packet = ethernet_ipv4_tcp_packet(51_845, 2_121, payload);
+            let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
+
+            assert_ne!(
+                flow.application
+                    .as_ref()
+                    .map(|application| application.application_protocol),
+                Some("FTP"),
+                "FTP payload classified away from TCP/21: {payload:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn packetflow_does_not_relabel_text_protocol_bodies_as_ftp() {
+        // Regression : ces lignes sont du contenu valide pendant SMTP DATA ou
+        // dans un article NNTP. Sans etat de session, le port doit l'emporter.
+        for destination_port in [25, 587, 119] {
+            for payload in [&b"PASV\r\n"[..], &b"PORT 192,0,2,1,7,138\r\n"[..]] {
+                let packet = ethernet_ipv4_tcp_packet(51_845, destination_port, payload);
+                let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
+
+                assert_ne!(
+                    flow.application
+                        .as_ref()
+                        .map(|application| application.application_protocol),
+                    Some("FTP"),
+                    "body on TCP/{destination_port} relabelled FTP: {payload:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn packetflow_port_guards_win_for_shared_ftp_commands() {
+        for (destination_port, payload, expected) in [
+            (25, &b"AUTH PLAIN dGVzdA==\r\n"[..], "SMTP"),
+            (25, &b"QUIT\r\n"[..], "SMTP"),
+            (119, &b"MODE READER\r\n"[..], "NNTP"),
+            (119, &b"QUIT\r\n"[..], "NNTP"),
+        ] {
+            let packet = ethernet_ipv4_tcp_packet(51_845, destination_port, payload);
+            let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
+
+            assert_eq!(
+                flow.application
+                    .as_ref()
+                    .map(|application| application.application_protocol),
+                Some(expected),
+                "payload on TCP/{destination_port}: {payload:?}"
+            );
+        }
     }
 
     #[test]

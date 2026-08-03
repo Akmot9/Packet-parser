@@ -20,7 +20,7 @@ decodees et laisse les couches suivantes a `None` quand c'est necessaire.
 
 ```toml
 [dependencies]
-packet_parser = "8.1.0"
+packet_parser = "9.0.0"
 ```
 
 Pour reproduire les exemples qui decodent de l'hexadecimal:
@@ -28,7 +28,7 @@ Pour reproduire les exemples qui decodent de l'hexadecimal:
 ```toml
 [dependencies]
 hex = "0.4"
-packet_parser = "8.1.0"
+packet_parser = "9.0.0"
 ```
 
 ## Exemple rapide
@@ -269,9 +269,13 @@ incluent notamment:
 - QUIC
 - Bitcoin
 
-FTP, SMTP et NNTP ne sont detectes que sur leurs ports de controle en clair
-(TCP 21, 25/587 et 119 respectivement). Les ports TLS implicites 465 et 563
-restent classes TLS tant que leurs donnees applicatives ne sont pas dechiffrees.
+Dans `PacketFlow`, la detection de FTP, SMTP et NNTP exige a la fois un payload
+valide et leur port de controle en clair (TCP 21, 25/587 et 119
+respectivement). Les payloads sur d'autres ports ne recoivent pas ces labels :
+leur syntaxe en lignes peut aussi apparaitre dans le corps d'un autre protocole
+textuel. Les enregistrements TLS complets sur des ports TLS implicites comme
+465, 563 et 990 restent classes TLS. Pour examiner des donnees applicatives
+dechiffrees en externe, utilisez directement le parseur detaille du protocole.
 
 `PacketFlow` remonte actuellement un nom de protocole applicatif simple dans
 `Application { application_protocol }`. Pour un parsing detaille d'un protocole

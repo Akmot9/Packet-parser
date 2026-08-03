@@ -359,7 +359,7 @@ Attention : l'ordre de detection compte. Un parseur trop permissif peut capturer
 
 **Voie 2 — detection gardee par port** (`PacketFlow::parse_application_from_transport` dans `src/parse/mod.rs`) : pour les protocoles a signature faible ou ambigue, que des checks meme parfaits ne peuvent pas distinguer d'un autre protocole. Exemples : les reponses FTP/SMTP/NNTP sont octet pour octet identiques (`2xx texte CRLF`) ; DHCPv6, AMS, COTP et QUIC short header ont des en-tetes trop peu contraints ; mDNS partage le format DNS mais avec une validation assouplie. Le port standard sert alors de garde-fou EN PLUS des checks du parseur, jamais a leur place.
 
-Critere de decision : si un payload valide du protocole peut aussi etre un payload valide d'un autre protocole deja detecte (ou d'un texte quelconque), le probing a l'aveugle est interdit — passer par la garde de port et documenter la raison en commentaire.
+Critere de decision : si un payload valide du protocole peut aussi etre un payload valide d'un autre protocole deja detecte (ou d'un texte quelconque), le probing a l'aveugle est interdit — passer par la garde de port et documenter la raison en commentaire. Pour un protocole textuel, verifier aussi si une commande apparemment distinctive peut apparaitre dans le corps libre d'un autre protocole : sans etat de session, ce cas impose lui aussi une garde de port.
 
 ## 6. Ajouter les tests
 
