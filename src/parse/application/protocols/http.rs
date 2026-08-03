@@ -9,8 +9,8 @@ use std::convert::TryFrom;
 
 use crate::{
     checks::application::http::{
-        extract_header_line, parse_payload_as_utf8, require_method,
-        require_uri, require_version, split_head_body,
+        extract_header_line, parse_payload_as_utf8, require_method, require_uri, require_version,
+        split_head_body,
     },
     errors::application::http::HttpParseError,
 };

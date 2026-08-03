@@ -57,10 +57,7 @@ pub enum SnmpError {
     NonEmptyNull { length: usize },
 
     #[error("SNMP v2 exception {field} must be empty, got {length} bytes")]
-    NonEmptyException {
-        field: &'static str,
-        length: usize,
-    },
+    NonEmptyException { field: &'static str, length: usize },
 
     #[error("Invalid SNMP IP address length: {actual}")]
     InvalidIpAddressLength { actual: usize },
