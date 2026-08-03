@@ -8,5 +8,5 @@ tokio = { version = "1.52.2", features = ["full"] }
 tokio-postgres = "0.7.18"
 serde = { version = "1.0.228", features = ["derive"] }
 glob = "0.3.3"
-anyhow = "1.0.102"
+anyhow = "1.0.104"
 serde_json = "1.0.149"
