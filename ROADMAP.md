@@ -19,16 +19,29 @@ concernes et critere d'acceptation.
 |---|---|---|
 | #38 | Nettoyage d'API pour la 10.0.0 | ✅ clos (livre en 10.0.0) |
 | #46 | Durcissements de validation (http, quic, dhcp, srvloc) | ouvert |
-| #51 | Completer les parseurs (dispatch GIOP, body SLPv2, Retry QUIC, detection TLS #55) | ouvert |
+| #51 | Completer les parseurs (dispatch GIOP, body SLPv2, Retry QUIC) | ouvert |
 | #56 | Golden tests manquants (ethernet_ip, giop, quic) | ouvert |
 | #60 | Zero-copy integral (rdata DNS, Vec postgresql/opcua/http) | ouvert |
 | #64 | Detection hors port standard : API « Decode As » + verbes non-ambigus FTP/SMTP/NNTP | ouvert |
 | #67 | Nouveaux protocoles : LLMNR (#68) et SSDP (#69) | ouvert |
 | #70 | Generaliser la regression tshark (modbus, dns, tls) | ouvert |
 
-Priorites au sein des chantiers : #55 (le parseur TLS existe mais n'est
-cable dans aucune voie de detection) et #56 (dette vis-a-vis de la regle
+Priorite au sein des chantiers : #56 (dette vis-a-vis de la regle
 « trames reelles obligatoires »).
+
+#55 a ete ferme le 2026-08-12 : il decrivait un etat perime. La detection
+TLS est cablee depuis le commit 5b12cf7 (2025-11-20) par probing aveugle
+dans `Application::try_from`, verifiee sur 568 trames reelles du corpus
+`pcaps_exemple/protocols/tls/`. Ce qui manque — golden tests de
+verrouillage et oracle negatif — releve de #56.
+
+Les 12 trames `Unknown` de tls1.3-ech.pcapng ne sont pas un defaut : ce
+sont des segments TCP de continuation (seq > 1) portant le milieu ou la fin
+d'un record dont l'en-tete etait dans un segment anterieur. Tshark en
+etiquette 7 « TCP » comme nous ; les 5 autres ne deviennent TLS que par
+reassemblage TCP (tcp.segment.count 2 a 4), hors de portee d'un parseur
+stateless. Meme frontiere que le QUIC Short Header documente dans
+`src/parse/mod.rs`. Rien a voir avec ECH.
 
 ## 2. Nouveaux protocoles proposes
 
@@ -80,8 +93,8 @@ d'abord si `4SICS-GeekLounge-151020.pcap` contient deja du DNP3/IEC104.
 6. RADIUS, NetBIOS, LLMNR (#68), SSDP (#69) au fil de l'eau.
 7. Tier 2 restant (IEC 104, BACnet, GOOSE/SV), puis Tier 3 restant.
 
-En parallele des protocoles : solder #55 (detection TLS) et #56 (golden
-tests manquants), qui sont de la dette plus que de la feature.
+En parallele des protocoles : solder #56 (golden tests manquants), qui est
+de la dette plus que de la feature.
 
 ## 4. Regles de la fenetre de stabilite
 
