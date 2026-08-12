@@ -24,6 +24,13 @@ pub const ICMPV6_ERROR_HEADER_LENGTH: usize = 8;
 /// En-tete commun + reserve/flags (4 octets) + adresse cible (16 octets).
 pub const ICMPV6_NEIGHBOR_HEADER_LENGTH: usize = 24;
 
+/// En-tete commun + 4 octets reserves, avant les options (RFC 4861 §4.1).
+pub const ICMPV6_ROUTER_SOLICITATION_HEADER_LENGTH: usize = 8;
+
+/// En-tete commun + hop limit, flags, lifetime, reachable time et retrans
+/// timer, avant les options (RFC 4861 §4.2).
+pub const ICMPV6_ROUTER_ADVERTISEMENT_HEADER_LENGTH: usize = 16;
+
 /// RFC 4443 §3 : un message d'erreur cite le paquet fautif, dont l'en-tete
 /// IPv6 fixe fait 40 octets.
 pub const ICMPV6_MIN_INVOKING_PACKET_LENGTH: usize = 40;
@@ -67,6 +74,28 @@ pub fn validate_icmpv6_neighbor_length(payload: &[u8]) -> Result<(), Icmpv6Error
     if payload.len() < ICMPV6_NEIGHBOR_HEADER_LENGTH {
         return Err(Icmpv6Error::InvalidNeighborLength {
             expected: ICMPV6_NEIGHBOR_HEADER_LENGTH,
+            actual: payload.len(),
+        });
+    }
+    Ok(())
+}
+
+/// Verifie qu'une Router Solicitation porte au moins ses octets reserves.
+pub fn validate_icmpv6_router_solicitation_length(payload: &[u8]) -> Result<(), Icmpv6Error> {
+    if payload.len() < ICMPV6_ROUTER_SOLICITATION_HEADER_LENGTH {
+        return Err(Icmpv6Error::InvalidRouterLength {
+            expected: ICMPV6_ROUTER_SOLICITATION_HEADER_LENGTH,
+            actual: payload.len(),
+        });
+    }
+    Ok(())
+}
+
+/// Verifie qu'une Router Advertisement porte tous ses champs fixes.
+pub fn validate_icmpv6_router_advertisement_length(payload: &[u8]) -> Result<(), Icmpv6Error> {
+    if payload.len() < ICMPV6_ROUTER_ADVERTISEMENT_HEADER_LENGTH {
+        return Err(Icmpv6Error::InvalidRouterLength {
+            expected: ICMPV6_ROUTER_ADVERTISEMENT_HEADER_LENGTH,
             actual: payload.len(),
         });
     }

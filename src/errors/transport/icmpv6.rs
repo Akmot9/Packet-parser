@@ -25,6 +25,11 @@ pub enum Icmpv6Error {
     )]
     InvalidNeighborLength { expected: usize, actual: usize },
 
+    #[error(
+        "ICMPv6 router discovery message too short: expected at least {expected} bytes, got {actual}"
+    )]
+    InvalidRouterLength { expected: usize, actual: usize },
+
     #[error("ICMPv6 code {code} is not defined for message type {message_type}")]
     InvalidCodeForType { message_type: u8, code: u8 },
 }

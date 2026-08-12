@@ -348,3 +348,70 @@ fn packet_flow_decodes_neighbor_advertisement_with_router_flag() {
     assert!(advertisement.solicited);
     assert!(!advertisement.overrides);
 }
+
+// ---------------------------------------------------------------------------
+// Decouverte de routeurs (pcaps_exemple/The-Ultimate-PCAP.pcapng)
+// ---------------------------------------------------------------------------
+
+/// Trame 1600 : Router Solicitation portant une option Source Link-Layer
+/// Address, emise vers le multicast all-routers ff02::2.
+const ROUTER_SOLICITATION_FRAME_HEX: &str = concat!(
+    "33330000000200216a2d3b8e86dd6000000000103afffe800000000000000221",
+    "6afffe2d3b8eff02000000000000000000000000000285002f75000000000101",
+    "00216a2d3b8e"
+);
+
+/// Trame 1604 : Router Advertisement vers le multicast all-nodes ff02::1,
+/// drapeau O pose, options Prefix Information et MTU.
+const ROUTER_ADVERTISEMENT_FRAME_HEX: &str = concat!(
+    "333300000001d42122765b7886dd6000000000383afffe800000000000000000",
+    "000000000001ff02000000000000000000000000000186001553ff4807080000",
+    "7530000003e8030440c000093a80000151800000000020030050aa1042430000",
+    "00000000000005010000000005d4"
+);
+
+#[test]
+fn packet_flow_decodes_icmpv6_router_solicitation() {
+    let bytes = frame(ROUTER_SOLICITATION_FRAME_HEX, 70);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let Some(TransportDetails::Icmpv6(icmpv6)) = flow
+        .transport
+        .expect("ICMPv6 is reported at the transport slot")
+        .details
+    else {
+        panic!("ICMPv6 details are decoded");
+    };
+    assert_eq!(icmpv6.message_type, 133);
+
+    let Icmpv6Body::RouterSolicitation(solicitation) = icmpv6.body else {
+        panic!("router solicitation must expose its dedicated body");
+    };
+    assert_eq!(solicitation.options[0], 1);
+}
+
+#[test]
+fn packet_flow_decodes_icmpv6_router_advertisement() {
+    let bytes = frame(ROUTER_ADVERTISEMENT_FRAME_HEX, 110);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let Some(TransportDetails::Icmpv6(icmpv6)) = flow
+        .transport
+        .expect("ICMPv6 is reported at the transport slot")
+        .details
+    else {
+        panic!("ICMPv6 details are decoded");
+    };
+
+    let Icmpv6Body::RouterAdvertisement(advertisement) = icmpv6.body else {
+        panic!("router advertisement must expose its dedicated body");
+    };
+    assert_eq!(advertisement.current_hop_limit, 255);
+    assert!(!advertisement.managed_address_configuration);
+    assert!(advertisement.other_configuration);
+    assert_eq!(advertisement.router_lifetime, 1800);
+    assert_eq!(advertisement.reachable_time, 30_000);
+    assert_eq!(advertisement.retransmit_timer, 1000);
+    // Prefix Information (3) puis MTU (5).
+    assert_eq!(advertisement.options[0], 3);
+}

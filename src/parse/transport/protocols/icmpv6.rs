@@ -16,8 +16,10 @@ use std::net::Ipv6Addr;
 use crate::{
     checks::transport::icmpv6::{
         ICMPV6_ECHO_HEADER_LENGTH, ICMPV6_ERROR_HEADER_LENGTH, ICMPV6_HEADER_LENGTH,
-        ICMPV6_NEIGHBOR_HEADER_LENGTH, extract_icmpv6_code, validate_icmpv6_echo_length,
+        ICMPV6_NEIGHBOR_HEADER_LENGTH, ICMPV6_ROUTER_ADVERTISEMENT_HEADER_LENGTH,
+        ICMPV6_ROUTER_SOLICITATION_HEADER_LENGTH, extract_icmpv6_code, validate_icmpv6_echo_length,
         validate_icmpv6_error_length, validate_icmpv6_min_length, validate_icmpv6_neighbor_length,
+        validate_icmpv6_router_advertisement_length, validate_icmpv6_router_solicitation_length,
     },
     errors::transport::icmpv6::Icmpv6Error,
 };
@@ -29,6 +31,8 @@ const TIME_EXCEEDED_TYPE: u8 = 3;
 const PARAMETER_PROBLEM_TYPE: u8 = 4;
 const ECHO_REQUEST_TYPE: u8 = 128;
 const ECHO_REPLY_TYPE: u8 = 129;
+const ROUTER_SOLICITATION_TYPE: u8 = 133;
+const ROUTER_ADVERTISEMENT_TYPE: u8 = 134;
 const NEIGHBOR_SOLICITATION_TYPE: u8 = 135;
 const NEIGHBOR_ADVERTISEMENT_TYPE: u8 = 136;
 
@@ -74,12 +78,43 @@ pub struct Icmpv6NeighborAdvertisement<'a> {
     pub options: &'a [u8],
 }
 
+/// Router Solicitation (type 133, RFC 4861 §4.1). Un hote demande aux
+/// routeurs du lien de s'annoncer sans attendre leur prochaine emission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Icmpv6RouterSolicitation<'a> {
+    /// Options NDP brutes (souvent Source Link-Layer Address), zero-copy.
+    pub options: &'a [u8],
+}
+
+/// Router Advertisement (type 134, RFC 4861 §4.2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Icmpv6RouterAdvertisement<'a> {
+    /// Valeur que les hotes doivent placer dans leur champ Hop Limit ; 0
+    /// signifie « non specifie ».
+    pub current_hop_limit: u8,
+    /// Drapeau M : les adresses s'obtiennent par DHCPv6, pas par autoconf.
+    pub managed_address_configuration: bool,
+    /// Drapeau O : d'autres informations que l'adresse viennent de DHCPv6.
+    pub other_configuration: bool,
+    /// Duree de vie du routeur par defaut, en secondes ; 0 = pas un routeur
+    /// par defaut.
+    pub router_lifetime: u16,
+    /// Duree pendant laquelle un voisin reste considere joignable, en ms.
+    pub reachable_time: u32,
+    /// Intervalle entre deux Neighbor Solicitation, en ms.
+    pub retransmit_timer: u32,
+    /// Options NDP brutes (Prefix Information, MTU, ...), zero-copy.
+    pub options: &'a [u8],
+}
+
 /// Corps ICMPv6, choisi selon le type de message.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Icmpv6Body<'a> {
     Echo(Icmpv6Echo<'a>),
     Error(Icmpv6ErrorReport<'a>),
+    RouterSolicitation(Icmpv6RouterSolicitation<'a>),
+    RouterAdvertisement(Icmpv6RouterAdvertisement<'a>),
     NeighborSolicitation(Icmpv6NeighborSolicitation<'a>),
     NeighborAdvertisement(Icmpv6NeighborAdvertisement<'a>),
     /// Type non interprete : octets bruts apres l'en-tete commun.
@@ -151,6 +186,38 @@ impl<'a> TryFrom<&'a [u8]> for Icmpv6Packet<'a> {
                         payload[4], payload[5], payload[6], payload[7],
                     ]),
                     invoking_packet: &payload[ICMPV6_ERROR_HEADER_LENGTH..],
+                })
+            }
+            ROUTER_SOLICITATION_TYPE => {
+                validate_icmpv6_router_solicitation_length(payload)?;
+                Icmpv6Body::RouterSolicitation(Icmpv6RouterSolicitation {
+                    options: &payload[ICMPV6_ROUTER_SOLICITATION_HEADER_LENGTH..],
+                })
+            }
+            ROUTER_ADVERTISEMENT_TYPE => {
+                validate_icmpv6_router_advertisement_length(payload)?;
+                // RFC 4861 §4.2 : les deux bits de poids fort de l'octet 5
+                // portent Managed et Other ; les suivants sont reserves ou
+                // definis par des extensions (RFC 3775, RFC 4191).
+                let flags = payload[5];
+                Icmpv6Body::RouterAdvertisement(Icmpv6RouterAdvertisement {
+                    current_hop_limit: payload[4],
+                    managed_address_configuration: flags & 0b1000_0000 != 0,
+                    other_configuration: flags & 0b0100_0000 != 0,
+                    router_lifetime: u16::from_be_bytes([payload[6], payload[7]]),
+                    reachable_time: u32::from_be_bytes([
+                        payload[8],
+                        payload[9],
+                        payload[10],
+                        payload[11],
+                    ]),
+                    retransmit_timer: u32::from_be_bytes([
+                        payload[12],
+                        payload[13],
+                        payload[14],
+                        payload[15],
+                    ]),
+                    options: &payload[ICMPV6_ROUTER_ADVERTISEMENT_HEADER_LENGTH..],
                 })
             }
             NEIGHBOR_SOLICITATION_TYPE => {
@@ -316,6 +383,89 @@ mod tests {
             Icmpv6Error::InvalidCodeForType {
                 message_type: 128,
                 code: 3
+            }
+        );
+    }
+}
+
+#[cfg(test)]
+mod router_discovery_tests {
+    use super::*;
+
+    /// Trame 1600 : Router Solicitation avec option Source Link-Layer Address
+    /// (pcaps_exemple/The-Ultimate-PCAP.pcapng).
+    const ROUTER_SOLICITATION: &str = "85002f7500000000010100216a2d3b8e";
+
+    /// Trame 1601 : Router Solicitation nue, sans aucune option (meme capture).
+    const ROUTER_SOLICITATION_BARE: &str = "8500d65a00000000";
+
+    /// Trame 1604 : Router Advertisement, drapeau O pose, avec les options
+    /// Prefix Information (3) et MTU (5) (meme capture).
+    const ROUTER_ADVERTISEMENT: &str = concat!(
+        "86001553ff48070800007530000003e8030440c000093a800001518000000000",
+        "20030050aa104243000000000000000005010000000005d4"
+    );
+
+    fn bytes(hex_fixture: &str) -> Vec<u8> {
+        hex::decode(hex_fixture).expect("invalid test hex fixture")
+    }
+
+    #[test]
+    fn parses_router_solicitation_with_source_link_layer_option() {
+        let raw = bytes(ROUTER_SOLICITATION);
+        let packet = Icmpv6Packet::try_from(raw.as_slice()).expect("captured RS parses");
+
+        assert_eq!(packet.message_type, 133);
+        let Icmpv6Body::RouterSolicitation(solicitation) = &packet.body else {
+            panic!("expected a router solicitation, got {:?}", packet.body);
+        };
+        // Option 1 (Source Link-Layer Address), une unite de 8 octets.
+        assert_eq!(solicitation.options[0], 1);
+        assert_eq!(solicitation.options.len(), 8);
+    }
+
+    #[test]
+    fn parses_bare_router_solicitation_without_options() {
+        let raw = bytes(ROUTER_SOLICITATION_BARE);
+        let packet = Icmpv6Packet::try_from(raw.as_slice()).expect("captured bare RS parses");
+
+        let Icmpv6Body::RouterSolicitation(solicitation) = &packet.body else {
+            panic!("expected a router solicitation, got {:?}", packet.body);
+        };
+        assert!(solicitation.options.is_empty());
+    }
+
+    #[test]
+    fn parses_router_advertisement_fields_from_capture() {
+        let raw = bytes(ROUTER_ADVERTISEMENT);
+        let packet = Icmpv6Packet::try_from(raw.as_slice()).expect("captured RA parses");
+
+        assert_eq!(packet.message_type, 134);
+        let Icmpv6Body::RouterAdvertisement(advertisement) = &packet.body else {
+            panic!("expected a router advertisement, got {:?}", packet.body);
+        };
+        // Valeurs relues avec Tshark sur la trame 1604.
+        assert_eq!(advertisement.current_hop_limit, 255);
+        assert!(!advertisement.managed_address_configuration);
+        assert!(advertisement.other_configuration);
+        assert_eq!(advertisement.router_lifetime, 1800);
+        assert_eq!(advertisement.reachable_time, 30_000);
+        assert_eq!(advertisement.retransmit_timer, 1000);
+        // Premiere option : Prefix Information (type 3).
+        assert_eq!(advertisement.options[0], 3);
+    }
+
+    /// Synthetique : RA tronquee avant le retrans timer.
+    #[test]
+    fn rejects_router_advertisement_missing_fixed_fields() {
+        let raw = bytes("86001553ff4807080000753000");
+        let result = Icmpv6Packet::try_from(raw.as_slice());
+
+        assert_eq!(
+            result.unwrap_err(),
+            Icmpv6Error::InvalidRouterLength {
+                expected: 16,
+                actual: 13
             }
         );
     }

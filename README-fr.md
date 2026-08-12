@@ -242,8 +242,10 @@ incomplete.
   parameter problem). Atteint par le numero de protocole IP 1, jamais par
   probing.
 - ICMPv6 (echo request/reply, les messages d'erreur qui citent le paquet
-  invoquant, et la decouverte de voisins RFC 4861 : neighbor solicitation et
-  advertisement, avec adresse cible et flags R/S/O). Atteint par le next
+  invoquant, et la decouverte RFC 4861 : router solicitation et advertisement
+  — cette derniere avec hop limit, drapeaux M/O, duree de vie du routeur,
+  reachable time et retransmit timer — plus neighbor solicitation et
+  advertisement avec adresse cible et drapeaux R/S/O). Atteint par le next
   header IPv6 58. La numerotation des types est disjointe de celle d'ICMPv4 —
   128 y est un echo request, 8 n'est pas defini — d'ou deux parseurs separes.
 

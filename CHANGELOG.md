@@ -49,6 +49,18 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   provoquee en local sur `lo` par des envois UDP vers des ports fermes : elle
   ne contient que du loopback, donc aucune donnee a anonymiser.
 
+- Decodage de la **decouverte de routeurs ICMPv6** (RFC 4861 §4.1 et §4.2) :
+  Router Solicitation (type 133) et Router Advertisement (type 134) quittent
+  `Icmpv6Body::Other` pour des variants dedies. La RA expose son hop limit
+  courant, les drapeaux Managed et Other, la duree de vie du routeur, le
+  reachable time et le retransmit timer ; les deux exposent leurs options NDP
+  brutes en zero-copy. Nouveau variant d'erreur `InvalidRouterLength`.
+
+  Golden tests sur `pcaps_exemple/The-Ultimate-PCAP.pcapng`, deja au depot :
+  trame 1600 (RS avec option Source Link-Layer Address), 1601 (RS nue, sans
+  option) et 1604 (RA, drapeau O pose, options Prefix Information et MTU). Les
+  valeurs attendues sont relues avec Tshark.
+
 - Capture `pcaps_exemple/protocols/icmp/icmp_mtu_exceeded.pcapng` et ses golden
   tests. Elle couvre les deux seuls messages ou `rest_of_header` porte une
   valeur non nulle — ICMPv4 fragmentation needed (type 3 code 4) et ICMPv6

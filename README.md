@@ -239,8 +239,10 @@ from incomplete data.
   datagram: destination unreachable, redirect, time exceeded, parameter
   problem). Reached through IP protocol number 1, never through probing.
 - ICMPv6 (echo request/reply, the error reports that quote the invoking packet,
-  and the neighbor discovery messages of RFC 4861: neighbor solicitation and
-  advertisement, with their target address and R/S/O flags). Reached through
+  and the neighbor discovery messages of RFC 4861: router solicitation and
+  advertisement — the latter with its hop limit, M/O flags, router lifetime,
+  reachable time and retransmit timer — plus neighbor solicitation and
+  advertisement with their target address and R/S/O flags). Reached through
   IPv6 next header 58. Type numbering is disjoint from ICMPv4 — 128 is an echo
   request there, 8 is undefined — so the two have separate parsers.
 
