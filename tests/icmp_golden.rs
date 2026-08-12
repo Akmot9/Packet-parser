@@ -179,3 +179,76 @@ fn icmpv6_is_never_handed_to_application_probing() {
     assert!(transport.payload.is_none());
     assert!(flow.application.is_none());
 }
+
+// ---------------------------------------------------------------------------
+// Messages d'erreur (pcaps_exemple/protocols/icmp/icmp_destination_unreachable.pcapng)
+// ---------------------------------------------------------------------------
+
+/// Trame 1 : ICMPv4 Destination Unreachable, code 3 (port unreachable),
+/// emis par la pile locale apres un envoi UDP vers 127.0.0.1:9999.
+const ICMPV4_PORT_UNREACHABLE_FRAME_HEX: &str = concat!(
+    "000000000000000000000000080045c000399e5000004001ddb17f0000017f00",
+    "00010303c9a3000000004500001dfd41400040113f8c7f0000017f0000019623",
+    "270f0009fe1c78"
+);
+
+/// Trame 2 : ICMPv6 Destination Unreachable, code 4 (port unreachable),
+/// apres un envoi UDP vers [::1]:9999.
+const ICMPV6_PORT_UNREACHABLE_FRAME_HEX: &str = concat!(
+    "00000000000000000000000086dd600245dc00393a4000000000000000000000",
+    "000000000001000000000000000000000000000000010104956a00000000600e",
+    "cab8000911400000000000000000000000000000000100000000000000000000",
+    "0000000000018dd5270f0009001c78"
+);
+
+#[test]
+fn packet_flow_decodes_icmpv4_destination_unreachable() {
+    let bytes = frame(ICMPV4_PORT_UNREACHABLE_FRAME_HEX, 71);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let Some(TransportDetails::Icmp(icmp)) = flow
+        .transport
+        .expect("ICMP is reported at the transport slot")
+        .details
+    else {
+        panic!("ICMP details are decoded");
+    };
+    assert_eq!(icmp.message_type, 3);
+    assert_eq!(icmp.code, 3);
+
+    let IcmpBody::Error(report) = icmp.body else {
+        panic!("destination unreachable must expose an error body");
+    };
+    // Code 3 n'utilise pas les quatre octets qui suivent le checksum ; ils
+    // porteraient le MTU pour le code 4 (fragmentation needed).
+    assert_eq!(report.rest_of_header, 0);
+    // Le datagramme cite est l'IPv4 + UDP qui a provoque l'erreur.
+    assert_eq!(report.original_datagram[0], 0x45);
+    // Protocole 17 (UDP) a l'offset 9 de l'en-tete IPv4 original.
+    assert_eq!(report.original_datagram[9], 17);
+}
+
+#[test]
+fn packet_flow_decodes_icmpv6_destination_unreachable() {
+    let bytes = frame(ICMPV6_PORT_UNREACHABLE_FRAME_HEX, 111);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let Some(TransportDetails::Icmpv6(icmpv6)) = flow
+        .transport
+        .expect("ICMPv6 is reported at the transport slot")
+        .details
+    else {
+        panic!("ICMPv6 details are decoded");
+    };
+    assert_eq!(icmpv6.message_type, 1);
+    assert_eq!(icmpv6.code, 4);
+
+    let Icmpv6Body::Error(report) = icmpv6.body else {
+        panic!("destination unreachable must expose an error body");
+    };
+    assert_eq!(report.rest_of_header, 0);
+    // Le paquet invoquant commence par un en-tete IPv6 (version 6).
+    assert_eq!(report.invoking_packet[0] >> 4, 6);
+    // Next header 17 (UDP) a l'offset 6 de l'en-tete IPv6.
+    assert_eq!(report.invoking_packet[6], 17);
+}

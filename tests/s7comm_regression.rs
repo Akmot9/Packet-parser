@@ -666,12 +666,13 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     }
 
     // Coverage oracle: a green test must prove it actually walked the corpus.
-    assert_eq!(captures.len(), 57);
-    assert_eq!(opened_files, 56);
-    assert_eq!(frame_count, 2_877);
+    assert_eq!(captures.len(), 58);
+    assert_eq!(opened_files, 57);
+    assert_eq!(frame_count, 2_880);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
-    assert_eq!(parsed_flows, 2_835);
+    // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng.
+    assert_eq!(parsed_flows, 2_838);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

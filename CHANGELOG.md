@@ -42,6 +42,13 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   request en v6, tandis que le 8 d'ICMPv4 n'y est pas defini. Un test verrouille
   ce point precis. Meme regle de detection et meme `payload: None` qu'en v4.
 
+- Capture `pcaps_exemple/protocols/icmp/icmp_destination_unreachable.pcapng`
+  et les golden tests correspondants, qui comblent les deux branches
+  « message d'erreur » que le corpus ne couvrait pas : Destination Unreachable
+  ICMPv4 (type 3 code 3) et la branche erreur ICMPv6 (type 1 code 4). Capture
+  provoquee en local sur `lo` par des envois UDP vers des ports fermes : elle
+  ne contient que du loopback, donc aucune donnee a anonymiser.
+
 - Support des link types LINKTYPE_IPV4 (228) et LINKTYPE_IPV6 (229) via les
   nouvelles constantes `LinkType::IPV4` et `LinkType::IPV6`. Ces captures
   commencent directement a l'en-tete IP, comme LINKTYPE_RAW, et reutilisent
