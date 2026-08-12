@@ -23,8 +23,8 @@ use crate::errors::application::ssh::SshError;
 /// Prefixe litteral de toute chaine d'identification SSH.
 pub const SSH_PREFIX: &[u8] = b"SSH-";
 
-/// `SSH-` + la plus courte version + `-` + un octet de logiciel + LF.
-pub const SSH_MIN_LENGTH: usize = 9;
+/// `SSH-` (4) + `2.0` (3) + `-` (1) + un octet de logiciel (1) + LF (1).
+pub const SSH_MIN_LENGTH: usize = 10;
 
 /// RFC 4253 §4.2 : la chaine ne doit pas depasser 255 octets, CR et LF inclus.
 pub const SSH_MAX_IDENTIFICATION_LENGTH: usize = 255;

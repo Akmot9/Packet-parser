@@ -269,8 +269,8 @@ Application detection is intentionally best-effort. Parser modules include:
 - FTP
 - SMTP
 - NNTP
-- SSH (identification string only: everything after the version
-  exchange is encrypted)
+- SSH (identification string only: everything after the version exchange is
+  encrypted, so a stateless parser labels the banner frames and nothing else)
 - Modbus TCP
 - EtherNet/IP
 - OPC UA

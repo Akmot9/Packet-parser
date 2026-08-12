@@ -151,6 +151,23 @@ mod tests {
         assert_eq!(result.unwrap_err(), SshError::MissingLineTerminator);
     }
 
+    /// Synthetique : la banniere la plus courte possible fait 10 octets
+    /// (`SSH-` + `2.0` + `-` + un octet de logiciel + LF). A neuf, le
+    /// pre-check de longueur doit deja trancher, sans laisser un controle
+    /// plus tardif rendre un diagnostic moins precis.
+    #[test]
+    fn rejects_identification_one_byte_below_the_minimum() {
+        let result = SshPacket::try_from(&b"SSH-2.0-\n"[..]);
+
+        assert_eq!(
+            result.unwrap_err(),
+            SshError::InvalidLength {
+                expected: 10,
+                actual: 9
+            }
+        );
+    }
+
     /// Synthetique : du texte quelconque ne doit pas etre pris pour du SSH.
     #[test]
     fn rejects_payload_without_prefix() {

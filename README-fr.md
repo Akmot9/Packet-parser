@@ -273,8 +273,9 @@ incluent notamment:
 - FTP
 - SMTP
 - NNTP
-- SSH (chaine d'identification seulement : tout ce qui suit l'echange
-  de versions est chiffre)
+- SSH (chaine d'identification seulement : tout ce qui suit l'echange de
+  versions est chiffre, donc un parseur stateless etiquette les trames de
+  banniere et rien d'autre)
 - Modbus TCP
 - EtherNet/IP
 - OPC UA
