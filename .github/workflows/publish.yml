@@ -30,6 +30,21 @@ jobs:
             exit 1
           fi
 
+      # Garde-fou de la fenetre de stabilite ouverte apres la 10.0.0 :
+      # l'objectif est de tenir 6 a 12 mois sans rupture d'API, et une
+      # rupture involontaire ne doit pas pouvoir atteindre crates.io.
+      #
+      # cargo-semver-checks compare l'API publique du tag a celle de la
+      # derniere version publiee, et echoue si le changement exige un bump
+      # plus fort que celui annonce par Cargo.toml. Une majeure deliberee
+      # passe donc sans obstacle ; c'est la mineure ou la patch qui casse
+      # sans le dire qui est arretee ici.
+      - name: Install cargo-semver-checks
+        run: cargo install cargo-semver-checks --locked
+
+      - name: Check API compatibility against the published version
+        run: cargo semver-checks check-release
+
       - name: Publish crate
         run: cargo publish --registry crates-io
         env:

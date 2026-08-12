@@ -448,7 +448,7 @@ tshark -r capture.pcap -Y "frame.number==5" -T fields -e tcp.payload
 - Les validations et extractions sont dans un fichier separe sous `src/checks` (pas de validation inline dans le parseur).
 - Le type principal a une rustdoc avec un schema Mermaid `packet-beta`.
 - Les `mod.rs` necessaires exportent le nouveau module.
-- La compatibilite semver de l'API publique est preservee ; un variant d'enum publique exhaustive n'est ajoute que dans une version majeure, avec son bras `Display`.
+- La compatibilite semver de l'API publique est preservee ; un variant d'enum publique exhaustive n'est ajoute que dans une version majeure, avec son bras `Display`. Verifiable par `cargo semver-checks check-release`, que le workflow de publication execute avant tout `cargo publish`.
 - La voie de detection est choisie et justifiee : probing a l'aveugle si la
   signature et les transports le permettent, contrainte de transport si elle
   est necessaire, garde de port si la signature reste ambigue.
@@ -474,4 +474,5 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo +nightly fuzz build
 cargo audit
 cargo deny check --hide-inclusion-graph
+cargo semver-checks check-release   # compare l'API publique a la derniere version publiee
 ```
