@@ -7,7 +7,9 @@ use std::convert::TryFrom;
 
 pub mod protocols;
 
-use protocols::{TransportProtocol, icmp::IcmpPacket, tcp::TcpPacket, udp::UdpPacket};
+use protocols::{
+    TransportProtocol, icmp::IcmpPacket, icmpv6::Icmpv6Packet, tcp::TcpPacket, udp::UdpPacket,
+};
 use serde::Serialize;
 
 use crate::errors::transport::TransportError;
@@ -23,6 +25,7 @@ pub enum TransportDetails<'a> {
     Tcp(TcpPacket<'a>),
     Udp(UdpPacket<'a>),
     Icmp(IcmpPacket<'a>),
+    Icmpv6(Icmpv6Packet<'a>),
 }
 
 /// Represents a transport layer packet (UDP, TCP, etc.)
@@ -92,6 +95,17 @@ impl<'a> Transport<'a> {
                 details: IcmpPacket::try_from(payload)
                     .ok()
                     .map(TransportDetails::Icmp),
+            }),
+            // ICMPv6 : meme raisonnement qu'ICMPv4, mais numerotation de
+            // types disjointe et parseur distinct (RFC 4443, RFC 4861).
+            Some(TransportProtocol::Ipv6Icmp) => Ok(Transport {
+                protocol: TransportProtocol::Ipv6Icmp,
+                source_port: None,
+                destination_port: None,
+                payload: None,
+                details: Icmpv6Packet::try_from(payload)
+                    .ok()
+                    .map(TransportDetails::Icmpv6),
             }),
             Some(other) => Ok(Transport {
                 protocol: other,

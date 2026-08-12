@@ -238,8 +238,15 @@ from incomplete data.
 - ICMPv4 (echo request/reply, and the error reports that quote the original
   datagram: destination unreachable, redirect, time exceeded, parameter
   problem). Reached through IP protocol number 1, never through probing.
-  ICMP carries no application layer, so `payload` stays `None` and the decoded
-  message is exposed through `TransportDetails::Icmp`.
+- ICMPv6 (echo request/reply, the error reports that quote the invoking packet,
+  and the neighbor discovery messages of RFC 4861: neighbor solicitation and
+  advertisement, with their target address and R/S/O flags). Reached through
+  IPv6 next header 58. Type numbering is disjoint from ICMPv4 — 128 is an echo
+  request there, 8 is undefined — so the two have separate parsers.
+
+Neither ICMP version carries an application layer, so `payload` stays `None`
+and the decoded message is exposed through `TransportDetails::Icmp` /
+`TransportDetails::Icmpv6`.
 - Mapping from many IP protocol numbers to `TransportProtocol`
 
 Protocols other than TCP/UDP/ICMP can be represented by the enum, but they do

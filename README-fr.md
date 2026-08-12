@@ -240,8 +240,16 @@ incomplete.
 - ICMPv4 (echo request/reply, et les messages d'erreur qui citent le
   datagramme original : destination unreachable, redirect, time exceeded,
   parameter problem). Atteint par le numero de protocole IP 1, jamais par
-  probing. ICMP ne porte pas de couche applicative : `payload` reste `None` et
-  le message decode est expose via `TransportDetails::Icmp`.
+  probing.
+- ICMPv6 (echo request/reply, les messages d'erreur qui citent le paquet
+  invoquant, et la decouverte de voisins RFC 4861 : neighbor solicitation et
+  advertisement, avec adresse cible et flags R/S/O). Atteint par le next
+  header IPv6 58. La numerotation des types est disjointe de celle d'ICMPv4 —
+  128 y est un echo request, 8 n'est pas defini — d'ou deux parseurs separes.
+
+Aucune version d'ICMP ne porte de couche applicative : `payload` reste `None`
+et le message decode est expose via `TransportDetails::Icmp` /
+`TransportDetails::Icmpv6`.
 - Mapping de nombreux numeros de protocoles IP vers `TransportProtocol`
 
 Les protocoles autres que TCP/UDP/ICMP peuvent etre representes par leur enum,

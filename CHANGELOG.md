@@ -28,8 +28,19 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
   Golden tests sur les captures reelles de `pcaps_exemple/protocols/icmp/`
   (depot public de Chris Sanders) : echo request, echo reply et time exceeded,
-  au niveau parseur et au niveau `PacketFlow`. ICMPv6 (types 128/129 et NDP
-  135/136) n'est pas encore decode.
+  au niveau parseur et au niveau `PacketFlow`.
+
+- Decodage **ICMPv6** (next header IPv6 58, RFC 4443 et RFC 4861), avec le
+  variant `TransportDetails::Icmpv6`. Couvre les Echo (128/129), les messages
+  d'erreur citant le paquet invoquant (1 a 4), et la decouverte de voisins :
+  Neighbor Solicitation (135) et Advertisement (136) exposent l'adresse cible
+  en `Ipv6Addr`, les flags Router/Solicited/Override, et les options NDP
+  brutes en zero-copy.
+
+  Parseur volontairement separe d'ICMPv4 : les deux partagent la forme de
+  l'en-tete mais leur numerotation de types est disjointe — 128 est un Echo
+  request en v6, tandis que le 8 d'ICMPv4 n'y est pas defini. Un test verrouille
+  ce point precis. Meme regle de detection et meme `payload: None` qu'en v4.
 
 - Support des link types LINKTYPE_IPV4 (228) et LINKTYPE_IPV6 (229) via les
   nouvelles constantes `LinkType::IPV4` et `LinkType::IPV6`. Ces captures

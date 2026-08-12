@@ -4,5 +4,6 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 pub mod icmp;
+pub mod icmpv6;
 pub mod tcp;
 pub mod udp;
