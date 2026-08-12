@@ -110,6 +110,29 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   analysables et de 59 a 42 erreurs L2 ; aucun faux positif S7Comm ou COTP
   n'apparait.
 
+### Corrige
+
+- `SSH_MIN_LENGTH` valait 9 alors que la banniere la plus courte possible fait
+  dix octets : `SSH-` (4) + `2.0` (3) + `-` (1) + un octet de logiciel (1) +
+  LF (1). Un payload de neuf octets franchissait donc le pre-check de longueur
+  et n'etait rejete que plus loin, par `EmptySoftwareVersion` — un diagnostic
+  moins precis que ce que promet la structure du parseur.
+
+### Connu
+
+- La detection SSH porte sur les trames de banniere uniquement. Sur les 542
+  trames qu'un dissecteur a etat etiquette SSH dans `The-Ultimate-PCAP`, un
+  parseur stateless en identifie huit ; le reste est du materiel de cle puis
+  du chiffre, indistinguable du bruit sans suivi de session.
+- ICMP et ICMPv6 decodent tout ce que le corpus contient, mais deux familles
+  restent sans trame reelle : les Router Solicitation/Advertisement etaient
+  couvertes, les messages ICMPv6 de type 3 et 4 ne le sont pas.
+- Ajouter SSH porte a dix-sept le nombre de parseurs enchaines par
+  `Application::try_from`, ce qui aggrave marginalement l'issue #20. Son
+  controle est toutefois parmi les moins couteux de la cascade : un prefixe
+  litteral de quatre octets rejette immediatement tout ce qui n'est pas du
+  SSH, sans allocation.
+
 ## [10.0.0] - 2026-08-04
 
 Version majeure : decodage COTP complet et validation stricte de l'enveloppe
