@@ -376,23 +376,30 @@ impl<'a> LinkLayer<'a> {
         }
     }
 
-    fn raw_ip(network_protocol: NetworkProtocol, ip_version: u8, payload: &'a [u8]) -> Self {
+    fn raw_ip(
+        link_type: LinkType,
+        network_protocol: NetworkProtocol,
+        ip_version: u8,
+        payload: &'a [u8],
+    ) -> Self {
         Self {
-            link_type: LinkType::RAW,
+            link_type,
             network_protocol,
             network_payload: payload,
             kind: LinkLayerKind::RawIp(RawIpLink::new(ip_version, payload)),
         }
     }
 
-    /// Wraps a decoder-validated LINKTYPE_RAW IPv4 packet.
-    pub(crate) fn raw_ipv4(payload: &'a [u8]) -> Self {
-        Self::raw_ip(NetworkProtocol::Ipv4, 4, payload)
+    /// Wraps a decoder-validated header-less IPv4 packet. `link_type` is the
+    /// one the capture declared (RAW, IPV4), not a normalized value.
+    pub(crate) fn raw_ipv4(link_type: LinkType, payload: &'a [u8]) -> Self {
+        Self::raw_ip(link_type, NetworkProtocol::Ipv4, 4, payload)
     }
 
-    /// Wraps a decoder-validated LINKTYPE_RAW IPv6 packet.
-    pub(crate) fn raw_ipv6(payload: &'a [u8]) -> Self {
-        Self::raw_ip(NetworkProtocol::Ipv6, 6, payload)
+    /// Wraps a decoder-validated header-less IPv6 packet. `link_type` is the
+    /// one the capture declared (RAW, IPV6), not a normalized value.
+    pub(crate) fn raw_ipv6(link_type: LinkType, payload: &'a [u8]) -> Self {
+        Self::raw_ip(link_type, NetworkProtocol::Ipv6, 6, payload)
     }
 
     /// Wraps a decoder-validated LINKTYPE_LINUX_SLL v1 header.
@@ -605,8 +612,8 @@ mod tests {
     fn raw_ip_details_are_zero_copy_and_ignore_payload_in_flow_identity() {
         let first_bytes = [0x45, 1, 2];
         let second_bytes = [0x45, 9, 8, 7];
-        let first = LinkLayer::raw_ipv4(&first_bytes);
-        let second = LinkLayer::raw_ipv4(&second_bytes);
+        let first = LinkLayer::raw_ipv4(LinkType::RAW, &first_bytes);
+        let second = LinkLayer::raw_ipv4(LinkType::RAW, &second_bytes);
         let raw = first.as_raw_ip().unwrap();
 
         assert_eq!(first.link_type(), LinkType::RAW);
@@ -616,12 +623,12 @@ mod tests {
         assert_eq!(first.network_payload().as_ptr(), first_bytes.as_ptr());
         assert_eq!(first, second);
         assert_eq!(hash_of(&first), hash_of(&second));
-        assert_ne!(first, LinkLayer::raw_ipv6(&first_bytes));
+        assert_ne!(first, LinkLayer::raw_ipv6(LinkType::RAW, &first_bytes));
     }
 
     #[test]
     fn raw_ip_serialization_has_no_fabricated_ethernet_fields() {
-        let value = serde_json::to_value(LinkLayer::raw_ipv4(&[0x45])).unwrap();
+        let value = serde_json::to_value(LinkLayer::raw_ipv4(LinkType::RAW, &[0x45])).unwrap();
 
         assert_eq!(
             value,

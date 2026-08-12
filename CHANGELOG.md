@@ -4,6 +4,28 @@ Tous les changements notables du projet seront documentes dans ce fichier.
 
 Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), avec des sections simples par type de changement.
 
+## [Non publie]
+
+### Ajoute
+
+- Support des link types LINKTYPE_IPV4 (228) et LINKTYPE_IPV6 (229) via les
+  nouvelles constantes `LinkType::IPV4` et `LinkType::IPV6`. Ces captures
+  commencent directement a l'en-tete IP, comme LINKTYPE_RAW, et reutilisent
+  donc `RawIpDecoder` qui lit la version au premier quartet. Avant ce
+  correctif, `decoder_for` ne connaissait que 1/101/113/276 et chaque trame
+  d'une telle capture echouait en L2 sans jamais atteindre les couches
+  superieures : les 17 trames de `pcaps_exemple/protocols/tls/tls12-dsb.pcapng`
+  sortent desormais 16 TLS + 1 Unknown au lieu de 17 erreurs L2.
+
+  `data_link.link_type()` rapporte le link type declare par la capture (228 ou
+  229) plutot que de tout normaliser en `RAW` : une capture 228 reste
+  distinguable d'une capture 101. Les erreurs L2 (`Truncated`,
+  `InvalidIpVersion`) citent egalement le link type reel.
+
+  L'oracle de couverture de `s7comm_regression` passe de 2 818 a 2 835 flux
+  analysables et de 59 a 42 erreurs L2 ; aucun faux positif S7Comm ou COTP
+  n'apparait.
+
 ## [10.0.0] - 2026-08-04
 
 Version majeure : decodage COTP complet et validation stricte de l'enveloppe

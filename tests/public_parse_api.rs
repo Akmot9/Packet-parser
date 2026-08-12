@@ -1128,3 +1128,41 @@ fn timed_api_rejects_unsupported_link_type_before_decoding() {
     assert_eq!(timing.l4_ns, 0);
     assert_eq!(timing.l7_ns, 0);
 }
+
+/// Frame #1 of `pcaps_exemple/protocols/tls/tls12-dsb.pcapng`, whose pcapng IDB
+/// declares LINKTYPE_IPV4 (228): the bytes start directly at the IPv4 header,
+/// with no link-layer header at all. TCP/443 carrying a TLS 1.2 ClientHello for
+/// `example.com`.
+const LINKTYPE_IPV4_TLS_CLIENT_HELLO_HEX: &str = concat!(
+    "45000119e1ea40004006180f0a0900025db8d822b6d001bbfbc2e052de551ae0",
+    "801800e540f100000101080ac8fafa0d880626a616030100e0010000dc0303f6",
+    "7a28b386b31c620d76c0026fdd9888edbe6bf0f5b715b2caca158f84ae9d6600",
+    "0038c02cc030009fcca9cca8ccaac02bc02f009ec024c028006bc023c0270067",
+    "c00ac0140039c009c0130033009d009c003d003c0035002f00ff0100007b0000",
+    "0010000e00000b6578616d706c652e636f6d000b000403000102000a000c000a",
+    "001d0017001e00190018337400000010000b000908687474702f312e31001600",
+    "0000170000000d0030002e040305030603080708080809080a080b0804080508",
+    "06040105010601030302030301020103020202040205020602"
+);
+
+/// Regression: a capture whose link type is LINKTYPE_IPV4 (228) must decode
+/// like LINKTYPE_RAW — the payload already starts at the IP header. Before the
+/// fix `decoder_for` knew only 1/101/113/276, so every frame of such a capture
+/// failed at L2 and no upper layer was ever reached.
+#[test]
+fn linktype_ipv4_decodes_like_raw_ip() {
+    let bytes = hex::decode(LINKTYPE_IPV4_TLS_CLIENT_HELLO_HEX).expect("invalid test hex fixture");
+
+    assert!(is_supported(LinkType::IPV4));
+
+    let flow = parse(LinkType::IPV4, bytes.as_slice()).expect("LINKTYPE_IPV4 frame decodes");
+
+    assert_eq!(flow.data_link.link_type(), LinkType::IPV4);
+    assert_eq!(flow.data_link.network_protocol(), NetworkProtocol::Ipv4);
+    let raw = flow.data_link.as_raw_ip().expect("RAW IP view");
+    assert_eq!(raw.ip_version, 4);
+    assert_eq!(
+        flow.application.expect("L7 detected").application_protocol,
+        "TLS"
+    );
+}

@@ -18,7 +18,9 @@ use raw_ip::RawIpDecoder;
 #[derive(Clone, Copy)]
 enum DecoderKind {
     Ethernet,
-    RawIp,
+    /// Carries the link type it was selected for: RAW, IPV4 and IPV6 share the
+    /// same decoder but must each be reported back as declared by the capture.
+    RawIp(LinkType),
     LinuxSll,
     LinuxSll2,
 }
@@ -49,7 +51,12 @@ impl<'a> DecodedLink<'a> {
 const fn decoder_for(link_type: LinkType) -> Option<DecoderKind> {
     match link_type {
         LinkType::ETHERNET => Some(DecoderKind::Ethernet),
-        LinkType::RAW => Some(DecoderKind::RawIp),
+        // RAW, IPV4 et IPV6 partagent la meme forme : les octets commencent
+        // directement a l'en-tete IP. RawIpDecoder lit la version au premier
+        // quartet, ce qui couvre les trois sans decodeur dedie.
+        LinkType::RAW => Some(DecoderKind::RawIp(LinkType::RAW)),
+        LinkType::IPV4 => Some(DecoderKind::RawIp(LinkType::IPV4)),
+        LinkType::IPV6 => Some(DecoderKind::RawIp(LinkType::IPV6)),
         LinkType::LINUX_SLL => Some(DecoderKind::LinuxSll),
         LinkType::LINUX_SLL2 => Some(DecoderKind::LinuxSll2),
         _ => None,
@@ -71,7 +78,7 @@ pub(crate) trait LinkDecoder {
 fn decode_with<'a>(kind: DecoderKind, bytes: &'a [u8]) -> Result<DecodedLink<'a>, ParseError> {
     match kind {
         DecoderKind::Ethernet => EthernetDecoder::decode(bytes),
-        DecoderKind::RawIp => RawIpDecoder::decode(bytes),
+        DecoderKind::RawIp(link_type) => RawIpDecoder::decode_as(link_type, bytes),
         DecoderKind::LinuxSll => LinuxSllDecoder::decode(bytes),
         DecoderKind::LinuxSll2 => LinuxSll2Decoder::decode(bytes),
     }

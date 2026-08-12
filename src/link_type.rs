@@ -34,6 +34,12 @@ impl LinkType {
     /// Bluetooth HCI H4 with a direction pseudo-header.
     pub const BLUETOOTH_HCI_H4_WITH_PHDR: Self = Self(201);
 
+    /// Raw IPv4 packet, no link-layer header (LINKTYPE_IPV4).
+    pub const IPV4: Self = Self(228);
+
+    /// Raw IPv6 packet, no link-layer header (LINKTYPE_IPV6).
+    pub const IPV6: Self = Self(229);
+
     /// Linux cooked capture v2 (LINKTYPE_LINUX_SLL2).
     pub const LINUX_SLL2: Self = Self(276);
 }

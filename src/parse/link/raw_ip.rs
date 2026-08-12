@@ -6,31 +6,40 @@
 use super::{DecodedLink, LinkDecoder};
 use crate::{LinkLayer, LinkLayerError, LinkType, ParseError};
 
-/// Decoder for LINKTYPE_RAW, whose packet bytes start directly with IPv4/IPv6.
+/// Decoder for the link types whose packet bytes start directly with IPv4/IPv6:
+/// LINKTYPE_RAW, LINKTYPE_IPV4 and LINKTYPE_IPV6.
 pub(super) struct RawIpDecoder;
 
-impl LinkDecoder for RawIpDecoder {
+impl RawIpDecoder {
+    /// Decodes header-less IP bytes, reporting `link_type` as the capture
+    /// declared it rather than normalizing every variant to LINKTYPE_RAW.
     #[inline(always)]
-    fn decode<'a>(bytes: &'a [u8]) -> Result<DecodedLink<'a>, ParseError> {
+    pub(super) fn decode_as<'a>(
+        link_type: LinkType,
+        bytes: &'a [u8],
+    ) -> Result<DecodedLink<'a>, ParseError> {
         let first = bytes.first().copied().ok_or(LinkLayerError::Truncated {
-            link_type: LinkType::RAW,
+            link_type,
             required: 1,
             actual: 0,
         })?;
 
         let layer = match first >> 4 {
-            4 => LinkLayer::raw_ipv4(bytes),
-            6 => LinkLayer::raw_ipv6(bytes),
+            4 => LinkLayer::raw_ipv4(link_type, bytes),
+            6 => LinkLayer::raw_ipv6(link_type, bytes),
             version => {
-                return Err(LinkLayerError::InvalidIpVersion {
-                    link_type: LinkType::RAW,
-                    version,
-                }
-                .into());
+                return Err(LinkLayerError::InvalidIpVersion { link_type, version }.into());
             }
         };
 
         Ok(DecodedLink::new(layer))
+    }
+}
+
+impl LinkDecoder for RawIpDecoder {
+    #[inline(always)]
+    fn decode<'a>(bytes: &'a [u8]) -> Result<DecodedLink<'a>, ParseError> {
+        Self::decode_as(LinkType::RAW, bytes)
     }
 }
 
