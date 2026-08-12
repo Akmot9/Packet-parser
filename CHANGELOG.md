@@ -49,6 +49,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   provoquee en local sur `lo` par des envois UDP vers des ports fermes : elle
   ne contient que du loopback, donc aucune donnee a anonymiser.
 
+- Capture `pcaps_exemple/protocols/icmp/icmp_mtu_exceeded.pcapng` et ses golden
+  tests. Elle couvre les deux seuls messages ou `rest_of_header` porte une
+  valeur non nulle — ICMPv4 fragmentation needed (type 3 code 4) et ICMPv6
+  packet too big (type 2), tous deux annoncant un MTU de 1280 — ainsi qu'une
+  Neighbor Advertisement avec le flag Router pose, absent du reste du corpus.
+  Obtenue via trois namespaces relies par des `veth` dont le lien de sortie est
+  a MTU reduit : adresses privees et namespaces ephemeres, aucune donnee
+  personnelle.
+
 - Support des link types LINKTYPE_IPV4 (228) et LINKTYPE_IPV6 (229) via les
   nouvelles constantes `LinkType::IPV4` et `LinkType::IPV6`. Ces captures
   commencent directement a l'en-tete IP, comme LINKTYPE_RAW, et reutilisent

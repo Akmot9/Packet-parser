@@ -252,3 +252,99 @@ fn packet_flow_decodes_icmpv6_destination_unreachable() {
     // Next header 17 (UDP) a l'offset 6 de l'en-tete IPv6.
     assert_eq!(report.invoking_packet[6], 17);
 }
+
+// ---------------------------------------------------------------------------
+// MTU du lien suivant (pcaps_exemple/protocols/icmp/icmp_mtu_exceeded.pcapng)
+//
+// Seuls ces deux messages portent une valeur non nulle dans `rest_of_header`.
+// Les trames font 590 et 1294 octets : trop pour des constantes hex, on lit
+// donc la capture, comme `s7comm_regression`.
+// ---------------------------------------------------------------------------
+
+const MTU_CAPTURE: &str = "pcaps_exemple/protocols/icmp/icmp_mtu_exceeded.pcapng";
+
+/// Renvoie la n-ieme trame de la capture (numerotation Wireshark, 1-based).
+fn frame_from_capture(path: &str, frame_number: usize) -> Vec<u8> {
+    let mut capture = pcap::Capture::from_file(path).expect("capture is readable");
+    let mut seen = 0;
+    while let Ok(packet) = capture.next_packet() {
+        seen += 1;
+        if seen == frame_number {
+            return packet.data.to_vec();
+        }
+    }
+    panic!("frame {frame_number} not found in {path}");
+}
+
+#[test]
+fn packet_flow_decodes_icmpv4_fragmentation_needed_with_next_hop_mtu() {
+    let bytes = frame_from_capture(MTU_CAPTURE, 2);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let Some(TransportDetails::Icmp(icmp)) = flow
+        .transport
+        .expect("ICMP is reported at the transport slot")
+        .details
+    else {
+        panic!("ICMP details are decoded");
+    };
+    assert_eq!(icmp.message_type, 3);
+    assert_eq!(icmp.code, 4);
+
+    let IcmpBody::Error(report) = icmp.body else {
+        panic!("fragmentation needed must expose an error body");
+    };
+    // RFC 1191 : deux octets inutilises, puis le MTU du saut suivant. C'est le
+    // seul cas ICMPv4 ou `rest_of_header` n'est pas nul.
+    assert_eq!(report.rest_of_header & 0xffff, 1280);
+    assert_eq!(report.rest_of_header >> 16, 0);
+    assert_eq!(report.original_datagram[0], 0x45);
+}
+
+#[test]
+fn packet_flow_decodes_icmpv6_packet_too_big_with_mtu() {
+    let bytes = frame_from_capture(MTU_CAPTURE, 5);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let Some(TransportDetails::Icmpv6(icmpv6)) = flow
+        .transport
+        .expect("ICMPv6 is reported at the transport slot")
+        .details
+    else {
+        panic!("ICMPv6 details are decoded");
+    };
+    assert_eq!(icmpv6.message_type, 2);
+    assert_eq!(icmpv6.code, 0);
+
+    let Icmpv6Body::Error(report) = icmpv6.body else {
+        panic!("packet too big must expose an error body");
+    };
+    // RFC 4443 §3.2 : les quatre octets portent le MTU en entier, pas seulement
+    // les deux derniers comme en IPv4.
+    assert_eq!(report.rest_of_header, 1280);
+    assert_eq!(report.invoking_packet[0] >> 4, 6);
+}
+
+/// La capture NDP existante n'a qu'une annonce non-routeur. Celle-ci vient
+/// d'un vrai routeur (flags « rtr, sol » selon tshark) : sans elle, le bit
+/// Router ne serait jamais teste dans l'etat vrai.
+#[test]
+fn packet_flow_decodes_neighbor_advertisement_with_router_flag() {
+    let bytes = frame_from_capture(MTU_CAPTURE, 13);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let Some(TransportDetails::Icmpv6(icmpv6)) = flow
+        .transport
+        .expect("ICMPv6 is reported at the transport slot")
+        .details
+    else {
+        panic!("ICMPv6 details are decoded");
+    };
+
+    let Icmpv6Body::NeighborAdvertisement(advertisement) = icmpv6.body else {
+        panic!("neighbor advertisement must expose its dedicated body");
+    };
+    assert!(advertisement.router);
+    assert!(advertisement.solicited);
+    assert!(!advertisement.overrides);
+}
