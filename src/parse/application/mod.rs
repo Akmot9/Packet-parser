@@ -6,7 +6,7 @@
 pub mod protocols;
 use protocols::{
     bitcoin::BitcoinPacket, dns::DnsPacket, ethernet_ip::EtherNetIpPacket, s7comm::S7CommPacket,
-    snmp::SnmpPacket, tls::TlsPacket,
+    snmp::SnmpPacket, ssh::SshPacket, tls::TlsPacket,
 };
 use serde::Serialize;
 
@@ -78,6 +78,15 @@ impl TryFrom<&[u8]> for Application {
         if TlsPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "TLS",
+            });
+        }
+        // SSH avant HTTP : les deux sont textuels, mais la chaine
+        // d'identification SSH est bien plus contrainte — prefixe litteral
+        // `SSH-` suivi de `2.0` ou `1.99` exactement. Aucun recouvrement, et
+        // ce controle de version est ce qui autorise le probing a l'aveugle.
+        if SshPacket::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "SSH",
             });
         }
         if HttpRequest::try_from(packet).is_ok() {

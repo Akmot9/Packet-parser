@@ -273,6 +273,8 @@ incluent notamment:
 - FTP
 - SMTP
 - NNTP
+- SSH (chaine d'identification seulement : tout ce qui suit l'echange
+  de versions est chiffre)
 - Modbus TCP
 - EtherNet/IP
 - OPC UA

@@ -49,6 +49,28 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   provoquee en local sur `lo` par des envois UDP vers des ports fermes : elle
   ne contient que du loopback, donc aucune donnee a anonymiser.
 
+- Detection et parsing **SSH** (RFC 4253 §4.2). Seule la chaine
+  d'identification est lisible sans etat — tout ce qui suit l'echange de
+  versions est chiffre — mais elle suffit a identifier le protocole et expose
+  la version du serveur, ce qui est l'essentiel en analyse securite.
+  `SshPacket` expose `protocol_version`, `software_version` et les
+  `comments` optionnels, tous zero-copy.
+
+  Detection par probing a l'aveugle dans `Application::try_from`, placee avant
+  HTTP. Ce qui rend le probing sur : le prefixe litteral `SSH-` suivi d'une
+  version de protocole valant exactement `2.0` ou `1.99`. Sans cette seconde
+  contrainte, n'importe quel texte commencant par `SSH-` serait etiquete SSH ;
+  un test d'oracle negatif le verrouille.
+
+  Deux ecarts a la RFC sont acceptes parce que les captures reelles les
+  contiennent : le CR avant le LF est optionnel, et `softwareversion` peut
+  porter un tiret que la norme interdit pourtant. Un parseur ecrit d'apres la
+  seule RFC rejetterait les bannieres Cisco et Raspbian du corpus.
+
+  Golden tests sur `pcaps_exemple/The-Ultimate-PCAP.pcapng` : bannieres
+  OpenSSH sur Ubuntu, Cisco et PuTTY, en Ethernet + VLAN + IPv6 + TCP. Le scan
+  des 75 captures du depot ne produit aucun label SSH parasite.
+
 - Decodage de la **decouverte de routeurs ICMPv6** (RFC 4861 §4.1 et §4.2) :
   Router Solicitation (type 133) et Router Advertisement (type 134) quittent
   `Icmpv6Body::Other` pour des variants dedies. La RA expose son hop limit

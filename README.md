@@ -269,6 +269,8 @@ Application detection is intentionally best-effort. Parser modules include:
 - FTP
 - SMTP
 - NNTP
+- SSH (identification string only: everything after the version
+  exchange is encrypted)
 - Modbus TCP
 - EtherNet/IP
 - OPC UA

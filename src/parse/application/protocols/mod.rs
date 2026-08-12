@@ -44,6 +44,7 @@ pub mod s7comm;
 pub mod smtp;
 pub mod snmp;
 pub mod srvloc;
+pub mod ssh;
 pub mod tls;
 
 /// Borne une pré-allocation dimensionnée par un champ du paquet.
