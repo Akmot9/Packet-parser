@@ -8,6 +8,29 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- Decodage **ICMPv4** (IP protocole 1, RFC 792). Le protocole etait reconnu au
+  transport depuis toujours mais jamais decode : `details` valait `None`. Les
+  messages Echo (request/reply) exposent identifiant, sequence et donnees ; les
+  messages d'erreur (destination unreachable, redirect, time exceeded,
+  parameter problem) exposent les 4 octets dependant du type et le datagramme
+  original cite par le routeur. Tout est zero-copy.
+
+  Nouveaux modules `src/errors/transport/icmp.rs`,
+  `src/checks/transport/icmp.rs` et `src/parse/transport/protocols/icmp.rs`,
+  plus un variant `TransportDetails::Icmp`. L'enum etait deja
+  `#[non_exhaustive]`, l'ajout reste donc compatible en version mineure.
+
+  ICMP est atteint par le numero de protocole IP, jamais par probing :
+  `Transport::payload` reste volontairement `None` pour qu'aucun octet ICMP ne
+  soit soumis a la detection applicative de
+  `parse_application_from_transport`, qui les etiquetterait a tort. Un message
+  illisible ne fait pas echouer le flux : seul `details` retombe a `None`.
+
+  Golden tests sur les captures reelles de `pcaps_exemple/protocols/icmp/`
+  (depot public de Chris Sanders) : echo request, echo reply et time exceeded,
+  au niveau parseur et au niveau `PacketFlow`. ICMPv6 (types 128/129 et NDP
+  135/136) n'est pas encore decode.
+
 - Support des link types LINKTYPE_IPV4 (228) et LINKTYPE_IPV6 (229) via les
   nouvelles constantes `LinkType::IPV4` et `LinkType::IPV6`. Ces captures
   commencent directement a l'en-tete IP, comme LINKTYPE_RAW, et reutilisent

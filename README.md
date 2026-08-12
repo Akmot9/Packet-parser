@@ -235,10 +235,15 @@ from incomplete data.
 
 - TCP
 - UDP
+- ICMPv4 (echo request/reply, and the error reports that quote the original
+  datagram: destination unreachable, redirect, time exceeded, parameter
+  problem). Reached through IP protocol number 1, never through probing.
+  ICMP carries no application layer, so `payload` stays `None` and the decoded
+  message is exposed through `TransportDetails::Icmp`.
 - Mapping from many IP protocol numbers to `TransportProtocol`
 
-Protocols other than TCP/UDP can be represented by the enum, but they do not
-always expose ports or application payloads.
+Protocols other than TCP/UDP/ICMP can be represented by the enum, but they do
+not always expose ports or application payloads.
 
 ### Application
 

@@ -7,7 +7,7 @@ use std::convert::TryFrom;
 
 pub mod protocols;
 
-use protocols::{TransportProtocol, tcp::TcpPacket, udp::UdpPacket};
+use protocols::{TransportProtocol, icmp::IcmpPacket, tcp::TcpPacket, udp::UdpPacket};
 use serde::Serialize;
 
 use crate::errors::transport::TransportError;
@@ -22,6 +22,7 @@ use crate::errors::transport::TransportError;
 pub enum TransportDetails<'a> {
     Tcp(TcpPacket<'a>),
     Udp(UdpPacket<'a>),
+    Icmp(IcmpPacket<'a>),
 }
 
 /// Represents a transport layer packet (UDP, TCP, etc.)
@@ -75,6 +76,23 @@ impl<'a> Transport<'a> {
                     details: Some(TransportDetails::Udp(udp_packet)),
                 })
             }
+            // ICMP n'a ni port ni session : il est atteint par le numero de
+            // protocole IP (1), jamais par probing. Un message illisible ne
+            // doit pas faire echouer tout le flux — le protocole reste
+            // correctement identifie, seul `details` retombe a None.
+            Some(TransportProtocol::Icmp) => Ok(Transport {
+                protocol: TransportProtocol::Icmp,
+                source_port: None,
+                destination_port: None,
+                // `payload` reste None : rien ne s'empile au-dessus d'ICMP, et
+                // exposer ces octets les livrerait au probing applicatif de
+                // `parse_application_from_transport`, qui les etiquetterait a
+                // tort. Le contenu reste accessible via `details`.
+                payload: None,
+                details: IcmpPacket::try_from(payload)
+                    .ok()
+                    .map(TransportDetails::Icmp),
+            }),
             Some(other) => Ok(Transport {
                 protocol: other,
                 source_port: None,
