@@ -23,7 +23,7 @@ concernes et critere d'acceptation.
 | Epic | Sujet | Etat |
 |---|---|---|
 | #38 | Nettoyage d'API pour la 10.0.0 | ✅ clos (livre en 10.0.0) |
-| #46 | Durcissements de validation (http, quic, dhcp, srvloc) | ouvert — #47 clos |
+| #46 | Durcissements de validation (http, quic, dhcp, srvloc) | ouvert — #47 clos, #48 clos ; restent #49 et #50 |
 | #51 | Completer les parseurs (dispatch GIOP, body SLPv2, Retry QUIC) | ouvert |
 | #56 | Golden tests manquants (ethernet_ip, giop, quic) | ouvert — bloque par #74 |
 | #60 | Zero-copy integral (rdata DNS, Vec postgresql/opcua/http) | ouvert |
@@ -64,7 +64,7 @@ l'epic **#76** plutot que de declencher trois majeures successives :
 |---|---|---|
 | #21 | `#[non_exhaustive]` sur les ~34 enums d'erreur qui ne l'ont pas | volet public **livre**, #21 close le 2026-08-15 ; reste le volet SemVer |
 | #24 | Variantes distinctes pour `validate_tcp_flags` / `validate_tcp_reserved` (`TcpError` n'est pas `non_exhaustive`) | ouvert |
-| #48 | Suppression de `QuicPacketType::Unknown` et de sa branche morte | inaccessibilite deja verrouillee par test (#75) |
+| #48 | Suppression de `QuicPacketType::Unknown` et de sa branche morte | #48 close ; inaccessibilite verrouillee par test (#75), reste la suppression |
 
 Tant que #76 n'est pas ouvert en chantier, ces trois points restent
 volontairement en l'etat. Rien d'autre n'est connu comme bloque par la
