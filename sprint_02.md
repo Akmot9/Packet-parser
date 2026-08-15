@@ -1,13 +1,25 @@
 # Sprint 02 - Architecture de parsing multi-LINKTYPE extensible
 
-> Statut : **termine** le 2026-08-15. Les quinze criteres de la « definition de
-> termine » sont satisfaits ; les deux derniers (`cargo fmt --check` et le
-> rejeu sans panique des cibles de fuzz) ont ete verifies a cette date.
+> Statut : **solde le 2026-08-15 sur sa definition de termine**, avec un
+> reliquat identifie et reverse dans l'epic #76.
+>
+> Les quinze criteres de la « definition de termine » sont satisfaits ; les
+> deux derniers (`cargo fmt --check` et le rejeu sans panique des cibles de
+> fuzz) ont ete verifies a cette date.
 >
 > La matrice de support cible est fermee : `decoder_for`
 > (`src/parse/link/mod.rs:51`) cable Ethernet (1), RAW (101), IPV4 (228),
 > IPV6 (229), SLL (113) et SLL2 (276) ; tout autre LINKTYPE, Bluetooth H4
 > (201) inclus, est preserve puis refuse par `UnsupportedLinkType`.
+>
+> **Reliquat.** La derniere case de la phase 1 — « remplacer les erreurs de
+> liaison provisoires par le contrat final » — reste ouverte, et le fichier ne
+> pretend pas le contraire. `ParseError` porte aujourd'hui deux chemins
+> paralleles : `InvalidDataLink(DataLinkError)` pour Ethernet, historique et
+> sans `#[non_exhaustive]`, et `InvalidLinkLayer(LinkLayerError)` pour les
+> decodeurs recents, qui applique bien le contrat du §« Contrat d'erreur ».
+> Les unifier modifie une surface publique : c'est une rupture, donc hors
+> fenetre de stabilite. Suivi dans #76 avec les trois autres.
 >
 > Date de cadrage : 2026-07-13
 >

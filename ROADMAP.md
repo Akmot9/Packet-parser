@@ -65,6 +65,7 @@ l'epic **#76** plutot que de declencher trois majeures successives :
 | #21 | `#[non_exhaustive]` sur les ~34 enums d'erreur qui ne l'ont pas | volet public **livre**, #21 close le 2026-08-15 ; reste le volet SemVer |
 | #24 | Variantes distinctes pour `validate_tcp_flags` / `validate_tcp_reserved` (`TcpError` n'est pas `non_exhaustive`) | ouvert |
 | #48 | Suppression de `QuicPacketType::Unknown` et de sa branche morte | #48 close ; inaccessibilite verrouillee par test (#75), reste la suppression |
+| sprint_02 | Unifier les deux chemins d'erreur de liaison de `ParseError` (`InvalidDataLink` historique vs `InvalidLinkLayer`) | reliquat de phase 1, reverse dans #76 |
 
 Tant que #76 n'est pas ouvert en chantier, ces trois points restent
 volontairement en l'etat. Rien d'autre n'est connu comme bloque par la
@@ -133,7 +134,10 @@ En parallele des protocoles : solder #56 (golden tests manquants), qui est
 de la dette plus que de la feature.
 
 Sprints : `sprint_01.md` (methode de travail) et `sprint_02.md`
-(architecture multi-LINKTYPE) sont tous deux soldes. Aucun sprint actif.
+(architecture multi-LINKTYPE) sont tous deux soldes sur leur definition de
+termine. Aucun sprint actif. Le seul reliquat de sprint_02 — l'unification des
+deux chemins d'erreur de liaison — est une rupture d'API et vit desormais dans
+#76 (§1 bis).
 
 ## 4. Regles de la fenetre de stabilite
 
