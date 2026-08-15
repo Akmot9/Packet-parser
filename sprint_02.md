@@ -1,6 +1,13 @@
 # Sprint 02 - Architecture de parsing multi-LINKTYPE extensible
 
-> Statut : actif
+> Statut : **termine** le 2026-08-15. Les quinze criteres de la « definition de
+> termine » sont satisfaits ; les deux derniers (`cargo fmt --check` et le
+> rejeu sans panique des cibles de fuzz) ont ete verifies a cette date.
+>
+> La matrice de support cible est fermee : `decoder_for`
+> (`src/parse/link/mod.rs:51`) cable Ethernet (1), RAW (101), IPV4 (228),
+> IPV6 (229), SLL (113) et SLL2 (276) ; tout autre LINKTYPE, Bluetooth H4
+> (201) inclus, est preserve puis refuse par `UnsupportedLinkType`.
 >
 > Date de cadrage : 2026-07-13
 >
@@ -506,12 +513,16 @@ formatage des commits concurrents doivent egalement etre corriges hors MW-05.
   sont presents.
 - [x] La matrice de support et la migration sont documentees en anglais et en
   francais.
-- [ ] `cargo fmt --check` passe sur le HEAD integre.
+- [x] `cargo fmt --check` passe sur le HEAD integre.
 - [x] `cargo clippy --all-targets --all-features -- -D warnings` passe.
 - [x] `cargo test` passe.
 - [x] `cargo test --features parse_timing` passe.
-- [ ] Les cibles de fuzzing du parsing paquet et des nouveaux decodeurs ne
-  paniquent pas sur le corpus de regression.
+- [x] Les cibles de fuzzing du parsing paquet et des nouveaux decodeurs ne
+  paniquent pas sur le corpus de regression. Verifie le 2026-08-15 : les sept
+  cibles (`parse_application`, `parse_cotp`, `parse_dns`, `parse_linktype`,
+  `parse_packetflow`, `parse_quic`, `parse_s7comm`) rejouent leur corpus avec
+  `cargo +nightly fuzz run <cible> -- -runs=0`, soit 9 898 entrees, sans une
+  seule panique.
 
 ## Hors perimetre
 
