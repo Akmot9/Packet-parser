@@ -118,6 +118,35 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   et n'etait rejete que plus loin, par `EmptySoftwareVersion` — un diagnostic
   moins precis que ce que promet la structure du parseur.
 
+- `require_version` (HTTP) ne validait que le prefixe `HTTP/` : `HTTP/zzz`
+  etait accepte comme version valide, ce qui laissait du texte arbitraire etre
+  classe comme ligne de requete HTTP. La forme est desormais verifiee en
+  entier — un chiffre, eventuellement suivi d'un point et d'un second chiffre.
+  `HTTP/1.0`, `HTTP/1.1`, `HTTP/2` et `HTTP/3` restent acceptes ; `HTTP/11`,
+  `HTTP/1.`, `HTTP/1.1.1` et `HTTP/zzz` sont rejetes (issue #47).
+
+### Interne
+
+- `Cargo.toml` passe d'une liste `exclude` a une liste `include`, fail-closed
+  par construction. Chaque release crates.io embarquait jusqu'ici cinq
+  `.DS_Store`, `.codex`, `analyse.md`, `sprint_0{1,2}.md`, `oui.csv`,
+  `article/`, `dashboards/`, `docker-compose.yml` et `deny.toml` : 194 fichiers
+  publies contre 176 desormais. Les motifs suivent la semantique gitignore,
+  d'ou le `/` initial sur les fichiers de racine — sans lui, `README.md`
+  attrapait aussi `pcaps_exemple/README.md` (issue #30).
+
+- Les cinq `.DS_Store` sortent du suivi git et rejoignent `.gitignore`.
+
+- La dev-dependency `criterion` est retiree : aucun dossier `benches/`, aucun
+  `use criterion` dans le depot.
+
+- Premiers tests du module `src/parse/tunnel/` (issue #23), sur la trame reelle
+  de `pcaps_exemple/capwap-only.pcap`. Un balayage de mutations documente ce
+  qu'ils verrouillent reellement : les deux gardes LLC/SNAP. Voir « Connu ».
+
+- Test de propriete figeant l'inaccessibilite de `QuicPacketType::Unknown` sur
+  les 256 premiers octets possibles, prealable a sa suppression (issue #48).
+
 ### Connu
 
 - La detection SSH porte sur les trames de banniere uniquement. Sur les 542
@@ -132,6 +161,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   controle est toutefois parmi les moins couteux de la cascade : un prefixe
   litteral de quatre octets rejette immediatement tout ce qui n'est pas du
   SSH, sans allocation.
+- Le depeautage CAPWAP n'a aucune couverture reelle de son chemin nominal. Le
+  corpus ne contient pas une seule trame CAPWAP-Data portant du 802.11 **data**
+  avec LLC/SNAP : `pcaps_exemple/capwap-*.pcap*` ne contient que du management,
+  et les six dossiers de `pcaps_exemple/tunnels/` sont vides. Un balayage de
+  mutations le confirme — neutraliser la garde DTLS, la garde HLEN, le controle
+  de type 802.11 ou `MAX_TUNNEL_DEPTH` laisse la suite entierement verte, car
+  tout chemin s'arrete au LLC/SNAP avant de les atteindre. Couvrir ces quatre
+  gardes, `MAX_TUNNEL_DEPTH` en tete, demande d'acquerir une capture
+  CAPWAP-Data (issue #23).
 
 ## [10.0.0] - 2026-08-04
 
