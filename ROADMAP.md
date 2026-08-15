@@ -25,20 +25,28 @@ concernes et critere d'acceptation.
 | #38 | Nettoyage d'API pour la 10.0.0 | ✅ clos (livre en 10.0.0) |
 | #46 | Durcissements de validation (http, quic, dhcp, srvloc) | ouvert — #47 clos, #48 clos ; restent #49 et #50 |
 | #51 | Completer les parseurs (dispatch GIOP, body SLPv2, Retry QUIC) | ouvert |
-| #56 | Golden tests manquants (ethernet_ip, giop, quic) | ouvert — bloque par #74 |
+| #56 | Golden tests manquants (ethernet_ip, giop, quic) | ouvert — debloque, corpus partiellement rendu |
 | #60 | Zero-copy integral (rdata DNS, Vec postgresql/opcua/http) | ouvert |
 | #64 | Detection hors port standard : API « Decode As » + verbes non-ambigus FTP/SMTP/NNTP | ouvert |
 | #67 | Nouveaux protocoles : LLMNR (#68) et SSDP (#69) | ouvert |
-| #70 | Generaliser la regression tshark (modbus, dns, tls) | ouvert — bloque par #74 |
+| #70 | Generaliser la regression tshark (modbus, dns, tls) | ouvert — debloque, corpus partiellement rendu |
+| #79 | Decodeur IEEE 802.3br mPackets (LINKTYPE 274) | ouvert |
 
-Priorite au sein des chantiers : **#74 d'abord**. `examples/scan_pcaps.rs:70`
-appelle `get_datalink()` une seule fois sur un pcapng a 313 IDB et quatre
-LINKTYPE, si bien que `The-Ultimate-PCAP.pcapng` compte zero trame et que son
-materiel (542 SSH, 99 SSDP, 18 LLMNR) est invisible. Tant qu'il tient, #56 et
-#70 travaillent sur un corpus ampute, et #68/#69 n'ont pas leurs trames de
-reference.
+**#74 est clos le 2026-08-15.** `scan_pcaps` resout desormais le LINKTYPE par
+paquet au lieu d'appeler `get_datalink()` une fois par fichier. Trois captures
+sortent de l'invisibilite, pas une seule : `The-Ultimate-PCAP.pcapng`
+(0 -> 51 328 trames), `capwap-only.pcapng` et `capwap-association-valid.pcapng`
+(0 -> 2 chacune). Les comptes correspondent exactement a tshark.
 
-Vient ensuite #56, dette vis-a-vis de la regle « trames reelles obligatoires ».
+Le corpus n'est toutefois **rendu qu'aux quatre cinquiemes** : les 10 667
+trames en LINKTYPE 274 restent indecodees faute de decodeur, soit 21 % de
+`The-Ultimate-PCAP.pcapng`. C'est l'objet de **#79**, qui devient de ce fait
+le prealable restant a #56 : ces trames portent 2 403 ICMPv6, 1 841 ICMP,
+1 237 TCP, 818 VRRP, 777 GLBP, 678 IS-IS et 599 NTP, et plusieurs de ces
+protocoles n'ont aucune autre source de trames reelles dans le depot.
+
+Priorite : **#79**, puis #56, dette vis-a-vis de la regle « trames reelles
+obligatoires ».
 
 #55 a ete ferme le 2026-08-12 : il decrivait un etat perime. La detection
 TLS est cablee depuis le commit 5b12cf7 (2025-11-20) par probing aveugle
@@ -122,8 +130,8 @@ Livres depuis le cadrage de cette liste, non encore publies :
 
 Reste a faire, dans l'ordre :
 
-1. **#74** — le deblocage de corpus (voir §1). Prealable a #56, #70, #68
-   et #69.
+1. **#79** — decodeur 802.3br, ce qui reste du deblocage de corpus (voir §1).
+   Additif, et l'architecture de `sprint_02` prevoit ce point d'extension.
 2. **UMAS** — differenciateur ICS, s'appuie sur Modbus.
 3. **DNP3** — ouvre le secteur energie.
 4. **RDP** — rentabilise TPKT/COTP.
