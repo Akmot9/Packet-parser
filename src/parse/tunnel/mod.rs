@@ -160,3 +160,111 @@ fn peel_llc_snap(llc: &[u8]) -> Option<(u16, &[u8])> {
     let ethertype = u16::from_be_bytes([llc[6], llc[7]]);
     Some((ethertype, &llc[8..]))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{LinkType, parse};
+
+    /// Trame 1 de `pcaps_exemple/capwap-only.pcap` : Ethernet -> IPv4 ->
+    /// UDP 35981 -> 5247 -> CAPWAP-Data (version 0, type 0 = plaintext,
+    /// HLEN = 8) encapsulant une trame IEEE 802.11 **de management**
+    /// (Association Request, SSID "Prova"), et non une trame de donnees.
+    const CAPWAP_MANAGEMENT_FRAME_HEX: &str = concat!(
+        "0000000000000000000000000800450000570000400040113c947f0000017f00",
+        "00018c8d147f00430000001043000000000000003a0102000000000002000000",
+        "0100020000000000c01921040500000550726f7661010802040b160c12182432",
+        "043048606c"
+    );
+
+    fn capwap_management_frame() -> Vec<u8> {
+        let bytes = hex::decode(CAPWAP_MANAGEMENT_FRAME_HEX).expect("invalid test hex fixture");
+        assert_eq!(bytes.len(), 101, "fixture length must match capture");
+        bytes
+    }
+
+    /// L'en-tete CAPWAP de la capture est valide (version 0, type 0, HLEN 8) :
+    /// le peeling franchit CAPWAP, puis s'arrete plus haut faute de charge
+    /// utile exploitable.
+    ///
+    /// NB : cette trame porte une Association Request, dont le corps n'est ni
+    /// du 802.11 data ni du LLC/SNAP. Elle est donc refusee **deux fois** —
+    /// par le controle de type 802.11 et par celui du SNAP — et ne peut pas
+    /// isoler l'un des deux. Elle fige le verdict, pas son motif.
+    #[test]
+    fn capwap_header_is_accepted_but_management_payload_is_not_peeled() {
+        let frame = capwap_management_frame();
+        // UDP payload = CAPWAP : 14 (Ethernet) + 20 (IPv4) + 8 (UDP).
+        let capwap = &frame[42..];
+        assert_eq!(capwap[0] & 0x0f, 0, "type 0 = plaintext, pas de DTLS");
+        assert_eq!(((capwap[1] >> 3) & 0x1f) as usize * 4, 8, "HLEN = 8 octets");
+
+        let ieee80211 = &capwap[8..];
+        assert_eq!(
+            (ieee80211[0] >> 2) & 0x03,
+            0,
+            "type 0 = management (seul le type 2, data, est pele)"
+        );
+
+        assert!(
+            peel_capwap_ieee80211(capwap).is_none(),
+            "une trame 802.11 de management ne doit pas produire de couche interne"
+        );
+    }
+
+    /// Bout-en-bout : la trame se parse, et n'expose aucun flux interne.
+    #[test]
+    fn capwap_management_frame_yields_no_inner_flow() {
+        let frame = capwap_management_frame();
+        let flow = parse(LinkType::ETHERNET, frame.as_slice()).expect("captured frame decodes");
+
+        let transport = flow.transport.as_ref().expect("UDP est decode");
+        assert_eq!(transport.protocol, TransportProtocol::Udp);
+        assert_eq!(transport.destination_port, Some(CAPWAP_DATA_PORT));
+
+        assert!(flow.inner.is_none(), "aucun paquet interne n'est extrait");
+        assert_eq!(flow.flatten().len(), 1, "un seul niveau de flux");
+    }
+
+    /// Un en-tete CAPWAP annoncant DTLS (type 1) est refuse : le contenu est
+    /// chiffre, il n'y a rien a peler. On mute le seul nibble de type sur la
+    /// trame reelle, tout le reste est inchange.
+    ///
+    /// Meme reserve que ci-dessus : la trame etant deja refusee au LLC/SNAP,
+    /// ce test ne prouve pas que la garde DTLS est ce qui rejette. Neutraliser
+    /// `payload[0] & 0x0f != 0` le laisse passer. Couvrir reellement cette
+    /// garde demande une capture CAPWAP-Data portant du 802.11 **data** —
+    /// absente du corpus (issue #23).
+    #[test]
+    fn peel_capwap_refuses_dtls_encrypted_payload() {
+        let mut frame = capwap_management_frame();
+        frame[42] |= 0x01; // preambule : version | type, type 1 = DTLS
+
+        assert!(peel_capwap_ieee80211(&frame[42..]).is_none());
+    }
+
+    /// L'en-tete LLC/SNAP n'est accepte que sous sa forme SNAP stricte
+    /// (DSAP = SSAP = 0xAA, control = 0x03, OUI = 00:00:00).
+    #[test]
+    fn peel_llc_snap_requires_the_snap_form() {
+        // Forme SNAP valide portant IPv4.
+        let snap = [0xAA, 0xAA, 0x03, 0x00, 0x00, 0x00, 0x08, 0x00, 0x45, 0x00];
+        assert_eq!(peel_llc_snap(&snap), Some((0x0800, &snap[8..])));
+
+        // DSAP/SSAP non-SNAP.
+        assert_eq!(
+            peel_llc_snap(&[0x42, 0x42, 0x03, 0, 0, 0, 0x08, 0x00]),
+            None
+        );
+        // OUI non nul (encapsulation non-EtherType).
+        assert_eq!(
+            peel_llc_snap(&[0xAA, 0xAA, 0x03, 0x00, 0x00, 0x0C, 0x08, 0x00]),
+            None
+        );
+        // Trop court pour porter un EtherType.
+        assert_eq!(
+            peel_llc_snap(&[0xAA, 0xAA, 0x03, 0x00, 0x00, 0x00, 0x08]),
+            None
+        );
+    }
+}
