@@ -1,14 +1,20 @@
 # Roadmap packet_parser
 
-Etat au 2026-08-15 : la 10.0.0 est publiee (decodage COTP complet, enveloppe
-S7Comm stricte, nettoyage de l'API morte). Elle ouvre une **fenetre de
-stabilite** : tout ce qui suit est realisable sans nouvelle version majeure,
-et l'objectif est de tenir 6 a 12 mois sans rupture d'API.
+Etat au 2026-08-16 : la **10.1.0 est publiee**. La 10.0.0 avait ouvert une
+**fenetre de stabilite** — tout ce qui suit est realisable sans nouvelle
+version majeure, et l'objectif est de tenir 6 a 12 mois sans rupture d'API.
+La 10.1.0 le confirme : `cargo semver-checks` la classe « minor change »,
+196 controles, aucune rupture.
 
-Non encore publie depuis : ICMPv4, ICMPv6 (dont Router Solicitation /
-Advertisement), SSH, le correctif `require_version` HTTP et le passage de
-`Cargo.toml` a une liste `include`. Voir la section « Non publie » du
-CHANGELOG.
+La 10.1.0 apporte trois decodeurs complets — SSH (RFC 4253 §4.2), ICMPv4
+(RFC 792) et ICMPv6 (RFC 4443 et 4861, dont la decouverte de voisins et de
+routeurs) — les LINKTYPE IPV4 (228) et IPV6 (229), et deux correctifs de
+validation. C'est aussi la premiere release au packaging assaini : 172
+fichiers publies contre 194, et 336 Ko contre 360 Ko malgre 3 143 lignes de
+plus.
+
+Rien n'est en attente de publication a ce jour ; la section « Non publie » du
+CHANGELOG est vide.
 
 Chaque ajout suit la methode canonique (`METHODE_AJOUT_PROTOCOLE.md`) :
 extract_* par champ dans checks, TryFrom lineaire, golden tests sur trames
@@ -121,7 +127,7 @@ d'abord si `4SICS-GeekLounge-151020.pcap` contient deja du DNP3/IEC104.
 
 ## 3. Ordre recommande
 
-Livres depuis le cadrage de cette liste, non encore publies :
+Livres et **publies en 10.1.0** depuis le cadrage de cette liste :
 
 - **ICMP** — ICMPv4 et ICMPv6, dont Router Solicitation / Advertisement.
 - **SSH** — sur les trames de banniere. Limite connue consignee au
