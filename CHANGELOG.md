@@ -127,6 +127,37 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Interne
 
+- `examples/scan_pcaps.rs` lit desormais les captures avec `pcap-file` au lieu
+  de libpcap, et resout le LINKTYPE **par paquet** au lieu d'appeler
+  `get_datalink()` une seule fois par fichier.
+
+  Un pcapng peut decrire plusieurs interfaces, chacune avec son LINKTYPE, et
+  chaque paquet designe la sienne par `interface_id`. L'ancienne boucle
+  appliquait le LINKTYPE de la premiere interface a tout le fichier et sortait
+  sur le premier `Err`, si bien que la capture s'arretait au premier changement
+  d'encapsulation — silencieusement, en affichant zero trame.
+
+  Trois fichiers du corpus etaient concernes, pas un seul :
+  `The-Ultimate-PCAP.pcapng` (0 -> **51 328** trames), `capwap-only.pcapng`
+  (0 -> 2) et `capwap-association-valid.pcapng` (0 -> 2). Les trois comptes
+  correspondent exactement a ceux de tshark. Aucun autre fichier du corpus ne
+  change de compte (issue #74).
+
+  Une lecture interrompue par une erreur est desormais distinguee d'une fin de
+  fichier et signalee, fichier par fichier puis en recapitulatif : un total de
+  corpus bati sur des lectures amputees ne se presente plus comme complet.
+
+  Le chemin pcap classique utilise `next_raw_packet` : `next_packet` rejette
+  `orig_len > snap_len` comme invalide, ce qui est plus strict que libpcap et
+  que la realite d'une trame tronquee a la capture — cette validation faisait
+  tomber une capture de 3 584 trames a 4.
+
+- Les erreurs de couche liaison rapportees par `scan_pcaps` portent leur
+  LINKTYPE. Sur `The-Ultimate-PCAP.pcapng`, cela montre que les 10 667 echecs
+  proviennent tous du LINKTYPE 274 — **IEEE 802.3br mPackets**, le seul des
+  quatre encapsulations du fichier qui n'ait pas de decodeur. Les trois autres
+  (Ethernet 39 557, Linux SLL v1 1 067, Raw IP 37) sont decodees.
+
 - `Cargo.toml` passe d'une liste `exclude` a une liste `include`, fail-closed
   par construction. Chaque release crates.io embarquait jusqu'ici cinq
   `.DS_Store`, `.codex`, `analyse.md`, `sprint_0{1,2}.md`, `oui.csv`,
