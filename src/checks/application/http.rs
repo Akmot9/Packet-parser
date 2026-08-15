@@ -54,10 +54,23 @@ pub fn require_uri(part: Option<&str>) -> Result<&str, HttpParseError> {
 
 /// Requires the HTTP version token to be present and shaped like `HTTP/x.y`,
 /// then returns it borrowed.
+///
+/// The digits are checked, not just the `HTTP/` prefix: accepting `HTTP/zzz`
+/// let arbitrary text be classified as an HTTP request line.
 pub fn require_version(part: Option<&str>) -> Result<&str, HttpParseError> {
     let version = part.ok_or(HttpParseError::MissingVersion)?;
-    if !version.starts_with("HTTP/") {
-        return Err(HttpParseError::InvalidVersion(version.to_string()));
+    let invalid = || HttpParseError::InvalidVersion(version.to_string());
+
+    let digits = version.strip_prefix("HTTP/").ok_or_else(invalid)?;
+    let (major, minor) = match digits.split_once('.') {
+        Some((major, minor)) => (major, Some(minor)),
+        None => (digits, None),
+    };
+
+    let is_single_digit =
+        |part: &str| part.len() == 1 && part.starts_with(|c: char| c.is_ascii_digit());
+    if !is_single_digit(major) || minor.is_some_and(|minor| !is_single_digit(minor)) {
+        return Err(invalid());
     }
     Ok(version)
 }
@@ -139,6 +152,35 @@ mod tests {
     fn test_require_version() {
         assert_eq!(require_version(Some("HTTP/1.1")), Ok("HTTP/1.1"));
         assert_eq!(require_version(None), Err(HttpParseError::MissingVersion));
+    }
+
+    #[test]
+    fn test_require_version_accepts_digit_forms() {
+        for version in ["HTTP/0.9", "HTTP/1.0", "HTTP/1.1", "HTTP/2", "HTTP/3"] {
+            assert_eq!(require_version(Some(version)), Ok(version));
+        }
+    }
+
+    #[test]
+    fn test_require_version_rejects_malformed_forms() {
+        // Le préfixe seul ne suffit pas : ce qui suit doit être un chiffre,
+        // éventuellement suivi d'un point et d'un second chiffre.
+        for version in [
+            "HTTP/zzz",
+            "HTTP/",
+            "HTTP/1.",
+            "HTTP/.1",
+            "HTTP/11",
+            "HTTP/1.1.1",
+            "HTTP/1x",
+            "HTTP/ 1",
+        ] {
+            assert_eq!(
+                require_version(Some(version)),
+                Err(HttpParseError::InvalidVersion(version.to_string())),
+                "{version} devrait être rejeté"
+            );
+        }
     }
 
     #[test]
