@@ -11,3 +11,4 @@ output.pcap
 !pcaps_exemple/**/*.pcap
 /vendor
 /perf_by_version.html
+.DS_Store
