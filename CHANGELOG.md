@@ -6,6 +6,23 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [10.1.0] - 2026-08-16
+
+Version mineure, strictement additive : trois nouveaux decodeurs de protocole
+(SSH, ICMPv4, ICMPv6 avec la decouverte de voisins et de routeurs), deux
+nouveaux LINKTYPE (IPV4 et IPV6), et deux correctifs de validation.
+
+`cargo semver-checks check-release` contre `v10.0.0` : 223 controles, aucune
+rupture. La fenetre de stabilite ouverte par la 10.0.0 tient.
+
+Premiere release au packaging assaini : 172 fichiers publies contre 194 pour
+la 10.0.0, sans `.DS_Store`, `analyse.md`, `oui.csv` ni `docker-compose.yml`.
+
+**Changement de comportement a signaler.** Le correctif `require_version`
+n'est pas une rupture d'API, mais il resserre la detection HTTP : des payloads
+jusqu'ici classes HTTP ne le seront plus. C'est l'objectif, mais un
+consommateur qui compte des flux HTTP verra ses chiffres bouger.
+
 ### Ajoute
 
 - Decodage **ICMPv4** (IP protocole 1, RFC 792). Le protocole etait reconnu au
