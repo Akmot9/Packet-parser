@@ -418,6 +418,25 @@ mod tests {
         assert_eq!(extract_first_byte(0xF2), Ok((QuicPacketType::Retry, 3)));
     }
 
+    /// `lptype` vaut `(b0 >> 4) & 0b11`, donc 0..=3, et les quatre valeurs ont
+    /// un bras nommé : `QuicPacketType::Unknown` n'est jamais construit, et la
+    /// branche qui le traite dans `parse::…::quic` est morte.
+    ///
+    /// Ce test fige la propriété sur les 256 premiers octets possibles. Il
+    /// autorise la suppression de la variante `Unknown` — qui est une rupture
+    /// d'API, donc réservée à la prochaine majeure (issue #48).
+    #[test]
+    fn test_extract_first_byte_never_yields_unknown() {
+        for b0 in 0u8..=u8::MAX {
+            if let Ok((packet_type, _)) = extract_first_byte(b0) {
+                assert!(
+                    !matches!(packet_type, QuicPacketType::Unknown(_)),
+                    "b0={b0:#04x} a produit Unknown, la variante n'est donc plus morte"
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_extract_first_byte_error_precedence() {
         // form=0 et fixed=0 : NotLongHeader doit primer sur FixedBitNotSet.
