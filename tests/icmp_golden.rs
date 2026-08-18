@@ -264,13 +264,20 @@ fn packet_flow_decodes_icmpv6_destination_unreachable() {
 const MTU_CAPTURE: &str = "pcaps_exemple/protocols/icmp/icmp_mtu_exceeded.pcapng";
 
 /// Renvoie la n-ieme trame de la capture (numerotation Wireshark, 1-based).
+/// Lecture via `pcap-file` (Rust pur) : aucune dependance systeme, le test
+/// tourne aussi sur les runners Windows/macOS de la CI.
 fn frame_from_capture(path: &str, frame_number: usize) -> Vec<u8> {
-    let mut capture = pcap::Capture::from_file(path).expect("capture is readable");
+    use pcap_file::pcapng::{Block, PcapNgReader};
+
+    let file = std::fs::File::open(path).expect("capture is readable");
+    let mut reader = PcapNgReader::new(file).expect("valid pcapng");
     let mut seen = 0;
-    while let Ok(packet) = capture.next_packet() {
-        seen += 1;
-        if seen == frame_number {
-            return packet.data.to_vec();
+    while let Some(block) = reader.next_block() {
+        if let Block::EnhancedPacket(epb) = block.expect("readable block") {
+            seen += 1;
+            if seen == frame_number {
+                return epb.data.into_owned();
+            }
         }
     }
     panic!("frame {frame_number} not found in {path}");

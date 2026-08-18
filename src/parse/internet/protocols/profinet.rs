@@ -263,21 +263,14 @@ mod tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use pnet::packet::MutablePacket;
-    use pnet::packet::ethernet::MutableEthernetPacket;
-
-    use pnet::packet::Packet;
 
     #[test]
     fn test_handle_profinet_packet() {
-        // Constructing a mock Ethernet packet with Profinet payload.
-        let mut ethernet_data = vec![0u8; 64];
-        let mut eth_packet = MutableEthernetPacket::new(&mut ethernet_data).unwrap();
-
-        // Setting Ethernet type to indicate Profinet packet.
-        eth_packet.set_ethertype(pnet::packet::ethernet::EtherType(0x8892));
-
-        // Adding a Profinet payload (mocked data).
+        // Payload Profinet tel qu'il suit un EtherType 0x8892, avec le
+        // padding a zero d'une trame Ethernet de 64 octets (50 octets de
+        // payload). Construit directement : le parseur ne recoit que le
+        // payload, l'enveloppe Ethernet n'apporte rien au test.
+        let mut payload = vec![0u8; 50];
         let profinet_payload = [
             0xFE, 0xFE, // Frame ID for IdentifyReq
             0x01, 0x02, // Service ID and Type
@@ -289,11 +282,9 @@ mod integration_tests {
             0x00, 0x04, // DCP Block Length
             b'T', b'E', b'S', b'T', // Name Of Station
         ];
-        eth_packet.payload_mut()[..profinet_payload.len()].copy_from_slice(&profinet_payload);
+        payload[..profinet_payload.len()].copy_from_slice(&profinet_payload);
 
-        // Attempt to parse the Profinet packet from the Ethernet payload.
-        let payload = eth_packet.payload();
-        match ProfinetPacket::try_from(payload) {
+        match ProfinetPacket::try_from(payload.as_slice()) {
             Ok(packet) => {
                 // Assert the parsed values to ensure correctness.
                 assert_eq!(packet.frame_id, FrameId::IdentifyReq);

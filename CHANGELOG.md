@@ -20,6 +20,16 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   rien a faire dans l'historique, le workflow nightly le persiste deja via le
   cache CI et remonte l'entree fautive en artefact sur crash.
 
+- Les dev-dependencies `pcap` et `pnet` (bindings natifs libpcap/Npcap) sont
+  retirees : le premier run Windows de la CI echouait au link (`wpcap.lib`,
+  `Packet.lib` introuvables sans SDK Npcap). Le test de balayage de
+  `s7comm_regression`, l'extraction de trames d'`icmp_golden` et l'exemple
+  `err_from_pcap` passent a `pcap-file` (Rust pur, deja utilise par
+  `scan_pcaps`), et le test unitaire Profinet construit son payload
+  directement. Oracles du balayage inchanges (58 fichiers, 2 893 trames) :
+  `pcap-file` se comporte a l'identique de libpcap sur le corpus. La suite de
+  tests n'a plus aucune dependance systeme.
+
 - Lints clippy `unwrap_used`, `expect_used` et `panic` actives sur le code de
   production de la lib (bloquants en CI via `-D warnings`, tests exclus) :
   un parseur d'octets hostiles ne doit jamais faire tomber son hote. Les six

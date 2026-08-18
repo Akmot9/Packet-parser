@@ -1,5 +1,6 @@
-use packet_parser::PacketFlow;
-use pcap::Capture;
+use packet_parser::{LinkType, parse};
+use pcap_file::pcap::PcapReader;
+use std::fs::File;
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -7,30 +8,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "/home/erdt-cyber/rust/icsmaster/pcap/opc/opc-ua-ap-method-wireshark-freeze.pcap",
     );
     println!("Reading pcap file: {}", pcap_file_path.display());
-    let mut cap = Capture::from_file(pcap_file_path)?;
+    let mut reader = PcapReader::new(File::open(pcap_file_path)?)?;
+    // Un pcap classique n'a qu'un seul LINKTYPE, dans son en-tete de fichier.
+    let link_type = LinkType::from(u32::from(reader.header().datalink));
     let mut id = 0;
-    loop {
-        let packet = match cap.next_packet() {
+    while let Some(packet) = reader.next_raw_packet() {
+        let packet = match packet {
             Ok(p) => p,
-            Err(pcap::Error::NoMorePackets) => break,
             Err(e) => {
+                // Le lecteur ne consomme pas les octets fautifs : reessayer
+                // bouclerait sur la meme erreur.
                 eprintln!("pcap read error: {e}");
-                continue;
+                break;
             }
         };
-
-        let parsed = PacketFlow::try_from(packet.data);
-
-        match parsed {
-            Ok(flow) => {
-                id += 1;
-                let owned = flow.to_owned();
-                println!("Packet {id}: {owned}");
-            }
-            Err(e) => {
-                id += 1;
-                eprintln!("parse error: {e} for packet {id}");
-            }
+        id += 1;
+        match parse(link_type, &packet.data) {
+            Ok(flow) => println!("Packet {id}: {}", flow.to_owned()),
+            Err(e) => eprintln!("parse error: {e} for packet {id}"),
         }
     }
 
