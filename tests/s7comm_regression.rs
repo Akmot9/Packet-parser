@@ -701,11 +701,14 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     let mut cotp_frames = Vec::new();
 
     for path in &captures {
+        // Normalise le separateur : les oracles ci-dessous sont ecrits avec
+        // des `/` et doivent rester vrais sous Windows.
         let relative = path
             .strip_prefix(protocol_dir.as_path())
             .unwrap()
             .display()
-            .to_string();
+            .to_string()
+            .replace('\\', "/");
         let (frames, read_error_after) = match read_capture(path) {
             FileRead::Unsupported => {
                 skipped_files.push(relative);

@@ -76,15 +76,19 @@ jobs:
         run: cargo check -p packet_parser --all-features --all-targets --locked
 
   # La crate publiee n'a aucune dependance systeme (pcap-file est du Rust
-  # pur) : elle doit compiler et passer ses tests sur les trois OS. Les
-  # membres du workspace, eux, exigent libpcap et restent sur le job Linux.
+  # pur) : elle doit compiler et passer ses tests hors Linux. Les membres du
+  # workspace, eux, exigent libpcap et restent sur le job Linux. Pas de job
+  # Windows, par decision : meme si la suite n'exige plus Npcap depuis le
+  # retrait des dev-dependencies pcap/pnet, on ne veut aucune adherence a
+  # cet ecosysteme (licence OEM). La suite reste portable — seul un
+  # separateur de chemin a du etre normalise pour Windows.
   cross-os:
     name: Tests ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest]
 
     steps:
       - name: Checkout repository
