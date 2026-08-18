@@ -134,6 +134,10 @@ pub fn parse_reply_code(line: &str) -> Result<(u16, Option<u8>, &str), SmtpParse
         return Err(SmtpParseError::InvalidReplyCode(line.to_string()));
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "les 3 octets viennent d'etre valides comme chiffres ASCII"
+    )]
     let code: u16 = line[..3].parse().expect("validated ASCII digits");
     if !(200..=599).contains(&code) {
         return Err(SmtpParseError::InvalidReplyCode(line.to_string()));

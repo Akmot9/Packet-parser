@@ -39,17 +39,65 @@ jobs:
       # integration_test, see_unparsable) n'étaient lintées par rien.
       # --all-features : la feature parse_timing duplique le pipeline ;
       # sans ce drapeau, cette moitié du code n'était jamais vérifiée.
+      # --locked : Cargo.lock est versionné ; une dérive de dépendance doit
+      # être un commit explicite, pas un effet de bord du runner.
       - name: Lint with Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace --all-features --verbose
+        run: cargo test --workspace --all-features --locked --verbose
 
       - name: Security audit
         run: cargo install cargo-audit --locked && cargo audit
 
       - name: Build
-        run: cargo build --release --all-features
+        run: cargo build --release --all-features --locked
+
+  # La MSRV declaree dans Cargo.toml (rust-version) doit rester vraie :
+  # let-chains et is_multiple_of exigent 1.88. Seule la crate publiee est
+  # verifiee — les membres du workspace ne sont pas publies.
+  msrv:
+    name: MSRV 1.88
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust 1.88
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88"
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check with MSRV
+        run: cargo check -p packet_parser --all-features --all-targets --locked
+
+  # La crate publiee n'a aucune dependance systeme (pcap-file est du Rust
+  # pur) : elle doit compiler et passer ses tests sur les trois OS. Les
+  # membres du workspace, eux, exigent libpcap et restent sur le job Linux.
+  cross-os:
+    name: Tests ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test -p packet_parser --all-features --all-targets --locked
 
   # `fuzz/` est exclu du workspace (il exige cargo-fuzz et nightly), donc rien
   # ne le compilait : les cibles pourrissaient en silence dès qu'une signature

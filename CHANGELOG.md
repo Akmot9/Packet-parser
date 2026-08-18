@@ -6,6 +6,31 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Infrastructure
+
+- Solde de l'issue #31 (audit 8.1.0) : la CI verifie desormais tout ce que le
+  depot promet. `rust-version = "1.88"` declare dans `Cargo.toml` (let-chains
+  et `is_multiple_of` l'exigent) et verrouille par un job MSRV dedie ;
+  `Cargo.lock` (racine et `fuzz/`) versionnes et imposes par `--locked` dans
+  tous les jobs ; nouveau job matrice macOS/Windows pour la crate publiee
+  (aucune dependance systeme, elle doit compiler partout — les membres du
+  workspace restent sur Linux a cause de libpcap) ; `cargo-deny` passe
+  d'hebdomadaire a bloquant sur chaque push/PR. Le corpus de fuzz reste hors
+  git, choix delibere : 4 401 fichiers binaires (17 Mo apres `cmin`) n'ont
+  rien a faire dans l'historique, le workflow nightly le persiste deja via le
+  cache CI et remonte l'entree fautive en artefact sur crash.
+
+- Lints clippy `unwrap_used`, `expect_used` et `panic` actives sur le code de
+  production de la lib (bloquants en CI via `-D warnings`, tests exclus) :
+  un parseur d'octets hostiles ne doit jamais faire tomber son hote. Les six
+  sites existants sont tous justifies par un `#[expect]` motive (parse apres
+  validation ASCII, panics documentes de `hex_stream_to_bytes`, `fmt::Write`
+  infaillible sur `String`). `indexing_slicing` et `arithmetic_side_effects`
+  restent volontairement inactifs : plus de 1000 acces idiomatiques proteges
+  par des controles de longueur explicites et verifies par les 7 cibles de
+  fuzz. Decision prise en evaluant Semgrep : pour une crate Rust pure,
+  clippy + fuzzing + cargo-deny couvrent mieux le meme risque.
+
 ### Ajoute
 
 - Decodage des **mPackets IEEE 802.3br** (Frame Preemption / IET,

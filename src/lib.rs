@@ -3,6 +3,18 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
+// Un parseur d'octets hostiles ne doit jamais faire tomber son hote : pas de
+// panic dans le code de production. Les rares sites justifies portent un
+// #[expect] motive ; les tests (cfg(test)) restent libres. La CI passe avec
+// -D warnings, ce qui rend ces lints bloquants. `indexing_slicing` et
+// `arithmetic_side_effects` ne sont volontairement pas actives : plus de
+// 1000 acces idiomatiques (index apres controle de longueur explicite), dont
+// l'absence de panic est verifiee par les 7 cibles de fuzz.
+#![cfg_attr(
+    not(test),
+    warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 //! # Packet Parser
 //!
 //! **Packet Parser** is a modular Rust library designed to analyze and decode raw network packets.

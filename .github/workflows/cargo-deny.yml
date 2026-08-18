@@ -1,7 +1,14 @@
 name: Cargo Deny
 
+# Bloquant sur chaque push/PR (audit 8.1.0, issue #31) : une advisory ou une
+# licence interdite doit empêcher la fusion, pas apparaître le lundi suivant.
+# Le run hebdomadaire reste utile : la base RUSTSEC évolue sans commit.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
   schedule:
     - cron: "0 3 * * 1"
 

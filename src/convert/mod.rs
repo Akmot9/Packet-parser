@@ -92,6 +92,10 @@ pub fn try_hex_stream_to_bytes(hex: &str) -> Result<Vec<u8>, HexStreamError> {
 /// Panique si la chaîne a une longueur impaire ou contient un caractère non
 /// hexadécimal. Utiliser [`try_hex_stream_to_bytes`] pour une entrée
 /// utilisateur.
+#[expect(
+    clippy::panic,
+    reason = "panic documente dans la section Panics ; try_hex_stream_to_bytes est la variante faillible"
+)]
 pub fn hex_stream_to_bytes(hex: &str) -> Vec<u8> {
     match try_hex_stream_to_bytes(hex) {
         Ok(bytes) => bytes,
@@ -103,6 +107,7 @@ pub fn hex_stream_to_bytes(hex: &str) -> Vec<u8> {
 }
 
 /// Convertit un slice `&[u8]` en une chaîne hexadécimale.
+#[expect(clippy::unwrap_used, reason = "fmt::Write sur String est infaillible")]
 pub fn bytes_to_hex_string(bytes: &[u8]) -> String {
     let mut hex_string = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
@@ -112,6 +117,7 @@ pub fn bytes_to_hex_string(bytes: &[u8]) -> String {
 }
 
 /// Retourne un tableau formaté de bytes sous forme de chaîne Rust.
+#[expect(clippy::unwrap_used, reason = "fmt::Write sur String est infaillible")]
 pub fn format_hex_array(bytes: &[u8]) -> String {
     const BYTES_PER_LINE: usize = 8;
 

@@ -187,6 +187,10 @@ pub fn parse_reply_code(line: &str) -> Result<(u16, u8, &str), FtpParseError> {
         return Err(FtpParseError::InvalidReplyCode(line.to_string()));
     }
     // Digits are ASCII, so byte slicing at these offsets is safe on the `&str`.
+    #[expect(
+        clippy::expect_used,
+        reason = "les 3 octets viennent d'etre valides comme chiffres ASCII"
+    )]
     let code: u16 = line[..3].parse().expect("validated ASCII digits");
     if !(100..=599).contains(&code) {
         return Err(FtpParseError::InvalidReplyCode(line.to_string()));

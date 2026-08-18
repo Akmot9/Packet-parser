@@ -1,10 +1,12 @@
 /target
 */target
-*.lock
 __pycache__/
 *.pyc
 /integration_test/target
-Cargo.lock
+# Cargo.lock (racine et fuzz/) est versionne pour des builds reproductibles
+# (audit 8.1.0, issue #31). Celui de verbench reste ignore : son Cargo.toml
+# est regenere par run.sh pour chaque version mesuree.
+tools/verbench/Cargo.lock
 /lock
 output.pcap
 *.pcap
