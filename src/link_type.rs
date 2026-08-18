@@ -40,6 +40,10 @@ impl LinkType {
     /// Raw IPv6 packet, no link-layer header (LINKTYPE_IPV6).
     pub const IPV6: Self = Self(229);
 
+    /// IEEE 802.3br mPacket, preamble and SMD included
+    /// (LINKTYPE_ETHERNET_MPACKET).
+    pub const IEEE802_3BR: Self = Self(274);
+
     /// Linux cooked capture v2 (LINKTYPE_LINUX_SLL2).
     pub const LINUX_SLL2: Self = Self(276);
 }
@@ -87,6 +91,7 @@ mod tests {
         assert_eq!(LinkType::IEEE802_11.0, 105);
         assert_eq!(LinkType::LINUX_SLL.0, 113);
         assert_eq!(LinkType::BLUETOOTH_HCI_H4_WITH_PHDR.0, 201);
+        assert_eq!(LinkType::IEEE802_3BR.0, 274);
         assert_eq!(LinkType::LINUX_SLL2.0, 276);
     }
 

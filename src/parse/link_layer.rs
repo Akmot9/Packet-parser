@@ -368,8 +368,15 @@ impl Hash for LinkLayer<'_> {
 impl<'a> LinkLayer<'a> {
     /// Wraps an Ethernet II / 802.1Q frame in the generic link-layer model.
     pub fn ethernet(frame: DataLink<'a>) -> Self {
+        Self::ethernet_as(LinkType::ETHERNET, frame)
+    }
+
+    /// Wraps an Ethernet frame carried inside another LINKTYPE (an 802.3br
+    /// express mPacket once its preamble, SMD and trailing mCRC are removed).
+    /// `link_type` is the one the capture declared, not a normalized value.
+    pub(crate) fn ethernet_as(link_type: LinkType, frame: DataLink<'a>) -> Self {
         Self {
-            link_type: LinkType::ETHERNET,
+            link_type,
             network_protocol: frame.ethertype.into(),
             network_payload: frame.payload,
             kind: LinkLayerKind::Ethernet(frame),

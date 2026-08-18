@@ -4,6 +4,7 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 mod ethernet;
+mod ieee802_3br;
 mod linux_sll;
 mod linux_sll2;
 mod raw_ip;
@@ -11,6 +12,7 @@ mod raw_ip;
 use crate::{LinkLayer, LinkType, NetworkProtocol, ParseError};
 
 use ethernet::EthernetDecoder;
+use ieee802_3br::Ieee8023brDecoder;
 use linux_sll::LinuxSllDecoder;
 use linux_sll2::LinuxSll2Decoder;
 use raw_ip::RawIpDecoder;
@@ -23,6 +25,7 @@ enum DecoderKind {
     RawIp(LinkType),
     LinuxSll,
     LinuxSll2,
+    Ieee8023br,
 }
 
 /// Format-neutral output consumed by the shared L3/L4/L7 pipeline.
@@ -59,6 +62,7 @@ const fn decoder_for(link_type: LinkType) -> Option<DecoderKind> {
         LinkType::IPV6 => Some(DecoderKind::RawIp(LinkType::IPV6)),
         LinkType::LINUX_SLL => Some(DecoderKind::LinuxSll),
         LinkType::LINUX_SLL2 => Some(DecoderKind::LinuxSll2),
+        LinkType::IEEE802_3BR => Some(DecoderKind::Ieee8023br),
         _ => None,
     }
 }
@@ -81,6 +85,7 @@ fn decode_with<'a>(kind: DecoderKind, bytes: &'a [u8]) -> Result<DecodedLink<'a>
         DecoderKind::RawIp(link_type) => RawIpDecoder::decode_as(link_type, bytes),
         DecoderKind::LinuxSll => LinuxSllDecoder::decode(bytes),
         DecoderKind::LinuxSll2 => LinuxSll2Decoder::decode(bytes),
+        DecoderKind::Ieee8023br => Ieee8023brDecoder::decode(bytes),
     }
 }
 

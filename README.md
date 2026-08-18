@@ -117,6 +117,9 @@ Supported LINKTYPEs:
 | Native IEEE 802.11 | 105 | Modelled for CAPWAP inner flows; top-level decoder not yet supported |
 | Linux SLL v1 | 113 | Supported |
 | Bluetooth H4 with pseudo-header | 201 | Identified, explicitly unsupported |
+| IPv4 raw | 228 | Supported |
+| IPv6 raw | 229 | Supported |
+| IEEE 802.3br mPacket | 274 | Supported for express mPackets (SMD-E); preemptible fragments (SMD-S/C) are refused with a named error, their reassembly being stateful |
 | Linux SLL v2 | 276 | Supported |
 | Any other value | Preserved as-is | `ParseError::UnsupportedLinkType` |
 

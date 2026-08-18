@@ -13,12 +13,13 @@ fuzz_target!(|data: &[u8]| {
     };
     // Alterne entre les link types du catalogue (supportés ou non) et une
     // valeur arbitraire, pour couvrir le dispatch et le refus propre.
-    let link_type = match selector % 6 {
+    let link_type = match selector % 7 {
         0 => LinkType::ETHERNET,
         1 => LinkType::RAW,
         2 => LinkType::LINUX_SLL,
         3 => LinkType::LINUX_SLL2,
-        4 => LinkType(u32::MAX),
+        4 => LinkType::IEEE802_3BR,
+        5 => LinkType(u32::MAX),
         _ => LinkType(selector as u32),
     };
     if let Ok(flow) = parse(link_type, frame) {

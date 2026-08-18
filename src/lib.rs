@@ -82,7 +82,8 @@
 //!
 //! ```text
 //! PacketFlow<'a>
-//! ├── data_link:   LinkLayer<'a>              (mandatory — Ethernet, SLL, SLL2, RAW)
+//! ├── data_link:   LinkLayer<'a>              (mandatory — Ethernet, SLL, SLL2, RAW,
+//! │                                            802.3br mPacket express)
 //! ├── internet:    Option<Internet<'a>>       source / destination / protocol_name
 //! │                                           / payload_protocol / payload / details
 //! ├── transport:   Option<Transport<'a>>      protocol / source_port / destination_port

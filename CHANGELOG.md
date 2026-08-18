@@ -6,6 +6,43 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- Decodage des **mPackets IEEE 802.3br** (Frame Preemption / IET,
+  `LINKTYPE_ETHERNET_MPACKET` = 274), issue #79. Nouveau
+  `LinkType::IEEE802_3BR` et nouveau decodeur `src/parse/link/ieee802_3br.rs`
+  branche dans `decoder_for` : le pipeline L3/L4/L7 est inchange, comme prevu
+  par l'architecture de sprint_02.
+
+  Un mPacket **express** (SMD-E) est une trame Ethernet complete enveloppee
+  d'un preambule, du SMD et d'un mCRC de queue : le decodeur retire
+  l'enveloppe et delegue au decodeur Ethernet existant, en zero-copy. Le
+  preambule est localise dynamiquement (7 octets 0x55, ou moins : la norme
+  autorise le PHY a le raccourcir, et le corpus contient des preambules de
+  6 octets — un offset fixe laissait 102 trames reelles en echec). La vue
+  `LinkLayer` conserve le LINKTYPE declare (274) tout en exposant
+  `as_ethernet()`, sur le modele de RAW/IPV4/IPV6.
+
+  Un mPacket **preemptible** (SMD-S/SMD-C) est refuse avec l'erreur nommee
+  `LinkLayerError::PreemptibleFragment` : son reassemblage est a etat, hors
+  de portee d'un parseur stateless — meme frontiere que le reassemblage TCP
+  et le QUIC Short Header. Nouvelles erreurs `InvalidPreamble` et
+  `InvalidSmd` pour les enveloppes malformees ; `LinkLayerError` etant
+  `#[non_exhaustive]`, l'ajout reste compatible en version mineure.
+
+  Resultat sur le corpus : les 10 667 trames LINKTYPE 274 de
+  `The-Ultimate-PCAP.pcapng` (21 % du fichier) sont decodees, `scan_pcaps`
+  ne remonte plus aucune erreur L2 sur ce LINKTYPE. Golden tests sur cinq
+  trames reelles du corpus (ICMP echo, neighbor solicitation ICMPv6, VRRP,
+  router advertisement sous 802.1Q, BFD/UDP a preambule court) ; la cible de
+  fuzz `parse_linktype` couvre le nouveau decodeur.
+
+### Corrige
+
+- README : le tableau des LINKTYPE supportes mentionne desormais IPV4 (228)
+  et IPV6 (229), ajoutes en 10.1.0 mais oublies du tableau, ainsi que le
+  nouveau 274.
+
 ## [10.1.0] - 2026-08-16
 
 Version mineure, strictement additive : trois nouveaux decodeurs de protocole
