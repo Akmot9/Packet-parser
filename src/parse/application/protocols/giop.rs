@@ -188,12 +188,43 @@ impl<'a> TryFrom<&'a [u8]> for GiopPacket<'a> {
             .ok_or(GiopParseError::InvalidSize)?;
         validate_total_length(total_needed, buf.len())?;
 
-        // Le dispatch du body selon message_type (bit 0 des flags =
-        // endianness, GiopRequest::parse pour les Request) est volontairement
-        // différé : le câbler ici changerait les erreurs observables pour les
-        // Request au body malformé, aujourd'hui acceptés en Other.
-        let payload = GiopMessage::Other;
+        // Body borne par la longueur annoncee, deja validee par
+        // validate_total_length : le slicing ne peut pas paniquer.
+        let body = &buf[GiopHeader::HEADER_LEN..total_needed];
+        let payload = dispatch_body(&header, body);
         Ok(GiopPacket { header, payload })
+    }
+}
+
+// Bit 0 des flags GIOP : 1 = body little-endian, 0 = big-endian.
+const GIOP_FLAG_LITTLE_ENDIAN: u8 = 0x01;
+
+/// Dispatch du body selon message_type (issue #52).
+///
+/// Le dispatch ne doit pas changer la classification du paquet : le probing
+/// aveugle appelle GiopPacket::try_from sur du trafic arbitraire, donc un
+/// body Request illisible degrade en Other au lieu de faire echouer le
+/// paquet entier.
+fn dispatch_body<'a>(header: &GiopHeader, body: &'a [u8]) -> GiopMessage<'a> {
+    let little_endian = header.flags & GIOP_FLAG_LITTLE_ENDIAN != 0;
+    match header.message_type {
+        GiopMessageType::Request => {
+            // Les layouts de Request header different entre 1.0/1.1 et 1.2.
+            let parsed = match header.minor_version {
+                0 | 1 => GiopRequest::parse_1_0_1_1(body, little_endian, header.minor_version),
+                _ => GiopRequest::parse(body, little_endian),
+            };
+            match parsed {
+                Ok(request) => GiopMessage::Request(request),
+                Err(_) => GiopMessage::Other,
+            }
+        }
+        // Le body Reply n'est pas encore decode : GiopReply est une unit
+        // struct publique, lui ajouter des champs casserait SemVer. Le
+        // decodage du Reply header est differe a l'epic #76.
+        GiopMessageType::Reply => GiopMessage::Reply(GiopReply),
+        // Les autres types restent en Other pour l'instant (epic #76).
+        _ => GiopMessage::Other,
     }
 }
 
@@ -267,6 +298,8 @@ impl<'a> Cursor<'a> {
 //
 
 impl<'a> GiopRequest<'a> {
+    /// Parse un Request header au layout GIOP 1.2 : request_id,
+    /// response_flags, reserved, target, operation, service contexts.
     pub fn parse(body: &'a [u8], little_endian: bool) -> Result<Self, GiopParseError> {
         let mut cur = Cursor::new(body, little_endian);
 
@@ -281,6 +314,53 @@ impl<'a> GiopRequest<'a> {
         let target = parse_target_address(&mut cur)?;
         let operation = cur.read_str()?;
         let service_contexts = parse_service_context_list(&mut cur)?;
+
+        // Le reste = stub data (arguments CDR)
+        let stub_data = cur.read_bytes(cur.remaining())?;
+        Ok(GiopRequest {
+            request_id,
+            response_flags,
+            target,
+            operation,
+            service_contexts,
+            stub_data,
+        })
+    }
+
+    /// Parse un Request header au layout historique GIOP 1.0/1.1 : service
+    /// contexts en tete, puis request_id, response_expected, object_key,
+    /// operation et requesting_principal. GIOP 1.1 intercale 3 octets
+    /// reserves apres response_expected.
+    ///
+    /// Mapping vers la structure 1.2 : response_expected (boolean) est place
+    /// dans response_flags, object_key devient TargetAddress::KeyAddr.
+    fn parse_1_0_1_1(
+        body: &'a [u8],
+        little_endian: bool,
+        minor_version: u8,
+    ) -> Result<Self, GiopParseError> {
+        let mut cur = Cursor::new(body, little_endian);
+
+        let service_contexts = parse_service_context_list(&mut cur)?;
+        let request_id = cur.read_u32()?;
+        let response_flags = cur.read_u8()?;
+
+        if minor_version == 1 {
+            // Reserved 3 octets, specifiques a GIOP 1.1
+            let _reserved = cur.read_bytes(3)?;
+        }
+
+        // object_key : sequence<octet>
+        let key_len = cur.read_u32()? as usize;
+        let key = cur.read_bytes(key_len)?;
+        let target = TargetAddress::KeyAddr(key);
+
+        let operation = cur.read_str()?;
+
+        // requesting_principal : sequence<octet>, deprecie ; lu pour borner
+        // le stub data mais non conserve dans la structure (epic #76).
+        let principal_len = cur.read_u32()? as usize;
+        let _principal = cur.read_bytes(principal_len)?;
 
         // Le reste = stub data (arguments CDR)
         let stub_data = cur.read_bytes(cur.remaining())?;
@@ -357,7 +437,9 @@ mod tests {
         assert_eq!(packet.header.flags, 0);
         assert!(matches!(packet.header.message_type, GiopMessageType::Reply));
         assert_eq!(packet.header.message_length, 4);
-        assert!(matches!(packet.payload, GiopMessage::Other));
+        // Un message de type Reply est dispatche sur la variante Reply
+        // (placeholder : le body n'est pas encore decode, epic #76).
+        assert!(matches!(packet.payload, GiopMessage::Reply(_)));
     }
 
     #[test]
@@ -648,5 +730,170 @@ mod tests {
         ] {
             assert!(range.contains(&slice.as_ptr()));
         }
+    }
+
+    //
+    // Tests du dispatch du body selon message_type (issue #52).
+    // Octets synthetiques : le golden test sur trame reelle est porte
+    // par l'issue #58.
+    //
+
+    /// Header GIOP parametrable en version mineure et flags.
+    fn build_giop_header_v(minor: u8, flags: u8, msg_type: u8, message_length: u32) -> Vec<u8> {
+        let mut bytes = b"GIOP".to_vec();
+        bytes.extend_from_slice(&[1, minor]);
+        bytes.push(flags);
+        bytes.push(msg_type);
+        bytes.extend_from_slice(&message_length.to_be_bytes());
+        bytes
+    }
+
+    /// Body d'un Request au layout 1.0 big-endian : un service context en
+    /// tete, object_key, operation, principal puis stub data.
+    fn build_request_body_1_0_be() -> Vec<u8> {
+        let mut body = Vec::new();
+        body.extend_from_slice(&1u32.to_be_bytes()); // 1 service context
+        body.extend_from_slice(&17u32.to_be_bytes()); // context_id
+        body.extend_from_slice(&2u32.to_be_bytes()); // context len
+        body.extend_from_slice(&[0xAA, 0xBB]);
+        body.extend_from_slice(&7u32.to_be_bytes()); // request_id
+        body.push(1); // response_expected
+        body.extend_from_slice(&3u32.to_be_bytes()); // object_key len
+        body.extend_from_slice(b"key");
+        body.extend_from_slice(&3u32.to_be_bytes()); // operation "op" + NUL
+        body.extend_from_slice(b"op\0");
+        body.extend_from_slice(&2u32.to_be_bytes()); // principal len
+        body.extend_from_slice(&[0x01, 0x02]);
+        body.extend_from_slice(&[0xCA, 0xFE]); // stub data
+        body
+    }
+
+    #[test]
+    fn test_dispatch_request_1_0_big_endian() {
+        let body = build_request_body_1_0_be();
+        let mut bytes = build_giop_header_v(0, 0, 0, body.len() as u32);
+        bytes.extend_from_slice(&body);
+
+        let packet = GiopPacket::try_from(bytes.as_slice()).expect("paquet GIOP valide");
+        let request = match packet.payload {
+            GiopMessage::Request(request) => request,
+            other => panic!("attendu Request, obtenu {other:?}"),
+        };
+        assert_eq!(request.request_id, 7);
+        assert_eq!(request.response_flags, 1);
+        match request.target {
+            TargetAddress::KeyAddr(key) => assert_eq!(key, b"key"),
+            other => panic!("attendu KeyAddr, obtenu {other:?}"),
+        }
+        assert_eq!(request.operation, "op");
+        assert_eq!(request.service_contexts.len(), 1);
+        assert_eq!(request.service_contexts[0].context_id, 17);
+        assert_eq!(request.stub_data, &[0xCA, 0xFE]);
+    }
+
+    #[test]
+    fn test_dispatch_request_1_0_little_endian() {
+        let mut body = Vec::new();
+        body.extend_from_slice(&0u32.to_le_bytes()); // 0 service context
+        body.extend_from_slice(&42u32.to_le_bytes()); // request_id
+        body.push(0); // response_expected
+        body.extend_from_slice(&3u32.to_le_bytes()); // object_key len
+        body.extend_from_slice(b"key");
+        body.extend_from_slice(&5u32.to_le_bytes()); // operation "ping" + NUL
+        body.extend_from_slice(b"ping\0");
+        body.extend_from_slice(&0u32.to_le_bytes()); // principal vide
+
+        // Flags bit 0 = 1 : body little-endian
+        let mut bytes = build_giop_header_v(0, 0x01, 0, body.len() as u32);
+        bytes.extend_from_slice(&body);
+
+        let packet = GiopPacket::try_from(bytes.as_slice()).expect("paquet GIOP valide");
+        let request = match packet.payload {
+            GiopMessage::Request(request) => request,
+            other => panic!("attendu Request, obtenu {other:?}"),
+        };
+        assert_eq!(request.request_id, 42);
+        assert_eq!(request.operation, "ping");
+        assert!(request.service_contexts.is_empty());
+        assert!(request.stub_data.is_empty());
+    }
+
+    #[test]
+    fn test_dispatch_request_1_1_reserved_bytes() {
+        // Layout 1.1 : identique a 1.0 avec 3 octets reserves apres
+        // response_expected.
+        let mut body = Vec::new();
+        body.extend_from_slice(&0u32.to_be_bytes()); // 0 service context
+        body.extend_from_slice(&9u32.to_be_bytes()); // request_id
+        body.push(1); // response_expected
+        body.extend_from_slice(&[0, 0, 0]); // reserved 1.1
+        body.extend_from_slice(&1u32.to_be_bytes()); // object_key len
+        body.push(0x2A);
+        body.extend_from_slice(&3u32.to_be_bytes()); // operation "op" + NUL
+        body.extend_from_slice(b"op\0");
+        body.extend_from_slice(&0u32.to_be_bytes()); // principal vide
+
+        let mut bytes = build_giop_header_v(1, 0, 0, body.len() as u32);
+        bytes.extend_from_slice(&body);
+
+        let packet = GiopPacket::try_from(bytes.as_slice()).expect("paquet GIOP valide");
+        let request = match packet.payload {
+            GiopMessage::Request(request) => request,
+            other => panic!("attendu Request, obtenu {other:?}"),
+        };
+        assert_eq!(request.request_id, 9);
+        assert_eq!(request.operation, "op");
+    }
+
+    #[test]
+    fn test_dispatch_request_1_2_big_endian() {
+        let body = build_request_body_be();
+        let mut bytes = build_giop_header_v(2, 0, 0, body.len() as u32);
+        bytes.extend_from_slice(&body);
+
+        let packet = GiopPacket::try_from(bytes.as_slice()).expect("paquet GIOP valide");
+        let request = match packet.payload {
+            GiopMessage::Request(request) => request,
+            other => panic!("attendu Request, obtenu {other:?}"),
+        };
+        assert_eq!(request.request_id, 7);
+        assert_eq!(request.operation, "op");
+        assert_eq!(request.stub_data, &[0x01, 0x02, 0x03]);
+    }
+
+    #[test]
+    fn test_dispatch_request_truncated_body_degrades_to_other() {
+        // Body Request illisible (2 octets, EOF au milieu du header CDR) :
+        // le paquet reste accepte comme GIOP, le payload degrade en Other.
+        let mut bytes = build_giop_header_v(2, 0, 0, 2);
+        bytes.extend_from_slice(&[0x00, 0x01]);
+
+        let packet = GiopPacket::try_from(bytes.as_slice()).expect("paquet GIOP toujours accepte");
+        assert!(matches!(packet.payload, GiopMessage::Other));
+    }
+
+    #[test]
+    fn test_dispatch_reply_placeholder() {
+        let mut bytes = build_giop_header_v(2, 0, 1, 4);
+        bytes.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
+
+        let packet = GiopPacket::try_from(bytes.as_slice()).expect("paquet GIOP valide");
+        assert!(matches!(packet.payload, GiopMessage::Reply(_)));
+    }
+
+    #[test]
+    fn test_dispatch_undispatched_type_stays_other() {
+        // CancelRequest (2) : type valide mais non dispatche, reste Other.
+        // Les types > 7 restent rejetes au niveau du header (classification
+        // inchangee), voir test_all_message_types.
+        let mut bytes = build_giop_header_v(2, 0, 2, 4);
+        bytes.extend_from_slice(&0u32.to_be_bytes());
+
+        let packet = GiopPacket::try_from(bytes.as_slice()).expect("paquet GIOP valide");
+        assert!(matches!(
+            packet.header.message_type,
+            GiopMessageType::CancelRequest
+        ));
+        assert!(matches!(packet.payload, GiopMessage::Other));
     }
 }
