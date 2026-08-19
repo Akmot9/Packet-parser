@@ -2588,4 +2588,52 @@ mod tests {
         assert_eq!(records[0].version, TlsVersion { major: 3, minor: 3 });
         assert_eq!(records[0].length, 19);
     }
+
+    /// Politique SYN+FIN figee bout-en-bout (issue #24) : la combinaison
+    /// d'evasion classique est rejetee — la couche transport disparait et la
+    /// corruption est signalee. L'appelant perd les ports, donc la
+    /// correlation de flux : ce choix, comme le nom trompeur de l'erreur
+    /// partagee (`InvalidHeaderLength`), est reevalue avec l'epic #76 qui
+    /// pourra etendre `TcpError`.
+    #[test]
+    fn syn_fin_packet_is_dropped_as_a_corrupted_transport_layer() {
+        let mut packet = vec![
+            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // dst MAC
+            0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, // src MAC
+            0x08, 0x00, // EtherType IPv4
+        ];
+        packet.extend_from_slice(&[
+            0x45, 0x00, 0x00, 0x28, // Total Length = 40 (20 IP + 20 TCP)
+            0x12, 0x34, 0x40, 0x00, // Id, DF
+            64, 6, 0x00, 0x00, // TTL, Protocol = TCP, checksum
+            192, 168, 1, 10, // Source IP
+            192, 168, 1, 20, // Destination IP
+        ]);
+        packet.extend_from_slice(&[
+            0x30, 0x39, 0x01, 0xbb, // ports 12345 -> 443
+            0x00, 0x00, 0x00, 0x01, // seq
+            0x00, 0x00, 0x00, 0x00, // ack
+            0x50, 0x03, // data offset 5, flags SYN|FIN
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, // window, checksum, urgent
+        ]);
+
+        let flow = parse(LinkType::ETHERNET, packet.as_slice()).expect("frame decodes");
+
+        assert!(flow.internet.is_some(), "la couche IP est conservee");
+        assert!(flow.transport.is_none(), "SYN+FIN supprime le transport");
+        let corrupted = flow.corrupted.as_ref().expect("corruption signalee");
+        assert_eq!(corrupted.layer, CorruptedLayerKind::Transport);
+        // Nom d'erreur partage et trompeur, fige en attendant #76.
+        assert_eq!(corrupted.error, "TCP error: Invalid TCP header length");
+
+        // Le meme paquet avec SYN seul garde sa couche transport : c'est
+        // bien la combinaison qui est rejetee.
+        let syn_index = packet.len() - 7;
+        packet[syn_index] = 0x02;
+        let flow = parse(LinkType::ETHERNET, packet.as_slice()).expect("frame decodes");
+        let transport = flow.transport.expect("SYN seul est un transport valide");
+        assert_eq!(transport.source_port, Some(12345));
+        assert_eq!(transport.destination_port, Some(443));
+        assert!(flow.corrupted.is_none());
+    }
 }
