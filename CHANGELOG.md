@@ -6,6 +6,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [10.3.0] - 2026-08-19
+
+Version mineure, strictement additive, issue de la campagne de resorption du
+backlog : la methode de regression tshark generalisee (Modbus, DNS, TLS) avec
+parite verifiee, quatre parseurs completes (DHCP, SRVLOC, GIOP, QUIC Retry),
+la detection hors port des verbes non-ambigus, et trois corrections de
+classification revelees par le nouveau harnais (NXDOMAIN, DNS/TCP, gardes de
+transport des sondes aveugles).
+
 ### Ajoute
 
 - **Regression tshark generalisee** (epic #70) : le pattern de
