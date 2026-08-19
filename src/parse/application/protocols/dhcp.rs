@@ -11,7 +11,8 @@ use crate::{
     checks::application::dhcp::{
         DHCP_MIN_LEN, extract_chaddr, extract_file, extract_flags, extract_hardware_address_length,
         extract_hardware_type, extract_hops, extract_ipv4_addr, extract_operation, extract_secs,
-        extract_sname, extract_xid, validate_dhcp_min_length, validate_magic_cookie,
+        extract_sname, extract_xid, validate_dhcp_min_length, validate_hardware_consistency,
+        validate_magic_cookie,
     },
     errors::application::dhcp::DhcpParseError,
 };
@@ -83,6 +84,8 @@ pub fn parse_dhcp_packet(payload: &[u8]) -> Result<DhcpPacket<'_>, DhcpParseErro
     let op = extract_operation(payload[0])?;
     let htype = extract_hardware_type(payload[1])?;
     let hlen = extract_hardware_address_length(payload[2])?;
+    // Validation croisee : pour Ethernet (htype=1), hlen doit rester 6.
+    validate_hardware_consistency(htype, hlen)?;
     let hops = extract_hops(payload[3])?;
     let xid = extract_xid(&payload[4..8])?;
     let secs = extract_secs(&payload[8..10])?;
@@ -308,6 +311,69 @@ mod tests {
             Ok(_) => panic!("Expected invalid DHCP packet due to invalid op code"),
             Err(err) => assert_eq!(err, DhcpParseError::InvalidOperation { op: 3 }),
         }
+    }
+
+    #[test]
+    fn test_parse_dhcp_packet_non_ethernet_htype() {
+        // Octets synthetiques : htype IEEE 802 (6) puis ARCNET (7, hlen=1),
+        // legaux d'apres le registre IANA des types ARP hardware.
+        let mut payload = build_dhcp_payload(&[0x63, 0x82, 0x53, 0x63, 0xFF]);
+        payload[1] = 6; // IEEE 802
+        payload[2] = 6;
+        let packet = DhcpPacket::try_from(payload.as_slice()).expect("htype=6 accepte");
+        assert_eq!(packet.htype, 6);
+        assert_eq!(packet.hlen, 6);
+
+        payload[1] = 7; // ARCNET
+        payload[2] = 1;
+        let packet = DhcpPacket::try_from(payload.as_slice()).expect("htype=7 accepte");
+        assert_eq!(packet.htype, 7);
+        assert_eq!(packet.hlen, 1);
+
+        payload[1] = 16; // ATM, adresse NSAP jusqu'a 16 octets
+        payload[2] = 16;
+        let packet = DhcpPacket::try_from(payload.as_slice()).expect("htype=16 accepte");
+        assert_eq!(packet.hlen, 16);
+    }
+
+    #[test]
+    fn test_parse_dhcp_packet_invalid_htype() {
+        // Octets synthetiques : htype 0 (reserve) et htype non assigne.
+        let mut payload = build_dhcp_payload(&[0x63, 0x82, 0x53, 0x63, 0xFF]);
+        payload[1] = 0;
+        assert!(matches!(
+            DhcpPacket::try_from(payload.as_slice()),
+            Err(DhcpParseError::UnsupportedHardwareType { htype: 0 })
+        ));
+
+        payload[1] = 100;
+        assert!(matches!(
+            DhcpPacket::try_from(payload.as_slice()),
+            Err(DhcpParseError::UnsupportedHardwareType { htype: 100 })
+        ));
+    }
+
+    #[test]
+    fn test_parse_dhcp_packet_invalid_hlen() {
+        // Octets synthetiques : hlen hors bornes ou incoherent avec htype.
+        let mut payload = build_dhcp_payload(&[0x63, 0x82, 0x53, 0x63, 0xFF]);
+        payload[2] = 0;
+        assert!(matches!(
+            DhcpPacket::try_from(payload.as_slice()),
+            Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 0 })
+        ));
+
+        payload[2] = 17; // depasse la zone chaddr de 16 octets
+        assert!(matches!(
+            DhcpPacket::try_from(payload.as_slice()),
+            Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 17 })
+        ));
+
+        payload[2] = 8; // htype=1 (Ethernet) exige hlen=6
+        assert!(matches!(
+            DhcpPacket::try_from(payload.as_slice()),
+            Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 8 })
+        ));
     }
 
     #[test]

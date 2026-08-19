@@ -26,8 +26,22 @@ pub fn validate_operation(op: u8) -> Result<(), DhcpParseError> {
     Ok(())
 }
 
+/// Plus grand type ARP hardware assigne par l'IANA (registre "Address
+/// Resolution Protocol (ARP) Parameters", section Hardware Types, RFC 5494) :
+/// 1 Ethernet, 6 IEEE 802, 7 ARCNET, 15 Frame Relay, 16 ATM, 17 HDLC,
+/// 20 Serial Line, ..., 37 HFI. Les valeurs 0 et au-dela de 37 ne sont pas
+/// assignees ; les refuser limite les faux positifs du probing aveugle.
+pub const DHCP_HTYPE_IANA_MAX: u8 = 37;
+
+/// Taille de la zone chaddr (RFC 2131) : borne haute possible pour hlen.
+pub const DHCP_CHADDR_LEN: u8 = 16;
+
+/// hlen impose par htype=1 (Ethernet) : une adresse MAC fait 6 octets.
+pub const DHCP_ETHERNET_HLEN: u8 = 6;
+
 pub fn validate_hardware_type(htype: u8) -> Result<(), DhcpParseError> {
-    if htype != 1 {
+    // Types ARP hardware assignes par l'IANA : 1..=37 (cf. DHCP_HTYPE_IANA_MAX).
+    if !(1..=DHCP_HTYPE_IANA_MAX).contains(&htype) {
         return Err(DhcpParseError::UnsupportedHardwareType { htype });
     }
 
@@ -35,7 +49,20 @@ pub fn validate_hardware_type(htype: u8) -> Result<(), DhcpParseError> {
 }
 
 pub fn validate_hardware_address_length(hlen: u8) -> Result<(), DhcpParseError> {
-    if hlen != 6 {
+    // hlen doit tenir dans la zone chaddr de 16 octets, et 0 n'a pas de sens.
+    if !(1..=DHCP_CHADDR_LEN).contains(&hlen) {
+        return Err(DhcpParseError::InvalidHardwareAddressLength { hlen });
+    }
+
+    Ok(())
+}
+
+/// Verifie la coherence croisee entre htype et hlen deja extraits :
+/// pour Ethernet (htype=1), hlen doit rester 6 (adresse MAC). Les autres
+/// types gardent la borne generale 1..=16 deja appliquee par
+/// `validate_hardware_address_length`.
+pub fn validate_hardware_consistency(htype: u8, hlen: u8) -> Result<(), DhcpParseError> {
+    if htype == 1 && hlen != DHCP_ETHERNET_HLEN {
         return Err(DhcpParseError::InvalidHardwareAddressLength { hlen });
     }
 
@@ -67,15 +94,16 @@ pub fn extract_operation(op: u8) -> Result<u8, DhcpParseError> {
     Ok(op)
 }
 
-/// Checks the hardware type (only Ethernet, htype=1, is supported) and
-/// returns it.
+/// Checks the hardware type (IANA-assigned ARP hardware types, 1..=37)
+/// and returns it.
 pub fn extract_hardware_type(htype: u8) -> Result<u8, DhcpParseError> {
     validate_hardware_type(htype)?;
     Ok(htype)
 }
 
-/// Checks the hardware address length (must be 6, Ethernet MAC) and
-/// returns it.
+/// Checks the hardware address length (1..=16, the chaddr area size) and
+/// returns it. Consistency with htype is checked separately by
+/// `validate_hardware_consistency`.
 pub fn extract_hardware_address_length(hlen: u8) -> Result<u8, DhcpParseError> {
     validate_hardware_address_length(hlen)?;
     Ok(hlen)
@@ -219,10 +247,28 @@ mod tests {
 
     #[test]
     fn test_validate_hardware_type() {
-        assert!(validate_hardware_type(1).is_ok());
+        // Types ARP hardware assignes par l'IANA : acceptes
+        assert!(validate_hardware_type(1).is_ok()); // Ethernet
+        assert!(validate_hardware_type(6).is_ok()); // IEEE 802
+        assert!(validate_hardware_type(7).is_ok()); // ARCNET
+        assert!(validate_hardware_type(15).is_ok()); // Frame Relay
+        assert!(validate_hardware_type(16).is_ok()); // ATM
+        assert!(validate_hardware_type(17).is_ok()); // HDLC
+        assert!(validate_hardware_type(20).is_ok()); // Serial Line
+        assert!(validate_hardware_type(DHCP_HTYPE_IANA_MAX).is_ok()); // HFI
+
+        // 0 (reserve) et valeurs non assignees : refuses
         assert!(matches!(
-            validate_hardware_type(6),
-            Err(DhcpParseError::UnsupportedHardwareType { htype: 6 })
+            validate_hardware_type(0),
+            Err(DhcpParseError::UnsupportedHardwareType { htype: 0 })
+        ));
+        assert!(matches!(
+            validate_hardware_type(DHCP_HTYPE_IANA_MAX + 1),
+            Err(DhcpParseError::UnsupportedHardwareType { htype: 38 })
+        ));
+        assert!(matches!(
+            validate_hardware_type(255),
+            Err(DhcpParseError::UnsupportedHardwareType { htype: 255 })
         ));
     }
 
@@ -246,15 +292,39 @@ mod tests {
 
     #[test]
     fn test_validate_hardware_address_length() {
+        // hlen dans 1..=16 : accepte (la zone chaddr fait 16 octets)
+        assert!(validate_hardware_address_length(1).is_ok());
         assert!(validate_hardware_address_length(6).is_ok());
+        assert!(validate_hardware_address_length(DHCP_CHADDR_LEN).is_ok());
+
+        // 0 et au-dela de la zone chaddr : refuses
         assert!(matches!(
             validate_hardware_address_length(0),
             Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 0 })
         ));
         assert!(matches!(
-            validate_hardware_address_length(16),
+            validate_hardware_address_length(17),
+            Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 17 })
+        ));
+    }
+
+    #[test]
+    fn test_validate_hardware_consistency() {
+        // Ethernet impose hlen=6
+        assert!(validate_hardware_consistency(1, 6).is_ok());
+        assert!(matches!(
+            validate_hardware_consistency(1, 8),
+            Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 8 })
+        ));
+        assert!(matches!(
+            validate_hardware_consistency(1, 16),
             Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 16 })
         ));
+
+        // Les autres types acceptent tout hlen deja borne 1..=16
+        assert!(validate_hardware_consistency(6, 6).is_ok()); // IEEE 802
+        assert!(validate_hardware_consistency(7, 1).is_ok()); // ARCNET
+        assert!(validate_hardware_consistency(16, 16).is_ok()); // ATM, NSAP 16 octets
     }
 
     #[test]
@@ -270,18 +340,29 @@ mod tests {
     #[test]
     fn test_extract_hardware_type() {
         assert_eq!(extract_hardware_type(1), Ok(1));
+        assert_eq!(extract_hardware_type(6), Ok(6));
+        assert_eq!(extract_hardware_type(20), Ok(20));
         assert!(matches!(
-            extract_hardware_type(6),
-            Err(DhcpParseError::UnsupportedHardwareType { htype: 6 })
+            extract_hardware_type(0),
+            Err(DhcpParseError::UnsupportedHardwareType { htype: 0 })
+        ));
+        assert!(matches!(
+            extract_hardware_type(38),
+            Err(DhcpParseError::UnsupportedHardwareType { htype: 38 })
         ));
     }
 
     #[test]
     fn test_extract_hardware_address_length() {
         assert_eq!(extract_hardware_address_length(6), Ok(6));
+        assert_eq!(extract_hardware_address_length(16), Ok(16));
         assert!(matches!(
             extract_hardware_address_length(0),
             Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 0 })
+        ));
+        assert!(matches!(
+            extract_hardware_address_length(17),
+            Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 17 })
         ));
     }
 
