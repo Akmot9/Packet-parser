@@ -91,6 +91,9 @@ enum ProbeId {
     Nntp,
     Mdns,
     Ams,
+    FtpUnambiguous,
+    SmtpUnambiguous,
+    NntpUnambiguous,
     QuicShortHeader,
     Ntp,
     Bitcoin,
@@ -120,6 +123,9 @@ fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Smtp => SmtpMessage::try_from(payload).is_ok(),
         ProbeId::Nntp => NntpMessage::try_from(payload).is_ok(),
         ProbeId::Mdns => DnsPacket::try_from_mdns(payload).is_ok(),
+        ProbeId::FtpUnambiguous => is_unambiguous_ftp_command(payload),
+        ProbeId::SmtpUnambiguous => is_unambiguous_smtp_command(payload),
+        ProbeId::NntpUnambiguous => is_unambiguous_nntp_command(payload),
         ProbeId::Ams => AmsPacket::try_from(payload).is_ok(),
         ProbeId::QuicShortHeader => is_plausible_short_header(payload),
         ProbeId::Ntp => NtpPacket::try_from(payload).is_ok(),
@@ -197,6 +203,14 @@ static RULES: &[Rule] = &[
     port_rule("FTP", Guard::Tcp, is_ftp_tcp_port, ProbeId::Ftp),
     port_rule("SMTP", Guard::Tcp, is_smtp_tcp_port, ProbeId::Smtp),
     port_rule("NNTP", Guard::Tcp, is_nntp_tcp_port, ProbeId::Nntp),
+    // Detection hors port standard (issue #66) : certains verbes
+    // n'appartiennent qu'a un seul des trois protocoles textuels — eux seuls
+    // sont detectes par contenu, les verbes partages (QUIT, LIST, MODE...)
+    // et les reponses (formes octet pour octet identiques) restent gardes
+    // par port ci-dessus.
+    rule("FTP", Guard::Tcp, ProbeId::FtpUnambiguous),
+    rule("SMTP", Guard::Tcp, ProbeId::SmtpUnambiguous),
+    rule("NNTP", Guard::Tcp, ProbeId::NntpUnambiguous),
     // mDNS reprend le format DNS mais ses reponses omettent souvent la
     // question (RFC 6762 §6) : validateur dedie, et port terminal.
     Rule {
@@ -300,6 +314,49 @@ pub(super) fn classify(transport: &Transport<'_>) -> Option<Application> {
     })
 }
 
+/// Verbes que seul FTP definit (RFC 959/2428). RETR figure dans la liste de
+/// l'issue #66 bien que POP3 le partage : la crate ne classe pas POP3, et le
+/// verbe est valide avec la syntaxe FTP. POST est exclu du set NNTP (HTTP).
+const FTP_ONLY_VERBS: [&str; 11] = [
+    "RETR", "STOR", "PASV", "APPE", "RNFR", "RNTO", "MKD", "CDUP", "EPSV", "EPRT", "NLST",
+];
+const SMTP_ONLY_VERBS: [&str; 4] = ["EHLO", "HELO", "MAIL", "RCPT"];
+const NNTP_ONLY_VERBS: [&str; 7] = [
+    "ARTICLE",
+    "XOVER",
+    "XHDR",
+    "IHAVE",
+    "LISTGROUP",
+    "NEWGROUPS",
+    "NEWNEWS",
+];
+
+/// Une commande complete (syntaxe et arite validees par le parseur du
+/// protocole) dont le verbe n'existe que dans ce protocole.
+fn is_unambiguous_ftp_command(payload: &[u8]) -> bool {
+    matches!(
+        FtpMessage::try_from(payload),
+        Ok(FtpMessage::Command { verb, .. })
+            if FTP_ONLY_VERBS.iter().any(|only| only.eq_ignore_ascii_case(verb))
+    )
+}
+
+fn is_unambiguous_smtp_command(payload: &[u8]) -> bool {
+    matches!(
+        SmtpMessage::try_from(payload),
+        Ok(SmtpMessage::Command { verb, .. })
+            if SMTP_ONLY_VERBS.iter().any(|only| only.eq_ignore_ascii_case(verb))
+    )
+}
+
+fn is_unambiguous_nntp_command(payload: &[u8]) -> bool {
+    matches!(
+        NntpMessage::try_from(payload),
+        Ok(NntpMessage::Command { verb, .. })
+            if NNTP_ONLY_VERBS.iter().any(|only| only.eq_ignore_ascii_case(verb))
+    )
+}
+
 fn is_snmp_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(161 | 162))
 }
@@ -364,6 +421,42 @@ fn is_dns_port(port: Option<u16>) -> bool {
 mod tests {
     use super::*;
 
+    /// Payload TCP minimal pour exercer la table hors ports standards.
+    fn tcp_transport<'a>(payload: &'a [u8]) -> Transport<'a> {
+        Transport {
+            protocol: TransportProtocol::Tcp,
+            source_port: Some(40_000),
+            destination_port: Some(50_000),
+            payload: Some(payload),
+            details: None,
+        }
+    }
+
+    /// Issue #66 : un verbe propre a un protocole est detecte hors port ;
+    /// un verbe partage reste inconnu hors port.
+    #[test]
+    fn unambiguous_verbs_classify_off_port_shared_verbs_do_not() {
+        for (payload, expected) in [
+            (&b"PASV\r\n"[..], "FTP"),
+            (&b"STOR fichier.bin\r\n"[..], "FTP"),
+            (&b"EHLO client.example\r\n"[..], "SMTP"),
+            (&b"MAIL FROM:<a@b.example>\r\n"[..], "SMTP"),
+            (&b"ARTICLE 12345\r\n"[..], "NNTP"),
+            (&b"XOVER 1-5\r\n"[..], "NNTP"),
+        ] {
+            let transport = tcp_transport(payload);
+            let label = classify(&transport).map(|a| a.application_protocol);
+            assert_eq!(label, Some(expected), "payload {payload:?}");
+        }
+
+        // QUIT existe dans les trois protocoles : jamais par contenu seul.
+        let transport = tcp_transport(b"QUIT\r\n");
+        let label = classify(&transport).map(|a| a.application_protocol);
+        assert_ne!(label, Some("FTP"));
+        assert_ne!(label, Some("SMTP"));
+        assert_ne!(label, Some("NNTP"));
+    }
+
     /// La memoisation exige un identifiant de sonde par bit d'un u32.
     #[test]
     fn probe_ids_fit_the_memoization_bitmask() {
@@ -400,6 +493,9 @@ mod tests {
             blind,
             [
                 "S7Comm",
+                "FTP",
+                "SMTP",
+                "NNTP",
                 "NTP",
                 "Bitcoin",
                 "OPC UA",
@@ -417,8 +513,10 @@ mod tests {
                 "QUIC",
                 "MQTT",
             ],
-            "S7Comm est promu en tete (priorite sur COTP), le reste suit \
-             l'ordre historique de Application::try_from"
+            "S7Comm est promu en tete (priorite sur COTP), les verbes \
+             non-ambigus FTP/SMTP/NNTP sont propres au dispatch transport \
+             (issue #66), le reste suit l'ordre historique de \
+             Application::try_from"
         );
     }
 }

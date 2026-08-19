@@ -37,6 +37,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   exposes par les methodes additives `retry_token()` /
   `retry_integrity_tag()` ; un Retry trop court pour son tag est refuse (#54).
 
+- **Detection hors port standard des verbes non-ambigus** (#66) : PASV/STOR/
+  RETR/APPE... (FTP), EHLO/HELO/MAIL/RCPT (SMTP), ARTICLE/XOVER/IHAVE...
+  (NNTP) sont detectes par contenu sur TCP quel que soit le port — la
+  commande complete est validee par le parseur du protocole et le verbe doit
+  n'exister que chez lui. Les verbes partages (QUIT, LIST, MODE...) et les
+  reponses (formes identiques octet pour octet) restent gardes par port.
+  Oracle negatif : histogramme du corpus et regression s7comm strictement
+  inchanges, zero faux positif.
+
 ### Corrige
 
 - **NXDOMAIN des resolveurs recursifs** : la validation DNS exigeait aa=1
