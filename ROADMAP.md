@@ -1,17 +1,20 @@
 # Roadmap packet_parser
 
-Etat au 2026-08-16 : la **10.1.0 est publiee**. La 10.0.0 avait ouvert une
+Etat au 2026-08-19 : la **10.2.0 est publiee**. La 10.0.0 avait ouvert une
 **fenetre de stabilite** — tout ce qui suit est realisable sans nouvelle
 version majeure, et l'objectif est de tenir 6 a 12 mois sans rupture d'API.
-La 10.1.0 le confirme : `cargo semver-checks` la classe « minor change »,
-196 controles, aucune rupture.
+La 10.2.0 le confirme a son tour : `cargo semver-checks` la classe
+« minor change », 196 controles, aucune rupture.
 
-La 10.1.0 apporte trois decodeurs complets — SSH (RFC 4253 §4.2), ICMPv4
-(RFC 792) et ICMPv6 (RFC 4443 et 4861, dont la decouverte de voisins et de
-routeurs) — les LINKTYPE IPV4 (228) et IPV6 (229), et deux correctifs de
-validation. C'est aussi la premiere release au packaging assaini : 172
-fichiers publies contre 194, et 336 Ko contre 360 Ko malgre 3 143 lignes de
-plus.
+La 10.2.0 apporte le decodeur **IEEE 802.3br mPackets express** (LINKTYPE
+274, #79) — les 10 667 trames du corpus decodent, zero erreur L2 restante —
+et solde #31 : MSRV 1.88 declaree et verifiee, Cargo.lock versionne avec
+`--locked` partout, cargo-deny bloquant sur chaque push/PR, job macOS, lints
+anti-panic (unwrap/expect/panic) sur le code de production. La suite de
+tests n'a plus aucune dependance systeme : les bindings natifs libpcap/Npcap
+(`pcap`, `pnet`) sont remplaces par `pcap-file`, du Rust pur. Pas de job CI
+Windows, par decision (licence OEM Npcap, aucune adherence voulue), mais la
+suite y est portable.
 
 Rien n'est en attente de publication a ce jour ; la section « Non publie » du
 CHANGELOG est vide.
@@ -44,15 +47,16 @@ sortent de l'invisibilite, pas une seule : `The-Ultimate-PCAP.pcapng`
 (0 -> 51 328 trames), `capwap-only.pcapng` et `capwap-association-valid.pcapng`
 (0 -> 2 chacune). Les comptes correspondent exactement a tshark.
 
-Le corpus n'est toutefois **rendu qu'aux quatre cinquiemes** : les 10 667
-trames en LINKTYPE 274 restent indecodees faute de decodeur, soit 21 % de
-`The-Ultimate-PCAP.pcapng`. C'est l'objet de **#79**, qui devient de ce fait
-le prealable restant a #56 : ces trames portent 2 403 ICMPv6, 1 841 ICMP,
-1 237 TCP, 818 VRRP, 777 GLBP, 678 IS-IS et 599 NTP, et plusieurs de ces
-protocoles n'ont aucune autre source de trames reelles dans le depot.
+**#79 est clos le 2026-08-19, livre en 10.2.0.** Le corpus est desormais
+**entierement rendu** : les 10 667 trames LINKTYPE 274 decodent (decouverte
+en route : 102 d'entre elles ont un preambule raccourci a 6 octets, ce qui a
+impose de localiser le SMD dynamiquement plutot qu'a offset fixe). Ces
+trames portent 2 403 ICMPv6, 1 841 ICMP, 1 237 TCP, 818 VRRP, 777 GLBP,
+678 IS-IS et 599 NTP — autant de sources de trames reelles nouvelles pour
+#56.
 
-Priorite : **#79**, puis #56, dette vis-a-vis de la regle « trames reelles
-obligatoires ».
+Priorite : **#56**, dette vis-a-vis de la regle « trames reelles
+obligatoires », desormais sans prealable.
 
 #55 a ete ferme le 2026-08-12 : il decrivait un etat perime. La detection
 TLS est cablee depuis le commit 5b12cf7 (2025-11-20) par probing aveugle
