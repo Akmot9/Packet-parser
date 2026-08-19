@@ -184,9 +184,11 @@ fn verify_response_flags(opcode: u16, aa: u16, tc: u16, rcode: u16) -> Result<()
         return Err(DnsFlagsError::AaInServerFailure(aa));
     }
 
-    if rcode == 3 && aa != 1 {
-        return Err(DnsFlagsError::AaInNameError(aa));
-    }
+    // Pas de regle sur rcode 3 (NXDOMAIN) : un serveur autoritaire repond
+    // aa=1, mais un resolveur recursif relaie le NXDOMAIN avec aa=0 — les
+    // deux sont legaux (RFC 1035 ne lie pas AA au rcode). L'ancienne
+    // exigence aa=1 rejetait des reponses reelles du corpus
+    // (dns_query_nonexistent.pcapng trame 2, dns_lab.pcapng trame 18).
 
     if rcode == 5 && aa != 0 {
         return Err(DnsFlagsError::AaInRefused(aa));

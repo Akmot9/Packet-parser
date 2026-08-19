@@ -66,20 +66,29 @@ fn application_classification_histogram_is_frozen() {
     // dispatch L7 en table declarative. Les 42 « erreur L2 » sont les trames
     // de mqtt_packets_MosquittoLinux.pcap et consorts au LINKTYPE non
     // supporte, deja comptees par la regression s7comm.
+    //
+    // Evolutions volontaires (meme jour) :
+    // - DNS 102 -> 104 : correction NXDOMAIN — l'exigence aa=1 sur rcode 3
+    //   rejetait les reponses des resolveurs recursifs
+    //   (dns_query_nonexistent.pcapng#2, dns_lab.pcapng#18) ;
+    // - NTP 4 -> 0, TLS 584 -> 587, Unknown 419 -> 418 : gardes de transport
+    //   sur les sondes aveugles. Les quatre « NTP » etaient des faux positifs
+    //   sur du TCP (dont trois Encrypted Alerts TLS de dump.pcapng, 0x15 lu
+    //   comme LI/VN/mode) — le corpus n'a aucune vraie capture NTP
+    //   (protocols/ntp/ ne contient qu'un .gitkeep).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 1233),
         ("DHCP", 6),
         ("DHCPv6", 4),
-        ("DNS", 102),
+        ("DNS", 104),
         ("HTTP", 62),
         ("MQTT", 38),
         ("ModbusTCP", 383),
         ("NNTP", 6),
-        ("NTP", 4),
         ("SMTP", 6),
-        ("TLS", 584),
-        ("Unknown", 419),
+        ("TLS", 587),
+        ("Unknown", 418),
         ("mDNS", 4),
     ]
     .into_iter()

@@ -98,6 +98,7 @@ enum ProbeId {
     EthernetIp,
     Postgresql,
     Dns,
+    DnsTcp,
     Tls,
     Ssh,
     Http,
@@ -127,6 +128,7 @@ fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::EthernetIp => EtherNetIpPacket::try_from(payload).is_ok(),
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::Dns => DnsPacket::try_from(payload).is_ok(),
+        ProbeId::DnsTcp => DnsPacket::try_from_tcp(payload).is_ok(),
         ProbeId::Tls => TlsPacket::try_from(payload).is_ok(),
         ProbeId::Ssh => SshPacket::try_from(payload).is_ok(),
         ProbeId::Http => HttpRequest::try_from(payload).is_ok(),
@@ -217,30 +219,45 @@ static RULES: &[Rule] = &[
     // Priorites de port sur sondes par ailleurs aveugles : le port ne suffit
     // jamais, mais il fait passer la sonde avant le reste de la cascade.
     port_rule("OPC UA", Guard::Tcp, is_opcua_tcp_port, ProbeId::Opcua),
-    port_rule("DNS", Guard::Any, is_dns_port, ProbeId::Dns),
-    // --- cascade aveugle, ordre historique de `Application::try_from` ---
-    rule("NTP", Guard::Any, ProbeId::Ntp),
-    rule("Bitcoin", Guard::Any, ProbeId::Bitcoin),
-    rule("OPC UA", Guard::Any, ProbeId::Opcua),
+    // DNS : la forme datagramme n'existe que sur UDP, et TCP prefixe chaque
+    // message de sa longueur (RFC 1035 §4.2). Sonder la forme datagramme sur
+    // du TCP etiquetait "DNS" des fragments de reassemblage (trame 6 de
+    // dns_axfr.pcapng) : chaque transport n'a que sa forme.
+    port_rule("DNS", Guard::Tcp, is_dns_port, ProbeId::DnsTcp),
+    port_rule("DNS", Guard::Udp, is_dns_port, ProbeId::Dns),
+    // --- cascade aveugle, ordre historique de `Application::try_from`,
+    // avec les gardes de transport que les RFC imposent : sonder NTP sur du
+    // TCP etiquetait "NTP" des Encrypted Alerts TLS (0x15 = LI/VN/mode
+    // plausible — trames 44/329/614 de dump.pcapng). Seuls les protocoles
+    // reellement bi-transport restent en Guard::Any. ---
+    rule("NTP", Guard::Udp, ProbeId::Ntp),
+    rule("Bitcoin", Guard::Tcp, ProbeId::Bitcoin),
+    rule("OPC UA", Guard::Tcp, ProbeId::Opcua),
+    // EtherNet/IP est reellement bi-transport (TCP 44818, UDP 2222).
     rule("EtherNet/IP", Guard::Any, ProbeId::EthernetIp),
     // PostgreSQL ne circule que sur TCP : la garde manquait et la sonde
     // s'executait deux fois (issue #29).
     rule("PostgreSQL", Guard::Tcp, ProbeId::Postgresql),
-    rule("DNS", Guard::Any, ProbeId::Dns),
+    // Forme datagramme : UDP uniquement (RFC 1035 §4.2.1) — sur TCP elle ne
+    // peut matcher que des fragments, la forme prefixee est port-guardee.
+    rule("DNS", Guard::Udp, ProbeId::Dns),
+    // SNMP sur TCP existe (RFC 3430) meme s'il est rare : bi-transport.
     rule("SNMP", Guard::Any, ProbeId::Snmp),
-    rule("TLS", Guard::Any, ProbeId::Tls),
+    rule("TLS", Guard::Tcp, ProbeId::Tls),
     // SSH avant HTTP : prefixe litteral `SSH-` + version exacte, aucun
     // recouvrement avec les methodes HTTP.
-    rule("SSH", Guard::Any, ProbeId::Ssh),
-    rule("HTTP", Guard::Any, ProbeId::Http),
-    rule("GIOP", Guard::Any, ProbeId::Giop),
+    rule("SSH", Guard::Tcp, ProbeId::Ssh),
+    rule("HTTP", Guard::Tcp, ProbeId::Http),
+    // GIOP/IIOP est transporte par TCP.
+    rule("GIOP", Guard::Tcp, ProbeId::Giop),
     // DHCP avant SRVLOC : un BOOTP mimait un en-tete SLP (issue #3).
-    rule("DHCP", Guard::Any, ProbeId::Dhcp),
+    rule("DHCP", Guard::Udp, ProbeId::Dhcp),
+    // SLP accepte TCP et UDP (RFC 2608 §6.1) : bi-transport.
     rule("SRVLOC", Guard::Any, ProbeId::Srvloc),
-    rule("ModbusTCP", Guard::Any, ProbeId::ModbusTcp),
-    rule("QUIC", Guard::Any, ProbeId::QuicLongHeader),
-    // MQTT en dernier : en-tete fixe peu discriminant.
-    rule("MQTT", Guard::Any, ProbeId::Mqtt),
+    rule("ModbusTCP", Guard::Tcp, ProbeId::ModbusTcp),
+    rule("QUIC", Guard::Udp, ProbeId::QuicLongHeader),
+    // MQTT (TCP) en dernier : en-tete fixe peu discriminant.
+    rule("MQTT", Guard::Tcp, ProbeId::Mqtt),
 ];
 
 /// Classifie le payload d'une couche transport. `None` signifie « rien a

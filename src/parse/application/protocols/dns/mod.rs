@@ -80,6 +80,28 @@ impl TryFrom<&[u8]> for DnsPacket {
 }
 
 impl DnsPacket {
+    /// Decode un message DNS transporte sur TCP (RFC 1035 §4.2.2) : le flux
+    /// prefixe chaque message d'une longueur sur deux octets. Seul le premier
+    /// message du segment est decode — un segment AXFR peut en enchainer
+    /// plusieurs, et un message a cheval sur plusieurs segments releve du
+    /// reassemblage TCP, hors de portee d'un parseur stateless.
+    ///
+    /// La longueur declaree doit couvrir au moins l'en-tete DNS et tenir dans
+    /// le segment : c'est elle qui distingue un vrai flux DNS/TCP d'un payload
+    /// arbitraire commencant par deux octets quelconques.
+    pub fn try_from_tcp(bytes: &[u8]) -> Result<Self, DnsPacketError> {
+        check_dns_minimum_size(bytes)?;
+
+        let declared = usize::from(u16::from_be_bytes([bytes[0], bytes[1]]));
+        let message = bytes
+            .get(2..2 + declared)
+            .ok_or(DnsPacketError::InsufficientData {
+                expected: 2 + declared,
+                actual: bytes.len(),
+            })?;
+        Self::try_from(message)
+    }
+
     /// Like [`TryFrom::try_from`], but tolerates an empty question section.
     ///
     /// mDNS reuses the DNS wire format (RFC 6762 §1) but its responders send
@@ -383,5 +405,42 @@ mod tests {
         let answer = &mdns.answers.as_ref().expect("answer")[0];
 
         assert_eq!(answer.answer_class.0, 1);
+    }
+
+    /// Trame 2 de `pcaps_exemple/protocols/dns/dns_query_nonexistent.pcapng` :
+    /// reponse NXDOMAIN d'un resolveur recursif (rcode 3, aa=0, une SOA en
+    /// autorite). L'ancienne exigence aa=1 sur rcode 3 la rejetait.
+    #[test]
+    fn recursive_resolver_nxdomain_response_is_accepted() {
+        let bytes = hex::decode(concat!(
+            "f23f81830001000000010000173132343938323833373139333031333832393731",
+            "393734036e65740000010001c0240006000100000383003d01610c67746c642d73",
+            "657276657273c024056e73746c640c766572697369676e2d67727303636f6d0058",
+            "de667e000007080000038400093a8000015180"
+        ))
+        .expect("fixture");
+
+        let packet = DnsPacket::try_from(bytes.as_slice()).expect("real NXDOMAIN decodes");
+        assert_eq!(packet.header.counts, [1, 0, 1, 0]);
+        let authorities = packet.authorities.expect("SOA in authority");
+        assert_eq!(authorities.len(), 1);
+    }
+
+    /// Trame 6 de `pcaps_exemple/protocols/dns/dns_tcp.pcapng` : requete ANY
+    /// `ripe.net` sur TCP, prefixee de sa longueur (RFC 1035 §4.2.2).
+    #[test]
+    fn tcp_length_prefixed_message_is_decoded() {
+        let bytes = hex::decode("001ab4c3010000010000000000000472697065036e65740000ff0001")
+            .expect("fixture");
+
+        let packet = DnsPacket::try_from_tcp(bytes.as_slice()).expect("real DNS/TCP decodes");
+        assert_eq!(packet.header.counts, [1, 0, 0, 0]);
+
+        // Sans le prefixe, la forme datagramme refuse ces memes octets : les
+        // deux formes ne se recouvrent pas.
+        assert!(DnsPacket::try_from(bytes.as_slice()).is_err());
+
+        // Prefixe annoncant plus que le segment : refus propre.
+        assert!(DnsPacket::try_from_tcp(&bytes[..bytes.len() - 1]).is_err());
     }
 }

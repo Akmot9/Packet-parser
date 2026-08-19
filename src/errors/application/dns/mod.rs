@@ -65,6 +65,9 @@ pub enum DnsFlagsError {
     #[error("Rcode = 2, so AA must be 0 in Server failure responses. Here it's: {0}")]
     AaInServerFailure(u16),
 
+    /// N'est plus produite : l'exigence aa=1 sur NXDOMAIN rejetait les
+    /// reponses des resolveurs recursifs (aa=0, legal). Variante conservee
+    /// pour la compatibilite de l'enum public.
     #[error("Rcode = 3, AA must be 1 in Name Error responses. Here it's: {0}")]
     AaInNameError(u16),
 
