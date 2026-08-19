@@ -54,7 +54,6 @@ impl From<u8> for CotpPduType {
     }
 }
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// COTP header.
 ///
 /// The diagram shows a connection/control TPDU. A normal-format Data TPDU is

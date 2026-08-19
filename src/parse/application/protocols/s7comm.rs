@@ -42,7 +42,6 @@ use crate::{
     parse::application::protocols::bounded_capacity,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// S7Comm Protocol Packet
 ///
 /// ```mermaid

@@ -14,7 +14,6 @@ use crate::{
     errors::application::tls::TlsError,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// TLS Record Packet
 ///
 /// ```mermaid

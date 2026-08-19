@@ -11,7 +11,6 @@ use crate::{
 };
 use std::fmt;
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// DHCPv6 Packet
 ///
 /// ```mermaid

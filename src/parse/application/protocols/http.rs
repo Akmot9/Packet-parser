@@ -15,7 +15,6 @@ use crate::{
     errors::application::http::HttpParseError,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// HTTP Request
 ///
 /// ```mermaid

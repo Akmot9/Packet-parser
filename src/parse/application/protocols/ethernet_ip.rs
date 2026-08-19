@@ -18,7 +18,6 @@ use crate::{
     parse::application::protocols::bounded_capacity,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// EtherNet/IP Encapsulation Packet
 ///
 /// ```mermaid

@@ -15,7 +15,6 @@ use crate::{
     errors::application::smtp::SmtpParseError,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// A parsed SMTP message: either a client command or a server reply.
 ///
 /// ```mermaid

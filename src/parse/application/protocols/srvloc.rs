@@ -7,7 +7,6 @@ use core::convert::TryFrom;
 
 use crate::{checks::application::srvloc::*, errors::application::srvloc::SrvlocPacketParseError};
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// Service Location Protocol Packet
 ///
 /// ```mermaid

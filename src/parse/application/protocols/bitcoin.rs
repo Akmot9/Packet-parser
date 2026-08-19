@@ -11,7 +11,6 @@ use crate::{
     errors::application::bitcoin::BitcoinError,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// Bitcoin Network Packet
 ///
 /// ```mermaid

@@ -20,7 +20,6 @@ use crate::{
     errors::application::ssh::SshError,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// Chaine d'identification SSH (RFC 4253 §4.2).
 ///
 /// Contrairement aux autres parseurs de la crate, le format est textuel et de

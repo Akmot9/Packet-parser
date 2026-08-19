@@ -35,7 +35,6 @@ pcap-file = "2.0.0"
 serde = { version = "1.0.228", features = ["derive"] }
 uuid = { version = "1.23.4", default-features = false, features = ["v4"] }
 chrono = "0.4.45" # for ntp timestamp
-aquamarine = { version = "0.6.0", optional = true }
 hex = "0.4.3"
 
 # Volontairement sans `pcap` ni `pnet` : leurs bindings natifs (libpcap,
@@ -61,5 +60,10 @@ rpath = false         # No runtime path in binary
 
 [features]
 default = []
-doc-diagrams = ["dep:aquamarine"]
+# Feature videe, conservee pour compatibilite : elle activait aquamarine
+# (rendu des diagrammes mermaid dans rustdoc), retire car il tirait
+# proc-macro-error2, non maintenu (RUSTSEC-2026-0173, issue #14). Les blocs
+# ```mermaid des doc-comments restent en place, affiches comme du code.
+# Supprimer le nom de la feature serait une rupture pour qui l'active.
+doc-diagrams = []
 parse_timing = []

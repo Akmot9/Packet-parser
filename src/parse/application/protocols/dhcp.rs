@@ -16,7 +16,6 @@ use crate::{
     errors::application::dhcp::DhcpParseError,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// DHCP Packet
 ///
 /// ```mermaid

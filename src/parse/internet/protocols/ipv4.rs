@@ -14,7 +14,6 @@ use crate::{
 use std::convert::TryFrom;
 use std::net::Ipv4Addr;
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// IPv4 Packet Structure
 ///
 /// Represents an Internet Protocol version 4 packet

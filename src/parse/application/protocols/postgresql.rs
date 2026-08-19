@@ -25,7 +25,6 @@ pub(crate) const POSTGRESQL_SSL_REQUEST_CODE: u32 = 80_877_103;
 pub(crate) const POSTGRESQL_CANCEL_REQUEST_CODE: u32 = 80_877_102;
 pub(crate) const POSTGRESQL_GSSENC_REQUEST_CODE: u32 = 80_877_104;
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// PostgreSQL frontend/backend protocol packet
 ///
 /// ```mermaid

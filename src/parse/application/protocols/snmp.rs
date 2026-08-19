@@ -18,7 +18,6 @@ use crate::{
     errors::application::snmp::SnmpError,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// SNMP Message
 ///
 /// ```mermaid

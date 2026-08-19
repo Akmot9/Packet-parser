@@ -121,7 +121,6 @@ pub enum Icmpv6Body<'a> {
     Other(&'a [u8]),
 }
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// Message ICMPv6 (RFC 4443).
 ///
 /// L'en-tete commun tient en quatre octets ; la suite depend du type. Le

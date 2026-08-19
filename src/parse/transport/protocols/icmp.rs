@@ -59,7 +59,6 @@ pub enum IcmpBody<'a> {
     Other(&'a [u8]),
 }
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// Message ICMPv4 (RFC 792).
 ///
 /// L'en-tete commun tient en quatre octets ; la suite depend du type. Le

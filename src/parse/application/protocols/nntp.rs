@@ -15,7 +15,6 @@ use crate::{
     errors::application::nntp::NntpParseError,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// A parsed NNTP message: either a client command or a server response.
 ///
 /// ```mermaid

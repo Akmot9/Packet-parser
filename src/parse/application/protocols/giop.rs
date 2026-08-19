@@ -108,7 +108,6 @@ impl TryFrom<&[u8]> for GiopHeader {
 // =========================
 //
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// GIOP Packet
 ///
 /// ```mermaid

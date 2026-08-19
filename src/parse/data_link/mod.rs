@@ -62,7 +62,6 @@ use crate::{
 
 use ethertype::Ethertype;
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// Ethernet Frame
 ///
 /// ```mermaid

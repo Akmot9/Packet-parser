@@ -10,7 +10,6 @@ use crate::{
     errors::application::quic::QuicError,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// QUIC Long Header Packet
 ///
 /// ```mermaid

@@ -15,7 +15,6 @@ use crate::{
     errors::application::ftp::FtpParseError,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// A parsed FTP control-channel message: either a client command or a server
 /// reply.
 ///

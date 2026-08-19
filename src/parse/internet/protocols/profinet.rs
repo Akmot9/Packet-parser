@@ -82,7 +82,6 @@ impl FrameId {
 }
 
 /// Structure représentant un paquet Profinet DCP parsé.
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// Profinet Protocol Packet
 ///
 /// ```mermaid

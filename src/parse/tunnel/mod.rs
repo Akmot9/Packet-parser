@@ -243,6 +243,156 @@ mod tests {
         assert!(peel_capwap_ieee80211(&frame[42..]).is_none());
     }
 
+    // -----------------------------------------------------------------------
+    // Trames fabriquees : le corpus ne contient aucune trame CAPWAP-Data
+    // portant du 802.11 *data* (c'est le trou documente par l'issue #23), et
+    // la borne de recursion ne peut de toute facon s'exercer que sur des
+    // encapsulations imbriquees artificiellement. La regle « trames reelles
+    // obligatoires » vaut pour les golden tests, pas pour ces tests de garde.
+    // -----------------------------------------------------------------------
+
+    /// En-tete 802.11 data (24 octets, ToDS=FromDS=0, sans QoS) + LLC/SNAP.
+    fn ieee80211_data_with_snap(ethertype: u16, l3: &[u8]) -> Vec<u8> {
+        let mut frame = Vec::new();
+        frame.extend_from_slice(&[0x08, 0x00]); // FC : version 0, type 2 (data)
+        frame.extend_from_slice(&[0, 0]); // duration
+        frame.extend_from_slice(&[0x02; 6]); // A1 = DA
+        frame.extend_from_slice(&[0x04; 6]); // A2 = SA
+        frame.extend_from_slice(&[0x06; 6]); // A3 = BSSID
+        frame.extend_from_slice(&[0, 0]); // sequence control
+        frame.extend_from_slice(&[0xAA, 0xAA, 0x03, 0x00, 0x00, 0x00]);
+        frame.extend_from_slice(&ethertype.to_be_bytes());
+        frame.extend_from_slice(l3);
+        frame
+    }
+
+    /// En-tete CAPWAP-Data minimal (version 0, type 0, HLEN = 2 mots).
+    fn capwap_data_header() -> [u8; 8] {
+        let mut header = [0u8; 8];
+        header[1] = 2 << 3;
+        header
+    }
+
+    /// Emballe un paquet IPv4 dans un niveau CAPWAP complet :
+    /// IPv4 / UDP 5247 / CAPWAP / 802.11 data / LLC-SNAP(IPv4) / `inner`.
+    fn capwap_level(inner_ipv4: &[u8]) -> Vec<u8> {
+        let mut udp_payload = capwap_data_header().to_vec();
+        udp_payload.extend_from_slice(&ieee80211_data_with_snap(0x0800, inner_ipv4));
+
+        let udp_len = 8 + udp_payload.len();
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&[0x45, 0x00]);
+        packet.extend_from_slice(&((20 + udp_len) as u16).to_be_bytes());
+        packet.extend_from_slice(&[0, 0, 0x40, 0x00, 64, 17, 0, 0]);
+        packet.extend_from_slice(&[10, 0, 0, 1]);
+        packet.extend_from_slice(&[10, 0, 0, 2]);
+        packet.extend_from_slice(&CAPWAP_DATA_PORT.to_be_bytes());
+        packet.extend_from_slice(&CAPWAP_DATA_PORT.to_be_bytes());
+        packet.extend_from_slice(&(udp_len as u16).to_be_bytes());
+        packet.extend_from_slice(&[0, 0]);
+        packet.extend_from_slice(&udp_payload);
+        packet
+    }
+
+    /// Paquet IPv4/UDP quelconque servant de charge utile la plus profonde.
+    fn innermost_ipv4() -> Vec<u8> {
+        let payload = b"x";
+        let udp_len = 8 + payload.len();
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&[0x45, 0x00]);
+        packet.extend_from_slice(&((20 + udp_len) as u16).to_be_bytes());
+        packet.extend_from_slice(&[0, 0, 0x40, 0x00, 64, 17, 0, 0]);
+        packet.extend_from_slice(&[192, 168, 1, 1]);
+        packet.extend_from_slice(&[192, 168, 1, 2]);
+        packet.extend_from_slice(&40000_u16.to_be_bytes());
+        packet.extend_from_slice(&40001_u16.to_be_bytes());
+        packet.extend_from_slice(&(udp_len as u16).to_be_bytes());
+        packet.extend_from_slice(&[0, 0]);
+        packet.extend_from_slice(payload);
+        packet
+    }
+
+    /// La seule protection anti-DoS recursif de la crate : six niveaux CAPWAP
+    /// imbriques ne produisent que MAX_TUNNEL_DEPTH flux, et le plus profond
+    /// s'arrete proprement (inner = None) au lieu de recurser.
+    #[test]
+    fn nested_capwap_recursion_stops_at_max_tunnel_depth() {
+        let mut ipv4 = innermost_ipv4();
+        for _ in 0..6 {
+            ipv4 = capwap_level(&ipv4);
+        }
+        let mut frame = Vec::new();
+        frame.extend_from_slice(&[0x02; 6]);
+        frame.extend_from_slice(&[0x04; 6]);
+        frame.extend_from_slice(&0x0800_u16.to_be_bytes());
+        frame.extend_from_slice(&ipv4);
+
+        let flow = parse(LinkType::ETHERNET, frame.as_slice()).expect("fabricated frame decodes");
+        let flows = flow.flatten();
+
+        assert_eq!(
+            flows.len(),
+            usize::from(MAX_TUNNEL_DEPTH),
+            "la recursion doit s'arreter a MAX_TUNNEL_DEPTH niveaux"
+        );
+        for outer in &flows[..flows.len() - 1] {
+            assert_eq!(
+                outer
+                    .application
+                    .as_ref()
+                    .map(|application| application.application_protocol),
+                Some("CAPWAP"),
+                "chaque niveau pele est etiquete comme tunnel"
+            );
+            assert!(outer.inner.is_some());
+        }
+        assert!(
+            flows.last().unwrap().inner.is_none(),
+            "le flux le plus profond ne recurse pas au-dela de la borne"
+        );
+    }
+
+    /// Une trame 802.11 *data* est reellement pelee : ce cas positif isole
+    /// enfin les gardes que les tests sur trame de management ne peuvent pas
+    /// separer (cf. reserves ci-dessus).
+    #[test]
+    fn capwap_data_frame_is_peeled_to_its_snap_ethertype() {
+        let mut capwap = capwap_data_header().to_vec();
+        capwap.extend_from_slice(&ieee80211_data_with_snap(0x0800, &innermost_ipv4()));
+
+        let link = peel_capwap_ieee80211(&capwap).expect("802.11 data + SNAP se pele");
+        let ieee80211 = link.as_ieee80211().expect("vue 802.11");
+        assert_eq!(ieee80211.destination_mac.0, [0x02; 6]);
+        assert_eq!(ieee80211.source_mac.0, [0x04; 6]);
+        assert_eq!(ieee80211.snap_protocol.0, 0x0800);
+
+        // La meme trame, en DTLS (type 1) : c'est bien la garde DTLS qui
+        // refuse, tout le reste etant identique et pelable.
+        let mut dtls = capwap.clone();
+        dtls[0] |= 0x01;
+        assert!(peel_capwap_ieee80211(&dtls).is_none());
+    }
+
+    /// HLEN hors bornes : 0 (en-tete plus court que le minimum de 8 octets)
+    /// et 31 mots (124 octets, au-dela de la charge utile) sont refuses.
+    #[test]
+    fn capwap_hlen_out_of_bounds_is_refused() {
+        let mut capwap = capwap_data_header().to_vec();
+        capwap.extend_from_slice(&ieee80211_data_with_snap(0x0800, &innermost_ipv4()));
+
+        let mut hlen_zero = capwap.clone();
+        hlen_zero[1] = 0;
+        assert!(peel_capwap_ieee80211(&hlen_zero).is_none());
+
+        let mut hlen_beyond = capwap.clone();
+        hlen_beyond[1] = 0x1f << 3;
+        assert!(
+            hlen_beyond.len() < 31 * 4 + 24 + 8,
+            "le HLEN choisi depasse bien la trame"
+        );
+        assert!(peel_capwap_ieee80211(&hlen_beyond).is_none());
+    }
+
     /// L'en-tete LLC/SNAP n'est accepte que sous sa forme SNAP stricte
     /// (DSAP = SSAP = 0xAA, control = 0x03, OUI = 00:00:00).
     #[test]

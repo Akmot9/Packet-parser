@@ -22,7 +22,6 @@ use dns_queries::DnsQueries;
 use std::fmt;
 use utils::name::{RawRecord, parse_mdns_resource_record, parse_resource_record};
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// DNS Packet
 ///
 /// ```mermaid

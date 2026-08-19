@@ -14,7 +14,6 @@ use crate::{
     errors::application::modbus_tcp::ModbusTcpError,
 };
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// Modbus/TCP Protocol Packet
 ///
 /// ```mermaid
