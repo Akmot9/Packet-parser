@@ -6,6 +6,52 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **Regression tshark generalisee** (epic #70) : le pattern de
+  `s7comm_regression` — comptes et digests FNV-1a generes independamment
+  avec tshark — est applique aux corpus Modbus TCP (#71), DNS (#72) et TLS
+  (#73) dans `tests/tshark_regression.rs`. Parite tshark exacte sur Modbus ;
+  chaque ecart DNS/TLS est fige et justifie trame par trame (reassemblage
+  TCP, Client Hello SSLv2-compatible). S'y ajoutent le snapshot
+  `tests/golden_pcaps.rs` (histogramme de classification du corpus) pose
+  comme filet de la refonte du dispatch.
+
+- **DNS sur TCP** (issue #72) : `DnsPacket::try_from_tcp` decode le premier
+  message prefixe de sa longueur (RFC 1035 §4.2.2), cable dans la table de
+  dispatch sur TCP/53.
+
+- **DHCP au-dela d'Ethernet** (#49) : htype accepte les types materiels
+  IANA 1..=37, hlen 1..=16, coherence htype/hlen validee.
+
+- **SRVLOC** : dispatch v1 par code fonction — seul DAAdvert recoit son
+  layout, fini le layout unique applique a tout (#50) — et bodies v2
+  SrvRqst/SrvRply decodes (RFC 2608 §8.1/8.2), exposes par la nouvelle
+  methode additive `SrvlocPacket::body()` et des types non_exhaustive (#53).
+
+- **GIOP** : le body est dispatche selon message_type — Request 1.0/1.1/1.2
+  avec endianness, Reply etiquete (#52). Le decodage du body Reply attend
+  la 11.0.0 (struct publique exhaustive, epic #76).
+
+- **QUIC Retry** : token et Retry Integrity Tag (RFC 9001 §5.8) separes et
+  exposes par les methodes additives `retry_token()` /
+  `retry_integrity_tag()` ; un Retry trop court pour son tag est refuse (#54).
+
+### Corrige
+
+- **NXDOMAIN des resolveurs recursifs** : la validation DNS exigeait aa=1
+  sur rcode 3, regle qu'aucune RFC n'impose — deux reponses reelles du
+  corpus etaient rejetees. `DnsFlagsError::AaInNameError` n'est plus
+  produite (variante conservee pour compatibilite).
+
+- **Faux positifs des sondes aveugles** : NTP lisait un Encrypted Alert TLS
+  (0x15) comme un en-tete plausible et etiquetait « NTP » du TCP ; la forme
+  datagramme DNS sondee sur TCP etiquetait des fragments de reassemblage.
+  Les sondes aveugles portent desormais les gardes de transport que les RFC
+  imposent (NTP/DHCP/QUIC → UDP, TLS/SSH/HTTP/Bitcoin/GIOP/ModbusTCP/MQTT/
+  OPC UA → TCP ; EtherNet/IP, SNMP et SRVLOC restent bi-transport). Les
+  quatre etiquettes NTP de l'histogramme du corpus etaient toutes fausses.
+
 ## [10.2.0] - 2026-08-19
 
 Version mineure, strictement additive : un nouveau LINKTYPE (IEEE 802.3br,
