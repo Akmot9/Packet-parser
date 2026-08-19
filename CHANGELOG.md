@@ -6,6 +6,20 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [10.2.0] - 2026-08-19
+
+Version mineure, strictement additive : un nouveau LINKTYPE (IEEE 802.3br,
+mPackets express) qui debloque 21 % du corpus de reference, et une campagne
+d'infrastructure qui solde l'issue #31 (MSRV verifiee, Cargo.lock versionne,
+cargo-deny bloquant, job macOS, lints anti-panic).
+
+`cargo semver-checks check-release` contre `v10.1.0` : 223 controles, aucune
+rupture. La fenetre de stabilite ouverte par la 10.0.0 tient.
+
+La suite de tests n'a plus aucune dependance systeme : les bindings natifs
+libpcap/Npcap (dev-dependencies `pcap` et `pnet`) sont remplaces par
+`pcap-file`, du Rust pur.
+
 ### Infrastructure
 
 - Solde de l'issue #31 (audit 8.1.0) : la CI verifie desormais tout ce que le

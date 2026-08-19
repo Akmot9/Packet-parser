@@ -20,7 +20,7 @@ decodees et laisse les couches suivantes a `None` quand c'est necessaire.
 
 ```toml
 [dependencies]
-packet_parser = "10.1.0"
+packet_parser = "10.2.0"
 ```
 
 Pour reproduire les exemples qui decodent de l'hexadecimal:
@@ -28,7 +28,7 @@ Pour reproduire les exemples qui decodent de l'hexadecimal:
 ```toml
 [dependencies]
 hex = "0.4"
-packet_parser = "10.1.0"
+packet_parser = "10.2.0"
 ```
 
 ## Exemple rapide
@@ -117,6 +117,9 @@ LINKTYPE supportes:
 | IEEE 802.11 natif | 105 | Modelise pour les flux internes CAPWAP ; decodeur de capture non disponible |
 | Linux SLL v1 | 113 | Supporte |
 | Bluetooth H4 avec pseudo-en-tete | 201 | Identifie, explicitement non supporte |
+| IPv4 brut | 228 | Supporte |
+| IPv6 brut | 229 | Supporte |
+| mPacket IEEE 802.3br | 274 | Supporte pour les mPackets express (SMD-E) ; les fragments preemptibles (SMD-S/C) sont refuses avec une erreur nommee, leur reassemblage etant a etat |
 | Linux SLL v2 | 276 | Supporte |
 | Toute autre valeur | Preservee telle quelle | `ParseError::UnsupportedLinkType` |
 
