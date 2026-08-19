@@ -29,6 +29,13 @@ pub const SRVLOC_V1_MAX_FUNCTION: u8 = 10;
 /// Highest function code defined by SLPv2 (RFC 2608) : SAAdvert = 11.
 pub const SRVLOC_V2_MAX_FUNCTION: u8 = 11;
 
+/// Code fonction SrvRqst (Service Request), commun a RFC 2165 et RFC 2608.
+pub const SRVLOC_FUNCTION_SRV_RQST: u8 = 1;
+/// Code fonction SrvRply (Service Reply), commun a RFC 2165 et RFC 2608.
+pub const SRVLOC_FUNCTION_SRV_RPLY: u8 = 2;
+/// Code fonction DAAdvert (DA Advertisement), commun a RFC 2165 et RFC 2608.
+pub const SRVLOC_FUNCTION_DA_ADVERT: u8 = 8;
+
 /// Validates that the length declared in the SRVLOC header matches the actual
 /// payload length. This is the strongest guard against foreign payloads
 /// (e.g. DHCP/BOOTP, whose first bytes mimic an SLP header) being
@@ -80,6 +87,14 @@ pub fn validate_v1_header_length(payload: &[u8]) -> Result<(), SrvlocPacketParse
 /// Validates that the packet holds at least the fixed SLPv2 header (14 bytes).
 pub fn validate_v2_header_length(payload: &[u8]) -> Result<(), SrvlocPacketParseError> {
     ensure_len(payload, SRVLOC_V2_HEADER_LENGTH)
+}
+
+/// Lit un `u8` a `offset` et avance le curseur en cas de succes.
+pub fn read_u8(buf: &[u8], offset: &mut usize) -> Result<u8, SrvlocPacketParseError> {
+    ensure_len(buf, *offset + 1)?;
+    let v = buf[*offset];
+    *offset += 1;
+    Ok(v)
 }
 
 /// Reads a big-endian `u16` at `offset` and advances the cursor on success.
@@ -176,6 +191,19 @@ pub fn extract_error_code(buf: &[u8], offset: &mut usize) -> Result<u16, SrvlocP
     read_u16(buf, offset)
 }
 
+/// Extrait une chaine SLP prefixee par sa longueur (`u16` big-endian puis
+/// autant d'octets d'UTF-8 valide). Retourne `(longueur, chaine)` ; la `&str`
+/// emprunte a `buf` (zero-copy) et le curseur avance.
+pub fn extract_length_prefixed_str<'a>(
+    buf: &'a [u8],
+    offset: &mut usize,
+    field: &'static str,
+) -> Result<(u16, &'a str), SrvlocPacketParseError> {
+    let length = read_u16(buf, offset)?;
+    let value = read_str(buf, offset, length as usize, field)?;
+    Ok((length, value))
+}
+
 /// Extracts the SLPv1 URL: a `u16` length prefix followed by that many bytes
 /// of validated UTF-8. Returns `(url_length, url)`; the `&str` borrows from
 /// `buf`.
@@ -183,9 +211,7 @@ pub fn extract_url<'a>(
     buf: &'a [u8],
     offset: &mut usize,
 ) -> Result<(u16, &'a str), SrvlocPacketParseError> {
-    let url_length = read_u16(buf, offset)?;
-    let url = read_str(buf, offset, url_length as usize, "url")?;
-    Ok((url_length, url))
+    extract_length_prefixed_str(buf, offset, "url")
 }
 
 /// Extracts the SLPv1 scope list: a `u16` length prefix followed by that many
@@ -194,9 +220,44 @@ pub fn extract_scope_list<'a>(
     buf: &'a [u8],
     offset: &mut usize,
 ) -> Result<(u16, &'a str), SrvlocPacketParseError> {
-    let scope_list_length = read_u16(buf, offset)?;
-    let scope_list = read_str(buf, offset, scope_list_length as usize, "scope_list")?;
-    Ok((scope_list_length, scope_list))
+    extract_length_prefixed_str(buf, offset, "scope_list")
+}
+
+/// Taille minimale d'un authentication block SLPv2 (RFC 2608 section 9.2) :
+/// BSD u16 + longueur u16 + timestamp u32 + longueur SPI u16, avec un SPI et
+/// un bloc structure vides.
+const SRVLOC_V2_AUTH_BLOCK_MIN_LENGTH: usize = 10;
+
+/// Saute `count` authentication blocks SLPv2 (RFC 2608 section 9.2) et
+/// retourne la tranche brute qui les couvre.
+///
+/// Chaque bloc annonce sa longueur totale a l'offset 2 ; elle est validee
+/// contre le minimum du format et contre les octets restants avant d'avancer
+/// le curseur : un compteur hostile ne peut ni paniquer ni boucler hors
+/// bornes. Zero-copy : la tranche retournee emprunte a `buf`.
+pub fn skip_auth_blocks<'a>(
+    buf: &'a [u8],
+    offset: &mut usize,
+    count: u8,
+) -> Result<&'a [u8], SrvlocPacketParseError> {
+    let start = *offset;
+    for _ in 0..count {
+        ensure_len(buf, *offset + 4)?;
+        let block_length = u16::from_be_bytes([buf[*offset + 2], buf[*offset + 3]]) as usize;
+        // La longueur declaree couvre tout le bloc, champs BSD et longueur
+        // inclus : en dessous du minimum du format le bloc est incoherent.
+        // L'enum d'erreur est fige jusqu'a la 11.0.0 (epic #76), on reutilise
+        // la variante de longueur incoherente existante.
+        if block_length < SRVLOC_V2_AUTH_BLOCK_MIN_LENGTH {
+            return Err(SrvlocPacketParseError::InconsistentPacketLength {
+                declared: block_length,
+                actual: SRVLOC_V2_AUTH_BLOCK_MIN_LENGTH,
+            });
+        }
+        ensure_len(buf, *offset + block_length)?;
+        *offset += block_length;
+    }
+    Ok(&buf[start..*offset])
 }
 
 /// Extracts the SLPv2 declared packet length (big-endian `u24`) at `offset`
@@ -462,6 +523,99 @@ mod tests {
         assert_eq!(extract_xid(&buf, &mut offset), Ok(0x4242));
         assert_eq!(extract_lang_tag_len(&buf, &mut offset), Ok(2));
         assert_eq!(offset, 12);
+    }
+
+    #[test]
+    fn test_read_u8_advances_offset() {
+        let buf = [0x07, 0x08];
+        let mut offset = 0;
+        assert_eq!(read_u8(&buf, &mut offset), Ok(0x07));
+        assert_eq!(offset, 1);
+
+        let mut offset = 2;
+        assert!(matches!(
+            read_u8(&buf, &mut offset),
+            Err(SrvlocPacketParseError::Truncated {
+                expected_at_least: 3,
+                actual: 2
+            })
+        ));
+    }
+
+    #[test]
+    fn test_extract_length_prefixed_str() {
+        let buf = [0x00, 0x02, b'o', b'k', 0xAA];
+        let mut offset = 0;
+        assert_eq!(
+            extract_length_prefixed_str(&buf, &mut offset, "pr_list"),
+            Ok((2, "ok"))
+        );
+        assert_eq!(offset, 4);
+
+        // Longueur declaree au-dela des bornes.
+        let mut offset = 0;
+        assert!(matches!(
+            extract_length_prefixed_str(&[0x00, 0x09, b'a'], &mut offset, "predicate"),
+            Err(SrvlocPacketParseError::Truncated {
+                expected_at_least: 11,
+                actual: 3
+            })
+        ));
+    }
+
+    #[test]
+    fn test_skip_auth_blocks_returns_covering_slice() {
+        // Bloc minimal de 10 octets : BSD, longueur, timestamp, SPI vide.
+        let buf = [
+            0x00, 0x02, // BSD
+            0x00, 0x0A, // longueur du bloc
+            0x00, 0x00, 0x00, 0x00, // timestamp
+            0x00, 0x00, // longueur SPI
+            0xEE, // octet suivant, hors bloc
+        ];
+        let mut offset = 0;
+        let blocks = skip_auth_blocks(&buf, &mut offset, 1).expect("bloc valide");
+        assert_eq!(blocks.len(), 10);
+        assert_eq!(offset, 10);
+        // zero-copy : la tranche pointe dans le buffer d'origine
+        assert_eq!(blocks.as_ptr(), buf.as_ptr());
+
+        // Aucun bloc : tranche vide, curseur inchange.
+        let mut offset = 0;
+        assert_eq!(skip_auth_blocks(&buf, &mut offset, 0), Ok(&buf[0..0]));
+        assert_eq!(offset, 0);
+    }
+
+    #[test]
+    fn test_skip_auth_blocks_rejects_out_of_bounds_and_undersized() {
+        // Longueur declaree au-dela des octets restants.
+        let buf = [0x00, 0x02, 0x00, 0x20, 0x00];
+        let mut offset = 0;
+        assert!(matches!(
+            skip_auth_blocks(&buf, &mut offset, 1),
+            Err(SrvlocPacketParseError::Truncated { .. })
+        ));
+
+        // Longueur declaree sous le minimum du format (10 octets).
+        let buf = [0x00, 0x02, 0x00, 0x02];
+        let mut offset = 0;
+        assert!(matches!(
+            skip_auth_blocks(&buf, &mut offset, 1),
+            Err(SrvlocPacketParseError::InconsistentPacketLength {
+                declared: 2,
+                actual: 10
+            })
+        ));
+
+        // Compteur superieur au nombre de blocs presents.
+        let buf = [
+            0x00, 0x02, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // un seul bloc
+        ];
+        let mut offset = 0;
+        assert!(matches!(
+            skip_auth_blocks(&buf, &mut offset, 2),
+            Err(SrvlocPacketParseError::Truncated { .. })
+        ));
     }
 
     #[test]
