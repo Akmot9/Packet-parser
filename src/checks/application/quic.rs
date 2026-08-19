@@ -11,6 +11,10 @@ use crate::{
 /// QUIC v1 version number (RFC 9000).
 pub const QUIC_V1: u32 = 1;
 
+/// Taille du Retry Integrity Tag (RFC 9001 §5.8) : tag AEAD de 128 bits
+/// place a la fin de tout paquet Retry.
+pub const QUIC_RETRY_INTEGRITY_TAG_LEN: usize = 16;
+
 /// Taille minimale plausible d'un paquet Short Header (RFC 9001 §5.4.2) :
 /// 1 octet de flags + DCID (peut être vide) + au moins 20 octets après le
 /// DCID — la protection d'en-tête exige un échantillon de 16 octets pris
@@ -185,6 +189,27 @@ pub fn validate_length_field(
         .ok_or(QuicError::LengthFieldTooSmall {
             length_field,
             pn_length: packet_number_length,
+        })
+}
+
+/// Separe le Retry Token du Retry Integrity Tag (RFC 9000 §17.2.5).
+///
+/// Apres l'en-tete long, un paquet Retry porte un Token de longueur libre
+/// puis un tag d'integrite de 16 octets (RFC 9001 §5.8) : le tag occupe les
+/// 16 derniers octets, le token tout ce qui precede. Un reste trop court
+/// pour porter le tag est refuse avec `Truncated`.
+///
+/// Un token vide est accepte : l'obligation de rejet d'un Retry a token vide
+/// (RFC 9000 §17.2.5) s'adresse au client qui consomme le paquet, pas a un
+/// parseur stateless — meme logique que les bits reserves proteges, observes
+/// mais non valides.
+pub(crate) fn split_retry_token_and_tag(
+    rest: &[u8],
+) -> Result<(&[u8], &[u8; QUIC_RETRY_INTEGRITY_TAG_LEN]), QuicError> {
+    rest.split_last_chunk::<QUIC_RETRY_INTEGRITY_TAG_LEN>()
+        .ok_or(QuicError::Truncated {
+            needed: QUIC_RETRY_INTEGRITY_TAG_LEN,
+            remaining: rest.len(),
         })
 }
 
@@ -488,6 +513,38 @@ mod tests {
                 remaining: 1
             })
         ));
+    }
+
+    #[test]
+    fn test_split_retry_token_and_tag() {
+        // Octets synthetiques : token de 4 octets suivi d'un tag de 16.
+        let mut rest = vec![0xAA, 0xBB, 0xCC, 0xDD];
+        rest.extend_from_slice(&[0x11; QUIC_RETRY_INTEGRITY_TAG_LEN]);
+        let (token, tag) = split_retry_token_and_tag(&rest).expect("Retry valide");
+        assert_eq!(token, &[0xAA, 0xBB, 0xCC, 0xDD]);
+        assert_eq!(tag, &[0x11; QUIC_RETRY_INTEGRITY_TAG_LEN]);
+    }
+
+    #[test]
+    fn test_split_retry_empty_token_accepted() {
+        // Exactement 16 octets : tag seul, token vide accepte (choix documente).
+        let rest = [0x22u8; QUIC_RETRY_INTEGRITY_TAG_LEN];
+        let (token, tag) = split_retry_token_and_tag(&rest).expect("token vide accepte");
+        assert!(token.is_empty());
+        assert_eq!(tag, &rest);
+    }
+
+    #[test]
+    fn test_split_retry_too_short_rejected() {
+        // 15 octets : impossible de porter le tag de 16 octets.
+        let rest = [0u8; QUIC_RETRY_INTEGRITY_TAG_LEN - 1];
+        assert_eq!(
+            split_retry_token_and_tag(&rest),
+            Err(QuicError::Truncated {
+                needed: QUIC_RETRY_INTEGRITY_TAG_LEN,
+                remaining: 15
+            })
+        );
     }
 
     /// En-tête factice pour tester `read_pn_and_payload` isolément.

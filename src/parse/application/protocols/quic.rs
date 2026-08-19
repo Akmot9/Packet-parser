@@ -5,7 +5,8 @@
 
 use crate::{
     checks::application::quic::{
-        QuicCursor, extract_first_byte, extract_version, read_cid, read_pn_and_payload,
+        QUIC_RETRY_INTEGRITY_TAG_LEN, QuicCursor, extract_first_byte, extract_version, read_cid,
+        read_pn_and_payload, split_retry_token_and_tag,
     },
     errors::application::quic::QuicError,
 };
@@ -61,11 +62,47 @@ pub enum QuicPacket<'a> {
         /// Liste des frames décodées (si déchiffrement réussi) ou charge brute.
         payload: QuicPayload<'a>,
     },
-    /// Autres Long Headers (0-RTT, Retry) si besoin plus tard.
+    /// Autres Long Headers (0-RTT, Retry).
+    ///
+    /// Pour un Retry (RFC 9000 §17.2.5), `payload` porte les octets bruts
+    /// apres l'en-tete : Retry Token puis Retry Integrity Tag (16 octets,
+    /// RFC 9001 §5.8). Le parseur garantit la presence du tag ;
+    /// [`QuicPacket::retry_token`] et [`QuicPacket::retry_integrity_tag`]
+    /// exposent les deux champs separes sans copie.
     OtherLong {
         header: QuicLongHeader<'a>,
         payload: QuicPayload<'a>,
     },
+}
+
+impl<'a> QuicPacket<'a> {
+    /// Token et tag d'un paquet Retry, separes sans copie.
+    ///
+    /// `None` si le paquet n'est pas un Retry, ou si un `OtherLong` construit
+    /// a la main ne porte pas les 16 octets du tag (un paquet issu de
+    /// `try_from` les porte toujours).
+    fn retry_parts(&self) -> Option<(&'a [u8], &'a [u8; QUIC_RETRY_INTEGRITY_TAG_LEN])> {
+        match self {
+            QuicPacket::OtherLong {
+                header,
+                payload: QuicPayload::EncryptedPayload(raw),
+            } if header.packet_type == QuicPacketType::Retry => split_retry_token_and_tag(raw).ok(),
+            _ => None,
+        }
+    }
+
+    /// Retry Token (RFC 9000 §17.2.5) : tout ce qui suit l'en-tete long,
+    /// moins les 16 octets du tag. Peut etre vide (structure acceptee, voir
+    /// `split_retry_token_and_tag`). `None` si le paquet n'est pas un Retry.
+    pub fn retry_token(&self) -> Option<&'a [u8]> {
+        self.retry_parts().map(|(token, _)| token)
+    }
+
+    /// Retry Integrity Tag (RFC 9001 §5.8) : les 16 derniers octets du
+    /// paquet. `None` si le paquet n'est pas un Retry.
+    pub fn retry_integrity_tag(&self) -> Option<&'a [u8; QUIC_RETRY_INTEGRITY_TAG_LEN]> {
+        self.retry_parts().map(|(_, tag)| tag)
+    }
 }
 
 /// Entête commun aux paquets QUIC à Long Header.
@@ -241,9 +278,13 @@ impl<'a> TryFrom<&'a [u8]> for QuicPacket<'a> {
             }
 
             QuicPacketType::Retry => {
-                // Retry a un format spécifique (pas de Length ni PN).
-                // On met tout le reste en payload brut.
+                // Retry (RFC 9000 §17.2.5) : pas de Length ni PN. Le reste
+                // du paquet est Token (longueur libre) + Integrity Tag
+                // (16 octets, RFC 9001 §5.8). On valide la presence du tag
+                // puis on garde les octets bruts ; retry_token() et
+                // retry_integrity_tag() exposent la separation.
                 let rest = cur.take_rest();
+                split_retry_token_and_tag(rest)?;
                 Ok(QuicPacket::OtherLong {
                     header,
                     payload: QuicPayload::EncryptedPayload(rest),
@@ -514,20 +555,86 @@ mod extra_tests {
 
     #[test]
     fn parses_retry_packet() {
+        // Octets synthetiques : token de 3 octets puis tag de 16 octets.
         let mut buf = long_header(0xF0); // Retry
-        buf.extend_from_slice(&[0x11, 0x22, 0x33]); // token + integrity tag bruts
+        buf.extend_from_slice(&[0x11, 0x22, 0x33]); // token
+        let tag = [0x5Au8; 16];
+        buf.extend_from_slice(&tag); // integrity tag
 
         let packet = QuicPacket::try_from(buf.as_slice()).expect("Retry valide");
-        match packet {
+        match &packet {
             QuicPacket::OtherLong { header, payload } => {
                 assert!(matches!(header.packet_type, QuicPacketType::Retry));
+                // Le payload brut reste token + tag (compat inchangee).
                 assert!(matches!(
                     payload,
-                    QuicPayload::EncryptedPayload(b) if b == [0x11, 0x22, 0x33]
+                    QuicPayload::EncryptedPayload(b) if b.len() == 19
                 ));
             }
             other => panic!("attendu OtherLong, obtenu {other:?}"),
         }
+        // Token et tag separes aux bons offsets.
+        assert_eq!(packet.retry_token(), Some(&[0x11, 0x22, 0x33][..]));
+        assert_eq!(packet.retry_integrity_tag(), Some(&tag));
+    }
+
+    #[test]
+    fn parses_retry_packet_with_empty_token() {
+        // Octets synthetiques : tag seul (16 octets), token vide.
+        // Choix documente : le rejet d'un token vide (RFC 9000 §17.2.5) est
+        // une obligation du client, pas du parseur stateless — la structure
+        // est acceptee.
+        let mut buf = long_header(0xF0); // Retry
+        let tag = [0xA5u8; 16];
+        buf.extend_from_slice(&tag);
+
+        let packet = QuicPacket::try_from(buf.as_slice()).expect("token vide accepte");
+        assert_eq!(packet.retry_token(), Some(&[][..]));
+        assert_eq!(packet.retry_integrity_tag(), Some(&tag));
+    }
+
+    #[test]
+    fn rejects_retry_packet_too_short_for_tag() {
+        // Octets synthetiques : 15 octets apres l'en-tete, le tag de 16
+        // octets ne tient pas — erreur nommee, pas de panique.
+        let mut buf = long_header(0xF0); // Retry
+        buf.extend_from_slice(&[0x00u8; 15]);
+
+        assert!(matches!(
+            QuicPacket::try_from(buf.as_slice()),
+            Err(QuicError::Truncated {
+                needed: 16,
+                remaining: 15
+            })
+        ));
+    }
+
+    #[test]
+    fn retry_accessors_return_none_for_non_retry() {
+        // Les accesseurs Retry ne repondent pas pour un Handshake.
+        let mut buf = long_header(0xE0); // Handshake, PN len 1
+        buf.push(3); // length = PN(1) + payload(2)
+        buf.push(0x09); // PN
+        buf.extend_from_slice(&[0x01, 0x02]);
+
+        let packet = QuicPacket::try_from(buf.as_slice()).expect("Handshake valide");
+        assert_eq!(packet.retry_token(), None);
+        assert_eq!(packet.retry_integrity_tag(), None);
+    }
+
+    #[test]
+    fn retry_token_and_tag_are_zero_copy() {
+        // Les slices retournees doivent pointer dans le buffer d'entree.
+        let mut buf = long_header(0xF0); // Retry
+        buf.extend_from_slice(&[0xDE, 0xAD]); // token
+        buf.extend_from_slice(&[0x77u8; 16]); // tag
+
+        let packet = QuicPacket::try_from(buf.as_slice()).expect("Retry valide");
+        let token = packet.retry_token().expect("token present");
+        let tag = packet.retry_integrity_tag().expect("tag present");
+        let input_range = buf.as_ptr() as usize..buf.as_ptr() as usize + buf.len();
+        assert!(input_range.contains(&(token.as_ptr() as usize)));
+        assert!(input_range.contains(&(tag.as_ptr() as usize)));
     }
 
     #[test]
