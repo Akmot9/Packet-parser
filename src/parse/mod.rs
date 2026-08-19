@@ -30,22 +30,11 @@
 //! This module does **not** perform stream reassembly or session tracking.
 //! It expects a complete packet buffer (e.g. from PCAP capture).
 
-use crate::checks::application::quic::is_plausible_short_header;
 use application::Application;
-use application::protocols::ams::AmsPacket;
 use application::protocols::copt::{CotpHeader, CotpNumberFormat, CotpParameter, CotpPduType};
-use application::protocols::dhcpv6::Dhcpv6Packet;
-use application::protocols::dns::DnsPacket;
-use application::protocols::ftp::FtpMessage;
-use application::protocols::nntp::NntpMessage;
-use application::protocols::postgresql::is_likely_postgresql_payload;
-use application::protocols::s7comm::S7CommPacket;
-use application::protocols::smtp::SmtpMessage;
-use application::protocols::snmp::SnmpPacket;
 use internet::Internet;
 use serde::Serialize;
 use transport::Transport;
-use transport::protocols::TransportProtocol;
 
 use crate::{
     LinkLayer, LinkType, NetworkProtocol, ParseError,
@@ -55,6 +44,7 @@ use crate::{
 
 pub mod application;
 pub mod data_link;
+mod dispatch;
 pub mod internet;
 mod link;
 pub mod link_layer;
@@ -227,158 +217,10 @@ impl<'a> Hash for PacketFlow<'a> {
 
 impl<'a> PacketFlow<'a> {
     fn parse_application_from_transport(transport: &Transport<'a>) -> Option<Application> {
-        let payload = transport.payload?;
-        if payload.is_empty() {
-            return None;
-        }
-
-        if (is_snmp_udp_port(transport.source_port) || is_snmp_udp_port(transport.destination_port))
-            && SnmpPacket::try_from(payload).is_ok()
-        {
-            return Some(Application {
-                application_protocol: "SNMP",
-            });
-        }
-
-        // Protocoles à signature faible : uniquement détectés sur leurs ports
-        // standards pour éviter les faux positifs du probing à l'aveugle.
-        if transport.protocol == TransportProtocol::Udp
-            && (is_dhcpv6_udp_port(transport.source_port)
-                || is_dhcpv6_udp_port(transport.destination_port))
-            && Dhcpv6Packet::try_from(payload).is_ok()
-        {
-            return Some(Application {
-                application_protocol: "DHCPv6",
-            });
-        }
-
-        // RFC 1006 encapsulates COTP in a four-byte TPKT header. S7Comm is a
-        // COTP DT user and must win over the generic COTP label, including
-        // when TPKT's first length octet happens to make the raw payload look
-        // like a standalone COTP header (for example a total length of 256).
-        // Its signature is strong enough for TCP probing even away from
-        // TCP/102, but it is never probed on UDP or another transport.
-        if transport.protocol == TransportProtocol::Tcp && S7CommPacket::try_from(payload).is_ok() {
-            return Some(Application {
-                application_protocol: "S7Comm",
-            });
-        }
-
-        if transport.protocol == TransportProtocol::Tcp
-            && (is_iso_tsap_tcp_port(transport.source_port)
-                || is_iso_tsap_tcp_port(transport.destination_port))
-            && cotp_from_tpkt(payload).is_some()
-        {
-            return Some(Application {
-                application_protocol: "COTP",
-            });
-        }
-
-        // FTP, SMTP et NNTP partagent la meme forme de reponse ("code SP
-        // texte CRLF") et plusieurs commandes (QUIT, LIST, MODE...). Meme un
-        // verbe distinctif peut apparaitre dans un corps SMTP ou un article
-        // NNTP : ces protocoles restent donc strictement gardes par port.
-        if transport.protocol == TransportProtocol::Tcp
-            && (is_ftp_tcp_port(transport.source_port)
-                || is_ftp_tcp_port(transport.destination_port))
-            && FtpMessage::try_from(payload).is_ok()
-        {
-            return Some(Application {
-                application_protocol: "FTP",
-            });
-        }
-
-        if transport.protocol == TransportProtocol::Tcp
-            && (is_smtp_tcp_port(transport.source_port)
-                || is_smtp_tcp_port(transport.destination_port))
-            && SmtpMessage::try_from(payload).is_ok()
-        {
-            return Some(Application {
-                application_protocol: "SMTP",
-            });
-        }
-
-        if transport.protocol == TransportProtocol::Tcp
-            && (is_nntp_tcp_port(transport.source_port)
-                || is_nntp_tcp_port(transport.destination_port))
-            && NntpMessage::try_from(payload).is_ok()
-        {
-            return Some(Application {
-                application_protocol: "NNTP",
-            });
-        }
-
-        // mDNS reprend le format DNS mais les reponses (RFC 6762 §6) omettent
-        // souvent la question : le validateur strict utilise par le DNS
-        // classique les rejetterait. Gate par le port reserve 5353 pour ne
-        // pas assouplir la detection DNS generale.
-        if transport.protocol == TransportProtocol::Udp
-            && (is_mdns_udp_port(transport.source_port)
-                || is_mdns_udp_port(transport.destination_port))
-        {
-            // Port 5353 is terminal for this payload: if the dedicated mDNS
-            // validation fails, do not let the looser generic DNS probe
-            // relabel the same bytes as ordinary DNS.
-            return DnsPacket::try_from_mdns(payload).ok().map(|_| Application {
-                application_protocol: "mDNS",
-            });
-        }
-
-        if (is_ams_port(transport.source_port) || is_ams_port(transport.destination_port))
-            && AmsPacket::try_from(payload).is_ok()
-        {
-            return Some(Application {
-                application_protocol: "AMS",
-            });
-        }
-
-        // QUIC 1-RTT (Short Header) : l'en-tête est volontairement opaque
-        // (RFC 9000 §17.3, pas de version ni de longueur de DCID), seul un
-        // détecteur stateful façon Wireshark peut le décoder. En stateless on
-        // se limite à une heuristique (form=0, fixed=1, taille minimale)
-        // gardée par le port UDP 443. Les Long Headers, eux, sont détectés
-        // sans port par le probing générique (Application::try_from).
-        if transport.protocol == TransportProtocol::Udp
-            && (is_quic_udp_port(transport.source_port)
-                || is_quic_udp_port(transport.destination_port))
-            && is_plausible_short_header(payload)
-        {
-            return Some(Application {
-                application_protocol: "QUIC",
-            });
-        }
-
-        if transport.protocol == TransportProtocol::Tcp && is_likely_postgresql_payload(payload) {
-            return Some(Application {
-                application_protocol: "PostgreSQL",
-            });
-        }
-
-        let parsed = Application::try_from(payload).ok();
-        if transport.protocol != TransportProtocol::Tcp
-            && matches!(
-                parsed.as_ref().map(|app| app.application_protocol),
-                Some("S7Comm")
-            )
-        {
-            return None;
-        }
-
-        if matches!(
-            parsed.as_ref().map(|app| app.application_protocol),
-            Some("OPC UA")
-        ) {
-            return parsed;
-        }
-
-        if is_opcua_tcp_port(transport.source_port) || is_opcua_tcp_port(transport.destination_port)
-        {
-            return Some(Application {
-                application_protocol: "OPC UA",
-            });
-        }
-
-        parsed
+        // Toute la politique de classification L7 — gardes de transport,
+        // gardes de port, priorites, memoisation des sondes — vit dans la
+        // table declarative de `dispatch` (audit 8.1.0 §5.3).
+        dispatch::classify(transport)
     }
 
     /// Converts this borrowed [`PacketFlow`] into an owned version.
@@ -549,18 +391,6 @@ impl<'a> PacketFlow<'a> {
     }
 }
 
-fn is_opcua_tcp_port(port: Option<u16>) -> bool {
-    matches!(port, Some(4840 | 12001))
-}
-
-fn is_snmp_udp_port(port: Option<u16>) -> bool {
-    matches!(port, Some(161 | 162))
-}
-
-fn is_dhcpv6_udp_port(port: Option<u16>) -> bool {
-    matches!(port, Some(546 | 547))
-}
-
 /// Decode the first RFC 1006 TPKT frame and its COTP header.
 ///
 /// A TCP segment may contain bytes after the first TPKT (including another
@@ -675,44 +505,6 @@ fn is_strict_connection_header(header: &CotpHeader<'_>) -> bool {
     }
 
     true
-}
-
-/// ISO-TSAP (TPKT/COTP, notamment S7comm).
-fn is_iso_tsap_tcp_port(port: Option<u16>) -> bool {
-    matches!(port, Some(102))
-}
-
-/// Beckhoff AMS/ADS : TCP 48898, UDP 48899.
-fn is_ams_port(port: Option<u16>) -> bool {
-    matches!(port, Some(48898 | 48899))
-}
-
-/// QUIC (HTTP/3) : UDP 443.
-fn is_quic_udp_port(port: Option<u16>) -> bool {
-    matches!(port, Some(443))
-}
-
-/// FTP control channel : TCP 21.
-fn is_ftp_tcp_port(port: Option<u16>) -> bool {
-    matches!(port, Some(21))
-}
-
-/// SMTP en clair ou avec STARTTLS : TCP 25 (relais) et 587 (soumission).
-/// Le port 465 transporte du TLS implicite et ne peut pas contenir directement
-/// une commande SMTP dans le payload inspecte ici.
-fn is_smtp_tcp_port(port: Option<u16>) -> bool {
-    matches!(port, Some(25 | 587))
-}
-
-/// NNTP en clair ou avec STARTTLS : TCP 119. Le port 563 transporte du TLS
-/// implicite et ne peut pas contenir directement une commande NNTP ici.
-fn is_nntp_tcp_port(port: Option<u16>) -> bool {
-    matches!(port, Some(119))
-}
-
-/// mDNS : UDP 5353 (port reserve, RFC 6762).
-fn is_mdns_udp_port(port: Option<u16>) -> bool {
-    matches!(port, Some(5353))
 }
 
 #[cfg(test)]

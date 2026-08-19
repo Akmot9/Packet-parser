@@ -198,7 +198,34 @@ impl<'a> TryFrom<&'a [u8]> for PostgreSqlPacket<'a> {
     }
 }
 
+/// Garde a cout constant devant le parse integral (audit 8.1.0 §4.3, issue
+/// #20) : tout payload PostgreSQL commence soit par un message sans octet de
+/// type (longueur BE sur 4 octets, au moins 8 pour porter un code protocole)
+/// soit par un message type (octet ASCII imprimable + longueur BE >= 4).
+/// Volontairement plus lache que le parse complet — aucune borne superieure,
+/// aucun code impose — pour ne jamais rejeter un payload qu'il accepterait :
+/// elle ne sert qu'a ecarter sans allocation le trafic arbitraire qui
+/// coutait un parse entier (x60 mesure sur un pseudo-payload hostile).
+fn has_plausible_first_message_header(payload: &[u8]) -> bool {
+    if payload.len() >= 8 {
+        let untyped_length = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
+        if untyped_length >= 8 {
+            return true;
+        }
+    }
+    if payload.len() >= 5 {
+        let typed_length = u32::from_be_bytes([payload[1], payload[2], payload[3], payload[4]]);
+        if payload[0].is_ascii_graphic() && typed_length >= 4 {
+            return true;
+        }
+    }
+    false
+}
+
 pub(crate) fn is_likely_postgresql_payload(payload: &[u8]) -> bool {
+    if !has_plausible_first_message_header(payload) {
+        return false;
+    }
     let Ok(packet) = PostgreSqlPacket::try_from(payload) else {
         return false;
     };
