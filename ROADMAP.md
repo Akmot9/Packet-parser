@@ -1,6 +1,15 @@
 # Roadmap packet_parser
 
-Etat au 2026-08-19 : la **10.2.0 est publiee**. La 10.0.0 avait ouvert une
+Etat au 2026-08-20 : la **10.3.0 est publiee**, et la campagne de resorption
+du backlog a ferme 24 issues en deux jours — regression tshark generalisee
+(Modbus/DNS/TLS, parite verifiee), quatre parseurs completes (DHCP, SRVLOC,
+GIOP, QUIC Retry), detection hors port des verbes non-ambigus, corrections
+NXDOMAIN/DNS-TCP/faux positifs NTP, et quatre nouveaux protocoles cables
+depuis les trames reelles de The-Ultimate-PCAP : LLMNR, SSDP, NetBIOS
+(NBNS/NBSS) et STP (BPDU en LLC, etiquetes au niveau flux). Post-10.3.0,
+ces quatre parseurs partiront dans la 10.4.0.
+
+Etat anterieur (2026-08-19) : la **10.2.0 est publiee**. La 10.0.0 avait ouvert une
 **fenetre de stabilite** — tout ce qui suit est realisable sans nouvelle
 version majeure, et l'objectif est de tenir 6 a 12 mois sans rupture d'API.
 La 10.2.0 le confirme a son tour : `cargo semver-checks` la classe
