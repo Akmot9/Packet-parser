@@ -39,6 +39,7 @@ use super::application::protocols::netbios::{NbnsPacket, NbssPacket};
 use super::application::protocols::nntp::NntpMessage;
 use super::application::protocols::ntp::NtpPacket;
 use super::application::protocols::opcua::OpcuaPacket;
+use super::application::protocols::openvpn::OpenVpnPacket;
 use super::application::protocols::postgresql::is_likely_postgresql_payload;
 use super::application::protocols::quic::QuicPacket;
 use super::application::protocols::s7comm::S7CommPacket;
@@ -97,6 +98,8 @@ enum ProbeId {
     Ssdp,
     Nbns,
     Nbss,
+    OpenVpnUdp,
+    OpenVpnTcp,
     Ams,
     FtpUnambiguous,
     SmtpUnambiguous,
@@ -120,7 +123,7 @@ enum ProbeId {
     Mqtt,
 }
 
-fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
+fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
     match probe {
         ProbeId::Snmp => SnmpPacket::try_from(payload).is_ok(),
         ProbeId::Dhcpv6 => Dhcpv6Packet::try_from(payload).is_ok(),
@@ -134,6 +137,11 @@ fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Ssdp => SsdpPacket::try_from(payload).is_ok(),
         ProbeId::Nbns => NbnsPacket::try_from(payload).is_ok(),
         ProbeId::Nbss => NbssPacket::try_from(payload).is_ok(),
+        ProbeId::OpenVpnUdp => OpenVpnPacket::try_from(payload).is_ok(),
+        // Le prefixe u16 du record TCP est verifie contre le payload REEL :
+        // le plafond de sondage tronquerait a tort un record legitime plus
+        // grand que PROBE_CAP pourtant entierement present dans le segment.
+        ProbeId::OpenVpnTcp => OpenVpnPacket::from_tcp_stream(full_payload).is_ok(),
         ProbeId::FtpUnambiguous => is_unambiguous_ftp_command(payload),
         ProbeId::SmtpUnambiguous => is_unambiguous_smtp_command(payload),
         ProbeId::NntpUnambiguous => is_unambiguous_nntp_command(payload),
@@ -276,6 +284,9 @@ static RULES: &[Rule] = &[
     // TCP 445 (SMB direct hosting, meme framing a 4 octets).
     port_rule("NBNS", Guard::Udp, is_nbns_udp_port, ProbeId::Nbns),
     port_rule("NBSS", Guard::Tcp, is_nbss_tcp_port, ProbeId::Nbss),
+    // OpenVPN : datagramme nu sur UDP 1194, prefixe de longueur sur TCP.
+    port_rule("OpenVPN", Guard::Udp, is_openvpn_port, ProbeId::OpenVpnUdp),
+    port_rule("OpenVPN", Guard::Tcp, is_openvpn_port, ProbeId::OpenVpnTcp),
     port_rule("AMS", Guard::Tcp, is_ams_tcp_port, ProbeId::Ams),
     port_rule("AMS", Guard::Udp, is_ams_udp_port, ProbeId::Ams),
     // QUIC 1-RTT (Short Header) : en-tete volontairement opaque (RFC 9000
@@ -330,11 +341,78 @@ static RULES: &[Rule] = &[
     rule("MQTT", Guard::Tcp, ProbeId::Mqtt),
 ];
 
+/// Protocole que l'appelant peut associer a un port supplementaire via
+/// [`crate::ParseConfig`] (« Decode As », issue #65). La regle de la table
+/// vaut aussi ici : le port declare ne suffit jamais, la sonde de contenu
+/// doit accepter le payload, et la garde de transport du protocole reste
+/// appliquee.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DecodeAsProtocol {
+    Ftp,
+    Smtp,
+    Nntp,
+    Cotp,
+    Dns,
+    Mdns,
+    Llmnr,
+    Ssdp,
+    Nbns,
+    Nbss,
+    Snmp,
+    Dhcpv6,
+    OpcUa,
+    PostgreSql,
+    ModbusTcp,
+    EthernetIp,
+    Ams,
+    QuicShortHeader,
+    OpenVpn,
+}
+
+impl DecodeAsProtocol {
+    /// (etiquette, garde, sonde) de la regle equivalente de la table. DNS
+    /// choisit sa forme selon le transport : datagramme sur UDP, prefixe de
+    /// longueur sur TCP (RFC 1035 §4.2).
+    fn rule(self, protocol: TransportProtocol) -> (&'static str, Guard, ProbeId) {
+        match self {
+            Self::Ftp => ("FTP", Guard::Tcp, ProbeId::Ftp),
+            Self::Smtp => ("SMTP", Guard::Tcp, ProbeId::Smtp),
+            Self::Nntp => ("NNTP", Guard::Tcp, ProbeId::Nntp),
+            Self::Cotp => ("COTP", Guard::Tcp, ProbeId::CotpTpkt),
+            Self::Dns => match protocol {
+                TransportProtocol::Tcp => ("DNS", Guard::Tcp, ProbeId::DnsTcp),
+                _ => ("DNS", Guard::Udp, ProbeId::Dns),
+            },
+            Self::Mdns => ("mDNS", Guard::Udp, ProbeId::Mdns),
+            Self::Llmnr => ("LLMNR", Guard::Udp, ProbeId::Llmnr),
+            Self::Ssdp => ("SSDP", Guard::Udp, ProbeId::Ssdp),
+            Self::Nbns => ("NBNS", Guard::Udp, ProbeId::Nbns),
+            Self::Nbss => ("NBSS", Guard::Tcp, ProbeId::Nbss),
+            Self::Snmp => ("SNMP", Guard::Any, ProbeId::Snmp),
+            Self::Dhcpv6 => ("DHCPv6", Guard::Udp, ProbeId::Dhcpv6),
+            Self::OpcUa => ("OPC UA", Guard::Tcp, ProbeId::Opcua),
+            Self::PostgreSql => ("PostgreSQL", Guard::Tcp, ProbeId::Postgresql),
+            Self::ModbusTcp => ("ModbusTCP", Guard::Tcp, ProbeId::ModbusTcp),
+            Self::EthernetIp => ("EtherNet/IP", Guard::Any, ProbeId::EthernetIp),
+            Self::Ams => ("AMS", Guard::Any, ProbeId::Ams),
+            Self::QuicShortHeader => ("QUIC", Guard::Udp, ProbeId::QuicShortHeader),
+            Self::OpenVpn => match protocol {
+                TransportProtocol::Tcp => ("OpenVPN", Guard::Tcp, ProbeId::OpenVpnTcp),
+                _ => ("OpenVPN", Guard::Udp, ProbeId::OpenVpnUdp),
+            },
+        }
+    }
+}
+
 /// Classifie le payload d'une couche transport. `None` signifie « rien a
 /// sonder » (pas de payload, payload vide, ou port mDNS sans contenu mDNS) ;
 /// un payload sonde sans succes reste etiquete `"Unknown"`, comme
 /// l'historique `Application::try_from`.
-pub(super) fn classify(transport: &Transport<'_>) -> Option<Application> {
+pub(super) fn classify(
+    transport: &Transport<'_>,
+    decode_as: &[(u16, DecodeAsProtocol)],
+) -> Option<Application> {
     let payload = transport.payload?;
     if payload.is_empty() {
         return None;
@@ -342,6 +420,30 @@ pub(super) fn classify(transport: &Transport<'_>) -> Option<Application> {
     let probed = &payload[..payload.len().min(PROBE_CAP)];
 
     let mut failed_probes: u64 = 0;
+
+    // Ports declares par l'appelant (« Decode As ») : evalues avant la
+    // table, port ET contenu, garde de transport conservee. Un echec est
+    // memoise comme ceux de la table. Les ports que la table declare
+    // terminaux (mDNS 5353, LLMNR 5355 — reserves par leurs RFC) ne sont
+    // jamais contournables : « etendre les gardes sans les remplacer ».
+    if !decode_as.is_empty() && !matches_terminal_reserved_port(transport) {
+        for (port, protocol) in decode_as {
+            if transport.source_port != Some(*port) && transport.destination_port != Some(*port) {
+                continue;
+            }
+            let (label, guard, probe) = protocol.rule(transport.protocol);
+            if !guard.admits(transport.protocol) {
+                continue;
+            }
+            let bit = 1u64 << probe as u64;
+            if failed_probes & bit == 0 && run_probe(probe, probed, payload) {
+                return Some(Application {
+                    application_protocol: label,
+                });
+            }
+            failed_probes |= bit;
+        }
+    }
     for rule in RULES {
         if !rule.guard.admits(transport.protocol) {
             continue;
@@ -358,7 +460,7 @@ pub(super) fn classify(transport: &Transport<'_>) -> Option<Application> {
         }
 
         let bit = 1u64 << rule.probe as u64;
-        let matched = failed_probes & bit == 0 && run_probe(rule.probe, probed);
+        let matched = failed_probes & bit == 0 && run_probe(rule.probe, probed, payload);
         if matched {
             return Some(Application {
                 application_protocol: rule.label,
@@ -508,6 +610,23 @@ fn is_nbss_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(139 | 445))
 }
 
+/// Un des deux ports touche-t-il une regle terminale de la table (port
+/// reserve par RFC) ? Source unique : la table elle-meme.
+fn matches_terminal_reserved_port(transport: &Transport<'_>) -> bool {
+    RULES.iter().any(|rule| {
+        rule.terminal_on_port
+            && rule.guard.admits(transport.protocol)
+            && rule.ports.is_some_and(|ports| {
+                ports(transport.source_port) || ports(transport.destination_port)
+            })
+    })
+}
+
+/// OpenVPN : port officiel 1194 (TCP et UDP).
+fn is_openvpn_port(port: Option<u16>) -> bool {
+    matches!(port, Some(1194))
+}
+
 /// mDNS : UDP 5353 (port reserve, RFC 6762).
 fn is_mdns_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(5353))
@@ -550,16 +669,113 @@ mod tests {
             (&b"XOVER 1-5\r\n"[..], "NNTP"),
         ] {
             let transport = tcp_transport(payload);
-            let label = classify(&transport).map(|a| a.application_protocol);
+            let label = classify(&transport, &[]).map(|a| a.application_protocol);
             assert_eq!(label, Some(expected), "payload {payload:?}");
         }
 
         // QUIT existe dans les trois protocoles : jamais par contenu seul.
         let transport = tcp_transport(b"QUIT\r\n");
-        let label = classify(&transport).map(|a| a.application_protocol);
+        let label = classify(&transport, &[]).map(|a| a.application_protocol);
         assert_ne!(label, Some("FTP"));
         assert_ne!(label, Some("SMTP"));
         assert_ne!(label, Some("NNTP"));
+    }
+
+    /// Issue #65 : un port declare par l'appelant etend les gardes — port ET
+    /// contenu — sans changer le comportement par defaut.
+    #[test]
+    fn decode_as_extends_port_guards_without_replacing_them() {
+        // USER est un verbe partage : jamais detecte hors port par defaut...
+        let transport = tcp_transport(b"USER alice\r\n");
+        assert_ne!(
+            classify(&transport, &[]).map(|a| a.application_protocol),
+            Some("FTP")
+        );
+        // ... mais l'appelant peut declarer que 50 000 porte du FTP.
+        let decode_as = [(50_000_u16, DecodeAsProtocol::Ftp)];
+        assert_eq!(
+            classify(&transport, &decode_as).map(|a| a.application_protocol),
+            Some("FTP")
+        );
+        // Le port declare ne suffit jamais : contenu non-FTP refuse.
+        let garbage = tcp_transport(b"\x16\x03\x03\x00\x10aaaaaaaaaaaaaaaa");
+        assert_ne!(
+            classify(&garbage, &decode_as).map(|a| a.application_protocol),
+            Some("FTP")
+        );
+        // La garde de transport du protocole reste appliquee : declarer un
+        // port DNS datagramme sur du TCP ne sonde pas la forme datagramme.
+        let decode_udp_only = [(50_000_u16, DecodeAsProtocol::Mdns)];
+        assert_ne!(
+            classify(&transport, &decode_udp_only).map(|a| a.application_protocol),
+            Some("mDNS")
+        );
+    }
+
+    /// Anti-derive (revue 10.4.0) : chaque protocole Decode-As doit se
+    /// resoudre vers une etiquette et une sonde que la table connait — les
+    /// deux encodages ne peuvent pas diverger silencieusement.
+    #[test]
+    fn decode_as_protocols_resolve_to_table_rules() {
+        use ProbeId as P;
+        let all = [
+            DecodeAsProtocol::Ftp,
+            DecodeAsProtocol::Smtp,
+            DecodeAsProtocol::Nntp,
+            DecodeAsProtocol::Cotp,
+            DecodeAsProtocol::Dns,
+            DecodeAsProtocol::Mdns,
+            DecodeAsProtocol::Llmnr,
+            DecodeAsProtocol::Ssdp,
+            DecodeAsProtocol::Nbns,
+            DecodeAsProtocol::Nbss,
+            DecodeAsProtocol::Snmp,
+            DecodeAsProtocol::Dhcpv6,
+            DecodeAsProtocol::OpcUa,
+            DecodeAsProtocol::PostgreSql,
+            DecodeAsProtocol::ModbusTcp,
+            DecodeAsProtocol::EthernetIp,
+            DecodeAsProtocol::Ams,
+            DecodeAsProtocol::QuicShortHeader,
+            DecodeAsProtocol::OpenVpn,
+        ];
+        for protocol in all {
+            for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {
+                let (label, _, probe) = protocol.rule(transport);
+                assert!(
+                    RULES
+                        .iter()
+                        .any(|rule| rule.label == label && rule.probe as u32 == probe as u32),
+                    "{label} (sonde {:?}) absent de la table",
+                    probe as u32
+                );
+            }
+        }
+        let _ = [P::Snmp]; // use alias
+    }
+
+    /// Les ports terminaux de la table ne sont pas contournables par
+    /// Decode-As : un paquet mDNS sur UDP 5353 declare "DNS" par l'appelant
+    /// reste arbitre par la regle terminale.
+    #[test]
+    fn decode_as_cannot_override_terminal_reserved_ports() {
+        // Requete mDNS reelle minimaliste : en-tete + une question.
+        let mdns_query =
+            hex::decode("000000000001000000000000045f687474045f746370056c6f63616c00000c0001")
+                .expect("fixture");
+        let transport = Transport {
+            protocol: TransportProtocol::Udp,
+            source_port: Some(5353),
+            destination_port: Some(5353),
+            payload: Some(&mdns_query),
+            details: None,
+        };
+        let decode_as = [(5353_u16, DecodeAsProtocol::Dns)];
+        assert_eq!(
+            classify(&transport, &decode_as).map(|a| a.application_protocol),
+            Some("mDNS"),
+            "la regle terminale de la table garde la main sur 5353"
+        );
     }
 
     /// La memoisation exige un identifiant de sonde par bit d'un u64.

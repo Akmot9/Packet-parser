@@ -6,6 +6,73 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **Tunnels GRE et IP-in-IP** (issue #15, partiel) : GRE v0 (RFC 2784/2890,
+  options checksum/cle/sequence) portant IPv4, IPv6 ou Ethernet 0x6558, et
+  IP-in-IP (protocoles IP 4 et 41) sont peles recursivement — le flux
+  externe est etiquete GRE / IP-in-IP et le paquet interne devient un flux
+  imbrique complet. ERSPAN, GRE v1 (PPTP) et les keepalives sont refuses,
+  pas devines. Golden sur cinq trames reelles du corpus, dont un GRE-dans-
+  GRE authentique. VXLAN, GTP-U et Geneve attendent des captures reelles.
+
+- **API « Decode As »** (issue #65) : `ParseConfig::decode_as(port, proto)`
+  et `parse_with` permettent de declarer « mon FTP tourne sur 2121 ». Les
+  ports declares etendent les gardes de la table — port ET contenu, garde
+  de transport conservee, memoisation partagee — sans changer d'un octet le
+  comportement de `parse`. Propagee jusque dans les tunnels. Nouvel enum
+  public `DecodeAsProtocol` (`#[non_exhaustive]`).
+
+- **Detection OpenVPN** (issue #5) : nouveau module openvpn (opcodes 1-10,
+  key id, session id, forme datagramme UDP et prefixe u16 TCP avec
+  coalescence), cable sur le port 1194. Anti-faux-positifs : key id 0
+  obligatoire sur les hard resets (neutralise les collisions avec les
+  record types TLS), resets bornes a 1280 octets. Golden sur trames
+  reelles (wiki Wireshark, sessions tls-auth UDP et TCP completes).
+
+- **Captures reelles EtherNet/IP et GIOP** (issues #57 et #58) : corpus
+  etendu avec trois captures ITI/ICS-Security-Tools (CC-BY-4.0) et
+  corba.pcap de nDPI (LGPL-3.0), golden tests contre tshark. Les trames
+  GIOP reelles ont revele et fait corriger deux defauts du parseur : le
+  message_size suit le bit d'endianness des flags (§9.4.1), et le layout
+  CDR des Request (discriminant short, alignement naturel, TaggedProfile).
+
+- **S7CommPlus reconnu** (issue #11) : `S7ProtocolVersion` expose la version
+  du protocole S7 parse, et un payload TPKT/COTP au protocol id 0x72
+  (S7-1200/1500) est identifiable via `S7CommPacket::detect_protocol_version`
+  au lieu d'etre confondu avec un S7 corrompu. Aucune trame 0x72 dans le
+  corpus : golden en attente de capture.
+
+- **Metadonnees diffusion/multicast** (issue #9) :
+  `MacAddress::is_broadcast/is_multicast/is_unicast` au niveau L2,
+  `Internet::destination_is_multicast/destination_is_limited_broadcast` au
+  niveau L3. La variante `IpType::Broadcast` est une rupture d'enum,
+  portee par l'epic #76.
+
+### Corrige
+
+- **Requetes DNSSEC rejetees** : les bits AD et CD (RFC 4035 §3.1.6) etaient
+  traites comme le champ reserve Z et toute requete CD=1 etait refusee —
+  revele par une trame reelle en tunnel 6in4. Seul le bit 6 est encore Z.
+
+- **Doc-tests casses par STP** : l'attribut aquamarine residuel du module
+  stp est retire (la crate a supprime cette dependance en 10.3.0).
+
+### Ajoute
+
+- **Reconnaissance S7CommPlus** (issue #11) : S7Comm (protocol id 0x32,
+  S7-300/400) et S7CommPlus (0x72, S7-1200/1500, parfois appele « v3 »)
+  sont deux protocoles distincts partageant l'encapsulage TPKT/COTP sur
+  TCP/102. Nouvel enum `S7ProtocolVersion` et methodes additives
+  `S7CommPacket::protocol_version` / `S7CommPacket::detect_protocol_version`
+  (adossees a `extract_s7_protocol_version` et `is_s7commplus_payload` dans
+  les checks) : un payload 0x72 est identifie au lieu d'etre confondu avec
+  un S7Comm invalide. `try_from` continue de rejeter 0x72
+  (`InvalidS7ProtocolId`), le decodage complet de S7CommPlus restant hors
+  perimetre. Aucune trame 0x72 dans le corpus du depot (tshark
+  `-Y s7comm-plus` rend zero sur pcaps_exemple, 4SICS inclus) : tests
+  synthetiques, pas de golden possible.
+
 ## [10.3.0] - 2026-08-20
 
 Version mineure, strictement additive, issue de la campagne de resorption du

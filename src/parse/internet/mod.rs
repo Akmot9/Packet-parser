@@ -66,6 +66,23 @@ pub struct Internet<'a> {
 }
 
 impl<'a> Internet<'a> {
+    /// La destination est-elle un groupe multicast (issue #9) ? S'appuie sur
+    /// la classification deja portee par `destination_type`.
+    pub fn destination_is_multicast(&self) -> bool {
+        self.destination_type == Some(IpType::Multicast)
+    }
+
+    /// La destination est-elle la diffusion limitee IPv4 255.255.255.255
+    /// (issue #9) ? La diffusion dirigee (x.y.z.255 selon le masque) exige de
+    /// connaitre le sous-reseau, hors de portee d'un parseur de paquets ; et
+    /// la variante IpType::Broadcast attendrait une rupture d'enum (epic #76).
+    pub fn destination_is_limited_broadcast(&self) -> bool {
+        matches!(
+            self.destination,
+            Some(IpAddr::V4(addr)) if addr.is_broadcast()
+        )
+    }
+
     /// Parses the internet layer using the EtherType announced by the
     /// data-link layer.
     ///
@@ -248,6 +265,28 @@ mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    /// Issue #9 : aides multicast / diffusion limitee au niveau L3.
+    #[test]
+    fn destination_multicast_and_limited_broadcast_helpers() {
+        let mut internet = Internet {
+            source: Some(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10))),
+            source_type: Some(IpType::Private),
+            destination: Some(IpAddr::V4(Ipv4Addr::new(224, 0, 0, 251))),
+            destination_type: Some(IpType::Multicast),
+            protocol_name: "IPv4",
+            payload_protocol: None,
+            payload: &[],
+            details: None,
+        };
+        assert!(internet.destination_is_multicast());
+        assert!(!internet.destination_is_limited_broadcast());
+
+        internet.destination = Some(IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)));
+        internet.destination_type = Some(IpType::Public);
+        assert!(internet.destination_is_limited_broadcast());
+        assert!(!internet.destination_is_multicast());
+    }
 
     fn ipv4_udp_packet(flags_fragment: u16) -> Vec<u8> {
         vec![

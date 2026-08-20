@@ -37,6 +37,10 @@ pub struct HttpRequest<'a> {
     pub method: &'a str,
     pub uri: &'a str,
     pub version: &'a str,
+    /// Decision alloc/emprunt (issue #63) : les paires nom/valeur sont deja
+    /// empruntees ; seul le Vec porteur alloue, borne par le nombre de
+    /// lignes reelles du payload. Supprimer le Vec changerait ce champ
+    /// public : rupture portee par l'epic #76.
     pub headers: Vec<(&'a str, &'a str)>,
     pub body: &'a str,
 }

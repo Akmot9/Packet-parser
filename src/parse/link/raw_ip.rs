@@ -8,13 +8,19 @@ use crate::{LinkLayer, LinkLayerError, LinkType, ParseError};
 
 /// Decoder for the link types whose packet bytes start directly with IPv4/IPv6:
 /// LINKTYPE_RAW, LINKTYPE_IPV4 and LINKTYPE_IPV6.
-pub(super) struct RawIpDecoder;
+pub(crate) struct RawIpDecoder;
 
 impl RawIpDecoder {
     /// Decodes header-less IP bytes, reporting `link_type` as the capture
     /// declared it rather than normalizing every variant to LINKTYPE_RAW.
+    ///
+    /// Pour LINKTYPE_IPV4 et LINKTYPE_IPV6, le quartet de version doit
+    /// confirmer ce que le conteneur annonce : un paquet v6 sous un lien
+    /// declare v4 est une erreur nommee, pas une devinette. Egalement
+    /// utilise par le peeling des tunnels IP (GRE, IP-in-IP), qui annonce
+    /// la version via le protocole externe.
     #[inline(always)]
-    pub(super) fn decode_as<'a>(
+    pub(crate) fn decode_as<'a>(
         link_type: LinkType,
         bytes: &'a [u8],
     ) -> Result<DecodedLink<'a>, ParseError> {
@@ -24,9 +30,14 @@ impl RawIpDecoder {
             actual: 0,
         })?;
 
+        let claimed = match link_type {
+            LinkType::IPV4 => Some(4),
+            LinkType::IPV6 => Some(6),
+            _ => None,
+        };
         let layer = match first >> 4 {
-            4 => LinkLayer::raw_ipv4(link_type, bytes),
-            6 => LinkLayer::raw_ipv6(link_type, bytes),
+            4 if claimed != Some(6) => LinkLayer::raw_ipv4(link_type, bytes),
+            6 if claimed != Some(4) => LinkLayer::raw_ipv6(link_type, bytes),
             version => {
                 return Err(LinkLayerError::InvalidIpVersion { link_type, version }.into());
             }

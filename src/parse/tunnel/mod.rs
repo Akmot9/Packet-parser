@@ -16,18 +16,24 @@
 //! levels (outer tunnel + inner conversation(s)).
 //!
 //! Currently supported:
-//! - **CAPWAP-Data** (RFC 5415) carrying **IEEE 802.11** → **LLC/SNAP** → L3.
+//! - **CAPWAP-Data** (RFC 5415) carrying **IEEE 802.11** → **LLC/SNAP** → L3 ;
+//! - **GRE** (RFC 2784/2890, version 0) carrying IPv4, IPv6 or Ethernet
+//!   (0x6558) — ERSPAN and version 1 (PPTP) are refused, not guessed ;
+//! - **IP-in-IP** (protocoles IP 4 et 41) carrying a bare IPv4/IPv6 packet.
 //!
-//! Designed to grow: IP/UDP tunnels (VXLAN, GRE, GTP-U, IP-in-IP) plug into
-//! [`detect_inner`] the same way.
+//! Designed to grow: the remaining UDP tunnels (VXLAN, GTP-U, Geneve) plug
+//! into [`detect_inner`] the same way once real captures exist (issue #15).
 
 use super::PacketFlow;
+use super::data_link::DataLink;
 use super::data_link::ethertype::Ethertype;
 use super::data_link::mac_addres::MacAddress;
-use super::link::DecodedLink;
+use super::internet::Internet;
+use super::link::{DecodedLink, RawIpDecoder};
 use super::link_layer::{Ieee80211Link, LinkLayer};
 use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
+use crate::LinkType;
 
 /// Maximum tunnel nesting depth (anti-loop guard against malformed traffic that
 /// could claim endless encapsulation). The outer flow is depth 0.
@@ -47,10 +53,12 @@ const CAPWAP_DATA_PORT: u16 = 5247;
 pub(crate) fn detect_inner<'a>(
     transport: &Transport<'a>,
     depth: u8,
+    decode_as: &[(u16, crate::parse::DecodeAsProtocol)],
 ) -> Option<(&'static str, PacketFlow<'a>)> {
     if depth + 1 >= MAX_TUNNEL_DEPTH {
         return None;
     }
+
     let payload = transport.payload?;
 
     // --- CAPWAP-Data over UDP 5247 → 802.11 → LLC/SNAP → L3 ---
@@ -58,12 +66,92 @@ pub(crate) fn detect_inner<'a>(
         && (transport.source_port == Some(CAPWAP_DATA_PORT)
             || transport.destination_port == Some(CAPWAP_DATA_PORT))
         && let Some(inner_link) = peel_capwap_ieee80211(payload)
-        && let Ok(inner) = PacketFlow::parse_decoded(DecodedLink::new(inner_link), depth + 1)
+        && let Ok(inner) =
+            PacketFlow::parse_decoded_with(DecodedLink::new(inner_link), depth + 1, decode_as)
     {
         return Some(("CAPWAP", inner));
     }
 
     None
+}
+
+/// Detecte un tunnel au niveau IP (issue #15) : GRE (protocole 47) et
+/// IP-in-IP (protocoles 4 et 41). Independant de la couche transport — ces
+/// protocoles n'en ont pas, et le peeling ne doit pas dependre du Transport
+/// creux que la branche fourre-tout de `try_from_parts` fabrique pour eux.
+pub(crate) fn detect_inner_l3<'a>(
+    internet: &Internet<'a>,
+    depth: u8,
+    decode_as: &[(u16, crate::parse::DecodeAsProtocol)],
+) -> Option<(&'static str, PacketFlow<'a>)> {
+    if depth + 1 >= MAX_TUNNEL_DEPTH {
+        return None;
+    }
+
+    let (label, inner_link) = match internet.payload_protocol {
+        Some(TransportProtocol::Gre) => ("GRE", peel_gre(internet.payload)?),
+        // Le protocole IP externe ANNONCE la version interne (4 = IPv4-in-IP,
+        // 41 = IPv6-in-IP) : le decodeur raw-IP la verifie contre le quartet
+        // de version du paquet interne — refus si les deux ne concordent pas.
+        Some(TransportProtocol::Ipv4) => (
+            "IP-in-IP",
+            RawIpDecoder::decode_as(LinkType::IPV4, internet.payload).ok()?,
+        ),
+        Some(TransportProtocol::Ipv6) => (
+            "IP-in-IP",
+            RawIpDecoder::decode_as(LinkType::IPV6, internet.payload).ok()?,
+        ),
+        _ => return None,
+    };
+
+    PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
+        .ok()
+        .map(|inner| (label, inner))
+}
+
+/// Pele un en-tete GRE version 0 (RFC 2784, extensions RFC 2890 : checksum,
+/// cle, sequence) et rend la vue liaison du paquet interne. Les bits de
+/// routage (RFC 1701), la version 1 (PPTP) et les protocoles non transportes
+/// par la crate (ERSPAN 0x22eb/0x88be, keepalive proto 0) sont refuses avec
+/// None : frontiere nommee, pas de decodage approximatif.
+fn peel_gre(payload: &[u8]) -> Option<DecodedLink<'_>> {
+    const FLAG_CHECKSUM: u8 = 0x80;
+    const FLAG_ROUTING: u8 = 0x40;
+    const FLAG_KEY: u8 = 0x20;
+    const FLAG_SEQUENCE: u8 = 0x10;
+
+    if payload.len() < 4 {
+        return None;
+    }
+    let flags = payload[0];
+    let version = payload[1] & 0x07;
+    if version != 0 || flags & FLAG_ROUTING != 0 {
+        return None;
+    }
+
+    let mut header = 4usize;
+    // Le champ checksum (et son reserved1) est present si C est pose.
+    if flags & FLAG_CHECKSUM != 0 {
+        header += 4;
+    }
+    if flags & FLAG_KEY != 0 {
+        header += 4;
+    }
+    if flags & FLAG_SEQUENCE != 0 {
+        header += 4;
+    }
+    let inner = payload.get(header..)?;
+
+    match u16::from_be_bytes([payload[2], payload[3]]) {
+        // L'EtherType GRE annonce la version : verifiee par le decodeur.
+        0x0800 => RawIpDecoder::decode_as(LinkType::IPV4, inner).ok(),
+        0x86dd => RawIpDecoder::decode_as(LinkType::IPV6, inner).ok(),
+        // Transparent Ethernet bridging (NVGRE, gretap) : trame complete.
+        0x6558 => DataLink::try_from(inner)
+            .ok()
+            .map(|frame| DecodedLink::new(LinkLayer::ethernet_as(LinkType::ETHERNET, frame))),
+        _ => None,
+    }
 }
 
 /// Peels CAPWAP-Data → IEEE 802.11 → LLC/SNAP and returns the inner data-link
@@ -391,6 +479,35 @@ mod tests {
             "le HLEN choisi depasse bien la trame"
         );
         assert!(peel_capwap_ieee80211(&hlen_beyond).is_none());
+    }
+
+    /// Options GRE (RFC 2890) absentes du corpus : l'en-tete s'allonge de
+    /// 4 octets par option posee (checksum, cle, sequence). Fabrique, comme
+    /// les gardes de profondeur.
+    #[test]
+    fn gre_optional_fields_shift_the_inner_packet() {
+        let inner = innermost_ipv4();
+
+        // Sans option : en-tete de 4 octets.
+        let mut plain = vec![0x00, 0x00, 0x08, 0x00];
+        plain.extend_from_slice(&inner);
+        let (layer, _, payload) = peel_gre(&plain).expect("GRE nu").into_parts();
+        assert_eq!(payload, inner.as_slice());
+        assert!(layer.as_raw_ip().is_some());
+
+        // C + K + S : 4 + 12 octets.
+        let mut optioned = vec![0xb0, 0x00, 0x08, 0x00];
+        optioned.extend_from_slice(&[0u8; 12]);
+        optioned.extend_from_slice(&inner);
+        let (_, _, payload) = peel_gre(&optioned).expect("GRE avec options").into_parts();
+        assert_eq!(payload, inner.as_slice());
+
+        // Version 1 (PPTP), bits de routage, proto inconnu : refus.
+        assert!(peel_gre(&[0x00, 0x01, 0x08, 0x00, 0x45]).is_none());
+        assert!(peel_gre(&[0x40, 0x00, 0x08, 0x00, 0x45]).is_none());
+        assert!(peel_gre(&[0x00, 0x00, 0x22, 0xeb, 0x45]).is_none());
+        // Options annoncees mais tronquees : refus sans panique.
+        assert!(peel_gre(&[0xb0, 0x00, 0x08, 0x00, 0x00, 0x00]).is_none());
     }
 
     /// L'en-tete LLC/SNAP n'est accepte que sous sa forme SNAP stricte

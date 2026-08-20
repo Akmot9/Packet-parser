@@ -152,7 +152,7 @@ pub use errors::{LinkLayerError, ParseError, ParsedPacketError};
 pub mod parse;
 #[cfg(feature = "parse_timing")]
 pub use parse::parse_timed;
-pub use parse::{is_supported, parse};
+pub use parse::{DecodeAsProtocol, ParseConfig, is_supported, parse, parse_with};
 
 pub use parse::application::Application;
 /// Exports data link layer parsing functionality.

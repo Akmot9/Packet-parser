@@ -28,6 +28,11 @@ use crate::{
 /// ```
 #[derive(Debug)]
 pub struct OpcuaPacket<'a> {
+    /// Decision alloc/emprunt (issue #63) : le Vec est conserve — les chunks
+    /// sont dej a zero-copy (&'a [u8]) et le Vec croit par iteration bornee
+    /// par la taille du payload, jamais par un compteur declare par le
+    /// paquet. L'emprunt integral exigerait de changer ce champ public :
+    /// rupture portee par l'epic #76.
     pub chunks: Vec<OpcuaChunk<'a>>,
 }
 

@@ -7,7 +7,7 @@ mod ethernet;
 mod ieee802_3br;
 mod linux_sll;
 mod linux_sll2;
-mod raw_ip;
+pub(crate) mod raw_ip;
 
 use crate::{LinkLayer, LinkType, NetworkProtocol, ParseError};
 
@@ -15,7 +15,7 @@ use ethernet::EthernetDecoder;
 use ieee802_3br::Ieee8023brDecoder;
 use linux_sll::LinuxSllDecoder;
 use linux_sll2::LinuxSll2Decoder;
-use raw_ip::RawIpDecoder;
+pub(crate) use raw_ip::RawIpDecoder;
 
 #[derive(Clone, Copy)]
 enum DecoderKind {

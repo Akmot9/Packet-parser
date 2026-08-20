@@ -46,6 +46,7 @@ use crate::{
 pub mod application;
 pub mod data_link;
 mod dispatch;
+pub use dispatch::DecodeAsProtocol;
 pub mod internet;
 mod link;
 pub mod link_layer;
@@ -69,6 +70,42 @@ pub const fn is_supported(link_type: LinkType) -> bool {
 #[inline(always)]
 pub fn parse(link_type: LinkType, bytes: &[u8]) -> Result<PacketFlow<'_>, ParseError> {
     PacketFlow::parse_decoded(link::decode(link_type, bytes)?, 0)
+}
+
+/// Comme [`fn@parse`], avec une configuration de l'appelant : « mon FTP
+/// tourne sur 2121 » se declare via [`ParseConfig::decode_as`] (issue #65).
+/// Les ports declares etendent les gardes de port de la table de dispatch
+/// sans les remplacer — le contenu doit toujours confirmer le port, et le
+/// comportement par defaut est strictement celui de [`fn@parse`].
+pub fn parse_with<'a>(
+    link_type: LinkType,
+    bytes: &'a [u8],
+    config: &ParseConfig,
+) -> Result<PacketFlow<'a>, ParseError> {
+    PacketFlow::parse_decoded_with(link::decode(link_type, bytes)?, 0, &config.decode_as)
+}
+
+/// Configuration de parsing cote appelant (« Decode As »). Construite en
+/// builder ; vide par defaut, auquel cas [`parse_with`] est identique a
+/// [`fn@parse`].
+#[derive(Debug, Clone, Default)]
+pub struct ParseConfig {
+    decode_as: Vec<(u16, DecodeAsProtocol)>,
+}
+
+impl ParseConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Declare qu'un port supplementaire porte ce protocole. Le port ne
+    /// remplace jamais la validation de contenu : il donne seulement sa
+    /// chance a la sonde avant le reste de la table.
+    #[must_use]
+    pub fn decode_as(mut self, port: u16, protocol: DecodeAsProtocol) -> Self {
+        self.decode_as.push((port, protocol));
+        self
+    }
 }
 
 /// Timed counterpart of [`fn@parse`], using the exact same link-type dispatcher.
@@ -217,11 +254,14 @@ impl<'a> Hash for PacketFlow<'a> {
 }
 
 impl<'a> PacketFlow<'a> {
-    fn parse_application_from_transport(transport: &Transport<'a>) -> Option<Application> {
+    fn parse_application_from_transport(
+        transport: &Transport<'a>,
+        decode_as: &[(u16, DecodeAsProtocol)],
+    ) -> Option<Application> {
         // Toute la politique de classification L7 — gardes de transport,
         // gardes de port, priorites, memoisation des sondes — vit dans la
         // table declarative de `dispatch` (audit 8.1.0 §5.3).
-        dispatch::classify(transport)
+        dispatch::classify(transport, decode_as)
     }
 
     /// Converts this borrowed [`PacketFlow`] into an owned version.
@@ -298,18 +338,38 @@ impl<'a> PacketFlow<'a> {
     /// packet into `inner`. Otherwise, best-effort application detection.
     #[inline(always)]
     fn parse_l7_and_inner(
+        internet: Option<&Internet<'a>>,
         transport: Option<&Transport<'a>>,
         depth: u8,
+        decode_as: &[(u16, DecodeAsProtocol)],
     ) -> (Option<Application>, Option<Box<PacketFlow<'a>>>) {
+        // Tunnels au niveau IP d'abord (GRE, IP-in-IP) : leur detection ne
+        // depend pas de la couche transport — GRE n'en a pas, et elle ne
+        // doit pas reposer sur le Transport creux du fourre-tout L4.
+        if let Some(internet) = internet
+            && let Some((tunnel_name, inner_flow)) =
+                tunnel::detect_inner_l3(internet, depth, decode_as)
+        {
+            return (
+                Some(Application {
+                    application_protocol: tunnel_name,
+                }),
+                Some(Box::new(inner_flow)),
+            );
+        }
+
         match transport {
-            Some(transport) => match tunnel::detect_inner(transport, depth) {
+            Some(transport) => match tunnel::detect_inner(transport, depth, decode_as) {
                 Some((tunnel_name, inner_flow)) => (
                     Some(Application {
                         application_protocol: tunnel_name,
                     }),
                     Some(Box::new(inner_flow)),
                 ),
-                None => (Self::parse_application_from_transport(transport), None),
+                None => (
+                    Self::parse_application_from_transport(transport, decode_as),
+                    None,
+                ),
             },
             None => (None, None),
         }
@@ -345,10 +405,21 @@ impl<'a> PacketFlow<'a> {
         decoded: link::DecodedLink<'a>,
         depth: u8,
     ) -> Result<Self, ParsedPacketError> {
+        Self::parse_decoded_with(decoded, depth, &[])
+    }
+
+    /// Variante avec les ports declares par l'appelant (« Decode As »),
+    /// propages jusqu'au dispatch applicatif, y compris dans les tunnels.
+    pub(crate) fn parse_decoded_with(
+        decoded: link::DecodedLink<'a>,
+        depth: u8,
+        decode_as: &[(u16, DecodeAsProtocol)],
+    ) -> Result<Self, ParsedPacketError> {
         let (data_link, network_protocol, network_payload) = decoded.into_parts();
         let (internet, l3_corruption) = Self::parse_l3(network_protocol, network_payload);
         let (transport, l4_corruption) = Self::parse_l4(internet.as_ref());
-        let (application, inner) = Self::parse_l7_and_inner(transport.as_ref(), depth);
+        let (application, inner) =
+            Self::parse_l7_and_inner(internet.as_ref(), transport.as_ref(), depth, decode_as);
         let application = application.or_else(|| Self::detect_stp(&data_link));
 
         Ok(PacketFlow {
@@ -388,7 +459,8 @@ impl<'a> PacketFlow<'a> {
         // l7_ns includes tunnel detection and the recursive parsing of any
         // encapsulated packet.
         let t0 = now();
-        let (application, inner) = Self::parse_l7_and_inner(transport.as_ref(), depth);
+        let (application, inner) =
+            Self::parse_l7_and_inner(internet.as_ref(), transport.as_ref(), depth, &[]);
         let application = application.or_else(|| Self::detect_stp(&data_link));
         timing.l7_ns = elapsed_ns(t0);
 

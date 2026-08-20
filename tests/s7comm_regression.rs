@@ -627,14 +627,30 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     }
 
     // Coverage oracle: a green test must prove it actually walked the corpus.
-    assert_eq!(captures.len(), 59);
-    assert_eq!(opened_files, 58);
-    assert_eq!(frame_count, 2_893);
+    // 2026-08-20 (issue #57) : +3 captures EtherNet/IP dans
+    // protocols/ethernet_ip/ (enip_test.pcap 11 trames, cip-eth-set-2.pcap
+    // et cip_unlock_cpu.pcap 1 trame chacune), toutes Ethernet/IPv4/TCP et
+    // decodees sans erreur L2 : 59 -> 62 captures, 58 -> 61 fichiers lus,
+    // 2 893 -> 2 906 trames, 2 851 -> 2 864 flux.
+    // 2026-08-20 (issue #5) : +2 captures OpenVPN dans protocols/openvpn/
+    // (samples publics de la wiki Wireshark, session tls-auth sur UDP 1194 —
+    // OpenVPN_UDP_tls-auth.pcapng, 440 trames — et TCP 1194 —
+    // OpenVPN_TCP_tls-auth.pcapng, 438 trames), toutes Ethernet/IPv4 et
+    // decodees sans erreur L2 : 62 -> 64 captures, 61 -> 63 fichiers lus,
+    // 2 906 -> 3 784 trames, 2 864 -> 3 742 flux.
+    // 2026-08-20 (issue #58) : +1 capture GIOP dans protocols/giop/
+    // (corba.pcap, corpus de tests nDPI, 28 trames : session TCP loopback
+    // GIOP 1.2 + ZIOP, et datagrammes UDP MIOP), toutes Ethernet/IPv4 et
+    // decodees sans erreur L2 : 64 -> 65 captures, 63 -> 64 fichiers lus,
+    // 3 784 -> 3 812 trames, 3 742 -> 3 770 flux.
+    assert_eq!(captures.len(), 65);
+    assert_eq!(opened_files, 64);
+    assert_eq!(frame_count, 3_812);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 2_851);
+    assert_eq!(parsed_flows, 3_770);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

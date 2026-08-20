@@ -64,6 +64,10 @@ pub enum EtherNetIpCommandData<'a> {
 pub struct EtherNetIpCommonPacketFormat<'a> {
     pub interface_handle: u32,
     pub timeout: u16,
+    /// Decision alloc/emprunt (issue #63) : items zero-copy, preallocation
+    /// plafonnee par `bounded_capacity` (compteur declare croise avec les
+    /// octets restants). L'emprunt integral changerait ce champ public :
+    /// rupture portee par l'epic #76.
     pub items: Vec<EtherNetIpCpfItem<'a>>,
 }
 

@@ -76,19 +76,63 @@ fn application_classification_histogram_is_frozen() {
     //   sur du TCP (dont trois Encrypted Alerts TLS de dump.pcapng, 0x15 lu
     //   comme LI/VN/mode) — le corpus n'a aucune vraie capture NTP
     //   (protocols/ntp/ ne contient qu'un .gitkeep).
+    //
+    // 2026-08-20 (issue #57) : ajout de protocols/ethernet_ip/ (3 captures
+    // ITI/ICS-Security-Tools, 13 trames). Les 4 trames EtherNet/IP reelles
+    // (ListIdentity requete/reponse, SendRRData, SendUnitData) creent
+    // l'entree "EtherNet/IP" ; les 9 trames restantes d'enip_test.pcap sont
+    // du handshake/teardown TCP sans payload -> "(sans application)"
+    // 1233 -> 1242.
+    //
+    // 2026-08-20 (issue #5) : ajout de protocols/openvpn/ (2 samples publics
+    // de la wiki Wireshark, 878 trames, session tls-auth sur UDP puis TCP
+    // 1194). Le module openvpn n'etant pas encore cable dans le dispatch,
+    // aucune etiquette OpenVPN : les 766 trames portant un message OpenVPN
+    // sortent "Unknown" (439 datagrammes UDP + 327 segments TCP a payload,
+    // comptes par `tshark -Y openvpn` moins la trame ICMP ci-dessous) ;
+    // les 112 restantes n'ont pas de L7 (111 segments TCP purs
+    // handshake/ACK sans payload, plus la trame UDP 440 — un ICMP port
+    // unreachable qui embarque l'extrait du datagramme OpenVPN, que tshark
+    // compte "openvpn" mais que la crate classe ICMP). "(sans application)"
+    // 1242 -> 1354, "Unknown" 418 -> 1184. Au cablage du port 1194, ces 766
+    // "Unknown" deviendront l'entree "OpenVPN".
+    //
+    // 2026-08-20 (issue #58) : ajout de protocols/giop/corba.pcap (corpus de
+    // tests nDPI, 28 trames, verifie avec tshark 4.6.6). Les 3 messages GIOP
+    // qui tiennent dans leur segment TCP (trames 4, 6, 12 : Request "echo" et
+    // deux Reply) creent l'entree "GIOP" ; 9 trames TCP sans payload
+    // (handshake/ACK) vont en "(sans application)" ; les 16 restantes sortent
+    // "Unknown" (+16, 1184 -> 1200) : 10 datagrammes UDP MIOP (le dispatch ne
+    // sonde GIOP que sur TCP), 5 segments d'un Request/Reply GIOP deborde de
+    // son segment (s=4152/4017, tronque par la segmentation TCP) et 1 message
+    // ZIOP (GIOP compresse, magic "ZIOP", hors perimetre).
+    //
+    // Constate lors du meme gel (travaux concurrents deja presents dans
+    // l'arbre, hors issue #58) :
+    // - les 5 trames de protocols/ftp/ sortent desormais en flux aplatis
+    //   "IP-in-IP" (externe) + "FTP" (interne), soit +5 "FTP", +5 "IP-in-IP"
+    //   et -5 "(sans application)" (1354 + 9 - 5 = 1358) ;
+    // - le cablage OpenVPN (issue #5) est arrive : les 766 trames OpenVPN
+    //   annoncees ci-dessus quittent "Unknown" pour l'entree "OpenVPN"
+    //   (1184 + 16 - 766 = 434).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 1233),
+        (NO_APPLICATION, 1358),
         ("DHCP", 6),
         ("DHCPv6", 4),
         ("DNS", 104),
+        ("EtherNet/IP", 4),
+        ("FTP", 5),
+        ("GIOP", 3),
         ("HTTP", 62),
+        ("IP-in-IP", 5),
         ("MQTT", 38),
         ("ModbusTCP", 383),
         ("NNTP", 6),
+        ("OpenVPN", 766),
         ("SMTP", 6),
         ("TLS", 587),
-        ("Unknown", 418),
+        ("Unknown", 434),
         ("mDNS", 4),
     ]
     .into_iter()

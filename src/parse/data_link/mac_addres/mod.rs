@@ -64,6 +64,25 @@ pub const MAC_LEN: usize = 6;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MacAddress(pub [u8; MAC_LEN]);
 
+impl MacAddress {
+    /// Adresse de diffusion ff:ff:ff:ff:ff:ff (issue #9).
+    pub const fn is_broadcast(&self) -> bool {
+        matches!(self.0, [0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
+    }
+
+    /// Bit I/G du premier octet (IEEE 802) : adresse de groupe. La diffusion
+    /// est un cas particulier de multicast ; utiliser [`Self::is_broadcast`]
+    /// pour la distinguer.
+    pub const fn is_multicast(&self) -> bool {
+        self.0[0] & 0x01 != 0
+    }
+
+    /// Adresse individuelle (ni multicast ni diffusion).
+    pub const fn is_unicast(&self) -> bool {
+        !self.is_multicast()
+    }
+}
+
 /// Sérialisée sous forme de chaîne hexadécimale ("aa:bb:cc:dd:ee:ff"),
 /// comme les anciens champs `String` de `DataLink`.
 impl Serialize for MacAddress {
@@ -305,6 +324,31 @@ mod serde_tests {
             );
         }
         assert!(serde_json::from_str::<MacAddress>("[0,1,2,3,4,5]").is_err());
+    }
+
+    /// Issue #9 : classement L2 diffusion / multicast / unicast.
+    #[test]
+    fn broadcast_multicast_and_unicast_are_distinguished() {
+        let broadcast = MacAddress([0xff; 6]);
+        assert!(broadcast.is_broadcast());
+        assert!(broadcast.is_multicast(), "la diffusion est un multicast");
+        assert!(!broadcast.is_unicast());
+
+        // 01:00:5e = multicast IPv4, 33:33 = multicast IPv6, 01:80:c2 = STP.
+        for group in [
+            MacAddress([0x01, 0x00, 0x5e, 0x00, 0x00, 0xfb]),
+            MacAddress([0x33, 0x33, 0x00, 0x00, 0x00, 0x01]),
+            MacAddress([0x01, 0x80, 0xc2, 0x00, 0x00, 0x00]),
+        ] {
+            assert!(group.is_multicast());
+            assert!(!group.is_broadcast());
+            assert!(!group.is_unicast());
+        }
+
+        let unicast = MacAddress([0x00, 0x1a, 0x2b, 0x3c, 0x4d, 0x5e]);
+        assert!(unicast.is_unicast());
+        assert!(!unicast.is_multicast());
+        assert!(!unicast.is_broadcast());
     }
 
     #[test]

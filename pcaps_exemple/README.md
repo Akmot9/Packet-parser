@@ -38,7 +38,7 @@ réellement capturées sur un réseau.
 | `dns/` | #2 | requêtes/réponses DNS classiques (port 53) |
 | `mdns_llmnr_ssdp/` | #2 | ✅ mDNS (requete, QU, annonce et cache-flush) ; LLMNR/SSDP restent a ajouter — voir `SOURCE.md` |
 | `netbios/` | #8 | NBNS (137), Datagram (138), Session (139) |
-| `openvpn/` | #5 | handshake OpenVPN UDP et/ou TCP |
+| `openvpn/` | #5 | ✅ session `tls-auth` complète sur UDP 1194 **et** TCP 1194 (samples wiki Wireshark : hard resets v2, control, ack, data v1) — voir `SOURCE.md` |
 | `stp/` | #4 | BPDU STP, RSTP, MSTP |
 | `s7comm/` | #11 | trafic S7comm v2 **et** v3 pour les distinguer |
 | `umas/` | #10 | trafic UMAS (Schneider, sur Modbus/502) |
@@ -55,6 +55,8 @@ réellement capturées sur un réseau.
 | `ftp/` | — | ✅ commandes de controle FTP sur IPv6, extraites des samples Wireshark sans authentification — voir `SOURCE.md` |
 | `smtp/` | — | ✅ echange de controle SMTP, tronque avant authentification et corps du message — voir `SOURCE.md` |
 | `nntp/` | — | ✅ commandes/statut NNTP, sans corps d'article — voir `SOURCE.md` |
+| `ethernet_ip/` | #57 | ✅ ListIdentity, SendRRData et SendUnitData (CIP) réels — source ITI/ICS-Security-Tools (CC-BY-4.0), voir `SOURCE.md` |
+| `giop/` | #58 | ✅ GIOP 1.2 réel : Request/Reply big-endian sur TCP, Request little-endian sur UDP MIOP, plus un message ZIOP — source corpus nDPI (LGPL-3.0), voir `SOURCE.md` |
 
 ## Crédits
 

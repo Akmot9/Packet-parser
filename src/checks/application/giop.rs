@@ -87,20 +87,39 @@ pub fn validate_message_type(message_type: u8) -> Result<u8, GiopParseError> {
     Ok(message_type)
 }
 
-/// Extracts the message length (always big-endian in the header, whatever
-/// the body endianness flag says).
+/// Extracts the message size in the byte order announced by the header
+/// flags (bit 0 : 1 = little-endian).
+///
+/// GIOP 1.x (CORBA formal/04-03-12 §9.4.1) encode `message_size`, comme le
+/// reste du message, dans l'endianness declaree par l'octet de flags. Les
+/// messages little-endian existent sur le terrain : la capture
+/// `pcaps_exemple/protocols/giop/corba.pcap` (trame 19, omniORB/MIOP) porte
+/// `d8 00 00 00` = 216, qu'une lecture big-endian transformerait en 3,6 Go
+/// annonces et rejetterait en `TruncatedBody`.
 ///
 /// Expects the four length bytes of the header (offsets 8..12). The internal
 /// length guard is unreachable once [`ensure_min_len`] has passed; it only
 /// protects out-of-contract callers.
-pub fn extract_message_length(payload: &[u8]) -> Result<u32, GiopParseError> {
+pub fn extract_message_size(payload: &[u8], little_endian: bool) -> Result<u32, GiopParseError> {
     if payload.len() < 4 {
         return Err(GiopParseError::InvalidSize);
     }
 
-    Ok(u32::from_be_bytes([
-        payload[0], payload[1], payload[2], payload[3],
-    ]))
+    let bytes = [payload[0], payload[1], payload[2], payload[3]];
+    Ok(if little_endian {
+        u32::from_le_bytes(bytes)
+    } else {
+        u32::from_be_bytes(bytes)
+    })
+}
+
+/// Extracts the message length as big-endian.
+///
+/// Variante historique conservee pour compatibilite (elle etait publique) :
+/// elle n'est correcte que pour les messages big-endian. Preferer
+/// [`extract_message_size`] qui respecte le flag d'endianness du header.
+pub fn extract_message_length(payload: &[u8]) -> Result<u32, GiopParseError> {
+    extract_message_size(payload, false)
 }
 
 /// Validates that the buffer holds the full message announced by the header
@@ -247,6 +266,21 @@ mod tests {
         assert_eq!(extract_message_length(&[0xFF; 4]), Ok(u32::MAX));
         assert!(matches!(
             extract_message_length(&[0, 0]),
+            Err(GiopParseError::InvalidSize)
+        ));
+    }
+
+    #[test]
+    fn test_extract_message_size_respects_endianness() {
+        // Les octets de la trame 19 de corba.pcap : 216 en little-endian.
+        assert_eq!(extract_message_size(&[0xd8, 0, 0, 0], true), Ok(216));
+        assert_eq!(extract_message_size(&[0, 0, 0, 0xd8], false), Ok(216));
+        assert_eq!(
+            extract_message_size(&[0xd8, 0, 0, 0], false),
+            Ok(0xd800_0000)
+        );
+        assert!(matches!(
+            extract_message_size(&[0xd8, 0], true),
             Err(GiopParseError::InvalidSize)
         ));
     }

@@ -7,7 +7,7 @@ use std::convert::TryFrom;
 
 use crate::{
     checks::application::giop::{
-        GIOP_HEADER_LEN, ensure_available, ensure_min_len, extract_flags, extract_message_length,
+        GIOP_HEADER_LEN, ensure_available, ensure_min_len, extract_flags, extract_message_size,
         extract_version, parse_cdr_string, parse_magic, validate_message_type,
         validate_service_context_count, validate_target_discriminator, validate_total_length,
     },
@@ -88,8 +88,11 @@ impl TryFrom<&[u8]> for GiopHeader {
         let (major_version, minor_version) = extract_version(&payload[4..6])?;
         let flags = extract_flags(&payload[6])?;
         let message_type = GiopMessageType::try_from(payload[7])?;
-        // MessageSize est toujours en big-endian dans le header
-        let message_length = extract_message_length(&payload[8..12])?;
+        // MessageSize suit l'endianness annoncee par les flags (bit 0),
+        // comme le reste du message — verifie sur la trame 19 little-endian
+        // de pcaps_exemple/protocols/giop/corba.pcap (issue #58).
+        let message_length =
+            extract_message_size(&payload[8..12], flags & GIOP_FLAG_LITTLE_ENDIAN != 0)?;
 
         Ok(GiopHeader {
             magic,
@@ -234,6 +237,12 @@ fn dispatch_body<'a>(header: &GiopHeader, body: &'a [u8]) -> GiopMessage<'a> {
 // =========================
 //
 
+/// Curseur CDR : les primitives sont alignees sur leur taille naturelle
+/// (CORBA formal/04-03-12 §9.1.1), comptee depuis le debut du body. Le body
+/// GIOP commence a l'offset 12 du message (multiple de 4), donc compter
+/// depuis le body est equivalent pour les alignements 2 et 4 utilises ici.
+/// Les tests sur trames reelles (tests/giop_golden.rs, corba.pcap) verrouillent
+/// ces paddings : sans eux, aucun Request 1.2 reel ne se decode.
 struct Cursor<'a> {
     buf: &'a [u8],
     pos: usize,
@@ -253,6 +262,16 @@ impl<'a> Cursor<'a> {
         self.buf.len().saturating_sub(self.pos)
     }
 
+    /// Avance jusqu'au prochain multiple de `boundary` (padding CDR). Le
+    /// padding n'existe que devant une donnee : appele uniquement depuis les
+    /// read_* concernes, jamais en fin de flux.
+    fn align(&mut self, boundary: usize) {
+        let rem = self.pos % boundary;
+        if rem != 0 {
+            self.pos += boundary - rem;
+        }
+    }
+
     fn read_u8(&mut self) -> Result<u8, GiopParseError> {
         ensure_available(self.remaining(), 1)?;
         let v = self.buf[self.pos];
@@ -260,7 +279,20 @@ impl<'a> Cursor<'a> {
         Ok(v)
     }
 
+    fn read_u16(&mut self) -> Result<u16, GiopParseError> {
+        self.align(2);
+        ensure_available(self.remaining(), 2)?;
+        let bytes = [self.buf[self.pos], self.buf[self.pos + 1]];
+        self.pos += 2;
+        Ok(if self.little_endian {
+            u16::from_le_bytes(bytes)
+        } else {
+            u16::from_be_bytes(bytes)
+        })
+    }
+
     fn read_u32(&mut self) -> Result<u32, GiopParseError> {
+        self.align(4);
         ensure_available(self.remaining(), 4)?;
         let bytes = [
             self.buf[self.pos],
@@ -376,19 +408,63 @@ impl<'a> GiopRequest<'a> {
 }
 
 fn parse_target_address<'a>(cur: &mut Cursor<'a>) -> Result<TargetAddress<'a>, GiopParseError> {
-    let discriminator = cur.read_u8()?;
+    // TargetAddress est une union discriminee par un short CDR (2 octets,
+    // dans l'endianness du message), pas un octet : verifie sur les trames
+    // reelles de corba.pcap (trame 4 : 00 00 = KeyAddr ; trame 19 : 01 00
+    // little-endian = ProfileAddr). Les valeurs valides tiennent sur un
+    // octet ; une valeur hors plage sature a 255 pour le rapport d'erreur.
+    let discriminator = cur.read_u16()?;
+    // La variante d'erreur publique porte un u8 (enum exhaustif, fige par
+    // #76) : toute valeur au-dela de 255 — de toute facon invalide — est
+    // rapportee saturee a 255.
+    let discriminator = u8::try_from(discriminator).unwrap_or(u8::MAX);
     validate_target_discriminator(discriminator)?;
 
-    let len = cur.read_u32()? as usize;
-    let data = cur.read_bytes(len)?;
-
     Ok(match discriminator {
-        // KeyAddr: sequence<octet>
-        0 => TargetAddress::KeyAddr(data),
-        // ProfileAddr : brut pour l'instant
-        1 => TargetAddress::ProfileAddr(data),
-        // ReferenceAddr : brut pour l'instant
-        _ => TargetAddress::ReferenceAddr(data),
+        // KeyAddr : sequence<octet>
+        0 => {
+            let len = cur.read_u32()? as usize;
+            TargetAddress::KeyAddr(cur.read_bytes(len)?)
+        }
+        // ProfileAddr : IOP::TaggedProfile = tag (ulong) + profile_data
+        // (sequence<octet>). Le tag (TAG_UIPMC = 3 sur la trame 19 de
+        // corba.pcap) n'est pas conserve dans la structure : la variante
+        // porte profile_data brut (epic #76 pour l'exposer).
+        1 => {
+            let _tag = cur.read_u32()?;
+            let len = cur.read_u32()? as usize;
+            TargetAddress::ProfileAddr(cur.read_bytes(len)?)
+        }
+        // ReferenceAddr : IORAddressingInfo = selected_profile_index (ulong,
+        // un INDEX, pas une longueur) puis un IOR complet — type_id (string
+        // CDR) et sequence<TaggedProfile>. La structure est marchee pour la
+        // delimiter ; la variante porte le span brut (decoupage expose par
+        // l'epic #76). Lire l'index comme une longueur decalait le curseur
+        // en plein IOR et corrompait operation et service contexts.
+        _ => {
+            // Aligne d'abord : le span rendu commence a l'ulong, pas au
+            // padding CDR qui le precede.
+            cur.align(4);
+            let start = cur.pos;
+            let _selected_profile_index = cur.read_u32()?;
+            let type_id_len = cur.read_u32()? as usize;
+            let _ = cur.read_bytes(type_id_len)?;
+            let profile_count = cur.read_u32()? as usize;
+            // Chaque TaggedProfile pese au moins 8 octets (tag + longueur) :
+            // borne le compteur avant toute boucle.
+            ensure_available(
+                cur.remaining(),
+                profile_count
+                    .checked_mul(8)
+                    .ok_or(GiopParseError::UnexpectedEof)?,
+            )?;
+            for _ in 0..profile_count {
+                let _tag = cur.read_u32()?;
+                let profile_len = cur.read_u32()? as usize;
+                let _ = cur.read_bytes(profile_len)?;
+            }
+            TargetAddress::ReferenceAddr(&cur.buf[start..cur.pos])
+        }
     })
 }
 
@@ -538,17 +614,23 @@ mod tests {
     }
 
     /// Body CDR d'un Request big-endian : target KeyAddr, opération "op",
-    /// un service context, puis stub data.
+    /// un service context, puis stub data. Layout CDR-correct : le
+    /// discriminant de TargetAddress est un short (2 octets) et chaque ulong
+    /// est aligné sur 4 octets (padding), comme sur les trames réelles de
+    /// `pcaps_exemple/protocols/giop/corba.pcap`.
     fn build_request_body_be() -> Vec<u8> {
         let mut body = Vec::new();
         body.extend_from_slice(&7u32.to_be_bytes()); // request_id
         body.push(3); // response_flags
         body.extend_from_slice(&[0, 0, 0]); // reserved
-        body.push(0); // discriminator KeyAddr
+        body.extend_from_slice(&0u16.to_be_bytes()); // discriminant short KeyAddr
+        body.extend_from_slice(&[0, 0]); // padding : ulong aligné sur 4
         body.extend_from_slice(&3u32.to_be_bytes()); // key len
         body.extend_from_slice(b"key");
+        body.push(0); // padding
         body.extend_from_slice(&3u32.to_be_bytes()); // operation len ("op" + NUL)
         body.extend_from_slice(b"op\0");
+        body.push(0); // padding
         body.extend_from_slice(&1u32.to_be_bytes()); // 1 service context
         body.extend_from_slice(&17u32.to_be_bytes()); // context_id
         body.extend_from_slice(&2u32.to_be_bytes()); // context len
@@ -581,16 +663,23 @@ mod tests {
         body.extend_from_slice(&42u32.to_le_bytes()); // request_id
         body.push(0); // response_flags
         body.extend_from_slice(&[0, 0, 0]); // reserved
-        body.push(1); // discriminator ProfileAddr
-        body.extend_from_slice(&2u32.to_le_bytes());
+        body.extend_from_slice(&1u16.to_le_bytes()); // discriminant ProfileAddr
+        body.extend_from_slice(&[0, 0]); // padding
+        body.extend_from_slice(&3u32.to_le_bytes()); // TaggedProfile : tag (TAG_UIPMC)
+        body.extend_from_slice(&2u32.to_le_bytes()); // profile_data len
         body.extend_from_slice(&[0x10, 0x20]);
+        body.extend_from_slice(&[0, 0]); // padding
         body.extend_from_slice(&5u32.to_le_bytes()); // operation "ping" + NUL
         body.extend_from_slice(b"ping\0");
+        body.extend_from_slice(&[0, 0, 0]); // padding
         body.extend_from_slice(&0u32.to_le_bytes()); // 0 service context
 
         let request = GiopRequest::parse(&body, true).expect("request LE valide");
         assert_eq!(request.request_id, 42);
-        assert!(matches!(request.target, TargetAddress::ProfileAddr(_)));
+        match request.target {
+            TargetAddress::ProfileAddr(data) => assert_eq!(data, &[0x10, 0x20]),
+            other => panic!("attendu ProfileAddr, obtenu {other:?}"),
+        }
         assert_eq!(request.operation, "ping");
         assert!(request.service_contexts.is_empty());
         assert!(request.stub_data.is_empty());
@@ -602,11 +691,17 @@ mod tests {
         body.extend_from_slice(&1u32.to_be_bytes());
         body.push(0);
         body.extend_from_slice(&[0, 0, 0]);
-        body.push(2); // discriminator ReferenceAddr
-        body.extend_from_slice(&1u32.to_be_bytes());
-        body.push(0xFF);
+        body.extend_from_slice(&2u16.to_be_bytes()); // discriminant ReferenceAddr
+        body.extend_from_slice(&[0, 0]); // padding
+        // IORAddressingInfo : index, type_id (string d'un NUL), 0 profil.
+        body.extend_from_slice(&1u32.to_be_bytes()); // selected_profile_index
+        body.extend_from_slice(&1u32.to_be_bytes()); // longueur type_id
+        body.push(0); // type_id = ""
+        body.extend_from_slice(&[0, 0, 0]); // padding
+        body.extend_from_slice(&0u32.to_be_bytes()); // 0 TaggedProfile
         body.extend_from_slice(&1u32.to_be_bytes()); // operation : chaîne vide NUL
         body.push(0);
+        body.extend_from_slice(&[0, 0, 0]); // padding
         body.extend_from_slice(&0u32.to_be_bytes());
 
         let request = GiopRequest::parse(&body, false).expect("request valide");
@@ -620,7 +715,7 @@ mod tests {
         body.extend_from_slice(&1u32.to_be_bytes());
         body.push(0);
         body.extend_from_slice(&[0, 0, 0]);
-        body.push(9); // discriminator inconnu
+        body.extend_from_slice(&9u16.to_be_bytes()); // discriminant inconnu
 
         assert!(matches!(
             GiopRequest::parse(&body, false),
@@ -634,7 +729,8 @@ mod tests {
         body.extend_from_slice(&1u32.to_be_bytes());
         body.push(0);
         body.extend_from_slice(&[0, 0, 0]);
-        body.push(0); // KeyAddr
+        body.extend_from_slice(&0u16.to_be_bytes()); // KeyAddr
+        body.extend_from_slice(&[0, 0]); // padding
         body.extend_from_slice(&0u32.to_be_bytes()); // key vide
         body.extend_from_slice(&2u32.to_be_bytes()); // operation : 2 octets invalides
         body.extend_from_slice(&[0xFF, 0xFE]);
@@ -657,7 +753,8 @@ mod tests {
         body.extend_from_slice(&1u32.to_be_bytes());
         body.push(0);
         body.extend_from_slice(&[0, 0, 0]);
-        body.push(0); // KeyAddr
+        body.extend_from_slice(&0u16.to_be_bytes()); // KeyAddr
+        body.extend_from_slice(&[0, 0]); // padding
         body.extend_from_slice(&100u32.to_be_bytes()); // len 100 mais rien derrière
 
         assert!(matches!(
@@ -674,10 +771,12 @@ mod tests {
         body.extend_from_slice(&1u32.to_be_bytes()); // request_id
         body.push(0); // response_flags
         body.extend_from_slice(&[0, 0, 0]); // reserved
-        body.push(0); // KeyAddr
+        body.extend_from_slice(&0u16.to_be_bytes()); // KeyAddr
+        body.extend_from_slice(&[0, 0]); // padding
         body.extend_from_slice(&0u32.to_be_bytes()); // key vide
         body.extend_from_slice(&1u32.to_be_bytes()); // operation vide NUL
         body.push(0);
+        body.extend_from_slice(&[0, 0, 0]); // padding
         body.extend_from_slice(&0xFFFF_FFFFu32.to_be_bytes()); // compte forgé
 
         assert!(matches!(
@@ -696,10 +795,12 @@ mod tests {
         body.extend_from_slice(&1u32.to_be_bytes()); // request_id
         body.push(0); // response_flags
         body.extend_from_slice(&[0, 0, 0]); // reserved
-        body.push(0); // KeyAddr
+        body.extend_from_slice(&0u16.to_be_bytes()); // KeyAddr
+        body.extend_from_slice(&[0, 0]); // padding
         body.extend_from_slice(&0u32.to_be_bytes()); // key vide
         body.extend_from_slice(&1u32.to_be_bytes()); // operation vide NUL
         body.push(0);
+        body.extend_from_slice(&[0, 0, 0]); // padding
         body.extend_from_slice(&1u32.to_be_bytes()); // 1 service context
         body.extend_from_slice(&17u32.to_be_bytes()); // context_id
         body.extend_from_slice(&8u32.to_be_bytes()); // context len 8 mais 1 octet présent
@@ -738,30 +839,41 @@ mod tests {
     // par l'issue #58.
     //
 
-    /// Header GIOP parametrable en version mineure et flags.
+    /// Header GIOP parametrable en version mineure et flags. Comme sur le
+    /// wire, message_size est ecrit dans l'endianness annoncee par le bit 0
+    /// des flags.
     fn build_giop_header_v(minor: u8, flags: u8, msg_type: u8, message_length: u32) -> Vec<u8> {
         let mut bytes = b"GIOP".to_vec();
         bytes.extend_from_slice(&[1, minor]);
         bytes.push(flags);
         bytes.push(msg_type);
-        bytes.extend_from_slice(&message_length.to_be_bytes());
+        if flags & 0x01 != 0 {
+            bytes.extend_from_slice(&message_length.to_le_bytes());
+        } else {
+            bytes.extend_from_slice(&message_length.to_be_bytes());
+        }
         bytes
     }
 
     /// Body d'un Request au layout 1.0 big-endian : un service context en
-    /// tete, object_key, operation, principal puis stub data.
+    /// tete, object_key, operation, principal puis stub data. Paddings CDR
+    /// devant chaque ulong non aligne.
     fn build_request_body_1_0_be() -> Vec<u8> {
         let mut body = Vec::new();
         body.extend_from_slice(&1u32.to_be_bytes()); // 1 service context
         body.extend_from_slice(&17u32.to_be_bytes()); // context_id
         body.extend_from_slice(&2u32.to_be_bytes()); // context len
         body.extend_from_slice(&[0xAA, 0xBB]);
+        body.extend_from_slice(&[0, 0]); // padding
         body.extend_from_slice(&7u32.to_be_bytes()); // request_id
         body.push(1); // response_expected
+        body.extend_from_slice(&[0, 0, 0]); // padding
         body.extend_from_slice(&3u32.to_be_bytes()); // object_key len
         body.extend_from_slice(b"key");
+        body.push(0); // padding
         body.extend_from_slice(&3u32.to_be_bytes()); // operation "op" + NUL
         body.extend_from_slice(b"op\0");
+        body.push(0); // padding
         body.extend_from_slice(&2u32.to_be_bytes()); // principal len
         body.extend_from_slice(&[0x01, 0x02]);
         body.extend_from_slice(&[0xCA, 0xFE]); // stub data
@@ -797,10 +909,13 @@ mod tests {
         body.extend_from_slice(&0u32.to_le_bytes()); // 0 service context
         body.extend_from_slice(&42u32.to_le_bytes()); // request_id
         body.push(0); // response_expected
+        body.extend_from_slice(&[0, 0, 0]); // padding
         body.extend_from_slice(&3u32.to_le_bytes()); // object_key len
         body.extend_from_slice(b"key");
+        body.push(0); // padding
         body.extend_from_slice(&5u32.to_le_bytes()); // operation "ping" + NUL
         body.extend_from_slice(b"ping\0");
+        body.extend_from_slice(&[0, 0, 0]); // padding
         body.extend_from_slice(&0u32.to_le_bytes()); // principal vide
 
         // Flags bit 0 = 1 : body little-endian
@@ -829,8 +944,10 @@ mod tests {
         body.extend_from_slice(&[0, 0, 0]); // reserved 1.1
         body.extend_from_slice(&1u32.to_be_bytes()); // object_key len
         body.push(0x2A);
+        body.extend_from_slice(&[0, 0, 0]); // padding
         body.extend_from_slice(&3u32.to_be_bytes()); // operation "op" + NUL
         body.extend_from_slice(b"op\0");
+        body.push(0); // padding
         body.extend_from_slice(&0u32.to_be_bytes()); // principal vide
 
         let mut bytes = build_giop_header_v(1, 0, 0, body.len() as u32);
@@ -895,5 +1012,34 @@ mod tests {
             GiopMessageType::CancelRequest
         ));
         assert!(matches!(packet.payload, GiopMessage::Other));
+    }
+
+    /// Synthetique (aucune trame ReferenceAddr dans corba.pcap) :
+    /// IORAddressingInfo = index (ulong) + IOR (type_id + profils). L'index
+    /// n'est pas une longueur — regression de la revue 10.4.0.
+    #[test]
+    fn reference_addr_walks_the_ior_instead_of_reading_the_index_as_a_length() {
+        // Body CDR big-endian : disc 2, index 1, type_id "IDL:x\0" (6),
+        // 1 profil (tag 0, 4 octets), puis operation "op\0" et 0 contexts.
+        let mut body = Vec::new();
+        body.extend_from_slice(&2u16.to_be_bytes()); // discriminant
+        body.extend_from_slice(&[0, 0]); // padding CDR vers l'ulong
+        body.extend_from_slice(&1u32.to_be_bytes()); // selected_profile_index
+        body.extend_from_slice(&6u32.to_be_bytes());
+        body.extend_from_slice(b"IDL:x\0");
+        body.extend_from_slice(&[0, 0]); // padding vers le compteur
+        body.extend_from_slice(&1u32.to_be_bytes()); // 1 profil
+        body.extend_from_slice(&0u32.to_be_bytes()); // tag
+        body.extend_from_slice(&4u32.to_be_bytes());
+        body.extend_from_slice(&[0xaa, 0xbb, 0xcc, 0xdd]);
+
+        let mut cur = Cursor::new(&body, false);
+        let target = parse_target_address(&mut cur).expect("ReferenceAddr walks the IOR");
+        let TargetAddress::ReferenceAddr(span) = target else {
+            panic!("discriminant 2 must yield ReferenceAddr");
+        };
+        // Le span couvre tout l'IORAddressingInfo, curseur en fin de body.
+        assert_eq!(span.len(), body.len() - 4);
+        assert_eq!(cur.remaining(), 0);
     }
 }

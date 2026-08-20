@@ -19,6 +19,7 @@ pub mod netbios;
 pub mod nntp;
 pub mod ntp;
 pub mod opcua;
+pub mod openvpn;
 pub mod postgresql;
 pub mod quic;
 pub mod s7comm;
