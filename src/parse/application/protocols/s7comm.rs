@@ -9,6 +9,13 @@
 //! which is a communication protocol used by Siemens S7 PLCs. The implementation
 //! supports parsing of TPKT, COTP, and S7 protocol layers.
 //!
+//! Two distinct Siemens protocols share the TPKT/COTP framing on TCP/102:
+//! the historical S7Comm (protocol id 0x32, S7-300/400), fully parsed here,
+//! and S7CommPlus (protocol id 0x72, S7-1200/1500), which this parser only
+//! recognizes through [`S7CommPacket::detect_protocol_version`] and
+//! [`S7ProtocolVersion`] so that an 0x72 payload is identifiable instead of
+//! being mistaken for a corrupt S7Comm PDU.
+//!
 //! # Example
 //! ```
 //! use packet_parser::parse::application::protocols::s7comm::S7CommPacket;
@@ -34,9 +41,10 @@ use serde::Serialize;
 use crate::{
     checks::application::s7comm::{
         checked_offset, extract_cotp_header, extract_parameter_item, extract_parameter_item_count,
-        extract_s7_header, extract_tpkt_header, s7_header_length, validate_data_length,
-        validate_min_size, validate_parameter_data_not_empty, validate_parameter_item_padding,
-        validate_parameter_items_consumed, validate_parameter_length, validate_section_lengths,
+        extract_s7_header, extract_s7_protocol_version, extract_tpkt_header, s7_header_length,
+        validate_data_length, validate_min_size, validate_parameter_data_not_empty,
+        validate_parameter_item_padding, validate_parameter_items_consumed,
+        validate_parameter_length, validate_section_lengths,
     },
     errors::application::s7comm::S7CommParseError,
     parse::application::protocols::bounded_capacity,
@@ -221,6 +229,53 @@ pub struct S7ParameterItem<'a> {
     pub raw: Option<&'a [u8]>,
 }
 
+/// Version du protocole S7 identifiee par l'octet protocol id qui suit
+/// l'en-tete COTP.
+///
+/// S7Comm (0x32, S7-300/400) et S7CommPlus (0x72, S7-1200/1500, parfois
+/// appele "v3") sont deux protocoles distincts partageant le meme
+/// encapsulage TPKT/COTP sur TCP/102. Ce parseur decode uniquement S7Comm ;
+/// S7CommPlus est seulement reconnu, via
+/// [`S7CommPacket::detect_protocol_version`], pour ne pas etre confondu
+/// avec un payload invalide.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub enum S7ProtocolVersion {
+    /// Protocole S7 historique, protocol id 0x32.
+    S7Comm,
+
+    /// S7CommPlus, protocol id 0x72. Non decode par ce parseur.
+    S7CommPlus,
+}
+
+impl S7ProtocolVersion {
+    /// Associe un octet protocol id a une version S7 connue.
+    pub const fn from_protocol_id(protocol_id: u8) -> Option<Self> {
+        match protocol_id {
+            0x32 => Some(Self::S7Comm),
+            0x72 => Some(Self::S7CommPlus),
+            _ => None,
+        }
+    }
+
+    /// Octet protocol id transporte sur le fil pour cette version.
+    pub const fn protocol_id(self) -> u8 {
+        match self {
+            Self::S7Comm => 0x32,
+            Self::S7CommPlus => 0x72,
+        }
+    }
+}
+
+impl fmt::Display for S7ProtocolVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::S7Comm => write!(f, "S7Comm"),
+            Self::S7CommPlus => write!(f, "S7CommPlus"),
+        }
+    }
+}
+
 impl<'a> S7CommPacket<'a> {
     /// Minimum required size for an S7Comm packet (TPKT + COTP + S7 Header)
     pub const MIN_SIZE: usize = 4 + 3 + 10;
@@ -228,6 +283,40 @@ impl<'a> S7CommPacket<'a> {
     /// Deprecated misspelled alias for [`S7CommPacket::MIN_SIZE`].
     #[deprecated(note = "use S7CommPacket::MIN_SIZE")]
     pub const MIN_SIZES: usize = Self::MIN_SIZE;
+
+    /// Version du protocole S7 de ce paquet.
+    ///
+    /// `parse` ne construit un paquet qu'apres validation du protocol id
+    /// 0x32 : un `S7CommPacket` est donc toujours du S7Comm historique.
+    pub const fn protocol_version(&self) -> S7ProtocolVersion {
+        S7ProtocolVersion::S7Comm
+    }
+
+    /// Identifie la version S7 d'un payload TCP sans le decoder.
+    ///
+    /// Valide l'encapsulage TPKT + COTP DT puis lit l'octet protocol id.
+    /// Retourne `Some(S7CommPlus)` pour un payload 0x72, que `try_from`
+    /// rejette avec `InvalidS7ProtocolId` faute de decodeur dedie.
+    ///
+    /// # Example
+    /// ```
+    /// use packet_parser::parse::application::protocols::s7comm::{
+    ///     S7CommPacket, S7ProtocolVersion,
+    /// };
+    ///
+    /// // En-tete S7CommPlus synthetique (protocol id 0x72).
+    /// let s7commplus = [
+    ///     0x03, 0x00, 0x00, 0x0b, 0x02, 0xf0, 0x80, 0x72, 0x01, 0x00, 0x00,
+    /// ];
+    /// assert_eq!(
+    ///     S7CommPacket::detect_protocol_version(&s7commplus),
+    ///     Some(S7ProtocolVersion::S7CommPlus)
+    /// );
+    /// assert!(S7CommPacket::try_from(&s7commplus[..]).is_err());
+    /// ```
+    pub fn detect_protocol_version(payload: &[u8]) -> Option<S7ProtocolVersion> {
+        extract_s7_protocol_version(payload).ok()
+    }
 
     /// Attempts to parse a byte slice into an `S7CommPacket`.
     ///
@@ -407,6 +496,70 @@ impl<'a> fmt::Display for S7CommPacket<'a> {
 mod tests {
     use super::*;
     use hex;
+
+    #[test]
+    fn test_protocol_version_mapping_roundtrip() {
+        assert_eq!(
+            S7ProtocolVersion::from_protocol_id(0x32),
+            Some(S7ProtocolVersion::S7Comm)
+        );
+        assert_eq!(
+            S7ProtocolVersion::from_protocol_id(0x72),
+            Some(S7ProtocolVersion::S7CommPlus)
+        );
+        assert_eq!(S7ProtocolVersion::from_protocol_id(0x33), None);
+        assert_eq!(S7ProtocolVersion::S7Comm.protocol_id(), 0x32);
+        assert_eq!(S7ProtocolVersion::S7CommPlus.protocol_id(), 0x72);
+        assert_eq!(S7ProtocolVersion::S7Comm.to_string(), "S7Comm");
+        assert_eq!(S7ProtocolVersion::S7CommPlus.to_string(), "S7CommPlus");
+    }
+
+    #[test]
+    fn test_parsed_packet_exposes_its_protocol_version() {
+        let hex_str = "0300001f02f080320100000013000e00000401120a10020001000083000000";
+        let bytes = hex::decode(hex_str).expect("Failed to decode hex string");
+        let packet = S7CommPacket::try_from(&bytes[..]).expect("valid Read Var frame");
+
+        assert_eq!(packet.protocol_version(), S7ProtocolVersion::S7Comm);
+        assert_eq!(
+            S7ProtocolVersion::from_protocol_id(packet.s7_header.protocol_id),
+            Some(packet.protocol_version())
+        );
+        assert_eq!(
+            S7CommPacket::detect_protocol_version(&bytes),
+            Some(S7ProtocolVersion::S7Comm)
+        );
+    }
+
+    /// Aucune trame S7CommPlus (protocol id 0x72) dans le corpus du depot
+    /// (tshark -Y s7comm-plus rend zero trame sur pcaps_exemple, capture
+    /// 4SICS incluse) : pas de golden possible, trame synthetique modelee
+    /// sur un Connect S7CommPlus.
+    #[test]
+    fn test_s7commplus_payload_is_identified_not_silently_invalid() {
+        // 17 octets (>= MIN_SIZE) pour que le rejet vienne bien du
+        // protocol id et non d'une taille insuffisante.
+        let bytes =
+            hex::decode("0300001102f08072010006deadbeefcafe").expect("synthetic S7CommPlus");
+
+        // try_from continue de rejeter le paquet, sans decodeur dedie...
+        assert_eq!(
+            S7CommPacket::try_from(bytes.as_slice()).unwrap_err(),
+            S7CommParseError::InvalidS7ProtocolId { protocol_id: 0x72 }
+        );
+
+        // ... mais la detection identifie le protocole au lieu de le
+        // confondre avec un S7Comm 0x32 corrompu.
+        assert_eq!(
+            S7CommPacket::detect_protocol_version(&bytes),
+            Some(S7ProtocolVersion::S7CommPlus)
+        );
+
+        // Un payload qui n'est ni 0x32 ni 0x72 reste non identifie.
+        let mut unknown = bytes.clone();
+        unknown[7] = 0x42;
+        assert_eq!(S7CommPacket::detect_protocol_version(&unknown), None);
+    }
 
     #[test]
     fn test_s7comm_try_from() {

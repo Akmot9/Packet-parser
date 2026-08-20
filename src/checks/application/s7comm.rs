@@ -5,7 +5,9 @@
 
 use crate::{
     errors::application::s7comm::S7CommParseError,
-    parse::application::protocols::s7comm::{CotpHeader, S7Header, S7ParameterItem, TpktHeader},
+    parse::application::protocols::s7comm::{
+        CotpHeader, S7Header, S7ParameterItem, S7ProtocolVersion, TpktHeader,
+    },
 };
 
 /// Length of the fixed TPKT header (RFC 1006).
@@ -331,6 +333,36 @@ pub fn extract_cotp_header(packet: &[u8]) -> Result<CotpHeader, S7CommParseError
         source_reference: 0,
         last_data_unit,
     })
+}
+
+/// Checks the TPKT + COTP DT framing and returns the S7 protocol version
+/// announced by the protocol id byte, without decoding the S7 PDU itself.
+///
+/// S7Comm (0x32) et S7CommPlus (0x72) partagent le meme encapsulage
+/// TPKT/COTP : cette extraction permet d'identifier un payload S7CommPlus
+/// au lieu de le confondre avec un S7Comm invalide. Tout autre protocol id
+/// est rejete avec `InvalidS7ProtocolId`.
+pub fn extract_s7_protocol_version(packet: &[u8]) -> Result<S7ProtocolVersion, S7CommParseError> {
+    let tpkt = extract_tpkt_header(packet)?;
+    let cotp = extract_cotp_header(packet)?;
+
+    // Offset du protocol id : TPKT (4) + indicateur de longueur COTP (1)
+    // + en-tete COTP (2). Le premier TPKT doit contenir cet octet.
+    let s7_start = checked_offset(TPKT_HEADER_LENGTH, usize::from(cotp.length) + 1, "S7 start")?;
+    validate_min_size(usize::from(tpkt.length), s7_start + 1)?;
+
+    let protocol_id = packet[s7_start];
+    S7ProtocolVersion::from_protocol_id(protocol_id)
+        .ok_or(S7CommParseError::InvalidS7ProtocolId { protocol_id })
+}
+
+/// Returns `true` when the payload carries an S7CommPlus PDU (protocol id
+/// 0x72) behind a valid TPKT + COTP DT framing.
+pub fn is_s7commplus_payload(packet: &[u8]) -> bool {
+    matches!(
+        extract_s7_protocol_version(packet),
+        Ok(S7ProtocolVersion::S7CommPlus)
+    )
 }
 
 /// Checks the S7 header bytes starting at `s7_start` and returns the typed
@@ -854,6 +886,57 @@ mod tests {
             S7CommParseError::S7HeaderTooShort {
                 expected: 17,
                 actual: 12,
+            }
+        );
+    }
+
+    /// En-tete S7CommPlus synthetique : TPKT + COTP DT puis protocol id
+    /// 0x72, pdu type 0x01 (Connect), longueur de donnees et 4 octets.
+    /// Le corpus du depot ne contient aucune trame 0x72 (verifie avec
+    /// tshark -Y s7comm-plus sur pcaps_exemple, 4SICS inclus), d'ou une
+    /// trame synthetique plutot qu'un golden.
+    const S7COMMPLUS_CONNECT: &str = "0300001102f08072010006deadbeefcafe";
+
+    #[test]
+    fn test_extract_s7_protocol_version_identifies_both_protocols() {
+        let s7comm = hex::decode(READ_VAR_REQUEST).expect("valid hex");
+        assert_eq!(
+            extract_s7_protocol_version(&s7comm).unwrap(),
+            S7ProtocolVersion::S7Comm
+        );
+        assert!(!is_s7commplus_payload(&s7comm));
+
+        let s7commplus = hex::decode(S7COMMPLUS_CONNECT).expect("valid hex");
+        assert_eq!(
+            extract_s7_protocol_version(&s7commplus).unwrap(),
+            S7ProtocolVersion::S7CommPlus
+        );
+        assert!(is_s7commplus_payload(&s7commplus));
+    }
+
+    #[test]
+    fn test_extract_s7_protocol_version_rejects_unknown_id_and_bad_framing() {
+        let mut bytes = hex::decode(READ_VAR_REQUEST).expect("valid hex");
+        bytes[7] = 0x33;
+        assert_eq!(
+            extract_s7_protocol_version(&bytes).unwrap_err(),
+            S7CommParseError::InvalidS7ProtocolId { protocol_id: 0x33 }
+        );
+        assert!(!is_s7commplus_payload(&bytes));
+
+        // Encapsulage non TPKT : la detection ne lit pas d'octet au hasard.
+        assert_eq!(
+            extract_s7_protocol_version(&[0x72; 16]).unwrap_err(),
+            S7CommParseError::InvalidTpktVersion { version: 0x72 }
+        );
+
+        // TPKT minimal (7 octets) : le protocol id n'existe pas encore.
+        let too_short = hex::decode("0300000702f080").expect("valid hex");
+        assert_eq!(
+            extract_s7_protocol_version(&too_short).unwrap_err(),
+            S7CommParseError::PacketTooShort {
+                expected: 8,
+                actual: 7,
             }
         );
     }
