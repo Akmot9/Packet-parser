@@ -6,6 +6,16 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [10.4.0] - 2026-08-20
+
+Version mineure, strictement additive : cinq nouveaux protocoles decodes
+depuis des trames reelles (LLMNR, SSDP, NetBIOS, STP, OpenVPN), les tunnels
+GRE et IP-in-IP peles recursivement, l'API « Decode As » cote appelant, la
+reconnaissance S7CommPlus, les captures reelles EtherNet/IP et GIOP avec
+leurs golden tests, et deux corrections de validation revelees par les
+trames reelles (DNSSEC AD/CD, CDR GIOP). Les dix findings de la revue de
+code multi-angles ont ete corriges avant publication.
+
 ### Ajoute
 
 - **Tunnels GRE et IP-in-IP** (issue #15, partiel) : GRE v0 (RFC 2784/2890,

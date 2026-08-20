@@ -20,7 +20,7 @@ decodees et laisse les couches suivantes a `None` quand c'est necessaire.
 
 ```toml
 [dependencies]
-packet_parser = "10.3.0"
+packet_parser = "10.4.0"
 ```
 
 Pour reproduire les exemples qui decodent de l'hexadecimal:
@@ -28,7 +28,7 @@ Pour reproduire les exemples qui decodent de l'hexadecimal:
 ```toml
 [dependencies]
 hex = "0.4"
-packet_parser = "10.3.0"
+packet_parser = "10.4.0"
 ```
 
 ## Exemple rapide
