@@ -154,6 +154,10 @@ struct Rule {
     label: &'static str,
     guard: Guard,
     ports: Option<fn(Option<u16>) -> bool>,
+    /// Ports qui interdisent la regle : sur les ports standards de la
+    /// famille des protocoles textuels, un verbe distinctif est souvent du
+    /// *contenu* (corps SMTP DATA, article NNTP) — le port l'emporte.
+    ports_veto: Option<fn(Option<u16>) -> bool>,
     probe: ProbeId,
     /// Regle terminale : si son port matche, le verdict est definitif meme
     /// quand la sonde echoue (mDNS : le port 5353 est reserve, RFC 6762 —
@@ -166,6 +170,7 @@ const fn rule(label: &'static str, guard: Guard, probe: ProbeId) -> Rule {
         label,
         guard,
         ports: None,
+        ports_veto: None,
         probe,
         terminal_on_port: false,
     }
@@ -181,6 +186,7 @@ const fn port_rule(
         label,
         guard,
         ports: Some(ports),
+        ports_veto: None,
         probe,
         terminal_on_port: false,
     }
@@ -208,15 +214,37 @@ static RULES: &[Rule] = &[
     // sont detectes par contenu, les verbes partages (QUIT, LIST, MODE...)
     // et les reponses (formes octet pour octet identiques) restent gardes
     // par port ci-dessus.
-    rule("FTP", Guard::Tcp, ProbeId::FtpUnambiguous),
-    rule("SMTP", Guard::Tcp, ProbeId::SmtpUnambiguous),
-    rule("NNTP", Guard::Tcp, ProbeId::NntpUnambiguous),
+    Rule {
+        label: "FTP",
+        guard: Guard::Tcp,
+        ports: None,
+        ports_veto: Some(is_text_protocol_port),
+        probe: ProbeId::FtpUnambiguous,
+        terminal_on_port: false,
+    },
+    Rule {
+        label: "SMTP",
+        guard: Guard::Tcp,
+        ports: None,
+        ports_veto: Some(is_text_protocol_port),
+        probe: ProbeId::SmtpUnambiguous,
+        terminal_on_port: false,
+    },
+    Rule {
+        label: "NNTP",
+        guard: Guard::Tcp,
+        ports: None,
+        ports_veto: Some(is_text_protocol_port),
+        probe: ProbeId::NntpUnambiguous,
+        terminal_on_port: false,
+    },
     // mDNS reprend le format DNS mais ses reponses omettent souvent la
     // question (RFC 6762 §6) : validateur dedie, et port terminal.
     Rule {
         label: "mDNS",
         guard: Guard::Udp,
         ports: Some(is_mdns_udp_port),
+        ports_veto: None,
         probe: ProbeId::Mdns,
         terminal_on_port: true,
     },
@@ -295,6 +323,11 @@ pub(super) fn classify(transport: &Transport<'_>) -> Option<Application> {
         {
             continue;
         }
+        if let Some(veto) = rule.ports_veto
+            && (veto(transport.source_port) || veto(transport.destination_port))
+        {
+            continue;
+        }
 
         let bit = 1u32 << rule.probe as u32;
         let matched = failed_probes & bit == 0 && run_probe(rule.probe, probed);
@@ -331,30 +364,54 @@ const NNTP_ONLY_VERBS: [&str; 7] = [
     "NEWNEWS",
 ];
 
+/// Garde a cout constant : le payload doit commencer par un des verbes
+/// (casse ignoree) suivi d'un espace ou d'un CR. Sans elle, chaque payload
+/// TCP paierait le parseur textuel complet — mesure a 554 ns pour NNTP sur
+/// le paquet de reference de verbench, dont la construction d'une String
+/// d'erreur.
+fn starts_with_one_of(payload: &[u8], verbs: &[&str]) -> bool {
+    verbs.iter().any(|verb| {
+        let verb = verb.as_bytes();
+        payload.len() > verb.len()
+            && payload[..verb.len()].eq_ignore_ascii_case(verb)
+            && matches!(payload[verb.len()], b' ' | b'\r')
+    })
+}
+
 /// Une commande complete (syntaxe et arite validees par le parseur du
 /// protocole) dont le verbe n'existe que dans ce protocole.
 fn is_unambiguous_ftp_command(payload: &[u8]) -> bool {
-    matches!(
-        FtpMessage::try_from(payload),
-        Ok(FtpMessage::Command { verb, .. })
-            if FTP_ONLY_VERBS.iter().any(|only| only.eq_ignore_ascii_case(verb))
-    )
+    starts_with_one_of(payload, &FTP_ONLY_VERBS)
+        && matches!(
+            FtpMessage::try_from(payload),
+            Ok(FtpMessage::Command { verb, .. })
+                if FTP_ONLY_VERBS.iter().any(|only| only.eq_ignore_ascii_case(verb))
+        )
 }
 
 fn is_unambiguous_smtp_command(payload: &[u8]) -> bool {
-    matches!(
-        SmtpMessage::try_from(payload),
-        Ok(SmtpMessage::Command { verb, .. })
-            if SMTP_ONLY_VERBS.iter().any(|only| only.eq_ignore_ascii_case(verb))
-    )
+    starts_with_one_of(payload, &SMTP_ONLY_VERBS)
+        && matches!(
+            SmtpMessage::try_from(payload),
+            Ok(SmtpMessage::Command { verb, .. })
+                if SMTP_ONLY_VERBS.iter().any(|only| only.eq_ignore_ascii_case(verb))
+        )
 }
 
 fn is_unambiguous_nntp_command(payload: &[u8]) -> bool {
-    matches!(
-        NntpMessage::try_from(payload),
-        Ok(NntpMessage::Command { verb, .. })
-            if NNTP_ONLY_VERBS.iter().any(|only| only.eq_ignore_ascii_case(verb))
-    )
+    starts_with_one_of(payload, &NNTP_ONLY_VERBS)
+        && matches!(
+            NntpMessage::try_from(payload),
+            Ok(NntpMessage::Command { verb, .. })
+                if NNTP_ONLY_VERBS.iter().any(|only| only.eq_ignore_ascii_case(verb))
+        )
+}
+
+/// Ports standards de la famille texte FTP/SMTP/NNTP : les regles de port
+/// ci-dessus y ont deja tranche, et un verbe distinctif y est probablement
+/// du contenu en transit (corps DATA, article) — jamais reclasse.
+fn is_text_protocol_port(port: Option<u16>) -> bool {
+    matches!(port, Some(21 | 25 | 587 | 119))
 }
 
 fn is_snmp_udp_port(port: Option<u16>) -> bool {
