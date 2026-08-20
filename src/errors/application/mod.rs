@@ -18,6 +18,7 @@ pub mod giop;
 pub mod http;
 pub mod modbus_tcp;
 pub mod mqtt;
+pub mod netbios;
 pub mod nntp;
 pub mod ntp;
 pub mod opcua;
@@ -27,6 +28,7 @@ pub mod s7comm;
 pub mod smtp;
 pub mod snmp;
 pub mod srvloc;
+pub mod ssdp;
 pub mod ssh;
 pub mod tls;
 
