@@ -7,8 +7,8 @@ use std::fmt;
 
 use crate::{
     checks::application::dns::{
-        check_packet_length, parse_count_allow_empty_question, validate_and_parse_count,
-        verify_dns_flags, verify_mdns_flags,
+        check_packet_length, parse_and_validate_llmnr_counts, parse_count_allow_empty_question,
+        validate_and_parse_count, verify_dns_flags, verify_llmnr_flags, verify_mdns_flags,
     },
     errors::application::dns::DnsHeaderError,
 };
@@ -49,6 +49,24 @@ impl DnsHeader {
         let transaction_id = u16::from_be_bytes([bytes[0], bytes[1]]);
         let flags = verify_mdns_flags(u16::from_be_bytes([bytes[2], bytes[3]]))?;
         let counts = parse_count_allow_empty_question(&bytes[4..12])?;
+        Ok(Self {
+            transaction_id,
+            flags,
+            counts,
+        })
+    }
+
+    /// Like [`TryFrom::try_from`], but with the LLMNR flag layout and count
+    /// rules (RFC 4795 section 2.1.1) : opcode 0 uniquement, 4 bits Z a zero,
+    /// rcode nul en requete, bits C/T libres, QDCOUNT exactement 1.
+    pub(crate) fn try_from_llmnr(bytes: &[u8]) -> Result<Self, DnsHeaderError> {
+        check_packet_length(bytes)?;
+
+        let transaction_id = u16::from_be_bytes([bytes[0], bytes[1]]);
+        let flags = verify_llmnr_flags(u16::from_be_bytes([bytes[2], bytes[3]]))?;
+        // QR est le bit 15 : 0 pour une requete, 1 pour une reponse.
+        let is_query = flags & 0x8000 == 0;
+        let counts = parse_and_validate_llmnr_counts(&bytes[4..12], is_query)?;
         Ok(Self {
             transaction_id,
             flags,
@@ -126,6 +144,57 @@ mod tests {
             result.is_err(),
             "Expected an error due to zero questions and non-zero resource records"
         );
+    }
+
+    // En-tetes synthetiques : ils ciblent les regles de validation LLMNR.
+    #[test]
+    fn test_llmnr_header_accepts_query_with_single_question() {
+        let data = [
+            0x37, 0x4c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        let header = DnsHeader::try_from_llmnr(&data).unwrap();
+        assert_eq!(header.transaction_id, 0x374c);
+        assert_eq!(header.counts, [1, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_llmnr_header_rejects_query_with_answer_records() {
+        let data = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        assert!(matches!(
+            DnsHeader::try_from_llmnr(&data),
+            Err(DnsHeaderError::InvalidCounts)
+        ));
+    }
+
+    #[test]
+    fn test_llmnr_header_accepts_response_with_answer_records() {
+        // Reponse (QR=1) avec une question et une answer.
+        let data = [
+            0x00, 0x00, 0x80, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        let header = DnsHeader::try_from_llmnr(&data).unwrap();
+        assert_eq!(header.counts, [1, 1, 0, 0]);
+    }
+
+    #[test]
+    fn test_llmnr_header_rejects_ra_position_as_z_bit() {
+        // Flags 0x0180 : RD+RA en DNS classique — en LLMNR, le bit 7 fait
+        // partie de Z et doit etre nul.
+        let data = [
+            0x00, 0x00, 0x01, 0x80, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        assert!(matches!(
+            DnsHeader::try_from_llmnr(&data),
+            Err(DnsHeaderError::FlagsError(DnsFlagsError::InvalidZField(
+                0b1000
+            )))
+        ));
     }
 
     #[test]

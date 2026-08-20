@@ -132,6 +132,47 @@ impl DnsPacket {
             additionals,
         })
     }
+
+    /// Like [`TryFrom::try_from`], but with the LLMNR header rules
+    /// (RFC 4795 section 2.1.1).
+    ///
+    /// LLMNR (UDP 5355) reutilise le format DNS mais redispose les flags :
+    /// le bit 10 devient C (conflict), le bit 8 devient T (tentative), et Z
+    /// couvre 4 bits — seuls l'opcode 0 et un rcode nul en requete sont
+    /// acceptes, et QDCOUNT vaut exactement 1. Les sections sont parsees avec
+    /// le code DNS strict : les requetes n'utilisent pas la compression, mais
+    /// les reponses peuvent pointer vers le nom de la question.
+    ///
+    /// Attention : une requete DNS classique (RD=1, une question) est aussi
+    /// un en-tete LLMNR valide (RD occupe la position du bit T), et
+    /// inversement une requete LLMNR est un en-tete DNS valide. Les deux
+    /// formats se recouvrent sur le wire — seul le port UDP (53 vs 5355)
+    /// tranche, et c'est la table de dispatch qui applique cette garde.
+    pub fn try_from_llmnr(bytes: &[u8]) -> Result<Self, DnsPacketError> {
+        check_dns_minimum_size(bytes)?;
+
+        let header = DnsHeader::try_from_llmnr(bytes)?;
+
+        let mut offset = 12;
+        let queries = DnsQueries::parse(bytes, &mut offset, header.counts[0])?;
+        let answers = parse_record_section::<Answer>(bytes, &mut offset, header.counts[1], false)?;
+        let authorities = parse_record_section::<AuthoritativeNameServer>(
+            bytes,
+            &mut offset,
+            header.counts[2],
+            false,
+        )?;
+        let additionals =
+            parse_record_section::<AdditionalRecord>(bytes, &mut offset, header.counts[3], false)?;
+
+        Ok(DnsPacket {
+            header,
+            queries,
+            answers,
+            authorities,
+            additionals,
+        })
+    }
 }
 
 /// Parse `count` resource records à `*offset` dans `message`. Retourne `None`
