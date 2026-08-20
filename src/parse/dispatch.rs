@@ -35,6 +35,7 @@ use super::application::protocols::giop::GiopPacket;
 use super::application::protocols::http::HttpRequest;
 use super::application::protocols::modbus_tcp::ModbusTcpPacket;
 use super::application::protocols::mqtt::MqttPacket;
+use super::application::protocols::netbios::{NbnsPacket, NbssPacket};
 use super::application::protocols::nntp::NntpMessage;
 use super::application::protocols::ntp::NtpPacket;
 use super::application::protocols::opcua::OpcuaPacket;
@@ -44,6 +45,7 @@ use super::application::protocols::s7comm::S7CommPacket;
 use super::application::protocols::smtp::SmtpMessage;
 use super::application::protocols::snmp::SnmpPacket;
 use super::application::protocols::srvloc::SrvlocPacket;
+use super::application::protocols::ssdp::SsdpPacket;
 use super::application::protocols::ssh::SshPacket;
 use super::application::protocols::tls::TlsPacket;
 use super::cotp_from_tpkt;
@@ -78,7 +80,8 @@ impl Guard {
 
 /// Identite d'une sonde de contenu. Deux regles peuvent partager la meme
 /// sonde (port prioritaire puis repli aveugle) : la memoisation par identite
-/// garantit qu'elle ne s'execute qu'une fois par payload.
+/// garantit qu'elle ne s'execute qu'une fois par payload. Un bit du masque
+/// u64 par identifiant.
 #[derive(Clone, Copy)]
 #[repr(u32)]
 enum ProbeId {
@@ -90,6 +93,10 @@ enum ProbeId {
     Smtp,
     Nntp,
     Mdns,
+    Llmnr,
+    Ssdp,
+    Nbns,
+    Nbss,
     Ams,
     FtpUnambiguous,
     SmtpUnambiguous,
@@ -123,6 +130,10 @@ fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Smtp => SmtpMessage::try_from(payload).is_ok(),
         ProbeId::Nntp => NntpMessage::try_from(payload).is_ok(),
         ProbeId::Mdns => DnsPacket::try_from_mdns(payload).is_ok(),
+        ProbeId::Llmnr => DnsPacket::try_from_llmnr(payload).is_ok(),
+        ProbeId::Ssdp => SsdpPacket::try_from(payload).is_ok(),
+        ProbeId::Nbns => NbnsPacket::try_from(payload).is_ok(),
+        ProbeId::Nbss => NbssPacket::try_from(payload).is_ok(),
         ProbeId::FtpUnambiguous => is_unambiguous_ftp_command(payload),
         ProbeId::SmtpUnambiguous => is_unambiguous_smtp_command(payload),
         ProbeId::NntpUnambiguous => is_unambiguous_nntp_command(payload),
@@ -248,6 +259,23 @@ static RULES: &[Rule] = &[
         probe: ProbeId::Mdns,
         terminal_on_port: true,
     },
+    // LLMNR partage le format DNS ; comme mDNS, son port UDP 5355 est
+    // reserve (RFC 4795) et terminal — la sonde DNS generique ne doit pas
+    // re-etiqueter ces octets.
+    Rule {
+        label: "LLMNR",
+        guard: Guard::Udp,
+        ports: Some(is_llmnr_udp_port),
+        ports_veto: None,
+        probe: ProbeId::Llmnr,
+        terminal_on_port: true,
+    },
+    // SSDP est du HTTPU sur le port multicast reserve 1900.
+    port_rule("SSDP", Guard::Udp, is_ssdp_udp_port, ProbeId::Ssdp),
+    // NetBIOS : name service sur UDP 137, session service sur TCP 139 et
+    // TCP 445 (SMB direct hosting, meme framing a 4 octets).
+    port_rule("NBNS", Guard::Udp, is_nbns_udp_port, ProbeId::Nbns),
+    port_rule("NBSS", Guard::Tcp, is_nbss_tcp_port, ProbeId::Nbss),
     port_rule("AMS", Guard::Tcp, is_ams_tcp_port, ProbeId::Ams),
     port_rule("AMS", Guard::Udp, is_ams_udp_port, ProbeId::Ams),
     // QUIC 1-RTT (Short Header) : en-tete volontairement opaque (RFC 9000
@@ -313,7 +341,7 @@ pub(super) fn classify(transport: &Transport<'_>) -> Option<Application> {
     }
     let probed = &payload[..payload.len().min(PROBE_CAP)];
 
-    let mut failed_probes: u32 = 0;
+    let mut failed_probes: u64 = 0;
     for rule in RULES {
         if !rule.guard.admits(transport.protocol) {
             continue;
@@ -329,7 +357,7 @@ pub(super) fn classify(transport: &Transport<'_>) -> Option<Application> {
             continue;
         }
 
-        let bit = 1u32 << rule.probe as u32;
+        let bit = 1u64 << rule.probe as u64;
         let matched = failed_probes & bit == 0 && run_probe(rule.probe, probed);
         if matched {
             return Some(Application {
@@ -460,6 +488,26 @@ fn is_nntp_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(119))
 }
 
+/// LLMNR : UDP 5355 (port reserve, RFC 4795).
+fn is_llmnr_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(5355))
+}
+
+/// SSDP : UDP 1900 (UPnP Device Architecture).
+fn is_ssdp_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(1900))
+}
+
+/// NetBIOS Name Service : UDP 137 (RFC 1002).
+fn is_nbns_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(137))
+}
+
+/// NetBIOS Session Service : TCP 139, et TCP 445 (SMB direct hosting).
+fn is_nbss_tcp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(139 | 445))
+}
+
 /// mDNS : UDP 5353 (port reserve, RFC 6762).
 fn is_mdns_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(5353))
@@ -514,11 +562,11 @@ mod tests {
         assert_ne!(label, Some("NNTP"));
     }
 
-    /// La memoisation exige un identifiant de sonde par bit d'un u32.
+    /// La memoisation exige un identifiant de sonde par bit d'un u64.
     #[test]
     fn probe_ids_fit_the_memoization_bitmask() {
         for rule in RULES {
-            assert!((rule.probe as u32) < 32);
+            assert!((rule.probe as u32) < 64);
         }
     }
 
