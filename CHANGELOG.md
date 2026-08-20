@@ -6,7 +6,7 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
-## [10.3.0] - 2026-08-19
+## [10.3.0] - 2026-08-20
 
 Version mineure, strictement additive, issue de la campagne de resorption du
 backlog : la methode de regression tshark generalisee (Modbus, DNS, TLS) avec
@@ -14,6 +14,13 @@ parite verifiee, quatre parseurs completes (DHCP, SRVLOC, GIOP, QUIC Retry),
 la detection hors port des verbes non-ambigus, et trois corrections de
 classification revelees par le nouveau harnais (NXDOMAIN, DNS/TCP, gardes de
 transport des sondes aveugles).
+
+Performance : sur le corpus reel complet (249 682 paquets, benchmark_db), le
+pipeline passe de 518 a 475 ns/paquet en moyenne. Le paquet de reference de
+verbench — un segment TLS de continuation qui balaye toute la table jusqu'a
+« Unknown » — paye en revanche la mecanique de la table declarative
+(~500 ns contre ~415) : compromis assume, le pire cas borne remplace les
+pathologies x60/x2545 de l'ancienne cascade sur trafic hostile.
 
 ### Ajoute
 
