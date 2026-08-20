@@ -139,7 +139,6 @@ pub enum BpduBody<'a> {
     Configuration(ConfigurationBpdu<'a>),
 }
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// BPDU Spanning Tree (IEEE 802.1D-2004 §9.3, 802.1Q pour MSTP).
 ///
 /// La slice attendue commence apres l'en-tete LLC (offset 14 Ethernet +
