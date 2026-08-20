@@ -32,6 +32,7 @@
 
 use application::Application;
 use application::protocols::copt::{CotpHeader, CotpNumberFormat, CotpParameter, CotpPduType};
+use data_link::stp::BpduPacket;
 use internet::Internet;
 use serde::Serialize;
 use transport::Transport;
@@ -314,6 +315,30 @@ impl<'a> PacketFlow<'a> {
         }
     }
 
+    /// Etiquette les BPDU Spanning Tree (STP/RSTP/MSTP, issue #4) : trame
+    /// 802.3 (champ longueur, pas un EtherType) vers 01:80:c2:00:00:00, LLC
+    /// 42-42-03, BPDU valide. STP vit sous la couche reseau : sans ce
+    /// controle, la trame ressortait avec L3/L4/L7 a None et aucun signal.
+    fn detect_stp(link: &LinkLayer<'_>) -> Option<Application> {
+        use crate::checks::data_link::stp::{
+            BRIDGE_GROUP_ADDRESS, LLC_STP_HEADER, MAX_IEEE_802_3_LENGTH,
+        };
+
+        let frame = link.as_ethernet()?;
+        if frame.destination_mac.0 != BRIDGE_GROUP_ADDRESS
+            || frame.ethertype.0 > MAX_IEEE_802_3_LENGTH
+        {
+            return None;
+        }
+        // Le champ longueur 802.3 delimite LLC + BPDU ; le bourrage Ethernet
+        // eventuel reste au-dela et n'est pas soumis au parseur.
+        let llc = frame.payload.get(..usize::from(frame.ethertype.0))?;
+        let bpdu = llc.strip_prefix(&LLC_STP_HEADER)?;
+        BpduPacket::try_from(bpdu).ok().map(|_| Application {
+            application_protocol: "STP",
+        })
+    }
+
     /// Parses the shared L3/L4/L7 pipeline from a normalized link decoder
     /// output. `depth` bounds tunnel nesting.
     pub(crate) fn parse_decoded(
@@ -324,6 +349,7 @@ impl<'a> PacketFlow<'a> {
         let (internet, l3_corruption) = Self::parse_l3(network_protocol, network_payload);
         let (transport, l4_corruption) = Self::parse_l4(internet.as_ref());
         let (application, inner) = Self::parse_l7_and_inner(transport.as_ref(), depth);
+        let application = application.or_else(|| Self::detect_stp(&data_link));
 
         Ok(PacketFlow {
             data_link,
@@ -363,6 +389,7 @@ impl<'a> PacketFlow<'a> {
         // encapsulated packet.
         let t0 = now();
         let (application, inner) = Self::parse_l7_and_inner(transport.as_ref(), depth);
+        let application = application.or_else(|| Self::detect_stp(&data_link));
         timing.l7_ns = elapsed_ns(t0);
 
         Ok(PacketFlow {

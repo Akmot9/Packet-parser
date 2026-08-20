@@ -5,6 +5,7 @@
 
 use thiserror::Error;
 pub mod mac_addres;
+pub mod stp;
 use mac_addres::MacParseError;
 
 #[derive(Error, Debug, PartialEq)]

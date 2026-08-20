@@ -52,6 +52,7 @@ use mac_addres::MacAddress;
 use serde::Serialize;
 
 pub mod ethertype;
+pub mod stp;
 pub mod vlan_tag;
 
 use crate::{
