@@ -192,7 +192,11 @@ fn extract_dns_flags(flags: u16) -> (u16, u16, u16, u16, u16, u16, u16, u16) {
     let tc = (flags >> 9) & 0b1;
     let rd = (flags >> 8) & 0b1;
     let ra = (flags >> 7) & 0b1;
-    let z = (flags >> 4) & 0b111;
+    // Seul le bit 6 est encore reserve (Z) : les bits 5 et 4 sont AD
+    // (authentic data) et CD (checking disabled) depuis DNSSEC (RFC 4035
+    // §3.1.6, §3.2.2). Les traiter comme Z rejetait toute requete DNSSEC
+    // reelle (trame 11830 de The-Ultimate-PCAP, CD=1 dans un tunnel 6in4).
+    let z = (flags >> 6) & 0b1;
     let rcode = flags & 0b1111;
     (qr, opcode, aa, tc, rd, ra, z, rcode)
 }
