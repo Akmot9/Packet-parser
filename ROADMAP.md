@@ -1,6 +1,20 @@
 # Roadmap packet_parser
 
-Etat au 2026-08-20 : la **10.3.0 est publiee**, et la campagne de resorption
+Etat au 2026-08-20 (soir) : la **10.4.0 est publiee** et la campagne de
+resorption du backlog est terminee : **37 des 44 issues ouvertes sont
+soldees** en trois jours et trois versions mineures (10.2.0, 10.3.0,
+10.4.0), couverture de tests a 86,4 %. Les 7 issues restantes sont toutes
+dans un etat documente : #76 et ses quatre ruptures phase-2 (#22, #26,
+#27, #32) attendent la decision d'ouvrir la 11.0.0 — leur tableau a ete
+enrichi de tous les transferts de la campagne (rdata DNS, Vec PostgreSQL,
+Vec porteurs opcua/enip/http, variantes TcpError, body GiopReply,
+IpType::Broadcast) — et #10 (UMAS) comme le volet VXLAN/GTP-U/Geneve de
+#15 attendent des captures reelles que seul le labo peut produire.
+
+Priorite suivante : produire ces captures (UMAS en tete, aucune trame
+publique n'existe), puis decider de la fenetre 11.0.0.
+
+Etat anterieur (2026-08-20) : la **10.3.0 est publiee**, et la campagne de resorption
 du backlog a ferme 24 issues en deux jours — regression tshark generalisee
 (Modbus/DNS/TLS, parite verifiee), quatre parseurs completes (DHCP, SRVLOC,
 GIOP, QUIC Retry), detection hors port des verbes non-ambigus, corrections
