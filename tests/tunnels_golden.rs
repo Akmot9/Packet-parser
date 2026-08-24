@@ -3,10 +3,13 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-//! Golden tests des tunnels GRE et IP-in-IP (issue #15) sur trames reelles
-//! de `pcaps_exemple/The-Ultimate-PCAP.pcapng` (numeros de trame notes sur
-//! chaque fixture). VXLAN, GTP-U et Geneve attendent des captures reelles —
-//! regle du depot — et restent portes par l'issue.
+//! Golden tests des tunnels GRE, IP-in-IP, VXLAN et Geneve (issue #15) sur
+//! trames reelles : GRE et IP-in-IP viennent de
+//! `pcaps_exemple/The-Ultimate-PCAP.pcapng`, VXLAN et Geneve des captures
+//! locales `pcaps_exemple/tunnels/{vxlan,geneve}` produites par
+//! `tools/capture_vxlan_geneve.sh` (numeros de trame notes sur chaque
+//! fixture). GTP-U attend toujours une capture reelle — regle du depot — et
+//! reste porte par l'issue.
 
 use packet_parser::parse::transport::protocols::TransportProtocol;
 use packet_parser::{LinkType, parse};
@@ -55,6 +58,65 @@ const IPV6_IN_IPV4_DNS_HEX: &str = concat!(
     "0132013001300135013101620130013001300130013001300130013001300130",
     "0130013001300162013501360137013001370134013001310130013001320369",
     "7036046172706100000c00010000291000000080000000"
+);
+
+/// Trame 11 de `pcaps_exemple/tunnels/vxlan/vxlan_ping.pcapng` : VXLAN
+/// (UDP 4789, VNI 42, bit I seul) portant un ping ICMP
+/// 192.168.42.1 -> 192.168.42.2 sur Ethernet interne.
+const VXLAN_ICMP_HEX: &str = concat!(
+    "5e31922c8453421ab085e336080045000086965900004011cf450a6300010a63",
+    "0002afe112b50072154c0800000000002a005a25707b592b86ee7f4ab7ff0800",
+    "450000547f9e40004001e5b6c0a82a01c0a82a02080033f6ee0b000110f28b6a",
+    "0000000071cd090000000000101112131415161718191a1b1c1d1e1f20212223",
+    "2425262728292a2b2c2d2e2f3031323334353637"
+);
+
+/// Trame 9 de la meme capture : la requete ARP interne (Who has
+/// 192.168.42.2), diffusee en broadcast dans le tunnel — l'interne est une
+/// trame Ethernet complete, pas un paquet IP.
+const VXLAN_ARP_HEX: &str = concat!(
+    "5e31922c8453421ab085e33608004500004e965800004011cf7e0a6300010a63",
+    "00029c6f12b5003a15140800000000002a00ffffffffffff86ee7f4ab7ff0806",
+    "000108000604000186ee7f4ab7ffc0a82a01000000000000c0a82a02"
+);
+
+/// Trame 20 de la meme capture : ping ICMPv6 fd00:42::1 -> fd00:42::2, la
+/// double pile de l'overlay dans le meme tunnel.
+const VXLAN_ICMPV6_HEX: &str = concat!(
+    "5e31922c8453421ab085e33608004500009a9bc200004011c9c80a6300010a63",
+    "0002a96112b5008615600800000000002a005a25707b592b86ee7f4ab7ff86dd",
+    "6008a55800403a40fd000042000000000000000000000001fd00004200000000",
+    "000000000000000280008a20a0bc000112f28b6a00000000f2ee0a0000000000",
+    "101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+    "3031323334353637"
+);
+
+/// Trame 12 de `pcaps_exemple/tunnels/geneve/geneve_ping.pcapng` : Geneve
+/// (UDP 6081, version 0, sans option, protocol type 0x6558, VNI 42) portant
+/// le meme ping ICMP sur Ethernet interne.
+const GENEVE_ICMP_HEX: &str = concat!(
+    "5e31922c84530ae46a0a3743080045000086a90700004011bc970a6300010a63",
+    "00026f2717c1007200000000655800002a00be8667e87f38f6bdd82a0d5c0800",
+    "450000545bdc400040010979c0a82a01c0a82a020800aae520de000119f28b6a",
+    "00000000c70b010000000000101112131415161718191a1b1c1d1e1f20212223",
+    "2425262728292a2b2c2d2e2f3031323334353637"
+);
+
+/// Trame 10 de la meme capture : la requete ARP interne en broadcast.
+const GENEVE_ARP_HEX: &str = concat!(
+    "5e31922c84530ae46a0a374308004500004ea90600004011bcd00a6300010a63",
+    "0002420217c1003a00000000655800002a00fffffffffffff6bdd82a0d5c0806",
+    "0001080006040001f6bdd82a0d5cc0a82a01000000000000c0a82a02"
+);
+
+/// Trame 21 de la meme capture : ping ICMPv6 fd00:42::1 -> fd00:42::2.
+const GENEVE_ICMPV6_HEX: &str = concat!(
+    "5e31922c84530ae46a0a374308004500009aab6b00004011ba1f0a6300010a63",
+    "0002600f17c1008600000000655800002a00be8667e87f38f6bdd82a0d5c86dd",
+    "6008a55800403a40fd000042000000000000000000000001fd00004200000000",
+    "000000000000000280006124592400011bf28b6a000000006283020000000000",
+    "101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+    "3031323334353637"
 );
 
 fn frame(hex_fixture: &str, expected_len: usize) -> Vec<u8> {
@@ -142,6 +204,97 @@ fn erspan_is_refused_not_guessed() {
     assert_eq!(
         flow.transport.as_ref().map(|transport| transport.protocol),
         Some(TransportProtocol::Gre)
+    );
+}
+
+/// Verifie le motif commun aux quatre tests Ethernet-dans-tunnel : flux
+/// externe etiquete du nom du tunnel, exactement deux niveaux, et l'interne
+/// expose le protocole reseau attendu.
+fn assert_tunneled_inner<'a>(
+    flow: &'a packet_parser::PacketFlow<'a>,
+    tunnel: &str,
+    inner_protocol: &str,
+) -> &'a packet_parser::PacketFlow<'a> {
+    assert_eq!(
+        flow.application
+            .as_ref()
+            .map(|application| application.application_protocol),
+        Some(tunnel)
+    );
+    let flows = flow.flatten();
+    assert_eq!(flows.len(), 2, "tunnel externe + conversation interne");
+
+    let inner = flow.inner.as_ref().expect("flux interne");
+    let internet = inner.internet.as_ref().expect("couche reseau interne");
+    assert_eq!(internet.protocol_name, inner_protocol);
+    inner
+}
+
+#[test]
+fn vxlan_tunnel_exposes_the_inner_icmp_flow() {
+    let bytes = frame(VXLAN_ICMP_HEX, 148);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let inner = assert_tunneled_inner(&flow, "VXLAN", "IPv4");
+    assert_eq!(
+        inner.transport.as_ref().map(|transport| transport.protocol),
+        Some(TransportProtocol::Icmp)
+    );
+}
+
+#[test]
+fn vxlan_tunnel_exposes_the_inner_arp_broadcast() {
+    let bytes = frame(VXLAN_ARP_HEX, 92);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    // L'interne est une trame Ethernet complete : l'ARP en broadcast, qui
+    // n'existe qu'avec un L2 interne, prouve que rien n'est synthetise.
+    let inner = assert_tunneled_inner(&flow, "VXLAN", "ARP");
+    assert!(inner.transport.is_none(), "ARP ne porte pas de transport");
+}
+
+#[test]
+fn vxlan_tunnel_exposes_the_inner_icmpv6_flow() {
+    let bytes = frame(VXLAN_ICMPV6_HEX, 168);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let inner = assert_tunneled_inner(&flow, "VXLAN", "IPv6");
+    assert_eq!(
+        inner.transport.as_ref().map(|transport| transport.protocol),
+        Some(TransportProtocol::Ipv6Icmp)
+    );
+}
+
+#[test]
+fn geneve_tunnel_exposes_the_inner_icmp_flow() {
+    let bytes = frame(GENEVE_ICMP_HEX, 148);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let inner = assert_tunneled_inner(&flow, "Geneve", "IPv4");
+    assert_eq!(
+        inner.transport.as_ref().map(|transport| transport.protocol),
+        Some(TransportProtocol::Icmp)
+    );
+}
+
+#[test]
+fn geneve_tunnel_exposes_the_inner_arp_broadcast() {
+    let bytes = frame(GENEVE_ARP_HEX, 92);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let inner = assert_tunneled_inner(&flow, "Geneve", "ARP");
+    assert!(inner.transport.is_none(), "ARP ne porte pas de transport");
+}
+
+#[test]
+fn geneve_tunnel_exposes_the_inner_icmpv6_flow() {
+    let bytes = frame(GENEVE_ICMPV6_HEX, 168);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    let inner = assert_tunneled_inner(&flow, "Geneve", "IPv6");
+    assert_eq!(
+        inner.transport.as_ref().map(|transport| transport.protocol),
+        Some(TransportProtocol::Ipv6Icmp)
     );
 }
 

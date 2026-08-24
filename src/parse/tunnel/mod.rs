@@ -19,10 +19,14 @@
 //! - **CAPWAP-Data** (RFC 5415) carrying **IEEE 802.11** → **LLC/SNAP** → L3 ;
 //! - **GRE** (RFC 2784/2890, version 0) carrying IPv4, IPv6 or Ethernet
 //!   (0x6558) — ERSPAN and version 1 (PPTP) are refused, not guessed ;
-//! - **IP-in-IP** (protocoles IP 4 et 41) carrying a bare IPv4/IPv6 packet.
+//! - **IP-in-IP** (protocoles IP 4 et 41) carrying a bare IPv4/IPv6 packet ;
+//! - **VXLAN** (RFC 7348, UDP 4789) carrying a full Ethernet frame — the
+//!   GBP/GPE flag extensions are refused, not guessed ;
+//! - **Geneve** (RFC 8926, UDP 6081) carrying Ethernet (0x6558) or bare IP,
+//!   variable-length options skipped — OAM control messages are refused.
 //!
-//! Designed to grow: the remaining UDP tunnels (VXLAN, GTP-U, Geneve) plug
-//! into [`detect_inner`] the same way once real captures exist (issue #15).
+//! Designed to grow: the remaining UDP tunnel (GTP-U) plugs into
+//! [`detect_inner`] the same way once a real capture exists (issue #15).
 
 use super::PacketFlow;
 use super::data_link::DataLink;
@@ -41,6 +45,12 @@ pub(crate) const MAX_TUNNEL_DEPTH: u8 = 4;
 
 /// UDP port of the CAPWAP data plane (RFC 5415).
 const CAPWAP_DATA_PORT: u16 = 5247;
+
+/// UDP port assigned to VXLAN (RFC 7348).
+const VXLAN_PORT: u16 = 4789;
+
+/// UDP port assigned to Geneve (RFC 8926).
+const GENEVE_PORT: u16 = 6081;
 
 /// Detects an encapsulation on the transport layer. On success returns
 /// `(tunnel_name, inner_flow)`: the name is meant for the *outer* flow's
@@ -70,6 +80,26 @@ pub(crate) fn detect_inner<'a>(
             PacketFlow::parse_decoded_with(DecodedLink::new(inner_link), depth + 1, decode_as)
     {
         return Some(("CAPWAP", inner));
+    }
+
+    // --- VXLAN over UDP 4789 → trame Ethernet interne complete ---
+    if transport.protocol == TransportProtocol::Udp
+        && (transport.source_port == Some(VXLAN_PORT)
+            || transport.destination_port == Some(VXLAN_PORT))
+        && let Some(inner_link) = peel_vxlan(payload)
+        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
+    {
+        return Some(("VXLAN", inner));
+    }
+
+    // --- Geneve over UDP 6081 → Ethernet (0x6558) ou IP brute interne ---
+    if transport.protocol == TransportProtocol::Udp
+        && (transport.source_port == Some(GENEVE_PORT)
+            || transport.destination_port == Some(GENEVE_PORT))
+        && let Some(inner_link) = peel_geneve(payload)
+        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
+    {
+        return Some(("Geneve", inner));
     }
 
     None
@@ -147,6 +177,53 @@ fn peel_gre(payload: &[u8]) -> Option<DecodedLink<'_>> {
         0x0800 => RawIpDecoder::decode_as(LinkType::IPV4, inner).ok(),
         0x86dd => RawIpDecoder::decode_as(LinkType::IPV6, inner).ok(),
         // Transparent Ethernet bridging (NVGRE, gretap) : trame complete.
+        0x6558 => DataLink::try_from(inner)
+            .ok()
+            .map(|frame| DecodedLink::new(LinkLayer::ethernet_as(LinkType::ETHERNET, frame))),
+        _ => None,
+    }
+}
+
+/// Pele un en-tete VXLAN (RFC 7348) : 8 octets fixes — flags, 3 octets
+/// reserves, VNI sur 3 octets, 1 octet reserve — puis une trame Ethernet
+/// interne complete. Seul le bit I (VNI valide) doit etre pose : les
+/// extensions qui posent d'autres flags (VXLAN-GBP 0x80, VXLAN-GPE) changent
+/// le sens des champs reserves et sont refusees — frontiere nommee, pas de
+/// decodage approximatif.
+fn peel_vxlan(payload: &[u8]) -> Option<DecodedLink<'_>> {
+    const FLAG_VNI_VALID: u8 = 0x08;
+
+    if payload.len() < 8 || payload[0] != FLAG_VNI_VALID {
+        return None;
+    }
+    DataLink::try_from(&payload[8..])
+        .ok()
+        .map(|frame| DecodedLink::new(LinkLayer::ethernet_as(LinkType::ETHERNET, frame)))
+}
+
+/// Pele un en-tete Geneve (RFC 8926) : 8 octets fixes — version/Opt Len,
+/// flags O/C, protocol type, VNI — puis les options TLV, sautees en bloc
+/// (Opt Len en mots de 4 octets : elles ne font que deplacer la charge
+/// utile). La version doit valoir 0, et les messages de controle OAM
+/// (bit O) sont refuses : ils ne portent pas une trame utilisateur. Le
+/// protocol type annonce l'interne — Ethernet (0x6558) ou IP brute, dont la
+/// version est verifiee par le decodeur raw-IP.
+fn peel_geneve(payload: &[u8]) -> Option<DecodedLink<'_>> {
+    const FLAG_OAM: u8 = 0x80;
+
+    if payload.len() < 8 {
+        return None;
+    }
+    let version = payload[0] >> 6;
+    let options = usize::from(payload[0] & 0x3f) * 4;
+    if version != 0 || payload[1] & FLAG_OAM != 0 {
+        return None;
+    }
+    let inner = payload.get(8 + options..)?;
+
+    match u16::from_be_bytes([payload[2], payload[3]]) {
+        0x0800 => RawIpDecoder::decode_as(LinkType::IPV4, inner).ok(),
+        0x86dd => RawIpDecoder::decode_as(LinkType::IPV6, inner).ok(),
         0x6558 => DataLink::try_from(inner)
             .ok()
             .map(|frame| DecodedLink::new(LinkLayer::ethernet_as(LinkType::ETHERNET, frame))),
@@ -508,6 +585,89 @@ mod tests {
         assert!(peel_gre(&[0x00, 0x00, 0x22, 0xeb, 0x45]).is_none());
         // Options annoncees mais tronquees : refus sans panique.
         assert!(peel_gre(&[0xb0, 0x00, 0x08, 0x00, 0x00, 0x00]).is_none());
+    }
+
+    /// Trame Ethernet minimale portant `payload` sous `ethertype`.
+    fn ethernet_frame(ethertype: u16, payload: &[u8]) -> Vec<u8> {
+        let mut frame = Vec::new();
+        frame.extend_from_slice(&[0x02; 6]);
+        frame.extend_from_slice(&[0x04; 6]);
+        frame.extend_from_slice(&ethertype.to_be_bytes());
+        frame.extend_from_slice(payload);
+        frame
+    }
+
+    /// Le pelage VXLAN n'accepte que la forme RFC 7348 stricte : bit I seul.
+    /// Les extensions GBP/GPE (autres flags poses), l'absence de VNI valide
+    /// et l'en-tete tronque sont refuses. Formes absentes du corpus :
+    /// fabriquees, comme les gardes de profondeur.
+    #[test]
+    fn vxlan_flags_other_than_vni_valid_are_refused() {
+        let inner = ethernet_frame(0x0800, &innermost_ipv4());
+        let mut vxlan = vec![0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a, 0x00];
+        vxlan.extend_from_slice(&inner);
+
+        let (layer, _, _) = peel_vxlan(&vxlan).expect("VXLAN RFC 7348").into_parts();
+        assert!(layer.as_ethernet().is_some());
+
+        let mut gbp = vxlan.clone();
+        gbp[0] = 0x88; // bit G (VXLAN-GBP) en plus du bit I
+        assert!(peel_vxlan(&gbp).is_none());
+
+        let mut no_vni = vxlan.clone();
+        no_vni[0] = 0x00;
+        assert!(peel_vxlan(&no_vni).is_none());
+
+        assert!(peel_vxlan(&vxlan[..7]).is_none(), "en-tete tronque");
+    }
+
+    /// Les options Geneve ne font que deplacer la charge utile (Opt Len en
+    /// mots de 4) et le protocol type choisit la forme interne. Version
+    /// inconnue, message de controle OAM, options au-dela de la charge et
+    /// protocol type inconnu sont refuses. Formes absentes du corpus (la
+    /// capture kernel n'emet ni option ni OAM) : fabriquees.
+    #[test]
+    fn geneve_options_shift_the_inner_frame_and_control_forms_are_refused() {
+        let inner = ethernet_frame(0x0800, &innermost_ipv4());
+
+        // Sans option : en-tete de 8 octets, interne Ethernet (0x6558).
+        let mut plain = vec![0x00, 0x00, 0x65, 0x58, 0x00, 0x00, 0x2a, 0x00];
+        plain.extend_from_slice(&inner);
+        let (layer, _, _) = peel_geneve(&plain).expect("Geneve nu").into_parts();
+        assert!(layer.as_ethernet().is_some());
+
+        // Opt Len = 2 mots : 8 octets d'options sautes sans etre interpretes.
+        let mut optioned = vec![0x02, 0x00, 0x65, 0x58, 0x00, 0x00, 0x2a, 0x00];
+        optioned.extend_from_slice(&[0u8; 8]);
+        optioned.extend_from_slice(&inner);
+        let (layer, _, _) = peel_geneve(&optioned)
+            .expect("Geneve avec options")
+            .into_parts();
+        assert!(layer.as_ethernet().is_some());
+
+        // Protocol type 0x0800 : l'interne est de l'IP brute, sans L2.
+        let mut raw_ip = vec![0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x2a, 0x00];
+        raw_ip.extend_from_slice(&innermost_ipv4());
+        let (layer, _, _) = peel_geneve(&raw_ip).expect("Geneve IP brute").into_parts();
+        assert!(layer.as_raw_ip().is_some());
+
+        // Version non nulle, OAM, options au-dela, protocol type inconnu.
+        let mut bad_version = plain.clone();
+        bad_version[0] |= 0x40;
+        assert!(peel_geneve(&bad_version).is_none());
+
+        let mut oam = plain.clone();
+        oam[1] |= 0x80;
+        assert!(peel_geneve(&oam).is_none());
+
+        let mut beyond = plain.clone();
+        beyond[0] = 0x3f; // 252 octets d'options annonces, charge plus courte
+        assert!(peel_geneve(&beyond).is_none());
+
+        let mut unknown = plain.clone();
+        unknown[2] = 0x22;
+        unknown[3] = 0xeb;
+        assert!(peel_geneve(&unknown).is_none());
     }
 
     /// L'en-tete LLC/SNAP n'est accepte que sous sa forme SNAP stricte

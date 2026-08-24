@@ -54,24 +54,29 @@ détection, pas seulement `transport`.
 
 ### Tunnels UDP (hook `transport` existant — le plus simple)
 
-- [ ] **VXLAN** — UDP 4789. En-tête 8 octets (flags 1, réservé 3, VNI 3,
-      réservé 1). Interne = **Ethernet**. Fixture requise.
+- [x] **VXLAN** — UDP 4789. En-tête 8 octets, seul le bit I accepté (GBP/GPE
+      refusés). Interne = **Ethernet**. Golden sur les trames 9/11/20 de
+      `pcaps_exemple/tunnels/vxlan/vxlan_ping.pcapng` (capture locale,
+      `tools/capture_vxlan_geneve.sh`).
 - [ ] **GTP-U** — UDP 2152. En-tête variable (min 8 octets ; +4 si un des flags
       E/S/PN est posé ; puis extension headers). Interne = **IP** (pas de L2).
       Attention au champ « message type » = 255 (G-PDU) pour ne peler que les
-      données. Fixture requise.
-- [ ] **Geneve** — UDP 6081. En-tête 8 octets + options variables (Opt Len en
-      mots de 4). `protocol type` indique Ethernet (0x6558) ou IP. Fixture
-      requise.
+      données. Fixture requise — aucune capture disponible (équipement ou
+      outil userspace nécessaire).
+- [x] **Geneve** — UDP 6081. En-tête 8 octets + options sautées (Opt Len en
+      mots de 4), OAM refusé. `protocol type` : Ethernet (0x6558) ou IP.
+      Golden sur les trames 10/12/21 de
+      `pcaps_exemple/tunnels/geneve/geneve_ping.pcapng` (capture locale).
 
-### Tunnels niveau IP (nécessite le nouveau hook, cf. point d'archi)
+### Tunnels niveau IP (hook `detect_inner_l3`, livré en 10.4.0)
 
-- [ ] **IP-in-IP** — IP proto 4 (IPv4) / 41 (IPv6). Interne = **IP** directe.
-      Fixture requise.
-- [ ] **GRE** — IP proto 47. En-tête 4 octets min (+ champs optionnels selon
-      les bits C/K/S) ; le champ `protocol type` (EtherType) dit si l'interne
-      est IP (0x0800/0x86DD) ou **Ethernet** (0x6558, NVGRE/transparent
-      bridging). Fixture requise.
+- [x] **IP-in-IP** — IP proto 4 (IPv4) / 41 (IPv6). Interne = **IP** directe,
+      version vérifiée contre l'annonce du protocole externe. Golden sur
+      The-Ultimate-PCAP (livré en 10.4.0, commit 583a7d8).
+- [x] **GRE** — IP proto 47. v0 avec options C/K/S ; `protocol type` : IP
+      (0x0800/0x86DD) ou **Ethernet** (0x6558). ERSPAN, v1 (PPTP) et
+      keepalives refusés. Golden sur The-Ultimate-PCAP dont un GRE-dans-GRE
+      (livré en 10.4.0, commit 583a7d8).
 
 ### Cas particuliers / hors périmètre immédiat
 

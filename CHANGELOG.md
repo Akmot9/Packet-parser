@@ -6,6 +6,19 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **Tunnels VXLAN et Geneve** (issue #15, suite) : VXLAN (RFC 7348, UDP
+  4789, bit I seul — GBP/GPE refuses, pas devines) et Geneve (RFC 8926, UDP
+  6081, options sautees, messages de controle OAM refuses) sont peles
+  recursivement vers leur trame Ethernet interne (ou IP brute pour Geneve
+  0x0800/0x86dd). Golden sur six trames reelles des captures locales
+  `pcaps_exemple/tunnels/{vxlan,geneve}` — ARP interne en broadcast, ICMP et
+  ICMPv6 — produites par la recette reproductible
+  `tools/capture_vxlan_geneve.sh` (namespaces ephemeres, provenance
+  documentee dans les README des sous-dossiers). Il ne reste que GTP-U,
+  toujours sans capture reelle.
+
 ## [10.4.0] - 2026-08-20
 
 Version mineure, strictement additive : cinq nouveaux protocoles decodes
