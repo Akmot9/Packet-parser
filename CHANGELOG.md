@@ -6,6 +6,16 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [10.5.0] - 2026-09-09
+
+Version mineure, strictement additive (`cargo semver-checks` : 223
+controles, aucune rupture) : les tunnels VXLAN et Geneve sont peles
+recursivement depuis des captures reelles produites au labo, et les tags
+VLAN empiles (802.1ad / QinQ, double 802.1Q) sont enfin consommes entiers —
+une trame QinQ ressortait sans couche 3 et sans signal depuis la premiere
+version. Le parseur retient le tag interne ; la pile complete attend la
+11.0.0 (#76).
+
 ### Ajoute
 
 - **Tunnels VXLAN et Geneve** (issue #15, suite) : VXLAN (RFC 7348, UDP
