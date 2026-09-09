@@ -1,6 +1,13 @@
 # Roadmap packet_parser
 
-Etat au 2026-08-20 (soir) : la **10.4.0 est publiee** et la campagne de
+Etat au 2026-09-09 : la **10.5.0 est publiee** (mineure, additive : tunnels
+VXLAN/Geneve depuis des captures produites au labo, et pile de tags VLAN
+802.1ad / QinQ consommee entiere — #82, decouvert par SONAR sur une matrice
+multi-VLAN). `vlan` retient le tag interne ; le champ `vlan_stack` qui
+exposerait la pile complete rejoint le tableau de #76. verbench : 539 ns
+sur le paquet de reference (532 en 10.4.0), l2 32 ns contre 31.
+
+Etat anterieur (2026-08-20, soir) : la **10.4.0 est publiee** et la campagne de
 resorption du backlog est terminee : **37 des 44 issues ouvertes sont
 soldees** en trois jours et trois versions mineures (10.2.0, 10.3.0,
 10.4.0), couverture de tests a 86,4 %. Les 7 issues restantes sont toutes
