@@ -107,6 +107,7 @@ l'epic **#76** plutot que de declencher trois majeures successives :
 | #24 | Variantes distinctes pour `validate_tcp_flags` / `validate_tcp_reserved` (`TcpError` n'est pas `non_exhaustive`) | ouvert |
 | #48 | Suppression de `QuicPacketType::Unknown` et de sa branche morte | #48 close ; inaccessibilite verrouillee par test (#75), reste la suppression |
 | sprint_02 | Unifier les deux chemins d'erreur de liaison de `ParseError` (`InvalidDataLink` historique vs `InvalidLinkLayer`) | reliquat de phase 1, reverse dans #76 |
+| #82 | `vlan_stack` : exposer la pile QinQ complete sur `DataLink`/`DataLinkOwned` (pas `non_exhaustive`) | decodage livre en 10.x (`vlan` = tag interne, couche 3 atteinte) ; reste le champ |
 
 Tant que #76 n'est pas ouvert en chantier, ces trois points restent
 volontairement en l'etat. Rien d'autre n'est connu comme bloque par la

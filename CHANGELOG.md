@@ -19,6 +19,24 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   documentee dans les README des sous-dossiers). Il ne reste que GTP-U,
   toujours sans capture reelle.
 
+### Corrige
+
+- **QinQ / tags VLAN empiles** (issue #82) : `DataLink::try_from` ne
+  consommait qu'un tag, et seulement `0x8100`. Une trame 802.1ad (S-tag
+  `0x88a8` ou `0x9100` historique, puis C-tag) ressortait sans VLAN ni
+  couche 3, et un double `0x8100` avec le seul tag externe — dans les deux
+  cas sans signal d'erreur. La pile est desormais consommee entiere (TPID
+  `0x8100`, `0x88a8`, `0x9100`), `ethertype` et `payload` designent la vraie
+  couche 3, et `vlan` retient le tag **interne** (C-VLAN), le seul dont
+  `inner_ethertype` est cette couche 3. Une trame tronquee au milieu de la
+  pile remonte `DataLinkTooShort`. Golden sur les 86 trames reelles de
+  `pcaps_exemple/vlan/pppoe-over-qinq.pcap` (double 0x8100 3704/2474 devant
+  du PPPoE, non decode). Le tag externe n'est pas expose : cela demande un
+  champ `vlan_stack` sur `DataLink`/`DataLinkOwned`, qui ne sont pas
+  `#[non_exhaustive]` — rattache a l'epic #76. Additif : constantes
+  `TPID_8021Q`/`TPID_8021AD`/`TPID_QINQ_LEGACY`, `VlanTag::is_tpid`,
+  `checks::data_link::validate_data_link_vlan_stack_length`.
+
 ## [10.4.0] - 2026-08-20
 
 Version mineure, strictement additive : cinq nouveaux protocoles decodes

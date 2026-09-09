@@ -28,6 +28,21 @@ pub fn validate_data_link_vlan_length(packets: &[u8]) -> Result<(), DataLinkErro
     Ok(())
 }
 
+/// Longueur minimale d'une trame Ethernet portant `tags` tags VLAN empiles
+/// (802.1Q simple : 1 ; 802.1ad/QinQ : 2) : en-tete de 14 octets plus 4
+/// octets par tag. Appele a chaque tag consomme, de sorte qu'une trame
+/// tronquee au milieu de la pile remonte `DataLinkTooShort` au lieu d'un
+/// acces hors borne.
+pub fn validate_data_link_vlan_stack_length(
+    packets: &[u8],
+    tags: usize,
+) -> Result<(), DataLinkError> {
+    if packets.len() < DATALINK_HEADER_LEN + VLAN_TAG_LEN * tags {
+        return Err(DataLinkError::DataLinkTooShort(packets.len() as u8));
+    }
+    Ok(())
+}
+
 pub fn validate_vlan_tag_length(bytes: &[u8]) -> Result<(), DataLinkError> {
     if bytes.len() < VLAN_TAG_LEN {
         return Err(DataLinkError::DataLinkTooShort(bytes.len() as u8));
