@@ -11,6 +11,14 @@ use crate::checks::data_link::validate_vlan_tag_length;
 
 use super::ethertype::Ethertype; // adapte le chemin si besoin
 
+/// TPID IEEE 802.1Q : tag client (C-tag), le cas courant.
+pub const TPID_8021Q: u16 = 0x8100;
+/// TPID IEEE 802.1ad : tag fournisseur (S-tag) du provider bridging / QinQ.
+pub const TPID_8021AD: u16 = 0x88A8;
+/// TPID QinQ historique, anterieur a 802.1ad, encore emis par certains
+/// equipements (Cisco, Juniper) pour le tag externe.
+pub const TPID_QINQ_LEGACY: u16 = 0x9100;
+
 /// IEEE 802.1Q VLAN Tag
 ///
 /// ```mermaid
@@ -37,6 +45,12 @@ pub struct VlanTag {
 }
 
 impl VlanTag {
+    /// Vrai si `ethertype` est un TPID, c'est-a-dire annonce un tag VLAN de
+    /// 4 octets (TCI + EtherType suivant) plutot qu'une charge utile.
+    pub fn is_tpid(ethertype: u16) -> bool {
+        matches!(ethertype, TPID_8021Q | TPID_8021AD | TPID_QINQ_LEGACY)
+    }
+
     /// Nom lisible de l'EtherType interne (IPv4, IPv6, etc.)
     pub fn inner_ethertype_name(&self) -> String {
         self.inner_ethertype.name()

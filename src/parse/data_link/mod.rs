@@ -56,12 +56,17 @@ pub mod stp;
 pub mod vlan_tag;
 
 use crate::{
-    checks::data_link::{validate_data_link_length, validate_data_link_vlan_length},
+    checks::data_link::{validate_data_link_length, validate_data_link_vlan_stack_length},
     errors::data_link::DataLinkError,
     parse::data_link::vlan_tag::VlanTag,
 };
 
 use ethertype::Ethertype;
+
+/// En-tete Ethernet II : deux MAC et un EtherType.
+const DATALINK_HEADER_LEN: usize = 14;
+/// Un tag VLAN : TCI (2 octets) et EtherType suivant (2 octets).
+const VLAN_TAG_LEN: usize = 4;
 
 /// Ethernet Frame
 ///
@@ -74,12 +79,19 @@ use ethertype::Ethertype;
 /// 48-95: "Source MAC u48"
 /// 96-111: "EtherType / VLAN TPID u16"
 /// 112-127: "VLAN TCI u16 if present"
-/// 128-143: "Inner EtherType u16 if VLAN"
+/// 128-143: "Inner EtherType u16 if VLAN (may be another TPID)"
 /// 144-191: "Payload variable"
 /// ```
 ///
 /// Represents a parsed Ethernet frame, containing source and destination MAC addresses,
 /// an Ethertype, an optional VLAN tag, and the payload.
+///
+/// Stacked tags (IEEE 802.1ad / QinQ: an S-tag `0x88a8` or legacy `0x9100`
+/// followed by a C-tag `0x8100`, or two `0x8100`) are consumed entirely so
+/// that `ethertype` and `payload` always describe the real layer 3. `vlan`
+/// then holds the **innermost** tag (the C-VLAN, i.e. the customer network),
+/// the only one whose `inner_ethertype` is that real layer 3. Exposing the
+/// whole stack needs a new field and waits for the next major (#82, #76).
 #[derive(Debug, Clone, Serialize, Eq)]
 pub struct DataLink<'a> {
     /// The destination MAC address (serialized as a string).
@@ -113,27 +125,30 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
         let destination_mac = MacAddress::try_from(&packets[0..6])?;
         let source_mac = MacAddress::try_from(&packets[6..12])?;
 
-        // EtherType brut (peut être 0x8100 pour VLAN)
+        // EtherType brut : couche 3, ou TPID d'un tag VLAN.
         let raw_ethertype = u16::from_be_bytes([packets[12], packets[13]]);
 
+        // Pile de tags VLAN. Chaque tag fait 4 octets (TCI + EtherType
+        // suivant) et cet EtherType peut lui-meme etre un TPID : 802.1ad met
+        // un S-tag 0x88a8 (ou 0x9100 historique) devant le C-tag 0x8100, et
+        // certains equipements empilent deux 0x8100. On consomme toute la
+        // pile pour atteindre la vraie couche 3 ; `vlan` garde le tag
+        // interne, le seul dont `inner_ethertype` est cette couche 3.
         let mut vlan: Option<VlanTag> = None;
-        let ethertype: Ethertype;
-        let payload: &'a [u8];
-
-        if raw_ethertype == 0x8100 {
-            validate_data_link_vlan_length(packets)?;
-
-            // TCI + inner EtherType : [14..18]
-            let vlan_tag = VlanTag::try_from(&packets[14..18])?;
-
-            ethertype = vlan_tag.inner_ethertype;
-            payload = &packets[18..];
-            vlan = Some(vlan_tag);
-        } else {
-            // Pas de VLAN
-            ethertype = Ethertype::from(raw_ethertype);
-            payload = &packets[14..];
+        let mut next_ethertype = raw_ethertype;
+        let mut offset = DATALINK_HEADER_LEN;
+        let mut tags = 0;
+        while VlanTag::is_tpid(next_ethertype) {
+            tags += 1;
+            validate_data_link_vlan_stack_length(packets, tags)?;
+            let tag = VlanTag::try_from(&packets[offset..offset + VLAN_TAG_LEN])?;
+            next_ethertype = tag.inner_ethertype.0;
+            offset += VLAN_TAG_LEN;
+            vlan = Some(tag);
         }
+
+        let ethertype = Ethertype::from(next_ethertype);
+        let payload: &'a [u8] = &packets[offset..];
 
         Ok(DataLink {
             destination_mac,
@@ -259,5 +274,94 @@ mod tests {
         let vlan = datalink.vlan.unwrap();
         assert_eq!(vlan.id, 10);
         assert_eq!(datalink.payload, &raw_packet[18..]);
+    }
+
+    /// 802.1ad / QinQ : S-tag 0x88a8 (VID 200) puis C-tag 0x8100 (VID 104,
+    /// PCP 3, DEI 1) devant de l'IPv4. `vlan` retient le tag interne avec
+    /// ses bits de priorite, `ethertype` la vraie couche 3, et la charge
+    /// utile commence apres les deux tags (octet 22).
+    #[test]
+    fn test_datalink_try_from_qinq_8021ad_keeps_inner_tag_and_reaches_l3() {
+        let raw_packet: [u8; 26] = [
+            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // Dest
+            0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, // Src
+            0x88, 0xA8, 0x00, 0xC8, // S-tag : TPID 802.1ad, VID 200
+            0x81, 0x00, 0x70, 0x68, // C-tag : TPID 802.1Q, PCP 3, DEI 1, VID 104
+            0x08, 0x00, // EtherType reel : IPv4
+            0x45, 0x00, 0x00, 0x54, // Debut header IPv4
+        ];
+
+        let datalink = DataLink::try_from(raw_packet.as_ref()).unwrap();
+
+        let vlan = datalink.vlan.expect("tag interne conserve");
+        assert_eq!(vlan.id, 104);
+        assert_eq!(vlan.pcp, 3);
+        assert!(vlan.dei);
+        assert_eq!(vlan.inner_ethertype.name(), "IPv4");
+        assert_eq!(datalink.ethertype.name(), "IPv4");
+        assert_eq!(datalink.payload, &raw_packet[22..]);
+    }
+
+    /// Double 0x8100 (empilement non standard mais courant) : meme
+    /// resultat, le tag externe (VID 300) n'est plus pris pour le seul.
+    #[test]
+    fn test_datalink_try_from_double_8021q_keeps_inner_tag() {
+        let raw_packet: [u8; 26] = [
+            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // Dest
+            0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, // Src
+            0x81, 0x00, 0x01, 0x2C, // Tag externe : VID 300
+            0x81, 0x00, 0x00, 0x6A, // Tag interne : VID 106
+            0x86, 0xDD, // EtherType reel : IPv6
+            0x60, 0x00, 0x00, 0x00, // Debut header IPv6
+        ];
+
+        let datalink = DataLink::try_from(raw_packet.as_ref()).unwrap();
+
+        assert_eq!(datalink.vlan.as_ref().map(|v| v.id), Some(106));
+        assert_eq!(datalink.ethertype.name(), "IPv6");
+        assert_eq!(datalink.payload, &raw_packet[22..]);
+    }
+
+    /// TPID QinQ historique 0x9100 en tag externe.
+    #[test]
+    fn test_datalink_try_from_qinq_legacy_9100() {
+        let raw_packet: [u8; 26] = [
+            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // Dest
+            0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, // Src
+            0x91, 0x00, 0x00, 0x0A, // Tag externe historique : VID 10
+            0x81, 0x00, 0x00, 0x14, // Tag interne : VID 20
+            0x08, 0x06, // EtherType reel : ARP
+            0x00, 0x01, 0x08, 0x00, // Debut ARP
+        ];
+
+        let datalink = DataLink::try_from(raw_packet.as_ref()).unwrap();
+
+        assert_eq!(datalink.vlan.as_ref().map(|v| v.id), Some(20));
+        assert_eq!(datalink.ethertype.name(), "ARP");
+    }
+
+    /// Trame coupee au milieu du second tag : erreur explicite, pas d'acces
+    /// hors borne. 21 octets = 12 MAC + 4 (S-tag) + 5 (C-tag sans son dernier octet).
+    #[test]
+    fn test_datalink_try_from_qinq_truncated_inside_second_tag() {
+        let raw_packet: [u8; 21] = [
+            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // Dest
+            0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, // Src
+            0x88, 0xA8, 0x00, 0xC8, // S-tag : TPID + TCI
+            0x81, 0x00, 0x00, 0x68, 0x08, // C-tag : TPID + TCI, EtherType ampute
+        ];
+
+        let result = DataLink::try_from(raw_packet.as_ref());
+        assert!(matches!(result, Err(DataLinkError::DataLinkTooShort(21))));
+
+        // Et un tag exactement complet mais sans un seul octet de charge
+        // utile reste accepte : charge utile vide, comme en Ethernet nu.
+        let exact: [u8; 22] = [
+            0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0x88, 0xA8,
+            0x00, 0xC8, 0x81, 0x00, 0x00, 0x68, 0x08, 0x00,
+        ];
+        let datalink = DataLink::try_from(exact.as_ref()).unwrap();
+        assert_eq!(datalink.vlan.as_ref().map(|v| v.id), Some(104));
+        assert!(datalink.payload.is_empty());
     }
 }
