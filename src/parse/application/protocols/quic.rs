@@ -135,7 +135,6 @@ pub enum QuicPacketType {
     ZeroRtt,
     Handshake,
     Retry,
-    Unknown(u8),
 }
 
 /// Connection ID générique (0..=20 octets courants, mais extensible).
@@ -289,25 +288,6 @@ impl<'a> TryFrom<&'a [u8]> for QuicPacket<'a> {
                     header,
                     payload: QuicPayload::EncryptedPayload(rest),
                 })
-            }
-
-            QuicPacketType::Unknown(_t) => {
-                // Tentative générique: Length (varint) si possible, sinon tout en brut
-                let mut snapshot = cur;
-                match read_pn_and_payload(&mut cur, &mut header) {
-                    Ok(payload) => Ok(QuicPacket::OtherLong {
-                        header,
-                        payload: QuicPayload::EncryptedPayload(payload),
-                    }),
-                    Err(_) => {
-                        // pas de varint/PN plausible, tout en brut
-                        let rest = snapshot.take_rest();
-                        Ok(QuicPacket::OtherLong {
-                            header,
-                            payload: QuicPayload::EncryptedPayload(rest),
-                        })
-                    }
-                }
             }
         }
     }

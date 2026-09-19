@@ -33,38 +33,15 @@ pub mod ssdp;
 pub mod ssh;
 pub mod tls;
 
-/// Errors related to parsing an `Application`
+/// Errors related to parsing an `Application`.
+///
+/// Application-layer probing never fails on an unrecognized payload — it
+/// yields no label instead — so the only error is an empty payload. The
+/// per-protocol decoders report their own error types, under
+/// [`crate::errors::application`].
 #[derive(Debug, Error, Clone, Serialize)]
+#[non_exhaustive]
 pub enum ApplicationError {
     #[error("Packet is empty")]
     EmptyPacket,
-
-    // #[error("Failed to parse Modbus packet")]
-    // ModbusParseError,
-    #[error("Failed to parse NTP packet")]
-    NtpParseError,
-
-    #[error("Failed to parse DHCPv6 packet")]
-    Dhcpv6ParseError,
-
-    #[error("Failed to parse DNS packet")]
-    DnsParseError,
-
-    #[error("Failed to parse QUIC packet")]
-    QuicParseError,
-
-    #[error("Failed to parse Bitcoin packet")]
-    BitcoinParseError,
-
-    #[error("Failed to parse MQTT packet")]
-    MqttParseError,
-
-    #[error("Failed to parse SNMP packet")]
-    SnmpParseError,
-
-    #[error("Failed to parse EtherNet/IP packet")]
-    EtherNetIpParseError,
-
-    #[error("Failed to parse PostgreSQL packet")]
-    PostgreSqlParseError,
 }
