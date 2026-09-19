@@ -37,6 +37,7 @@ pub enum InternetDetails<'a> {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct Internet<'a> {
     /// Source IP address when the internet layer carries one.
     pub source: Option<IpAddr>,

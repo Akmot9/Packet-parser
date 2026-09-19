@@ -30,6 +30,7 @@ use crate::{
 ///
 /// All borrowed fields are zero-copy views into the original packet payload.
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FtpMessage<'a> {
     /// A client command, e.g. `USER csanders`.
     Command {

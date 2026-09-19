@@ -30,6 +30,7 @@ pub enum TransportDetails<'a> {
 
 /// Represents a transport layer packet (UDP, TCP, etc.)
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct Transport<'a> {
     /// The transport layer protocol name
     pub protocol: TransportProtocol,

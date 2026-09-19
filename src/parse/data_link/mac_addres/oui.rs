@@ -39,6 +39,7 @@
 
 /// Represents an Organizationally Unique Identifier (OUI).
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Oui {
     /// ASUSTek Computer Inc.
     ASUSTek,

@@ -37,11 +37,13 @@ pub(crate) const POSTGRESQL_GSSENC_REQUEST_CODE: u32 = 80_877_104;
 /// 40-103: "Payload variable"
 /// ```
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct PostgreSqlPacket<'a> {
     pub messages: Vec<PostgreSqlMessage<'a>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct PostgreSqlMessage<'a> {
     pub message_type: PostgreSqlMessageType,
     /// PostgreSQL length field. For typed messages this excludes the type byte.
@@ -51,6 +53,7 @@ pub struct PostgreSqlMessage<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[non_exhaustive]
 pub enum PostgreSqlMessageType {
     Authentication,
     BackendKeyData,
@@ -137,6 +140,7 @@ impl TryFrom<u8> for PostgreSqlMessageType {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PostgreSqlMessageBody<'a> {
     Parse(PostgreSqlParse<'a>),
     Bind(PostgreSqlBind<'a>),
@@ -154,6 +158,7 @@ pub enum PostgreSqlMessageBody<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct PostgreSqlParse<'a> {
     pub statement: &'a str,
     pub query: &'a str,
@@ -161,6 +166,7 @@ pub struct PostgreSqlParse<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct PostgreSqlBind<'a> {
     pub portal: &'a str,
     pub statement: &'a str,
@@ -170,12 +176,14 @@ pub struct PostgreSqlBind<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct PostgreSqlExecute<'a> {
     pub portal: &'a str,
     pub max_rows: u32,
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct PostgreSqlStartup<'a> {
     pub protocol_version: u32,
     pub parameters: Vec<(&'a str, &'a str)>,

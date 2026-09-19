@@ -93,6 +93,7 @@ const VLAN_TAG_LEN: usize = 4;
 /// the only one whose `inner_ethertype` is that real layer 3. The whole
 /// stack, outermost tag first, is in `vlan_stack` (#82).
 #[derive(Debug, Clone, Serialize, Eq)]
+#[non_exhaustive]
 pub struct DataLink<'a> {
     /// The destination MAC address (serialized as a string).
     pub destination_mac: MacAddress,

@@ -27,6 +27,7 @@ use crate::{
 /// 64-127: "Payload variable"
 /// ```
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct OpcuaPacket<'a> {
     /// Decision alloc/emprunt (issue #63) : le Vec est conserve — les chunks
     /// sont dej a zero-copy (&'a [u8]) et le Vec croit par iteration bornee
@@ -37,12 +38,14 @@ pub struct OpcuaPacket<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct OpcuaChunk<'a> {
     pub header: OpcuaTcpHeader,
     pub payload: OpcuaPayload<'a>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[non_exhaustive]
 pub struct OpcuaTcpHeader {
     pub message_type: OpcuaMessageType,
     pub chunk_type: OpcuaChunkType,
@@ -50,6 +53,7 @@ pub struct OpcuaTcpHeader {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[non_exhaustive]
 pub enum OpcuaMessageType {
     Hello,
     Acknowledge,
@@ -61,6 +65,7 @@ pub enum OpcuaMessageType {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[non_exhaustive]
 pub enum OpcuaChunkType {
     Final,
     Intermediate,
@@ -68,6 +73,7 @@ pub enum OpcuaChunkType {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum OpcuaPayload<'a> {
     Hello(OpcuaHello<'a>),
     Acknowledge(OpcuaAcknowledge),
@@ -78,6 +84,7 @@ pub enum OpcuaPayload<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct OpcuaHello<'a> {
     pub protocol_version: u32,
     pub receive_buffer_size: u32,
@@ -88,6 +95,7 @@ pub struct OpcuaHello<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct OpcuaAcknowledge {
     pub protocol_version: u32,
     pub receive_buffer_size: u32,
@@ -97,18 +105,21 @@ pub struct OpcuaAcknowledge {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct OpcuaError<'a> {
     pub status_code: u32,
     pub reason: Option<&'a str>,
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct OpcuaReverseHello<'a> {
     pub server_uri: Option<&'a str>,
     pub endpoint_url: Option<&'a str>,
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct OpcuaSecureConversation<'a> {
     pub secure_channel_id: u32,
     pub data: &'a [u8],

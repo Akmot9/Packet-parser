@@ -45,6 +45,7 @@ use crate::{
 /// - Les frames peuvent rester chiffrées selon le contexte ; si tu ne déchiffres pas,
 ///   utilise `QuicPayload::EncryptedPayload(&'a [u8])`.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum QuicPacket<'a> {
     /// Paquet QUIC avec Long Header de type Initial (Packet Type = 0x00)
     Initial {
@@ -107,6 +108,7 @@ impl<'a> QuicPacket<'a> {
 
 /// Entête commun aux paquets QUIC à Long Header.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct QuicLongHeader<'a> {
     /// Doit valoir 1 pour Long Header.
     pub header_form_long: bool,
@@ -139,6 +141,7 @@ pub enum QuicPacketType {
 
 /// Connection ID générique (0..=20 octets courants, mais extensible).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ConnectionId<'a> {
     /// Longueur du CID (0..=20 dans ta capture).
     pub len: u8,
@@ -148,6 +151,7 @@ pub struct ConnectionId<'a> {
 
 /// Charge utile d’un paquet QUIC une fois l’entête parsé.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum QuicPayload<'a> {
     /// Ensemble de frames décodées (après déchiffrement).
     Frames(Vec<QuicFrame<'a>>),
@@ -157,6 +161,7 @@ pub enum QuicPayload<'a> {
 
 /// Ensemble minimal de frames QUIC utiles au handshake.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum QuicFrame<'a> {
     /// Frame ACK (RFC 9000 §19.3)
     Ack(AckFrame),
@@ -172,6 +177,7 @@ pub enum QuicFrame<'a> {
 
 /// Frame ACK (schéma simplifié : first range + ranges supplémentaires).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct AckFrame {
     /// Plus grand numéro de paquet accusé de réception.
     pub largest_acknowledged: u64,
@@ -187,6 +193,7 @@ pub struct AckFrame {
 
 /// Un intervalle d’ACK supplémentaire (gap + longueur du range).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct AckRange {
     /// Ecart (paquets non accusés) avant le prochain range.
     pub gap: u64,
@@ -196,6 +203,7 @@ pub struct AckRange {
 
 /// Frame CRYPTO : transporte des fragments TLS 1.3 (ClientHello, ServerHello, etc.).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct CryptoFrame<'a> {
     /// Offset dans le flux CRYPTO (peut arriver en fragments).
     pub offset: u64,

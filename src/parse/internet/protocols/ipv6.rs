@@ -34,6 +34,7 @@ use std::net::Ipv6Addr;
 /// 320-383: "Extension Headers / Payload variable"
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct Ipv6Packet<'a> {
     /// Version (6 for IPv6), Traffic Class, and Flow Label
     pub version_tc_flow: [u8; 4],

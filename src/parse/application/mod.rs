@@ -27,6 +27,7 @@ use crate::{
 /// example, a valid-looking S7Comm payload carried over UDP from being
 /// labelled as S7Comm and keeps weak COTP signatures behind TCP port 102.
 #[derive(Debug, Clone, Serialize, Eq)]
+#[non_exhaustive]
 pub struct Application {
     pub application_protocol: &'static str,
 }

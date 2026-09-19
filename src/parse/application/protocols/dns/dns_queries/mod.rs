@@ -15,6 +15,7 @@ use crate::{
 };
 
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub struct DnsQueries {
     pub queries: Vec<DnsQuery>,
 }
@@ -82,6 +83,7 @@ impl fmt::Display for DnsQueries {
 }
 
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub struct DnsQuery {
     pub name: String,
     pub qtype: DnsType,

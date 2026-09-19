@@ -33,12 +33,14 @@ use crate::{
 /// 128-191: "VarBindList / ScopedPDU variable"
 /// ```
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct SnmpPacket<'a> {
     pub version: SnmpVersion,
     pub message: SnmpMessage<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SnmpVersion {
     V1,
     V2c,
@@ -46,18 +48,21 @@ pub enum SnmpVersion {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SnmpMessage<'a> {
     V1V2c(SnmpV1V2cMessage<'a>),
     V3(SnmpV3Message<'a>),
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct SnmpV1V2cMessage<'a> {
     pub community: &'a [u8],
     pub pdu: SnmpPdu<'a>,
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct SnmpV3Message<'a> {
     pub message_id: i64,
     pub max_size: i64,
@@ -68,12 +73,14 @@ pub struct SnmpV3Message<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SnmpV3Data<'a> {
     ScopedPdu(SnmpScopedPdu<'a>),
     EncryptedPdu(&'a [u8]),
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct SnmpScopedPdu<'a> {
     pub context_engine_id: &'a [u8],
     pub context_name: &'a [u8],
@@ -81,6 +88,7 @@ pub struct SnmpScopedPdu<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct SnmpPdu<'a> {
     pub pdu_type: SnmpPduType,
     pub raw: &'a [u8],
@@ -88,6 +96,7 @@ pub struct SnmpPdu<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SnmpPduType {
     GetRequest,
     GetNextRequest,
@@ -101,6 +110,7 @@ pub enum SnmpPduType {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SnmpPduPayload<'a> {
     Standard {
         request_id: i64,
@@ -119,12 +129,14 @@ pub enum SnmpPduPayload<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct SnmpVarBind<'a> {
     pub oid: &'a [u8],
     pub value: SnmpValue<'a>,
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SnmpValue<'a> {
     Integer(i64),
     OctetString(&'a [u8]),

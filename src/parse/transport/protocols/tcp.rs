@@ -15,6 +15,7 @@ use crate::{
 
 /// Represents a TCP header
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct TcpHeader<'a> {
     pub source_port: u16,
     pub destination_port: u16,
@@ -57,6 +58,7 @@ pub struct TcpHeader<'a> {
 /// 160-191: "Options / Payload variable"
 /// ```
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct TcpPacket<'a> {
     pub header: TcpHeader<'a>,
     pub payload: &'a [u8],

@@ -10,6 +10,7 @@ use crate::parse::application::protocols::dns::utils::{
 };
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AdditionalRecord {
     pub name: String,           // Domain name
     pub answer_type: DnsType,   // Type of record

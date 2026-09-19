@@ -68,6 +68,7 @@ impl fmt::Display for Packet {
 
 /// Erreurs de conversion d'un flux hexadécimal.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum HexStreamError {
     #[error("La chaîne hexadécimale doit avoir une longueur paire (longueur: {0})")]
     OddLength(usize),

@@ -338,6 +338,7 @@ pub enum LinkLayerKind<'a> {
 /// Construction goes through format-specific constructors so `link_type`,
 /// `network_protocol` and `kind` cannot disagree.
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct LinkLayer<'a> {
     link_type: LinkType,
     network_protocol: NetworkProtocol,

@@ -34,12 +34,14 @@ use crate::{
 /// 192-255: "Command Data variable"
 /// ```
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct EtherNetIpPacket<'a> {
     pub header: EtherNetIpHeader<'a>,
     pub command_data: EtherNetIpCommandData<'a>,
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct EtherNetIpHeader<'a> {
     pub command: EtherNetIpCommand,
     pub length: u16,
@@ -50,6 +52,7 @@ pub struct EtherNetIpHeader<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum EtherNetIpCommandData<'a> {
     Empty,
     RegisterSession {
@@ -61,6 +64,7 @@ pub enum EtherNetIpCommandData<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct EtherNetIpCommonPacketFormat<'a> {
     pub interface_handle: u32,
     pub timeout: u16,
@@ -72,12 +76,14 @@ pub struct EtherNetIpCommonPacketFormat<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct EtherNetIpCpfItem<'a> {
     pub type_id: u16,
     pub data: &'a [u8],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum EtherNetIpCommand {
     Nop,
     ListServices,

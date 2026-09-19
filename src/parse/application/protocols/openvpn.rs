@@ -32,6 +32,7 @@ use crate::{
 /// La valeur est celle des 5 bits hauts du premier octet, avant decalage.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum OpenVpnOpcode {
     /// `P_CONTROL_HARD_RESET_CLIENT_V1` : ouverture de session, methode de
     /// clef 1 (historique).
@@ -138,6 +139,7 @@ impl OpenVpnOpcode {
 /// et rien dans le paquet ne les annonce : tout ce qui suit la session id est
 /// donc expose brut dans [`OpenVpnPacket::payload`].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct OpenVpnPacket<'a> {
     /// Opcode des 5 bits hauts du premier octet.
     pub opcode: OpenVpnOpcode,

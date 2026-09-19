@@ -97,6 +97,26 @@ Travaux de la 11.0.0 (epic #76) — branche `release/11.0.0`.
     `usize` : l'ancienne variante tronquait la longueur a 8 bits (une trame
     de 300 octets coupee dans sa pile VLAN annoncait 44 octets).
 
+- **Champs et variantes** (lot C de l'epic #76 : #82, #9). Migration :
+  `MIGRATION-11.md` §Champs et variantes.
+  - `DataLink::vlan_stack` / `DataLinkOwned::vlan_stack` : la pile VLAN
+    complete, du tag externe (S-VLAN) au tag interne (C-VLAN) (#82).
+    `VlanStack<'a>` est une vue zero-copie, sans allocation ; serialisee
+    seulement a partir de deux tags, donc le JSON des trames sans tag ou a
+    tag unique ne change pas. `vlan` reste le tag interne. Le chemin sans
+    tag ne regresse pas (253 ns contre 252).
+  - `IpType::Broadcast` : `255.255.255.255` sortait classee `Public`, faute
+    de bras dedie (#9).
+  - `#[non_exhaustive]` etendu a 124 types de `parse` : les enums qui
+    suivent une spec ou un registre evolutif, et les structs que seul le
+    parseur construit. C'est la cause racine de l'epic : six des quatorze
+    ruptures etaient « ajouter un champ ou une variante a un type
+    exhaustif ». Restent exhaustifs, avec leur raison, les types que les
+    consommateurs construisent (`VlanTag`, `CorruptedLayer`, `TlsVersion`,
+    `BridgeId`, `ParseTiming`, `Packet`, tout `owned`) et les enums fermes
+    par construction (`Ecn`, `QuicPacketType`). Regle verrouillee par
+    `tests/public_types_are_non_exhaustive.rs`.
+
 ### Deprecie
 
 - `convert::hex_stream_to_bytes`, qui panique sur une entree invalide : lui

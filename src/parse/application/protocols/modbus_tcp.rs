@@ -29,6 +29,7 @@ use crate::{
 /// 64-127: "PDU Data variable"
 /// ```
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ModbusTcpPacket<'a> {
     pub mbaps: Vec<MBAP<'a>>, // plusieurs MBAP dans un paquet Modbus/TCP
 }
@@ -64,6 +65,7 @@ impl<'a> TryFrom<&'a [u8]> for ModbusTcpPacket<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct MBAP<'a> {
     pub transaction_identifier: u16,
     pub protocol_identifier: u16,
@@ -73,6 +75,7 @@ pub struct MBAP<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct Modbus<'a> {
     pub function_code: u8,
     pub pdu_data: &'a [u8],

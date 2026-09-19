@@ -38,6 +38,7 @@ use std::net::Ipv4Addr;
 /// 160-191: "Options / Payload variable"
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct Ipv4Packet<'a> {
     /// Version (4 for IPv4) and Internet Header Length (IHL)
     pub version_ihl: u8,

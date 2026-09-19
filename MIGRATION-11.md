@@ -207,3 +207,48 @@ appelé directement — mais n'est plus convertible en `ParseError`. Sa
 variante `DataLinkTooShort(u8)` devient `DataLinkTooShort { required,
 actual }` (`usize`).
 
+## Champs et variantes
+
+### `vlan_stack`
+
+Nouveau champ sur `DataLink` et `DataLinkOwned`. `vlan` garde son sens (le
+tag interne) : rien à changer pour qui ne lit que lui.
+
+```rust
+for tag in flow_data_link.vlan_stack.iter() { /* externe → interne */ }
+let s_vlan = flow_data_link.vlan_stack.outer();
+```
+
+`DataLinkOwned` reste constructible en littéral, mais gagne un champ :
+
+```rust
+DataLinkOwned { destination_mac, source_mac, ethertype, vlan, vlan_stack: Vec::new() }
+```
+
+JSON : une clé `vlan_stack` (liste de `{id, pcp, dei}`) apparaît dans
+`link_details` **uniquement** pour les trames à deux tags ou plus.
+
+### `IpType::Broadcast`
+
+`255.255.255.255` est classée `Broadcast` au lieu de `Public`. Un filtre
+« trafic vers Internet » basé sur `IpType::Public` n'attrape plus la
+diffusion limitée — c'était un faux positif.
+
+### `#[non_exhaustive]` sur les types que le parseur construit
+
+Pour 124 enums et structs de `packet_parser::parse` :
+
+- un `match` sur un de ces enums doit avoir un bras `_` ;
+- une déstructuration de struct doit finir par `..` ;
+- ces structs ne se construisent plus par littéral hors de la crate.
+
+Ne sont **pas** concernés, et restent constructibles : tout
+`packet_parser::owned`, `VlanTag`, `CorruptedLayer`, `TlsVersion`,
+`BridgeId`, `ParseTiming`, `convert::Packet`, ainsi que les types valeur
+tuple (`MacAddress`, `Ethertype`, `LinkType`, `Dscp`, `DnsType`, …).
+`Ecn` et `QuicPacketType`, fermés par construction, restent exhaustifs.
+
+`IpType`, `CorruptedLayerKind` et `TransportProtocol` sont dans le lot : leurs
+`match` côté consommateur ont besoin d'un bras `_` (`NetworkProtocol` l'était
+déjà en 10.x).
+

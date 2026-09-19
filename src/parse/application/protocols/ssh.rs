@@ -38,6 +38,7 @@ use crate::{
 /// 160-175: "CR LF (CR optionnel)"
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct SshPacket<'a> {
     /// `2.0` ou `1.99`, seules valeurs definies.
     pub protocol_version: &'a str,

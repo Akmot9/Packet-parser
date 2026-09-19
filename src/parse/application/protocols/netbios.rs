@@ -32,6 +32,7 @@ use super::bounded_capacity;
 /// service (0x00 workstation, 0x1b domain master browser, 0x20 file
 /// server...).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct NetbiosName {
     /// Nom decode, 15 octets completes par des espaces.
     pub name: [u8; 15],
@@ -66,6 +67,7 @@ impl NetbiosName {
 /// Le mot de 16 bits suit le gabarit DNS mais avec un jeu d'opcodes propre
 /// et un bit B (broadcast) dans la zone que DNS reserve a zero.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct NbnsFlags {
     /// Bit R : requete (false) ou reponse (true).
     pub response: bool,
@@ -83,6 +85,7 @@ pub struct NbnsFlags {
 
 /// Types de question et d'enregistrement NBNS (RFC 1002 §4.2.1.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NbnsRecordType {
     /// A (0x0001), historique.
     Address,
@@ -100,6 +103,7 @@ pub enum NbnsRecordType {
 ///
 /// La classe, toujours IN, est validee puis omise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct NbnsQuestion<'a> {
     pub name: NetbiosName,
     /// Labels de scope bruts (longueur + octets), vides en pratique.
@@ -109,6 +113,7 @@ pub struct NbnsQuestion<'a> {
 
 /// Enregistrement NBNS, RDATA garde brut.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct NbnsResourceRecord<'a> {
     pub name: NetbiosName,
     /// Labels de scope bruts (longueur + octets), vides en pratique.
@@ -141,6 +146,7 @@ pub struct NbnsResourceRecord<'a> {
 /// 96-127: "Questions puis enregistrements (noms 32 octets first-level)"
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct NbnsPacket<'a> {
     pub transaction_id: u16,
     pub flags: NbnsFlags,
@@ -209,6 +215,7 @@ impl<'a> TryFrom<&'a [u8]> for NbnsPacket<'a> {
 
 /// Type de message NBSS (RFC 1002 §4.3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NbssMessageType {
     /// 0x00 : session message, porte le payload applicatif (SMB).
     SessionMessage,
@@ -240,6 +247,7 @@ impl NbssMessageType {
 
 /// En-tete NBSS de 4 octets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct NbssHeader {
     pub message_type: NbssMessageType,
     /// Longueur annoncee du payload : 16 bits plus le bit d'extension du
@@ -265,6 +273,7 @@ pub struct NbssHeader {
 /// 32-63: "Payload borne par LENGTH"
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct NbssPacket<'a> {
     pub header: NbssHeader,
     /// Payload borne par la longueur annoncee : les octets d'un eventuel

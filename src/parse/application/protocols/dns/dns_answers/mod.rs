@@ -11,6 +11,7 @@ use crate::parse::application::protocols::dns::utils::{
 
 // more can be a list of this possible struct (those strcut may on may not be on the liste: "more"):
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct Answer {
     pub name: String,           // Domain name
     pub answer_type: DnsType,   // Type of record (e.g., A, AAAA, MX, etc.)

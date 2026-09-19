@@ -27,6 +27,7 @@ use std::fmt;
 ///
 /// The `Dhcpv6Packet` struct represents a parsed DHCPv6 packet.
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub struct Dhcpv6Packet<'a> {
     pub message_type: u8,
     pub transaction_id: u32,

@@ -129,6 +129,7 @@ pub fn parse_timed<'a>(
 
 /// Layer at which recognized-but-invalid bytes stopped the parsing.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum CorruptedLayerKind {
     /// The EtherType announced a known L3 protocol but its bytes are invalid.
     Internet,
@@ -181,6 +182,7 @@ pub struct CorruptedLayer {
 /// ignored. Two packets of the same conversation carrying different data
 /// therefore compare equal and hash identically.
 #[derive(Debug, Clone, Serialize, Eq)]
+#[non_exhaustive]
 pub struct PacketFlow<'a> {
     /// Link layer (mandatory), tagged with its canonical LINKTYPE.
     pub data_link: LinkLayer<'a>,

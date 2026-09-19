@@ -39,6 +39,7 @@ use utils::name::{RawRecord, parse_mdns_resource_record, parse_resource_record};
 /// 160-223: "Answers / Authority / Additional variable"
 /// ```
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct DnsPacket {
     pub header: DnsHeader,
     pub queries: DnsQueries,
