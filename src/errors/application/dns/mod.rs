@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum DnsPacketError {
     #[error("Insufficient data: expected at least {expected} bytes, but got {actual}")]
     InsufficientData { expected: usize, actual: usize },
@@ -16,6 +17,7 @@ pub enum DnsPacketError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum DnsHeaderError {
     #[error("Packet too short to be a DNS packet")]
     PacketTooShort,
@@ -26,6 +28,7 @@ pub enum DnsHeaderError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum DnsQueryParseError {
     #[error(
         "Insufficient data: required {required} more bytes at offset {offset}, but only {available} bytes available"
@@ -46,6 +49,7 @@ pub enum DnsQueryParseError {
 }
 
 #[derive(Debug, Error, PartialEq)]
+#[non_exhaustive]
 pub enum DnsFlagsError {
     #[error("Invalid Z field, must be 0. Here it's: {0}")]
     InvalidZField(u16),

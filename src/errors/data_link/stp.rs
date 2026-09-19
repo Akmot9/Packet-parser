@@ -7,6 +7,7 @@ use thiserror::Error;
 
 /// Erreurs de parsing des BPDU Spanning Tree (IEEE 802.1D / 802.1Q).
 #[derive(Debug, Error, PartialEq)]
+#[non_exhaustive]
 pub enum StpError {
     #[error("BPDU too short: expected at least {expected} bytes, got {actual} bytes")]
     InvalidLength { expected: usize, actual: usize },

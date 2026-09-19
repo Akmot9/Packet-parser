@@ -141,8 +141,17 @@ pub enum CorruptedLayerKind {
 /// field) but whose bytes are invalid.
 ///
 /// Parsing degrades gracefully instead of failing: every layer *above* the
-/// corrupted one stays filled, the corrupted layer and everything below it
-/// are `None`, and the corruption is reported here.
+/// reported one stays filled, and the problem is reported here. Two cases:
+///
+/// - **structural corruption** — the bytes cannot be read as this protocol
+///   (truncated header, impossible length): the reported layer and
+///   everything below it are `None`;
+/// - **semantic anomaly** — the header reads fine but says something no
+///   conforming stack emits (TCP SYN+FIN, non-zero reserved bits): the
+///   reported layer is **kept**, so its ports remain available for flow
+///   correlation, and only the layers below it are `None`.
+///
+/// To tell them apart, check whether the layer named by `layer` is `Some`.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
 pub struct CorruptedLayer {
     /// Which layer had invalid bytes.
@@ -323,7 +332,20 @@ impl<'a> PacketFlow<'a> {
         match internet {
             Some(internet) => {
                 match Transport::try_from_parts(internet.payload_protocol, internet.payload) {
-                    Ok(transport) => (Some(transport), None),
+                    Ok(transport) => {
+                        // Anomalie semantique (SYN+FIN, bits reserves) :
+                        // conserver et signaler. Les ports restent, donc la
+                        // correlation de flux aussi (#24).
+                        let anomaly = match &transport.details {
+                            Some(crate::TransportDetails::Tcp(tcp)) => tcp.anomaly(),
+                            _ => None,
+                        };
+                        let corrupted = anomaly.map(|anomaly| CorruptedLayer {
+                            layer: CorruptedLayerKind::Transport,
+                            error: TransportError::from(anomaly).to_string(),
+                        });
+                        (Some(transport), corrupted)
+                    }
                     Err(TransportError::UnsupportedProtocol) => (None, None),
                     Err(e) => (
                         None,
@@ -440,9 +462,12 @@ impl<'a> PacketFlow<'a> {
             Self::parse_l3(network_protocol, network_payload)
         });
         let (transport, l4_corruption) = sink.time(Stage::L4, || Self::parse_l4(internet.as_ref()));
+        // Un transport signale anormal n'est pas sonde au-dela : son payload
+        // ne vient pas d'une pile conforme.
+        let probed_transport = transport.as_ref().filter(|_| l4_corruption.is_none());
         let (application, inner) = sink.time(Stage::L7, || {
             let (application, inner) =
-                Self::parse_l7_and_inner(internet.as_ref(), transport.as_ref(), depth, decode_as);
+                Self::parse_l7_and_inner(internet.as_ref(), probed_transport, depth, decode_as);
             (application.or_else(|| Self::detect_stp(&data_link)), inner)
         });
 
@@ -2689,14 +2714,13 @@ mod tests {
         assert_eq!(records[0].length, 19);
     }
 
-    /// Politique SYN+FIN figee bout-en-bout (issue #24) : la combinaison
-    /// d'evasion classique est rejetee — la couche transport disparait et la
-    /// corruption est signalee. L'appelant perd les ports, donc la
-    /// correlation de flux : ce choix, comme le nom trompeur de l'erreur
-    /// partagee (`InvalidHeaderLength`), est reevalue avec l'epic #76 qui
-    /// pourra etendre `TcpError`.
+    /// Politique SYN+FIN figee bout-en-bout (issue #24, epic #76) :
+    /// **conserver et signaler**. La combinaison d'evasion classique garde
+    /// sa couche transport — donc ses ports, et la correlation de flux — et
+    /// l'anomalie est rapportee, nommee, dans `corrupted`. La couche
+    /// application n'est pas sondee.
     #[test]
-    fn syn_fin_packet_is_dropped_as_a_corrupted_transport_layer() {
+    fn syn_fin_packet_keeps_its_transport_layer_and_is_reported() {
         let mut packet = vec![
             0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // dst MAC
             0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, // src MAC
@@ -2720,16 +2744,38 @@ mod tests {
         let flow = parse(LinkType::ETHERNET, packet.as_slice()).expect("frame decodes");
 
         assert!(flow.internet.is_some(), "la couche IP est conservee");
-        assert!(flow.transport.is_none(), "SYN+FIN supprime le transport");
-        let corrupted = flow.corrupted.as_ref().expect("corruption signalee");
+        let transport = flow
+            .transport
+            .as_ref()
+            .expect("SYN+FIN garde sa couche transport");
+        assert_eq!(transport.source_port, Some(12345));
+        assert_eq!(transport.destination_port, Some(443));
+        let corrupted = flow.corrupted.as_ref().expect("anomalie signalee");
         assert_eq!(corrupted.layer, CorruptedLayerKind::Transport);
-        // Nom d'erreur partage et trompeur, fige en attendant #76.
-        assert_eq!(corrupted.error, "TCP error: Invalid TCP header length");
+        assert_eq!(
+            corrupted.error,
+            "TCP error: Invalid TCP flags 0x03: SYN and FIN are both set"
+        );
+        assert!(flow.application.is_none(), "pas de sondage applicatif");
+        // Le modele owned porte les deux informations.
+        let owned = flow.to_owned_flow();
+        assert!(owned.transport.is_some());
+        assert!(owned.corrupted.is_some());
 
-        // Le meme paquet avec SYN seul garde sa couche transport : c'est
-        // bien la combinaison qui est rejetee.
+        // Bits reserves non nuls : meme politique, autre motif.
+        let reserved_index = packet.len() - 8;
         let syn_index = packet.len() - 7;
+        packet[reserved_index] = 0x54; // data offset 5, bits reserves 0b010
         packet[syn_index] = 0x02;
+        let flow = parse(LinkType::ETHERNET, packet.as_slice()).expect("frame decodes");
+        assert!(flow.transport.is_some());
+        assert_eq!(
+            flow.corrupted.as_ref().map(|c| c.error.as_str()),
+            Some("TCP error: TCP reserved bits are set: 0b010")
+        );
+
+        // Le meme paquet avec SYN seul et bits reserves nuls : rien a signaler.
+        packet[reserved_index] = 0x50;
         let flow = parse(LinkType::ETHERNET, packet.as_slice()).expect("frame decodes");
         let transport = flow.transport.expect("SYN seul est un transport valide");
         assert_eq!(transport.source_port, Some(12345));
