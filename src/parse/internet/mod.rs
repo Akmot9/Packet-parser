@@ -73,9 +73,11 @@ impl<'a> Internet<'a> {
     }
 
     /// La destination est-elle la diffusion limitee IPv4 255.255.255.255
-    /// (issue #9) ? La diffusion dirigee (x.y.z.255 selon le masque) exige de
-    /// connaitre le sous-reseau, hors de portee d'un parseur de paquets ; et
-    /// la variante IpType::Broadcast attendrait une rupture d'enum (epic #76).
+    /// (issue #9) ? Le parseur la classe aussi `IpType::Broadcast` dans
+    /// `destination_type` depuis la 11.0.0 ; l'aide lit l'adresse, et reste
+    /// donc juste sur un `Internet` construit a la main. La diffusion dirigee
+    /// (x.y.z.255 selon le masque) exige de connaitre le sous-reseau, hors de
+    /// portee d'un parseur de paquets.
     pub fn destination_is_limited_broadcast(&self) -> bool {
         matches!(
             self.destination,
@@ -283,7 +285,7 @@ mod tests {
         assert!(!internet.destination_is_limited_broadcast());
 
         internet.destination = Some(IpAddr::V4(Ipv4Addr::new(255, 255, 255, 255)));
-        internet.destination_type = Some(IpType::Public);
+        internet.destination_type = Some(IpType::Broadcast);
         assert!(internet.destination_is_limited_broadcast());
         assert!(!internet.destination_is_multicast());
     }
