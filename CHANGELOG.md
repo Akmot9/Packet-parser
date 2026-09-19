@@ -6,6 +6,64 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+Travaux de la 11.0.0 (epic #76) — branche `release/11.0.0`.
+
+### Rupture
+
+- **GIOP complet** (epic #76) : les huit types de message, GIOP 1.0, 1.1 et
+  1.2, les deux endianness. Migration : `MIGRATION-11.md` §GIOP.
+  - `GiopReply` n'est plus une struct vide : `GiopReply<'a> { request_id,
+    reply_status, service_contexts, body, detail }`. `GiopReplyDetail` type
+    le body selon le statut — `UserException { exception_id, members }`,
+    `SystemException { exception_id, minor_code, completion_status }`,
+    `LocationForward(Ior)`, `NeedsAddressingMode` — et degrade en
+    `Undecoded` sans faire echouer le message.
+  - `GiopMessage` gagne `CancelRequest`, `LocateRequest`, `LocateReply`,
+    `CloseConnection`, `MessageError` et un `Fragment(GiopFragment<'a>)`
+    decode (`request_id` a partir de GIOP 1.2 seulement) ; les unit structs
+    placeholder disparaissent. `Other` ne designe plus qu'un body illisible.
+  - `TargetAddress::ProfileAddr` porte un `TaggedProfile { tag,
+    profile_data }` ; `TargetAddress::ReferenceAddr` porte `{
+    selected_profile_index, ior }` au lieu d'un span brut. Nouveau module
+    `giop::ior` : `Ior`, `TaggedProfile`, et `IiopProfile` (hote, port, object
+    key) via `TaggedProfile::iiop()` / `Ior::iiop()`.
+  - `GiopRequest::requesting_principal: Option<&[u8]>` (GIOP 1.0/1.1).
+  - `GiopRequest::stub_data` exclut desormais le padding d'alignement sur 8
+    de GIOP 1.2 (il etait compte dans le stub : 96 octets au lieu des 92 de
+    tshark sur la trame 19 de `corba.pcap`).
+  - **Un message qui deborde de son segment TCP est accepte** et marque
+    `GiopPacket::truncated`, au lieu d'etre rejete en `TruncatedBody` : le
+    premier segment d'un gros message sortait `Unknown` du pipeline. La
+    variante `GiopParseError::TruncatedBody` et
+    `checks::...::validate_total_length` disparaissent.
+  - `GiopParseError::UnknownTargetDiscriminator` porte le `u16` du wire (plus
+    de saturation a 255) ; nouvelles variantes `UnknownReplyStatus`,
+    `UnknownLocateStatus`, `InvalidProfileCount` ; l'enum devient
+    `#[non_exhaustive]`.
+  - `checks::application::giop::extract_message_length` (variante historique
+    big-endian seule) est supprimee au profit de `extract_message_size`.
+  - Tous les types GIOP publics deviennent `#[non_exhaustive]` : les
+    prochains ajouts seront additifs.
+
+### Ajoute
+
+- `giop::giop_messages(payload)` : itere sur les messages GIOP consecutifs
+  d'un meme segment TCP. `giop::find_giop_message(payload)` : resynchronise
+  un appelant qui suit ses flux sur un header GIOP demarrant au milieu d'un
+  segment de continuation, ou sous un en-tete MIOP.
+- `GiopHeader::is_little_endian()` et `has_more_fragments()`.
+- **Regression differentielle GIOP contre tshark**
+  (`tests/giop_tshark_regression.rs`, oracle `tools/giop_oracle.sh`) : 134
+  messages reels compares sur 15 colonnes, aucune divergence ; les
+  comportements propres a tshark (suivi de flux, reassemblage, bug #1934 sur
+  les Fragment 1.1) sont nommes un par un. Couverture du corpus figee par
+  test ; troncature et mutation de chaque message reel sans panique ; cible
+  de fuzz `parse_giop`.
+- Dix captures GIOP reelles : trois pieces jointes du tracker Wireshark et
+  sept captures d'un labo omniORB rejouable (`tools/capture_giop.sh`,
+  `tools/giop_lab/`). Provenance et limites :
+  `pcaps_exemple/protocols/giop/SOURCE.md`.
+
 ## [10.5.0] - 2026-09-09
 
 Version mineure, strictement additive (`cargo semver-checks` : 223
