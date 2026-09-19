@@ -41,6 +41,7 @@ use crate::{
     LinkLayer, LinkType, NetworkProtocol, ParseError,
     errors::{internet::InternetError, transport::TransportError},
     owned::PacketFlowOwned,
+    timing::{NoTiming, Stage, TimingSink},
 };
 
 pub mod application;
@@ -108,24 +109,22 @@ impl ParseConfig {
     }
 }
 
-/// Timed counterpart of [`fn@parse`], using the exact same link-type dispatcher.
-#[cfg(feature = "parse_timing")]
+/// Timed counterpart of [`fn@parse`]: the exact same pipeline, reporting the
+/// time spent in each layer.
+///
+/// Always available. Without the `parse_timing` feature nothing is measured
+/// and `timing` comes back zeroed, so enabling the feature anywhere in the
+/// dependency graph never changes this signature (issue #26).
 #[inline(always)]
 pub fn parse_timed<'a>(
     link_type: LinkType,
     bytes: &'a [u8],
     timing: &mut crate::timing::ParseTiming,
 ) -> Result<PacketFlow<'a>, ParseError> {
-    use crate::timing::{elapsed_ns, now};
-
-    *timing = crate::timing::ParseTiming::default();
-    let total_t0 = now();
-    let result = (|| {
-        let decoded = link::decode_timed(link_type, bytes, timing)?;
-        PacketFlow::parse_decoded_timed(decoded, timing, 0)
-    })();
-    timing.total_ns = elapsed_ns(total_t0);
-    result
+    timing.time_total(|timing| {
+        let decoded = link::decode_into(link_type, bytes, timing)?;
+        PacketFlow::parse_decoded_into(decoded, 0, &[], timing)
+    })
 }
 
 /// Layer at which recognized-but-invalid bytes stopped the parsing.
@@ -415,54 +414,31 @@ impl<'a> PacketFlow<'a> {
         depth: u8,
         decode_as: &[(u16, DecodeAsProtocol)],
     ) -> Result<Self, ParseError> {
-        let (data_link, network_protocol, network_payload) = decoded.into_parts();
-        let (internet, l3_corruption) = Self::parse_l3(network_protocol, network_payload);
-        let (transport, l4_corruption) = Self::parse_l4(internet.as_ref());
-        let (application, inner) =
-            Self::parse_l7_and_inner(internet.as_ref(), transport.as_ref(), depth, decode_as);
-        let application = application.or_else(|| Self::detect_stp(&data_link));
-
-        Ok(PacketFlow {
-            data_link,
-            internet,
-            transport,
-            application,
-            inner,
-            corrupted: l3_corruption.or(l4_corruption),
-        })
+        Self::parse_decoded_into(decoded, depth, decode_as, &mut NoTiming)
     }
 
-    // -------------------------------------------------------------------------
-    // Timed parsing (feature-gated) — does NOT change PacketFlow API/fields.
-    // Uses crate::timing helpers so "feature off" has zero impact elsewhere.
-    // -------------------------------------------------------------------------
-
-    #[cfg(feature = "parse_timing")]
+    /// Le pipeline L3/L4/L7, unique : le chemin normal le traverse avec
+    /// [`NoTiming`] (chaque etape se reduit a son corps), [`parse_timed`]
+    /// avec un [`ParseTiming`](crate::timing::ParseTiming). `l7` inclut la
+    /// detection de tunnel et le parsing recursif des paquets encapsules,
+    /// qui eux ne sont pas chronometres separement.
     #[inline(always)]
-    pub(crate) fn parse_decoded_timed(
+    pub(crate) fn parse_decoded_into(
         decoded: link::DecodedLink<'a>,
-        timing: &mut crate::timing::ParseTiming,
         depth: u8,
+        decode_as: &[(u16, DecodeAsProtocol)],
+        sink: &mut impl TimingSink,
     ) -> Result<Self, ParseError> {
-        use crate::timing::{elapsed_ns, now};
-
         let (data_link, network_protocol, network_payload) = decoded.into_parts();
-        let t0 = now();
-        let internet = Self::parse_l3(network_protocol, network_payload);
-        timing.l3_ns = elapsed_ns(t0);
-        let (internet, l3_corruption) = internet;
-
-        let t0 = now();
-        let (transport, l4_corruption) = Self::parse_l4(internet.as_ref());
-        timing.l4_ns = elapsed_ns(t0);
-
-        // l7_ns includes tunnel detection and the recursive parsing of any
-        // encapsulated packet.
-        let t0 = now();
-        let (application, inner) =
-            Self::parse_l7_and_inner(internet.as_ref(), transport.as_ref(), depth, &[]);
-        let application = application.or_else(|| Self::detect_stp(&data_link));
-        timing.l7_ns = elapsed_ns(t0);
+        let (internet, l3_corruption) = sink.time(Stage::L3, || {
+            Self::parse_l3(network_protocol, network_payload)
+        });
+        let (transport, l4_corruption) = sink.time(Stage::L4, || Self::parse_l4(internet.as_ref()));
+        let (application, inner) = sink.time(Stage::L7, || {
+            let (application, inner) =
+                Self::parse_l7_and_inner(internet.as_ref(), transport.as_ref(), depth, decode_as);
+            (application.or_else(|| Self::detect_stp(&data_link)), inner)
+        });
 
         Ok(PacketFlow {
             data_link,
@@ -474,13 +450,9 @@ impl<'a> PacketFlow<'a> {
         })
     }
 
-    /// Parses a raw packet buffer into a [`PacketFlow`] and fills timing data.
-    ///
-    /// This is feature-gated (`parse_timing`) and does not affect normal parsing.
-    ///
-    /// Convention:
-    /// - `l*_ns` is the cost of the *attempt* (so it may be >0 even if unsupported).
-    #[cfg(feature = "parse_timing")]
+    /// Parses an Ethernet frame into a [`PacketFlow`] and fills timing data.
+    /// See [`parse_timed`]: the timing stays zeroed without the
+    /// `parse_timing` feature.
     #[inline(always)]
     pub fn try_from_timed(
         bytes: &'a [u8],
@@ -2442,7 +2414,6 @@ mod tests {
         assert!(inner.inner.is_none());
     }
 
-    #[cfg(feature = "parse_timing")]
     #[test]
     fn try_from_timed_returns_same_flow_as_try_from() {
         let packet = sample_capwap_ieee80211_inner_tcp();

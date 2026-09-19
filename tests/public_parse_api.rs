@@ -928,7 +928,6 @@ fn truncated_vlan_errors_match_the_legacy_api() {
     }
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_api_matches_normal_dispatch() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -942,7 +941,6 @@ fn explicit_timed_api_matches_normal_dispatch() {
     assert!(timing.total_ns >= timing.l2_ns);
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_raw_api_matches_success_and_l3_corruption() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -966,7 +964,6 @@ fn explicit_timed_raw_api_matches_success_and_l3_corruption() {
     }
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_raw_errors_match_normal_errors() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -990,7 +987,6 @@ fn explicit_timed_raw_errors_match_normal_errors() {
     }
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_linux_sll_api_matches_success_and_l3_corruption() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -1018,7 +1014,6 @@ fn explicit_timed_linux_sll_api_matches_success_and_l3_corruption() {
     }
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_linux_sll_error_matches_the_normal_error() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -1042,7 +1037,6 @@ fn explicit_timed_linux_sll_error_matches_the_normal_error() {
     assert!(timing.total_ns >= timing.l2_ns);
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_linux_sll2_api_matches_success_and_l3_corruption() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -1074,7 +1068,6 @@ fn explicit_timed_linux_sll2_api_matches_success_and_l3_corruption() {
     }
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_linux_sll2_error_matches_the_normal_error() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -1098,7 +1091,6 @@ fn explicit_timed_linux_sll2_error_matches_the_normal_error() {
     assert!(timing.total_ns >= timing.l2_ns);
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn timed_api_rejects_unsupported_link_type_before_decoding() {
     use packet_parser::{parse_timed, timing::ParseTiming};

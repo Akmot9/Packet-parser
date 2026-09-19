@@ -153,7 +153,6 @@ pub use errors::{LinkLayerError, ParseError};
 
 /// Main module for packet analysis.
 pub mod parse;
-#[cfg(feature = "parse_timing")]
 pub use parse::parse_timed;
 pub use parse::{DecodeAsProtocol, ParseConfig, is_supported, parse, parse_with};
 
