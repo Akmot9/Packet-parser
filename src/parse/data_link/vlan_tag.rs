@@ -145,7 +145,10 @@ mod tests {
         let err = VlanTag::try_from(&[][..]).unwrap_err();
         assert_eq!(
             err,
-            crate::errors::data_link::DataLinkError::DataLinkTooShort(0)
+            crate::errors::data_link::DataLinkError::DataLinkTooShort {
+                required: 4,
+                actual: 0
+            }
         );
     }
 
@@ -154,7 +157,10 @@ mod tests {
         let err = VlanTag::try_from(&[0x00, 0x01, 0x08][..]).unwrap_err();
         assert_eq!(
             err,
-            crate::errors::data_link::DataLinkError::DataLinkTooShort(3)
+            crate::errors::data_link::DataLinkError::DataLinkTooShort {
+                required: 4,
+                actual: 3
+            }
         );
     }
 

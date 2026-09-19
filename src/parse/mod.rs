@@ -1777,7 +1777,16 @@ mod tests {
     fn packetflow_timing_records_total_on_l2_error() {
         let (result, timing) = timed_parse(&[]);
 
-        assert!(matches!(result, Err(ParseError::InvalidDataLink(_))));
+        assert!(matches!(
+            result,
+            Err(ParseError::InvalidLinkLayer(
+                crate::LinkLayerError::Truncated {
+                    link_type: LinkType::ETHERNET,
+                    required: 14,
+                    actual: 0
+                }
+            ))
+        ));
         assert_total_timing_is_recorded(timing);
         assert!(timing.l2_ns > 0);
         assert_eq!(timing.l3_ns, 0);
