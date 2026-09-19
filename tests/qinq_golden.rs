@@ -78,6 +78,25 @@ fn frame_1_stacked_tags_are_consumed_and_inner_tag_is_kept() {
     assert_eq!(frame.payload, &bytes[PAYLOAD_OFFSET..]);
     // Debut PPPoE : version/type 0x11, code 0x00, session 0x0f07.
     assert_eq!(&frame.payload[..4], &[0x11, 0x00, 0x0f, 0x07]);
+
+    // Pile complete (#82), du tag externe au tag interne. tshark :
+    // vlan.id 3704,2474 — vlan.etype 0x8100,0x8864.
+    assert_eq!(frame.vlan_stack.len(), 2);
+    let stack: Vec<VlanTag> = frame.vlan_stack.iter().collect();
+    assert_eq!(stack[0].id, 3704, "tag externe (S-VLAN)");
+    assert_eq!(
+        stack[0].inner_ethertype.0, TPID_8021Q,
+        "annonce un second tag"
+    );
+    assert_eq!(stack[1].id, 2474, "tag interne (C-VLAN)");
+    assert_eq!(stack[1].inner_ethertype.0, 0x8864);
+    assert_eq!(frame.vlan_stack.outer().map(|tag| tag.id), Some(3704));
+    assert_eq!(frame.vlan_stack.inner(), Some(vlan));
+    // Zero copie : la pile est une vue sur les octets de tags de la trame.
+    assert_eq!(
+        std::mem::size_of_val(&frame.vlan_stack),
+        2 * std::mem::size_of::<usize>()
+    );
 }
 
 #[test]
@@ -102,6 +121,15 @@ fn every_frame_of_the_capture_reports_the_inner_vlan_and_pppoe() {
             link["link_details"]["ethertype"], "Pppoe Session Stage",
             "trame {number} : EtherType reel"
         );
+        // La pile complete est serialisee (deux tags), externe d'abord, et le
+        // modele owned rend exactement le meme JSON.
+        let stack = serde_json::json!([
+            { "id": 3704, "pcp": 0, "dei": false },
+            { "id": 2474, "pcp": 0, "dei": false },
+        ]);
+        assert_eq!(link["link_details"]["vlan_stack"], stack, "trame {number}");
+        let owned = serde_json::to_value(&flow.to_owned_flow().data_link).expect("serialisable");
+        assert_eq!(owned["link_details"]["vlan_stack"], stack, "trame {number}");
         // PPPoE n'est pas decode : pas de couche 3, sans erreur.
         assert!(flow.internet.is_none(), "trame {number} : PPPoE non decode");
     }

@@ -572,6 +572,7 @@ mod tests {
             destination_mac: MacAddress([0, 1, 2, 3, 4, 5]),
             source_mac: MacAddress([6, 7, 8, 9, 10, 11]),
             vlan: None,
+            vlan_stack: Default::default(),
             ethertype: Ethertype(0x0800),
             payload,
         })
@@ -734,6 +735,7 @@ mod tests {
             destination_mac: MacAddress([0, 1, 2, 3, 4, 5]),
             source_mac: MacAddress([6, 7, 8, 9, 10, 11]),
             vlan: None,
+            vlan_stack: Default::default(),
             ethertype: Ethertype(0xabcd),
             payload: &[],
         });

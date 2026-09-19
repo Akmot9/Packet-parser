@@ -58,7 +58,7 @@ pub mod vlan_tag;
 use crate::{
     checks::data_link::{validate_data_link_length, validate_data_link_vlan_stack_length},
     errors::data_link::DataLinkError,
-    parse::data_link::vlan_tag::VlanTag,
+    parse::data_link::vlan_tag::{VlanStack, VlanTag},
 };
 
 use ethertype::Ethertype;
@@ -90,8 +90,8 @@ const VLAN_TAG_LEN: usize = 4;
 /// followed by a C-tag `0x8100`, or two `0x8100`) are consumed entirely so
 /// that `ethertype` and `payload` always describe the real layer 3. `vlan`
 /// then holds the **innermost** tag (the C-VLAN, i.e. the customer network),
-/// the only one whose `inner_ethertype` is that real layer 3. Exposing the
-/// whole stack needs a new field and waits for the next major (#82, #76).
+/// the only one whose `inner_ethertype` is that real layer 3. The whole
+/// stack, outermost tag first, is in `vlan_stack` (#82).
 #[derive(Debug, Clone, Serialize, Eq)]
 pub struct DataLink<'a> {
     /// The destination MAC address (serialized as a string).
@@ -100,6 +100,11 @@ pub struct DataLink<'a> {
     pub source_mac: MacAddress,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vlan: Option<VlanTag>,
+    /// The whole VLAN tag stack, outermost first (802.1ad / QinQ: S-tag then
+    /// C-tag). Serialized only when at least two tags are stacked: below
+    /// that, `vlan` already says it all.
+    #[serde(skip_serializing_if = "VlanStack::is_not_stacked")]
+    pub vlan_stack: VlanStack<'a>,
     /// The Ethertype of the packet, indicating the protocol in the payload
     /// (serialized as its name, e.g. "IPv4").
     #[serde(serialize_with = "ethertype::serialize_name")]
@@ -127,13 +132,38 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
 
         // EtherType brut : couche 3, ou TPID d'un tag VLAN.
         let raw_ethertype = u16::from_be_bytes([packets[12], packets[13]]);
+        if VlanTag::is_tpid(raw_ethertype) {
+            return Self::parse_tagged(packets, destination_mac, source_mac, raw_ethertype);
+        }
 
-        // Pile de tags VLAN. Chaque tag fait 4 octets (TCI + EtherType
-        // suivant) et cet EtherType peut lui-meme etre un TPID : 802.1ad met
-        // un S-tag 0x88a8 (ou 0x9100 historique) devant le C-tag 0x8100, et
-        // certains equipements empilent deux 0x8100. On consomme toute la
-        // pile pour atteindre la vraie couche 3 ; `vlan` garde le tag
-        // interne, le seul dont `inner_ethertype` est cette couche 3.
+        // Cas courant, sans tag : chemin en ligne droite. La pile de tags vit
+        // dans une fonction a part — la derouler ici coutait ~13 ns a chaque
+        // trame, taguee ou non (mesure sur le paquet de reference).
+        Ok(DataLink {
+            destination_mac,
+            source_mac,
+            vlan: None,
+            vlan_stack: VlanStack::default(),
+            ethertype: Ethertype::from(raw_ethertype),
+            payload: &packets[DATALINK_HEADER_LEN..],
+        })
+    }
+}
+
+impl<'a> DataLink<'a> {
+    /// Pile de tags VLAN. Chaque tag fait 4 octets (TCI + EtherType suivant)
+    /// et cet EtherType peut lui-meme etre un TPID : 802.1ad met un S-tag
+    /// 0x88a8 (ou 0x9100 historique) devant le C-tag 0x8100, et certains
+    /// equipements empilent deux 0x8100. On consomme toute la pile pour
+    /// atteindre la vraie couche 3 ; `vlan` garde le tag interne, le seul
+    /// dont `inner_ethertype` est cette couche 3, `vlan_stack` la pile.
+    #[inline(never)]
+    fn parse_tagged(
+        packets: &'a [u8],
+        destination_mac: MacAddress,
+        source_mac: MacAddress,
+        raw_ethertype: u16,
+    ) -> Result<Self, DataLinkError> {
         let mut vlan: Option<VlanTag> = None;
         let mut next_ethertype = raw_ethertype;
         let mut offset = DATALINK_HEADER_LEN;
@@ -147,15 +177,16 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
             vlan = Some(tag);
         }
 
-        let ethertype = Ethertype::from(next_ethertype);
-        let payload: &'a [u8] = &packets[offset..];
-
         Ok(DataLink {
             destination_mac,
             source_mac,
             vlan,
-            ethertype,
-            payload,
+            // Blocs TCI + EtherType suivant de chaque tag : du premier TCI
+            // (octet 14) a l'EtherType de couche 3, deja bornes par
+            // validate_data_link_vlan_stack_length.
+            vlan_stack: VlanStack::new(&packets[DATALINK_HEADER_LEN..offset]),
+            ethertype: Ethertype::from(next_ethertype),
+            payload: &packets[offset..],
         })
     }
 }
@@ -165,6 +196,7 @@ impl<'a> PartialEq for DataLink<'a> {
         self.destination_mac == other.destination_mac
             && self.source_mac == other.source_mac
             && self.vlan == other.vlan
+            && self.vlan_stack == other.vlan_stack
             && self.ethertype == other.ethertype
     }
 }
@@ -176,6 +208,7 @@ impl<'a> Hash for DataLink<'a> {
         self.destination_mac.hash(state);
         self.source_mac.hash(state);
         self.vlan.hash(state);
+        self.vlan_stack.hash(state);
         self.ethertype.hash(state);
     }
 }
@@ -277,6 +310,48 @@ mod tests {
         let vlan = datalink.vlan.unwrap();
         assert_eq!(vlan.id, 10);
         assert_eq!(datalink.payload, &raw_packet[18..]);
+    }
+
+    /// `vlan_stack` : vide sans tag, un element pour du 802.1Q simple, et
+    /// serialisee seulement a partir de deux tags — le JSON des trames
+    /// existantes ne change pas.
+    #[test]
+    fn test_vlan_stack_is_only_serialized_when_tags_are_stacked() {
+        let untagged = [
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, // MAC
+            0x08, 0x00, 0x45, // IPv4
+        ];
+        let frame = DataLink::try_from(&untagged[..]).expect("trame sans tag");
+        assert!(frame.vlan_stack.is_empty());
+        assert_eq!(frame.vlan_stack.outer(), None);
+
+        let single = [
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, // MAC
+            0x81, 0x00, 0x00, 0x68, 0x08, 0x00, 0x45, // C-tag VID 104, IPv4
+        ];
+        let frame = DataLink::try_from(&single[..]).expect("trame 802.1Q");
+        assert_eq!(frame.vlan_stack.len(), 1);
+        assert_eq!(frame.vlan_stack.inner(), frame.vlan);
+        let json = serde_json::to_value(&frame).expect("serialisable");
+        assert_eq!(json["vlan"]["id"], 104);
+        assert!(json.get("vlan_stack").is_none(), "{json}");
+
+        let stacked = [
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, // MAC
+            0x88, 0xA8, 0x00, 0xC8, // S-tag VID 200
+            0x81, 0x00, 0x00, 0x68, 0x08, 0x00, 0x45, // C-tag VID 104, IPv4
+        ];
+        let frame = DataLink::try_from(&stacked[..]).expect("trame QinQ");
+        let json = serde_json::to_value(&frame).expect("serialisable");
+        assert_eq!(json["vlan_stack"][0]["id"], 200);
+        assert_eq!(json["vlan_stack"][1]["id"], 104);
+        // Deux trames qui ne different que par leur tag externe sont
+        // distinctes : la pile participe a l'egalite et au hash.
+        let mut other = stacked;
+        other[15] = 0xC9; // S-tag VID 201
+        let other = DataLink::try_from(&other[..]).expect("trame QinQ");
+        assert_ne!(frame, other);
+        assert_eq!(frame.vlan, other.vlan);
     }
 
     /// 802.1ad / QinQ : S-tag 0x88a8 (VID 200) puis C-tag 0x8100 (VID 104,

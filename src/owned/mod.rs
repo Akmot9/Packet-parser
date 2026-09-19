@@ -46,6 +46,14 @@ pub struct DataLinkOwned {
     pub ethertype: Ethertype,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vlan: Option<VlanTag>,
+    /// The whole VLAN tag stack, outermost first. Serialized only when at
+    /// least two tags are stacked, like the borrowed model.
+    #[serde(skip_serializing_if = "vlan_stack_is_not_stacked")]
+    pub vlan_stack: Vec<VlanTag>,
+}
+
+fn vlan_stack_is_not_stacked(stack: &[VlanTag]) -> bool {
+    stack.len() < 2
 }
 
 /// Owned format-specific link-layer information.
@@ -462,6 +470,7 @@ impl From<&DataLink<'_>> for DataLinkOwned {
             source_mac: frame.source_mac,
             ethertype: frame.ethertype,
             vlan: frame.vlan.clone(),
+            vlan_stack: frame.vlan_stack.iter().collect(),
         }
     }
 }
@@ -564,6 +573,7 @@ mod tests {
             source_mac: MacAddress([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]),
             ethertype: Ethertype(0x0800),
             vlan: None,
+            vlan_stack: Vec::new(),
         }
     }
 
