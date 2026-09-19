@@ -124,7 +124,7 @@
 //! ## Owned flows
 //!
 //! [`PacketFlow`] borrows the input buffer. To store a flow, send it across
-//! threads or serialize it, convert it with [`PacketFlow::to_owned`], which
+//! threads or serialize it, convert it with [`PacketFlow::to_owned_flow`], which
 //! returns an [`owned::PacketFlowOwned`]. Note that the owned form drops the
 //! payloads and the per-layer `details`.
 

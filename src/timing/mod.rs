@@ -13,9 +13,9 @@
 //! les features du graphe, une forme de struct qui change avec la feature
 //! casserait un consommateur qui ne l'a jamais demandee (#26).
 //!
-//! Le chemin normal ([`parse`](crate::parse)) n'est jamais chronometre, que
-//! la feature soit activee ou non : il est monomorphise sur [`NoTiming`],
-//! dont chaque etape se reduit a l'appel du corps.
+//! Le chemin normal ([`parse`](fn@crate::parse)) n'est jamais chronometre,
+//! que la feature soit activee ou non : il est monomorphise sur un puits de
+//! mesures vide, dont chaque etape se reduit a l'appel du corps.
 
 /// Duree de chaque couche du pipeline, en nanosecondes. Tous les champs sont
 /// a zero quand la feature `parse_timing` est desactivee.

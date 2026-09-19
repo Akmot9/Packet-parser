@@ -6,7 +6,7 @@ fn main() {
     let packet = Packet::from(hex_dump_data);
 
     // Générer un fichier .pcap
-    if let Err(e) = packet.packet_to_pcap() {
+    if let Err(e) = packet.packet_to_pcap("output.pcap") {
         eprintln!("❌ Erreur lors de l'export du fichier pcap : {}", e);
     }
 }

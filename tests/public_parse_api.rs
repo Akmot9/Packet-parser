@@ -280,7 +280,7 @@ fn borrowed_and_owned_link_layers_share_the_same_schema() {
     let bytes = ethernet_frame_with_unknown_ethertype();
     let flow = parse(LinkType::ETHERNET, bytes.as_slice()).unwrap();
     let borrowed = serde_json::to_value(&flow.data_link).unwrap();
-    let owned = serde_json::to_value(&flow.to_owned().data_link).unwrap();
+    let owned = serde_json::to_value(&flow.to_owned_flow().data_link).unwrap();
 
     assert_eq!(borrowed, owned);
     assert_eq!(
@@ -303,7 +303,7 @@ fn borrowed_and_owned_vlan_link_layers_share_the_same_schema() {
     let bytes = vlan_ipv4_udp();
     let flow = parse(LinkType::ETHERNET, bytes.as_slice()).unwrap();
     let borrowed = serde_json::to_value(&flow.data_link).unwrap();
-    let owned = serde_json::to_value(&flow.to_owned().data_link).unwrap();
+    let owned = serde_json::to_value(&flow.to_owned_flow().data_link).unwrap();
 
     assert_eq!(borrowed, owned);
     assert_eq!(borrowed["network_protocol"]["kind"], "ipv4");
@@ -363,7 +363,7 @@ fn raw_borrowed_and_owned_models_share_a_schema_without_ethernet_fields() {
     ] {
         let flow = assert_raw_link(bytes, protocol, version);
         let borrowed = serde_json::to_value(&flow.data_link).unwrap();
-        let owned_link = flow.to_owned().data_link;
+        let owned_link = flow.to_owned_flow().data_link;
         let owned = serde_json::to_value(&owned_link).unwrap();
 
         assert_eq!(borrowed, owned);
@@ -502,7 +502,7 @@ fn linux_sll_borrowed_and_owned_models_share_a_non_ethernet_schema() {
     let bytes = sll_ipv4_loopback_fixture();
     let flow = assert_sll_link(&bytes, NetworkProtocol::Ipv4);
     let borrowed = serde_json::to_value(&flow.data_link).unwrap();
-    let owned_link = flow.to_owned().data_link;
+    let owned_link = flow.to_owned_flow().data_link;
     let owned = serde_json::to_value(&owned_link).unwrap();
 
     assert_eq!(borrowed, owned);
@@ -693,7 +693,7 @@ fn linux_sll2_borrowed_and_owned_models_share_a_non_ethernet_schema() {
     let bytes = sll2_ipv4_tshark_vector();
     let flow = assert_sll2_link(&bytes, NetworkProtocol::Ipv4);
     let borrowed = serde_json::to_value(&flow.data_link).unwrap();
-    let owned_link = flow.to_owned().data_link;
+    let owned_link = flow.to_owned_flow().data_link;
     let owned = serde_json::to_value(&owned_link).unwrap();
 
     assert_eq!(borrowed, owned);

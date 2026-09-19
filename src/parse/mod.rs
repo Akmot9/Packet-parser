@@ -263,12 +263,18 @@ impl<'a> PacketFlow<'a> {
         dispatch::classify(transport, decode_as)
     }
 
-    /// Converts this borrowed [`PacketFlow`] into an owned version.
+    /// Converts this borrowed [`PacketFlow`] into a [`PacketFlowOwned`].
     ///
     /// This performs the necessary allocations to detach from the original
     /// packet buffer and is suitable for storage, serialization or cross-thread
-    /// usage.
-    pub fn to_owned(&self) -> PacketFlowOwned {
+    /// usage. The conversion is **lossy**: the owned form drops the payloads
+    /// and the per-layer `details`.
+    ///
+    /// Named `to_owned_flow` rather than `to_owned` on purpose: `to_owned`
+    /// shadowed [`ToOwned::to_owned`], so `flow.to_owned()` read as a clone
+    /// while returning a different, amputated type (issue #27). To clone a
+    /// flow, use [`Clone::clone`].
+    pub fn to_owned_flow(&self) -> PacketFlowOwned {
         PacketFlowOwned::from(self)
     }
 
@@ -1671,9 +1677,9 @@ mod tests {
         let packet = sample_ipv6_tcp_packet();
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
-        let owned = flow.to_owned();
+        let owned = flow.to_owned_flow();
 
-        assert_eq!(owned.data_link, flow.to_owned().data_link);
+        assert_eq!(owned.data_link, flow.to_owned_flow().data_link);
 
         match (&owned.internet, &flow.internet) {
             (Some(owned_internet), Some(flow_internet)) => {
@@ -1706,7 +1712,7 @@ mod tests {
             _ => panic!("owned.transport and flow.transport differ"),
         }
 
-        assert_eq!(owned.application, flow.to_owned().application);
+        assert_eq!(owned.application, flow.to_owned_flow().application);
     }
 
     #[cfg(feature = "parse_timing")]
@@ -2380,7 +2386,7 @@ mod tests {
         packet.extend_from_slice(&[0xFF; 6]);
 
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
-        let owned = flow.to_owned();
+        let owned = flow.to_owned_flow();
 
         assert_eq!(owned.corrupted, flow.corrupted);
     }
@@ -2390,7 +2396,7 @@ mod tests {
         let packet = sample_capwap_ieee80211_inner_tcp();
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
-        let owned = flow.to_owned();
+        let owned = flow.to_owned_flow();
 
         assert_eq!(
             owned
