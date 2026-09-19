@@ -39,7 +39,7 @@ use transport::Transport;
 
 use crate::{
     LinkLayer, LinkType, NetworkProtocol, ParseError,
-    errors::{ParsedPacketError, internet::InternetError, transport::TransportError},
+    errors::{internet::InternetError, transport::TransportError},
     owned::PacketFlowOwned,
 };
 
@@ -404,7 +404,7 @@ impl<'a> PacketFlow<'a> {
     pub(crate) fn parse_decoded(
         decoded: link::DecodedLink<'a>,
         depth: u8,
-    ) -> Result<Self, ParsedPacketError> {
+    ) -> Result<Self, ParseError> {
         Self::parse_decoded_with(decoded, depth, &[])
     }
 
@@ -414,7 +414,7 @@ impl<'a> PacketFlow<'a> {
         decoded: link::DecodedLink<'a>,
         depth: u8,
         decode_as: &[(u16, DecodeAsProtocol)],
-    ) -> Result<Self, ParsedPacketError> {
+    ) -> Result<Self, ParseError> {
         let (data_link, network_protocol, network_payload) = decoded.into_parts();
         let (internet, l3_corruption) = Self::parse_l3(network_protocol, network_payload);
         let (transport, l4_corruption) = Self::parse_l4(internet.as_ref());
@@ -443,7 +443,7 @@ impl<'a> PacketFlow<'a> {
         decoded: link::DecodedLink<'a>,
         timing: &mut crate::timing::ParseTiming,
         depth: u8,
-    ) -> Result<Self, ParsedPacketError> {
+    ) -> Result<Self, ParseError> {
         use crate::timing::{elapsed_ns, now};
 
         let (data_link, network_protocol, network_payload) = decoded.into_parts();
@@ -1741,7 +1741,7 @@ mod tests {
     fn timed_parse(
         packet: &[u8],
     ) -> (
-        Result<PacketFlow<'_>, ParsedPacketError>,
+        Result<PacketFlow<'_>, ParseError>,
         crate::timing::ParseTiming,
     ) {
         let mut timing = crate::timing::ParseTiming::default();
@@ -1774,7 +1774,7 @@ mod tests {
     fn packetflow_timing_records_total_on_l2_error() {
         let (result, timing) = timed_parse(&[]);
 
-        assert!(matches!(result, Err(ParsedPacketError::InvalidDataLink(_))));
+        assert!(matches!(result, Err(ParseError::InvalidDataLink(_))));
         assert_total_timing_is_recorded(timing);
         assert!(timing.l2_ns > 0);
         assert_eq!(timing.l3_ns, 0);

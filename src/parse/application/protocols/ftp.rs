@@ -10,7 +10,7 @@ use std::convert::TryFrom;
 use crate::{
     checks::application::ftp::{
         looks_like_reply, parse_payload_as_utf8, parse_reply_code, require_known_command,
-        split_first_line, validate_command_syntax,
+        split_first_line, validate_command_syntax, validate_ftp_payload_not_empty,
     },
     errors::application::ftp::FtpParseError,
 };
@@ -53,9 +53,7 @@ impl<'a> TryFrom<&'a [u8]> for FtpMessage<'a> {
 /// Parses an FTP control-channel message from a given payload without
 /// copying packet bytes.
 pub fn parse_ftp_message(payload: &[u8]) -> Result<FtpMessage<'_>, FtpParseError> {
-    if payload.is_empty() {
-        return Err(FtpParseError::EmptyPayload);
-    }
+    validate_ftp_payload_not_empty(payload)?;
 
     let payload_str = parse_payload_as_utf8(payload)?;
     let (first_line, rest) = split_first_line(payload_str)?;

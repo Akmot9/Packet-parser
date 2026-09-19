@@ -16,8 +16,6 @@ pub const PARAM_SRC_TSAP: u8 = 0xC1;
 pub const PARAM_DST_TSAP: u8 = 0xC2;
 pub const PARAM_CHECKSUM: u8 = 0xC3;
 pub const PARAM_CLEARING_INFO: u8 = 0xE0;
-pub const PARAM_EOT: u8 = 0x80;
-
 pub fn validate_parameter_code(pdu_type: CotpPduType, code: u8) -> Result<(), CotpParseError> {
     // RFC 905 section 13, the parameters added by later ISO 8073 editions,
     // and the two ATN checksum extensions decoded by Wireshark. RFC 905
@@ -353,24 +351,6 @@ pub fn validate_user_data(
     Ok(())
 }
 
-/// Rejette un paramètre TPDU-number (0xC0 sur un DT) sans donnée.
-///
-/// Réutilise le variant [`CotpParseError::ParameterLengthExceedsPacket`] avec
-/// `declared: 1, available: 0`, à lire comme « au moins 1 octet attendu,
-/// 0 disponible » (la longueur déclarée sur le wire est 0). Un variant dédié
-/// serait plus fidèle mais changerait l'API publique.
-pub fn validate_tpdu_number_not_empty(offset: usize, len: usize) -> Result<(), CotpParseError> {
-    if len == 0 {
-        return Err(CotpParseError::ParameterLengthExceedsPacket {
-            offset,
-            declared: 1,
-            available: 0,
-        });
-    }
-
-    Ok(())
-}
-
 /// Classifie un paramètre COTP en validant sa longueur selon son type.
 ///
 /// La slice `param_data` est empruntée au paquet original (zero-copy) : les
@@ -594,19 +574,6 @@ mod tests {
             validate_parameter_len(usize::MAX, usize::MAX - 2, 1),
             Err(CotpParseError::LengthOverflow {
                 context: "parameter value end"
-            })
-        ));
-    }
-
-    #[test]
-    fn legacy_tpdu_number_helper_rejects_empty_values() {
-        assert!(validate_tpdu_number_not_empty(2, 1).is_ok());
-        assert!(matches!(
-            validate_tpdu_number_not_empty(2, 0),
-            Err(CotpParseError::ParameterLengthExceedsPacket {
-                offset: 2,
-                declared: 1,
-                available: 0
             })
         ));
     }

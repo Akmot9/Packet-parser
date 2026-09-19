@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use packet_parser::parse::transport::protocols::TransportProtocol;
 use packet_parser::{
     CorruptedLayerKind, LinkLayerError, LinkType, LinuxArphrdType, LinuxCookedPacketType,
-    NetworkProtocol, PacketFlow, ParseError, ParsedPacketError, is_supported, parse,
+    NetworkProtocol, PacketFlow, ParseError, is_supported, parse,
 };
 
 /// Packet #1 extracted from Sonar's `test_files/raw_ip.pcapng` fixture.
@@ -243,7 +243,7 @@ fn assert_ethernet_apis_match(bytes: &[u8]) {
     assert!(explicit.data_link.as_ethernet().is_some());
 }
 
-fn parse_through_legacy_api(bytes: &[u8]) -> Result<PacketFlow<'_>, ParsedPacketError> {
+fn parse_through_legacy_api(bytes: &[u8]) -> Result<PacketFlow<'_>, ParseError> {
     PacketFlow::try_from(bytes)
 }
 
