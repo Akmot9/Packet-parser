@@ -20,7 +20,8 @@
 //!   (paddings), sans quoi aucun Request 1.2 reel ne se decode.
 
 use packet_parser::parse::application::protocols::giop::{
-    GiopMessage, GiopMessageType, GiopPacket, TargetAddress,
+    GiopMessage, GiopMessageType, GiopPacket, GiopReplyDetail, GiopReplyStatus, TargetAddress,
+    ior::TAG_UIPMC,
 };
 use packet_parser::{LinkType, parse};
 
@@ -167,9 +168,21 @@ fn giop_1_2_reply_header_decodes_against_tshark() {
     assert_eq!(packet.header.flags, 0x00);
     assert!(matches!(packet.header.message_type, GiopMessageType::Reply));
     assert_eq!(packet.header.message_length, 81);
-    // Le body Reply n'est pas encore decode (epic #76) : la variante Reply
-    // atteste seulement du dispatch.
-    assert!(matches!(packet.payload, GiopMessage::Reply(_)));
+    assert!(!packet.truncated);
+
+    // tshark : Request id 0, Reply status No Exception (0), ServiceContextList
+    // de longueur 0, puis 69 octets de stub data commencant a 00 00 00 41.
+    let GiopMessage::Reply(reply) = packet.payload else {
+        panic!("a Reply body is dispatched and decoded");
+    };
+    assert_eq!(reply.request_id, 0);
+    assert_eq!(reply.reply_status, GiopReplyStatus::NoException);
+    assert!(reply.service_contexts.is_empty());
+    assert_eq!(reply.detail, GiopReplyDetail::Results);
+    // L'en-tete Reply finit a l'offset 24 du message, deja multiple de 8 :
+    // pas de padding devant le body.
+    assert_eq!(reply.body.len(), 69);
+    assert_eq!(&reply.body[..4], &[0x00, 0x00, 0x00, 0x41]);
 }
 
 #[test]
@@ -204,6 +217,9 @@ fn giop_1_2_little_endian_request_over_miop_decodes_against_tshark() {
     let TargetAddress::ProfileAddr(profile) = request.target else {
         panic!("tshark reports TargetAddress: ProfileAddr (1)");
     };
+    assert_eq!(profile.tag, TAG_UIPMC, "tshark: Profile ID: TAG_UIPMC (3)");
+    assert!(profile.iiop().is_none(), "un profil UIPMC n'est pas IIOP");
+    let profile = profile.profile_data;
     assert_eq!(profile.len(), 72);
     let group = b"10.95.28.46";
     assert!(
@@ -212,7 +228,10 @@ fn giop_1_2_little_endian_request_over_miop_decodes_against_tshark() {
     );
     assert_eq!(request.operation, "receiveReliableData");
     assert!(request.service_contexts.is_empty());
-    // Le reste du body (96 octets) est le stub data CDR, padding d'alignement
-    // sur 8 compris.
-    assert_eq!(request.stub_data.len(), 96);
+    // tshark : Stub data de 92 octets commencant a 31 32 00 00. L'en-tete
+    // Request finit a l'offset 132 du message : 4 octets de padding vers 8
+    // precedent le stub data et n'en font pas partie.
+    assert_eq!(request.stub_data.len(), 92);
+    assert_eq!(&request.stub_data[..4], &[0x31, 0x32, 0x00, 0x00]);
+    assert_eq!(request.requesting_principal, None, "supprime en GIOP 1.2");
 }

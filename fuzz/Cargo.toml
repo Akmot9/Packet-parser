@@ -61,3 +61,10 @@ path = "fuzz_targets/parse_cotp.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_giop"
+path = "fuzz_targets/parse_giop.rs"
+test = false
+doc = false
+bench = false

@@ -115,16 +115,32 @@ fn application_classification_histogram_is_frozen() {
     // - le cablage OpenVPN (issue #5) est arrive : les 766 trames OpenVPN
     //   annoncees ci-dessus quittent "Unknown" pour l'entree "OpenVPN"
     //   (1184 + 16 - 766 = 434).
+    //
+    // 2026-09-19 (epic #76, GIOP complet) : dix captures rejoignent
+    // protocols/giop/ — trois pieces jointes du tracker Wireshark et sept
+    // captures du labo omniORB (voir SOURCE.md), 372 trames recoupees avec
+    // tshark 4.6.6 :
+    // - "GIOP" 3 -> 123 : +119 messages des nouvelles captures, et +1 pour la
+    //   trame 8 de corba.pcap — le premier segment d'un message qui deborde
+    //   de son segment TCP est desormais accepte et marque `truncated` au
+    //   lieu d'etre rejete (elle quitte "Unknown") ;
+    // - "HTTP" 62 -> 72 : les 10 `GET /PM.LTEOMS-...` de la capture #11616
+    //   (`http.request` en compte 10) ;
+    // - "(sans application)" 1358 -> 1566 : +208 segments TCP sans payload
+    //   (`tcp.len==0` : 133+2+5+9+10+11+11+11+8+8) ;
+    // - "Unknown" 434 -> 468 : +35 segments de continuation (suite d'un
+    //   message GIOP ou d'une reponse HTTP, sans magic : non reconnaissables
+    //   sans etat), -1 pour la trame 8 de corba.pcap.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 1358),
+        (NO_APPLICATION, 1566),
         ("DHCP", 6),
         ("DHCPv6", 4),
         ("DNS", 104),
         ("EtherNet/IP", 4),
         ("FTP", 5),
-        ("GIOP", 3),
-        ("HTTP", 62),
+        ("GIOP", 123),
+        ("HTTP", 72),
         ("IP-in-IP", 5),
         ("MQTT", 38),
         ("ModbusTCP", 383),
@@ -132,7 +148,7 @@ fn application_classification_histogram_is_frozen() {
         ("OpenVPN", 766),
         ("SMTP", 6),
         ("TLS", 587),
-        ("Unknown", 434),
+        ("Unknown", 468),
         ("mDNS", 4),
     ]
     .into_iter()
