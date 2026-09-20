@@ -16,6 +16,7 @@ use crate::{
         dhcp::DhcpPacket, giop::GiopPacket, http::HttpRequest, modbus_tcp::ModbusTcpPacket,
         mqtt::MqttPacket, ntp::NtpPacket, opcua::OpcuaPacket,
         postgresql::is_likely_postgresql_payload, quic::QuicPacket, srvloc::SrvlocPacket,
+        umas::UmasPacket,
     },
 };
 
@@ -115,6 +116,12 @@ impl TryFrom<&[u8]> for Application {
         if SrvlocPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "SRVLOC",
+            });
+        }
+        // UMAS avant ModbusTCP : meme enveloppe, etiquette plus precise.
+        if UmasPacket::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "UMAS",
             });
         }
         if ModbusTcpPacket::try_from(packet).is_ok() {

@@ -49,6 +49,7 @@ use super::application::protocols::srvloc::SrvlocPacket;
 use super::application::protocols::ssdp::SsdpPacket;
 use super::application::protocols::ssh::SshPacket;
 use super::application::protocols::tls::TlsPacket;
+use super::application::protocols::umas::UmasPacket;
 use super::cotp_from_tpkt;
 use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
@@ -119,6 +120,7 @@ enum ProbeId {
     Dhcp,
     Srvloc,
     ModbusTcp,
+    Umas,
     QuicLongHeader,
     Mqtt,
 }
@@ -163,6 +165,7 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         ProbeId::Giop => payload.starts_with(b"GIOP") && GiopPacket::try_from(payload).is_ok(),
         ProbeId::Dhcp => DhcpPacket::try_from(payload).is_ok(),
         ProbeId::Srvloc => SrvlocPacket::try_from(payload).is_ok(),
+        ProbeId::Umas => UmasPacket::try_from(payload).is_ok(),
         ProbeId::ModbusTcp => ModbusTcpPacket::try_from(payload).is_ok(),
         ProbeId::QuicLongHeader => QuicPacket::try_from(payload).is_ok(),
         ProbeId::Mqtt => MqttPacket::try_from(payload).is_ok(),
@@ -338,6 +341,10 @@ static RULES: &[Rule] = &[
     rule("DHCP", Guard::Udp, ProbeId::Dhcp),
     // SLP accepte TCP et UDP (RFC 2608 §6.1) : bi-transport.
     rule("SRVLOC", Guard::Any, ProbeId::Srvloc),
+    // UMAS avant ModbusTCP : il est porte par une enveloppe Modbus valide,
+    // donc la sonde Modbus reconnaitrait aussi ses trames. Le protocole le
+    // plus specifique gagne l'etiquette, comme S7Comm devant COTP.
+    rule("UMAS", Guard::Tcp, ProbeId::Umas),
     rule("ModbusTCP", Guard::Tcp, ProbeId::ModbusTcp),
     rule("QUIC", Guard::Udp, ProbeId::QuicLongHeader),
     // MQTT (TCP) en dernier : en-tete fixe peu discriminant.
@@ -833,6 +840,7 @@ mod tests {
                 "GIOP",
                 "DHCP",
                 "SRVLOC",
+                "UMAS",
                 "ModbusTCP",
                 "QUIC",
                 "MQTT",

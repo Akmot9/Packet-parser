@@ -280,6 +280,7 @@ incluent notamment:
   versions est chiffre, donc un parseur stateless etiquette les trames de
   banniere et rien d'autre)
 - Modbus TCP
+- UMAS (Schneider Electric)
 - EtherNet/IP
 - OPC UA
 - S7Comm

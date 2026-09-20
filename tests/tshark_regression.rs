@@ -87,9 +87,15 @@ fn check_corpus(directory: &str, labels: &[&str], expected: &[(&str, FrameOracle
 #[test]
 fn modbus_corpus_matches_tshark() {
     // Parite exacte avec `tshark -Y mbtcp` sur les deux captures.
+    //
+    // UMAS compte ici comme du Modbus : tshark ne le decode pas et range ses
+    // trames en `mbtcp`, la ou le parseur les etiquette plus finement depuis
+    // l'issue #10. Une seule trame du corpus est concernee
+    // (MODBUS-TestDataPart2.pcap, trame 229). Le total, lui, reste identique
+    // — c'est bien la parite qui est verifiee, pas une approximation.
     check_corpus(
         "modbus",
-        &["ModbusTCP"],
+        &["ModbusTCP", "UMAS"],
         &[
             (
                 "MODBUS-TestDataPart2.pcap",

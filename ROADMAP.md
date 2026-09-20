@@ -1,6 +1,13 @@
 # Roadmap packet_parser
 
-Etat au 2026-09-20 : la **11.0.0 est prete, pas publiee**. L'epic #76 est
+Etat au 2026-09-20 (soir) : **UMAS est livre** (#10), sur une capture
+reelle trouvee dans le corpus nDPI. L'affirmation ci-dessous « aucune trame
+publique n'existe » etait fausse : `tests/cfgs/default/pcap/umas.pcap` en
+porte 180. Le meme corpus comble quatre autres trous du depot — OPC UA,
+PostgreSQL, S7CommPlus (dont le commentaire de `checks/application/s7comm.rs`
+affirme aussi, a tort, qu'aucune trame 0x72 n'existe) et GTP-U pour #15.
+
+Etat anterieur (2026-09-20) : la **11.0.0 est prete, pas publiee**. L'epic #76 est
 solde en sept PR empilees (#84 a #89, puis la PR de release) vers la branche
 `release/11.0.0` : GIOP complet en parite avec tshark, purge de la surface
 publique, erreurs `non_exhaustive` et SYN+FIN conserve, `vlan_stack`, schema
@@ -154,7 +161,6 @@ synergie avec le code existant.
 | Protocole | Detection | Notes |
 |---|---|---|
 | ICMP / ICMPv6 detaille | protocole IP 1/58, pas de probing | Captures deja presentes (`pcaps_exemple/protocols/icmp/`). Trou fonctionnel : reconnu au transport mais jamais decode (echo, unreachable, TTL exceeded, neighbor discovery). |
-| UMAS (Schneider Electric) | s'empile sur Modbus TCP (fonction 90), port 502 | Grosse valeur ICS. Meme modele d'empilement que S7comm sur COTP ; le parseur Modbus existe deja. Dossier `protocols/umas/` prepare. |
 | NetBIOS-NS / Datagram | UDP 137/138, format proche DNS | Dossier `protocols/netbios/` prepare ; omniprésent dans les captures Windows (deja visible dans mDNS3.cap et smtp.pcap). |
 | RADIUS | UDP 1812/1813, en-tete code+id+length+authenticator | Capture deja presente (pcap CAPWAP « + radius a partir de la ligne 33003 »). Coherent avec le travail CAPWAP. |
 | OpenVPN | garde de port (1194) + opcode/session id | Dossier `protocols/openvpn/` prepare. |
@@ -196,10 +202,9 @@ Reste a faire, dans l'ordre :
 
 1. **#79** — decodeur 802.3br, ce qui reste du deblocage de corpus (voir §1).
    Additif, et l'architecture de `sprint_02` prevoit ce point d'extension.
-2. **UMAS** — differenciateur ICS, s'appuie sur Modbus.
-3. **DNP3** — ouvre le secteur energie.
-4. **RDP** — rentabilise TPKT/COTP.
-5. RADIUS, NetBIOS, LLMNR (#68), SSDP (#69) au fil de l'eau.
+2. **DNP3** — ouvre le secteur energie.
+3. **RDP** — rentabilise TPKT/COTP.
+4. RADIUS, NetBIOS, LLMNR (#68), SSDP (#69) au fil de l'eau.
 6. Tier 2 restant (IEC 104, BACnet, GOOSE/SV), puis Tier 3 restant.
 
 En parallele des protocoles : solder #56 (golden tests manquants), qui est

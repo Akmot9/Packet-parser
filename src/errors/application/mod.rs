@@ -32,6 +32,7 @@ pub mod srvloc;
 pub mod ssdp;
 pub mod ssh;
 pub mod tls;
+pub mod umas;
 
 /// Errors related to parsing an `Application`.
 ///

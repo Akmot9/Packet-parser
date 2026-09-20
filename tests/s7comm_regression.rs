@@ -648,14 +648,18 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // captures du labo omniORB, 137 trames — voir SOURCE.md), toutes
     // Ethernet/IPv4/TCP et decodees sans erreur L2 : 65 -> 75 captures,
     // 64 -> 74 fichiers lus, 3 812 -> 4 184 trames, 3 770 -> 4 142 flux.
-    assert_eq!(captures.len(), 75);
-    assert_eq!(opened_files, 74);
-    assert_eq!(frame_count, 4_184);
+    // 2026-09-20 (issue #10) : +1 capture UMAS dans protocols/umas/
+    // (umas.pcap, corpus nDPI, 191 trames), Ethernet/IPv4/TCP et decodee
+    // sans erreur L2 : 75 -> 76 captures, 74 -> 75 fichiers lus,
+    // 4 184 -> 4 375 trames, 4 142 -> 4 333 flux.
+    assert_eq!(captures.len(), 76);
+    assert_eq!(opened_files, 75);
+    assert_eq!(frame_count, 4_375);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 4_142);
+    assert_eq!(parsed_flows, 4_333);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,
