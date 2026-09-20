@@ -25,7 +25,7 @@ réellement capturées sur un réseau.
 | Dossier | Attendu | Points à couvrir |
 |---|---|---|
 | `vxlan/` | Trafic UDP 4789 | interne = Ethernet ; VNI visible |
-| `gtp_u/` | Trafic UDP 2152 | message type 255 (G-PDU) ; interne = IP sans L2 ; si possible variantes flags E/S/PN |
+| `gtp_u/` | Trafic UDP 2152 | message type 255 (G-PDU) ; interne = IP sans L2 ; flags E/S, chaîne d'extension, et deux négatifs (voir `SOURCE.md`) |
 | `geneve/` | Trafic UDP 6081 | avec et sans options ; protocol type Ethernet (0x6558) et/ou IP |
 | `gre/` | IP proto 47 | interne IP (0x0800/0x86DD) et si possible interne Ethernet (0x6558, NVGRE/gretap) ; variantes bits C/K/S |
 | `ipip/` | IP proto 4 (et 41 si possible) | interne = IP directe |

@@ -8,6 +8,38 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **Tunnel GTP-U** (issue #15, la derniere case) : UDP 2152, message type
+  255. L'issue #15 est close.
+  - C'est le premier tunnel du module dont **rien n'annonce le contenu** :
+    VXLAN porte toujours de l'Ethernet, Geneve et GRE declarent un
+    EtherType, GTP-U ne declare rien. La version se lit sur le quartet de
+    tete du paquet encapsule, et `RawIpDecoder` la verifie.
+  - C'est aussi le premier dont l'en-tete se **parcourt** plutot qu'il ne se
+    saute : quatre octets optionnels des qu'un des flags E/S/PN est pose,
+    puis une chaine d'extension headers dont chacun nomme le suivant.
+  - Trois refus, pas trois devinettes : GTPv0, GTP' (bit PT a zero, c'est un
+    protocole de facturation) et tout message type autre que G-PDU — le plan
+    de controle et les Echo circulent sur le meme port sans porter le moindre
+    paquet utilisateur.
+  - Les README listaient encore CAPWAP comme seul tunnel supporte, alors que
+    GRE, IP-in-IP, VXLAN et Geneve etaient livres depuis 10.4.0 et 10.5.0. La
+    liste est refaite au passage.
+- **Cinq captures GTP-U** dans `pcaps_exemple/tunnels/gtp_u/`, jusqu'ici vide
+  (corpus de tests de Zeek, BSD 3-clause, voir son `SOURCE.md`) : le cas
+  nominal, l'IPv6 encapsule, la chaine d'extension, et deux negatifs — du DNS
+  dont le port source vaut 2152, et du GTP authentique qui n'est pas un
+  G-PDU.
+  - La ROADMAP annoncait que le corpus nDPI levait ce blocage. Il ne le
+    levait qu'a moitie : deux trames utiles, aucun G-PDU portant de l'IPv4.
+  - Le `README` du corpus Zeek avertit qu'une partie de ses captures est
+    generee par scapy ou par un LLM. La provenance a donc ete verifiee sur
+    les octets — MAC virtuelles HSRP et VRRP, TTL varies, checksums valides,
+    horodatage irregulier — et non sur la parole du README.
+  - Sur la capture fragmentee, tshark compte 68 G-PDU et nous 32. Ce n'est
+    pas une divergence : ce parseur ne reassemble pas les fragments IP, et
+    sur un premier fragment la couche transport se retire avant meme
+    d'arriver a GTP. Le test le documente chiffre par chiffre.
+
 - **LINKTYPE_NULL** (issue #95) : l'encapsulation loopback BSD est decodee —
   quatre octets de famille d'adresses, puis le paquet IP. `LinkType::NULL`
   rejoint le catalogue.

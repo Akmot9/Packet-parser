@@ -11,8 +11,13 @@
 //! fixture). GTP-U attend toujours une capture reelle — regle du depot — et
 //! reste porte par l'issue.
 
+use std::path::Path;
+
 use packet_parser::parse::transport::protocols::TransportProtocol;
 use packet_parser::{LinkType, parse};
+
+mod common;
+use common::{FileRead, read_capture};
 
 /// Trame 20749 : GRE v0 sans option (proto 0x0800) portant un ping ICMP
 /// 172.23.11.56 -> 192.168.42.11.
@@ -320,4 +325,184 @@ fn ipv6_in_ipv4_exposes_the_inner_dns_flow() {
         Some("DNS"),
         "la reponse DNS du flux interne est classifiee"
     );
+}
+
+// --- GTP-U (issue #15) -----------------------------------------------------
+//
+// Captures : `pcaps_exemple/tunnels/gtp_u/` (corpus de tests de Zeek,
+// BSD 3-clause ; voir le `SOURCE.md` du dossier). GTP-U est le dernier
+// tunnel de l'issue #15, et le premier dont le protocole interne n'est
+// annonce par aucun champ : il faut lire le quartet de version du paquet
+// encapsule.
+
+/// Trame 3 de `gtp1_gn_normal_incl_fragmentation.pcap` : G-PDU sur UDP
+/// 2152, en-tete minimal de 8 octets (flags 0x30 — version 1, PT=1, aucun
+/// de E/S/PN), TEID 0x8c61be36, portant du TCP 10.131.47.185:1923 ->
+/// 79.101.110.141:80.
+const GTP_U_TCP_HEX: &str = concat!(
+    "00000c07ace888e0f3c8bff008004500004c000000003d111dacef729b6f3f5e",
+    "95b50868086800380b4230ff00288c61be3645000028526640008006b03b0a83",
+    "2fb94f656e8d07830050cd6c69b86fc354945010fdcab68b0000"
+);
+
+/// Trame 1 de `gtp7_ipv6.pcap` : le meme en-tete, mais l'interne est de
+/// l'**IPv6** — fe80::224c:4fff:fe43:414c -> ff02::1:3, UDP 1234 -> 5355
+/// (LLMNR). Rien dans l'en-tete GTP ne l'annonce.
+const GTP_U_IPV6_HEX: &str = concat!(
+    "00000c07ace888e0f3c8bff00800450000741f0600003c117a49765c7c29765c",
+    "7c4808680868006090d730ff0050913644676000000000281180fe8000000000",
+    "0000224c4ffffe43414cff02000000000000000000000001000304d214eb0028",
+    "abcc00000000000100000000000005786d61696c046e656c7403636f6d00001c",
+    "0001"
+);
+
+/// Trame 1 de `gtp3_false_gtp.pcap` : ce n'est **pas** du GTP. Une requete
+/// DNS dont le port source vaut 2152, avec un tag VLAN par-dessus le
+/// marche. Le premier octet du payload UDP est 0x6b, soit une version GTP
+/// 3 qui n'existe pas — la regle de port declenche, le contenu doit la
+/// desavouer.
+const NOT_GTP_DNS_ON_PORT_2152_HEX: &str = concat!(
+    "001f9ebae76a00005066e2ad810001c6080045000040d173000080115cfb0a83",
+    "1806c3b2260308680035002c38076bcb01000001000000000000046162636403",
+    "6566670668696a6b6c6d026e6d0000010001"
+);
+
+/// Trame 2 de `gtp10_not_0xff.pcap` : du GTP authentique sur 2152, mais un
+/// Echo Request (message type 0x01) et non un G-PDU. Le flag S est pose
+/// (flags 0x32), donc l'en-tete fait 12 octets. Rien a peler : seuls les
+/// G-PDU portent un paquet.
+const GTP_ECHO_REQUEST_HEX: &str = concat!(
+    "00000c07ace888e0f3c8bff0080045b80028a7f000003c115fe7f7382bd6ed38",
+    "65ee08680868001448513201000400000000fe690000000000000000"
+);
+
+#[test]
+fn gtp_u_tunnel_exposes_the_inner_tcp_flow() {
+    let bytes = frame(GTP_U_TCP_HEX, 90);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    assert_eq!(
+        flow.application
+            .as_ref()
+            .map(|application| application.application_protocol),
+        Some("GTP-U")
+    );
+    let flows = flow.flatten();
+    assert_eq!(flows.len(), 2, "tunnel externe + conversation interne");
+
+    let inner = flows[1];
+    let internet = inner.internet.as_ref().expect("IPv4 interne");
+    assert_eq!(internet.protocol_name, "IPv4");
+    let transport = inner.transport.as_ref().expect("TCP interne");
+    assert_eq!(transport.protocol, TransportProtocol::Tcp);
+    assert_eq!(transport.source_port, Some(1923));
+    assert_eq!(transport.destination_port, Some(80));
+}
+
+#[test]
+fn gtp_u_reads_the_inner_ip_version_because_no_field_announces_it() {
+    let bytes = frame(GTP_U_IPV6_HEX, 130);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    assert_eq!(
+        flow.application
+            .as_ref()
+            .map(|application| application.application_protocol),
+        Some("GTP-U")
+    );
+    let inner = flow.inner.as_ref().expect("flux interne");
+    let internet = inner.internet.as_ref().expect("IPv6 interne");
+    assert_eq!(internet.protocol_name, "IPv6");
+    let transport = inner.transport.as_ref().expect("UDP interne");
+    assert_eq!(transport.protocol, TransportProtocol::Udp);
+    assert_eq!(transport.destination_port, Some(5355));
+}
+
+#[test]
+fn dns_traffic_on_port_2152_is_refused_not_guessed() {
+    let bytes = frame(NOT_GTP_DNS_ON_PORT_2152_HEX, 82);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    assert!(flow.inner.is_none(), "rien n'est pele");
+    assert_ne!(
+        flow.application
+            .as_ref()
+            .map(|application| application.application_protocol),
+        Some("GTP-U"),
+        "le port ne suffit pas a faire un tunnel"
+    );
+}
+
+#[test]
+fn a_gtp_echo_request_is_not_peeled_because_it_carries_no_packet() {
+    let bytes = frame(GTP_ECHO_REQUEST_HEX, 60);
+    let flow = parse(LinkType::ETHERNET, bytes.as_slice()).expect("captured frame decodes");
+
+    assert!(
+        flow.inner.is_none(),
+        "seul le message type 255 (G-PDU) porte un paquet"
+    );
+}
+
+/// Toute la capture : chaque G-PDU que le parseur peut honnetement lire
+/// ressort pele, avec son flux interne, et rien d'autre ne l'est.
+///
+/// Sur `gtp1`, tshark en compte 68 et nous 32. L'ecart n'est pas une
+/// divergence, c'est le reassemblage IP — que ce parseur ne fait pas, par
+/// choix documente. La capture porte 108 trames : 32 datagrammes entiers,
+/// 40 premiers fragments et 36 fragments suivants ; tshark recolle les
+/// seconds et compte 32 + 36. Sur un premier fragment, UDP annonce 1496
+/// octets quand 1480 sont presents, et la couche transport se retire —
+/// avant meme d'arriver a GTP. Le tunnel ne peut pas etre plus complet que
+/// le datagramme qui le porte.
+///
+/// `gtp_ext_header.pcap` rend zero pour la meme raison : sa trame unique a
+/// extension est fragmentee elle aussi. La chaine d'extension est donc
+/// testee la ou elle est atteignable, sur le peleur directement, avec les
+/// octets reels de cette trame — voir `parse::tunnel::tests`.
+#[test]
+fn every_readable_g_pdu_of_the_capture_is_peeled_and_nothing_else_is() {
+    // (capture, G-PDU pelables). `tshark -Y "gtp.message == 0xff"` donne le
+    // meme chiffre partout sauf sur les captures fragmentees, cf. ci-dessus.
+    for (capture, expected) in [
+        ("gtp1_gn_normal_incl_fragmentation.pcap", 32),
+        ("gtp_ext_header.pcap", 0),
+        ("gtp7_ipv6.pcap", 2),
+        ("gtp10_not_0xff.pcap", 0),
+        ("gtp3_false_gtp.pcap", 0),
+    ] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("pcaps_exemple/tunnels/gtp_u")
+            .join(capture);
+        let FileRead::Frames { frames, .. } = read_capture(&path) else {
+            panic!("{capture} : capture illisible");
+        };
+
+        let mut peeled = 0;
+        for (index, (link_type, data)) in frames.iter().enumerate() {
+            let Ok(flow) = parse(*link_type, data) else {
+                continue;
+            };
+            if flow
+                .application
+                .as_ref()
+                .map(|application| application.application_protocol)
+                != Some("GTP-U")
+            {
+                continue;
+            }
+            peeled += 1;
+            // Une etiquette GTP-U sans flux interne serait un mensonge : le
+            // peeling et l'etiquette sont poses ensemble ou pas du tout.
+            let inner = flow.inner.as_ref().unwrap_or_else(|| {
+                panic!("{capture} trame {} : etiquette sans interne", index + 1)
+            });
+            assert!(
+                inner.internet.is_some(),
+                "{capture} trame {} : l'interne d'un G-PDU est un paquet IP",
+                index + 1
+            );
+        }
+        assert_eq!(peeled, expected, "{capture}");
+    }
 }

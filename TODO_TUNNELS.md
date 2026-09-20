@@ -58,11 +58,14 @@ détection, pas seulement `transport`.
       refusés). Interne = **Ethernet**. Golden sur les trames 9/11/20 de
       `pcaps_exemple/tunnels/vxlan/vxlan_ping.pcapng` (capture locale,
       `tools/capture_vxlan_geneve.sh`).
-- [ ] **GTP-U** — UDP 2152. En-tête variable (min 8 octets ; +4 si un des flags
-      E/S/PN est posé ; puis extension headers). Interne = **IP** (pas de L2).
-      Attention au champ « message type » = 255 (G-PDU) pour ne peler que les
-      données. Fixture requise — aucune capture disponible (équipement ou
-      outil userspace nécessaire).
+- [x] **GTP-U** — UDP 2152. En-tête variable (min 8 octets ; +4 si un des flags
+      E/S/PN est posé ; puis la chaîne d'extension headers, parcourue).
+      Interne = **IP** (pas de L2), dont la version se lit sur le quartet de
+      tête : c'est le seul tunnel dont rien n'annonce le contenu. Seul le
+      message type 255 (G-PDU) est pelé ; GTPv0 et GTP' sont refusés.
+      Golden sur `pcaps_exemple/tunnels/gtp_u/` (corpus Zeek, BSD 3-clause).
+      La capture nDPI que la ROADMAP citait ne portait que deux trames
+      utiles et aucun G-PDU IPv4.
 - [x] **Geneve** — UDP 6081. En-tête 8 octets + options sautées (Opt Len en
       mots de 4), OAM refusé. `protocol type` : Ethernet (0x6558) ou IP.
       Golden sur les trames 10/12/21 de

@@ -23,10 +23,10 @@
 //! - **VXLAN** (RFC 7348, UDP 4789) carrying a full Ethernet frame — the
 //!   GBP/GPE flag extensions are refused, not guessed ;
 //! - **Geneve** (RFC 8926, UDP 6081) carrying Ethernet (0x6558) or bare IP,
-//!   variable-length options skipped — OAM control messages are refused.
-//!
-//! Designed to grow: the remaining UDP tunnel (GTP-U) plugs into
-//! [`detect_inner`] the same way once a real capture exists (issue #15).
+//!   variable-length options skipped — OAM control messages are refused ;
+//! - **GTP-U** (3GPP TS 29.281, UDP 2152) carrying a bare IP packet, with the
+//!   optional fields and the chained extension headers walked — only G-PDU
+//!   messages are peeled, everything else refused.
 
 use super::PacketFlow;
 use super::data_link::DataLink;
@@ -48,6 +48,9 @@ const CAPWAP_DATA_PORT: u16 = 5247;
 
 /// UDP port assigned to VXLAN (RFC 7348).
 const VXLAN_PORT: u16 = 4789;
+
+/// UDP port of the GTP-U user plane (3GPP TS 29.281).
+const GTP_U_PORT: u16 = 2152;
 
 /// UDP port assigned to Geneve (RFC 8926).
 const GENEVE_PORT: u16 = 6081;
@@ -100,6 +103,16 @@ pub(crate) fn detect_inner<'a>(
         && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
     {
         return Some(("Geneve", inner));
+    }
+
+    // --- GTP-U over UDP 2152 → paquet IP interne, sans couche 2 ---
+    if transport.protocol == TransportProtocol::Udp
+        && (transport.source_port == Some(GTP_U_PORT)
+            || transport.destination_port == Some(GTP_U_PORT))
+        && let Some(inner_link) = peel_gtp_u(payload)
+        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
+    {
+        return Some(("GTP-U", inner));
     }
 
     None
@@ -231,6 +244,80 @@ fn peel_geneve(payload: &[u8]) -> Option<DecodedLink<'_>> {
     }
 }
 
+/// Pele un GTP-U (3GPP TS 29.281) et rend le paquet IP encapsule.
+///
+/// L'en-tete fait huit octets, suivis de quatre octets optionnels — numero
+/// de sequence, N-PDU, type de l'extension suivante — presents des qu'un des
+/// trois flags E/S/PN est pose. Vient ensuite, si E est pose, une **chaine**
+/// d'extension headers : chacun donne sa longueur en mots de quatre octets et
+/// se termine par le type du suivant, zero fermant la chaine. C'est le seul
+/// tunnel du module dont l'en-tete se parcourt plutot qu'il ne se saute.
+///
+/// Deux refus, pas deux devinettes :
+/// - la version doit valoir 1 et le bit PT doit etre pose. GTP' (PT = 0) est
+///   un protocole de facturation, pas un tunnel ;
+/// - le message type doit valoir 255 (G-PDU). Les Echo, les notifications et
+///   tout le plan de controle circulent sur le meme port sans porter le
+///   moindre paquet utilisateur.
+///
+/// Contrairement a VXLAN (toujours Ethernet) et a Geneve (qui annonce son
+/// interne par un EtherType), **rien dans l'en-tete GTP-U ne dit ce qui
+/// suit** : la version se lit sur le quartet de tete du paquet encapsule,
+/// et `RawIpDecoder` la verifie ensuite.
+///
+/// Le champ de longueur n'est volontairement pas impose comme borne : quand
+/// le datagramme externe est fragmente, seul le premier fragment porte
+/// l'en-tete GTP, et il annonce la longueur du tout. L'exiger reviendrait a
+/// refuser de nommer le flux interne d'une trame que l'on sait lire.
+fn peel_gtp_u(payload: &[u8]) -> Option<DecodedLink<'_>> {
+    /// Numero de version de GTPv1, sur les trois bits de poids fort.
+    const VERSION_1: u8 = 1;
+    /// Bit PT : 1 = GTP, 0 = GTP' (facturation).
+    const PROTOCOL_TYPE_GTP: u8 = 0x10;
+    /// Bit E : un ou plusieurs extension headers suivent.
+    const FLAG_EXTENSION: u8 = 0x04;
+    /// Bits E, S et PN : l'un d'eux suffit a rendre les quatre octets
+    /// optionnels presents — tous les trois, pas seulement celui qui est pose.
+    const OPTIONAL_FIELDS: u8 = 0x07;
+    /// Message type d'un G-PDU : le seul qui porte un paquet.
+    const G_PDU: u8 = 0xff;
+    const HEADER_LEN: usize = 8;
+    const OPTIONAL_LEN: usize = 4;
+
+    let flags = *payload.first()?;
+    if payload.len() < HEADER_LEN
+        || flags >> 5 != VERSION_1
+        || flags & PROTOCOL_TYPE_GTP == 0
+        || payload[1] != G_PDU
+    {
+        return None;
+    }
+
+    let mut offset = HEADER_LEN;
+    if flags & OPTIONAL_FIELDS != 0 {
+        offset += OPTIONAL_LEN;
+
+        if flags & FLAG_EXTENSION != 0 {
+            // Le type de la premiere extension occupe le dernier des quatre
+            // octets optionnels ; chaque extension nomme ensuite la suivante.
+            let mut next = *payload.get(HEADER_LEN + OPTIONAL_LEN - 1)?;
+            while next != 0 {
+                let length = usize::from(*payload.get(offset)?);
+                // Une longueur nulle ne progresse pas : la chaine boucle.
+                offset = offset.checked_add(length.checked_mul(4).filter(|n| *n > 0)?)?;
+                next = *payload.get(offset - 1)?;
+            }
+        }
+    }
+
+    let inner = payload.get(offset..)?;
+    match inner.first()? >> 4 {
+        4 => RawIpDecoder::decode_as(LinkType::IPV4, inner).ok(),
+        6 => RawIpDecoder::decode_as(LinkType::IPV6, inner).ok(),
+        _ => None,
+    }
+}
+
 /// Peels CAPWAP-Data → IEEE 802.11 → LLC/SNAP and returns the inner data-link
 /// layer (802.11 MAC addresses + SNAP EtherType + L3 payload).
 fn peel_capwap_ieee80211(payload: &[u8]) -> Option<LinkLayer<'_>> {
@@ -328,6 +415,70 @@ fn peel_llc_snap(llc: &[u8]) -> Option<(u16, &[u8])> {
 
 #[cfg(test)]
 mod tests {
+    /// Octets reels : le debut de la charge UDP de la trame 1 de
+    /// `pcaps_exemple/tunnels/gtp_u/gtp_ext_header.pcap`, tronquee apres le
+    /// debut du TCP interne. C'est le seul en-tete d'extension GTP-U du
+    /// corpus, et son datagramme est fragmente — la couche transport se
+    /// retire donc avant GTP, et aucun golden de bout en bout ne peut
+    /// l'atteindre. Le peleur, lui, se teste directement.
+    ///
+    /// `36` = version 1, PT=1, flags E et S ; `ff` = G-PDU ; puis le type de
+    /// la premiere extension (`c0`, PDCP PDU number) et la chaine elle-meme,
+    /// `01 09 04 00` : longueur 1 mot de quatre octets, contenu `09 04`,
+    /// suivant `00` qui la ferme. L'IPv4 interne commence a l'octet 16.
+    const REAL_GTP_EXTENSION_HEADER: &[u8] = &[
+        0x36, 0xff, 0x05, 0xe4, 0x00, 0x10, 0x06, 0x57, 0x00, 0x05, 0x00, 0xc0, 0x01, 0x09, 0x04,
+        0x00, 0x45, 0x00, 0x05, 0xdc, 0xdc, 0xfa, 0x40, 0x00, 0x3f, 0x06, 0xd2, 0xe7, 0x0a, 0x9b,
+        0xb6, 0xca, 0x0a, 0x9b, 0xba, 0x39, 0xa2, 0x27, 0x17, 0x75, 0x96, 0x12, 0xe6, 0x03,
+    ];
+
+    #[test]
+    fn gtp_u_walks_the_extension_header_chain_to_find_the_inner_packet() {
+        let (layer, _, _) = peel_gtp_u(REAL_GTP_EXTENSION_HEADER)
+            .expect("la chaine d'extension est franchie")
+            .into_parts();
+        // L'interne est un paquet IP nu : aucune couche 2 a exposer.
+        assert!(layer.as_ethernet().is_none());
+        assert_eq!(layer.link_type(), LinkType::IPV4);
+    }
+
+    /// Une longueur d'extension nulle ne fait avancer aucun offset : la
+    /// chaine bouclerait indefiniment. Le peleur doit s'arreter.
+    #[test]
+    fn a_zero_length_extension_header_is_refused_rather_than_looped_on() {
+        let mut bytes = REAL_GTP_EXTENSION_HEADER.to_vec();
+        bytes[12] = 0x00;
+        assert!(peel_gtp_u(&bytes).is_none());
+    }
+
+    /// Seul un G-PDU porte un paquet utilisateur. Le plan de controle et les
+    /// Echo circulent sur le meme port, et rien n'empeche leur charge utile
+    /// de commencer par un quartet 4 ou 6 : la verification du message type
+    /// ne peut pas etre deleguee a la lecture de la version interne.
+    ///
+    /// La trame reelle, avec son seul message type change — le corpus n'a pas
+    /// de non-G-PDU dont la charge ressemble a de l'IP.
+    #[test]
+    fn a_non_g_pdu_is_refused_even_when_its_payload_looks_like_ip() {
+        let mut echo_request = REAL_GTP_EXTENSION_HEADER.to_vec();
+        echo_request[1] = 0x01;
+        assert!(peel_gtp_u(&echo_request).is_none());
+    }
+
+    /// GTPv0 (version 0) et GTP' (bit PT a zero) circulent sur le meme port
+    /// sans avoir la meme en-tete. Le corpus porte 12 trames en 0x1e, soit
+    /// une version 0 : les refuser, pas les peler de travers.
+    #[test]
+    fn only_version_1_with_the_protocol_type_bit_is_peeled() {
+        let mut v0 = REAL_GTP_EXTENSION_HEADER.to_vec();
+        v0[0] = 0x1e;
+        assert!(peel_gtp_u(&v0).is_none(), "GTPv0 refuse");
+
+        let mut gtp_prime = REAL_GTP_EXTENSION_HEADER.to_vec();
+        gtp_prime[0] = 0x26; // version 1, PT = 0
+        assert!(peel_gtp_u(&gtp_prime).is_none(), "GTP' refuse");
+    }
+
     use super::*;
     use crate::{LinkType, parse};
 
