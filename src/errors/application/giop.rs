@@ -29,11 +29,14 @@ pub enum GiopParseError {
     #[error("Unknown GIOP TargetAddress discriminator {0}")]
     UnknownTargetDiscriminator(u16),
 
-    #[error("Unknown GIOP reply status {0}")]
-    UnknownReplyStatus(u32),
+    #[error("GIOP message type {message_type} is not defined in GIOP 1.{minor_version}")]
+    MessageTypeNotInVersion { message_type: u8, minor_version: u8 },
 
-    #[error("Unknown GIOP locate status {0}")]
-    UnknownLocateStatus(u32),
+    #[error("GIOP reply status {status} is not defined in GIOP 1.{minor_version}")]
+    UnknownReplyStatus { status: u32, minor_version: u8 },
+
+    #[error("GIOP locate status {status} is not defined in GIOP 1.{minor_version}")]
+    UnknownLocateStatus { status: u32, minor_version: u8 },
 
     #[error("Invalid GIOP profile count {count} (only {available} bytes available)")]
     InvalidProfileCount { count: usize, available: usize },

@@ -18,8 +18,8 @@ use std::convert::TryFrom;
 use crate::{
     checks::application::giop::{
         GIOP_HEADER_LEN, GIOP_MAGIC, ensure_min_len, extract_flags, extract_message_size,
-        extract_version, parse_magic, validate_message_type, validate_service_context_count,
-        validate_target_discriminator,
+        extract_version, parse_magic, validate_message_type, validate_message_type_in_version,
+        validate_service_context_count, validate_target_discriminator,
     },
     errors::application::giop::GiopParseError,
 };
@@ -53,7 +53,8 @@ pub enum GiopMessageType {
     LocateReply,
     CloseConnection,
     MessageError,
-    /// GIOP 1.1+.
+    /// GIOP 1.1+ : un header 1.0 portant ce type est rejete (voir
+    /// `validate_message_type_in_version`).
     Fragment,
 }
 
@@ -131,6 +132,9 @@ impl TryFrom<&[u8]> for GiopHeader {
         let (major_version, minor_version) = extract_version(&payload[4..6])?;
         let flags = extract_flags(&payload[6])?;
         let message_type = GiopMessageType::try_from(payload[7])?;
+        // Le domaine d'un champ depend de la version : Fragment (7) n'existe
+        // qu'a partir de GIOP 1.1.
+        validate_message_type_in_version(payload[7], minor_version)?;
         // MessageSize suit l'endianness annoncee par les flags (bit 0),
         // comme le reste du message — verifie sur la trame 19 little-endian
         // de pcaps_exemple/protocols/giop/corba.pcap (issue #58).
@@ -360,7 +364,7 @@ fn dispatch_body<'a>(header: &GiopHeader, body: &'a [u8]) -> GiopMessage<'a> {
         }
         .map(GiopMessage::Request),
         GiopMessageType::Reply => if legacy {
-            GiopReply::parse_1_0_1_1(body, little_endian)
+            GiopReply::parse_1_0_1_1(body, little_endian, header.minor_version)
         } else {
             GiopReply::parse(body, little_endian)
         }
@@ -375,7 +379,8 @@ fn dispatch_body<'a>(header: &GiopHeader, body: &'a [u8]) -> GiopMessage<'a> {
         }
         .map(GiopMessage::LocateRequest),
         GiopMessageType::LocateReply => {
-            GiopLocateReply::parse(body, little_endian).map(GiopMessage::LocateReply)
+            GiopLocateReply::parse(body, little_endian, header.minor_version)
+                .map(GiopMessage::LocateReply)
         }
         GiopMessageType::CloseConnection => Ok(GiopMessage::CloseConnection),
         GiopMessageType::MessageError => Ok(GiopMessage::MessageError),
