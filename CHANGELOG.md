@@ -51,9 +51,19 @@ recoupee avec `cargo semver-checks` (voir le guide, §Recoupement).
     premier segment d'un gros message sortait `Unknown` du pipeline. La
     variante `GiopParseError::TruncatedBody` et
     `checks::...::validate_total_length` disparaissent.
+  - **Le domaine de chaque champ suit la version du message.** Un statut de
+    Reply (`LOCATION_FORWARD_PERM`, `NEEDS_ADDRESSING_MODE`) ou de
+    LocateReply (`OBJECT_FORWARD_PERM`, `LOC_SYSTEM_EXCEPTION`,
+    `LOC_NEEDS_ADDRESSING_MODE`) que seul GIOP 1.2 definit est refuse sur un
+    message 1.0 ou 1.1, et le message Fragment (type 7) sur un header 1.0 :
+    du trafic legacy malforme ou hostile exposait sinon un message valide
+    mais contradictoire. `GiopReplyStatus::from_wire(value, minor_version)`
+    et `GiopLocateStatus::from_wire(..)` remplacent leurs `TryFrom<u32>`, qui
+    ne pouvaient pas connaitre la version.
   - `GiopParseError::UnknownTargetDiscriminator` porte le `u16` du wire (plus
-    de saturation a 255) ; nouvelles variantes `UnknownReplyStatus`,
-    `UnknownLocateStatus`, `InvalidProfileCount` ; l'enum devient
+    de saturation a 255) ; nouvelles variantes `UnknownReplyStatus { status,
+    minor_version }`, `UnknownLocateStatus { .. }`,
+    `MessageTypeNotInVersion { .. }`, `InvalidProfileCount` ; l'enum devient
     `#[non_exhaustive]`.
   - `checks::application::giop::extract_message_length` (variante historique
     big-endian seule) est supprimee au profit de `extract_message_size`.
