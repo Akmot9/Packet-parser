@@ -33,6 +33,12 @@ pub enum TransportDetails<'a> {
 #[non_exhaustive]
 pub struct Transport<'a> {
     /// The transport layer protocol name
+    // Meme cle et meme valeur que `TransportOwned` : le `Display` du
+    // protocole ("TCP", "UDP", ...), pas le nom de la variante Rust (#22).
+    #[serde(
+        rename = "protocol_transport",
+        serialize_with = "serialize_protocol_name"
+    )]
     pub protocol: TransportProtocol,
     /// Source port
     pub source_port: Option<u16>,
@@ -47,6 +53,13 @@ pub struct Transport<'a> {
     /// above define the identity of the transport layer.
     #[serde(skip_serializing)]
     pub details: Option<TransportDetails<'a>>,
+}
+
+fn serialize_protocol_name<S: serde::Serializer>(
+    protocol: &TransportProtocol,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.collect_str(protocol)
 }
 
 impl<'a> Transport<'a> {

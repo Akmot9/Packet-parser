@@ -40,20 +40,33 @@ pub enum InternetDetails<'a> {
 #[non_exhaustive]
 pub struct Internet<'a> {
     /// Source IP address when the internet layer carries one.
+    // Les cles JSON sont celles du modele owned (`InternetOwned`) : un seul
+    // schema pour les deux modeles (#22). Dans l'objet aplati du flux,
+    // `source_ip` a cote de `source_port` et `source_mac` ne prete pas a
+    // confusion, la ou `source` seul le faisait.
+    #[serde(rename = "source_ip")]
     pub source: Option<IpAddr>,
     /// Classification of the source IP address.
+    #[serde(rename = "ip_source_type")]
     pub source_type: Option<IpType>,
     /// Destination IP address when the internet layer carries one.
+    #[serde(rename = "destination_ip")]
     pub destination: Option<IpAddr>,
     /// Classification of the destination IP address.
+    #[serde(rename = "ip_destination_type")]
     pub destination_type: Option<IpType>,
     /// Parsed internet-layer protocol name.
+    #[serde(rename = "protocol_internet")]
     pub protocol_name: &'static str,
     /// Transport protocol parsable from `payload`.
     ///
     /// This is not a pure copy of an IP header protocol field. For IPv4
     /// fragments, it is `None` because parsing L4 safely requires IP
     /// reassembly, which this crate does not perform.
+    ///
+    /// Not serialized: the flow JSON names the transport protocol once, as
+    /// `protocol_transport`, from the transport layer.
+    #[serde(skip_serializing)]
     pub payload_protocol: Option<TransportProtocol>,
     /// Internet-layer payload bytes.
     #[serde(skip_serializing)]
