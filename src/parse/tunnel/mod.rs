@@ -338,9 +338,25 @@ fn peel_gtp_u(payload: &[u8]) -> Option<DecodedLink<'_>> {
     }
 
     let inner = payload.get(offset..)?;
+    // Le paquet interne doit consommer tout le T-PDU. Les validateurs IP
+    // acceptent un tampon plus long que la longueur declaree et bornent
+    // silencieusement ce qu'ils lisent : sans ce controle, un reliquat
+    // derriere un IP valide passerait inapercu, et l'etiquette serait posee
+    // sur un prefixe. Meme raison que l'egalite exigee sur la longueur GTP.
     match inner.first()? >> 4 {
-        4 => RawIpDecoder::decode_as(LinkType::IPV4, inner).ok(),
-        6 => RawIpDecoder::decode_as(LinkType::IPV6, inner).ok(),
+        4 => {
+            let total = usize::from(u16::from_be_bytes([*inner.get(2)?, *inner.get(3)?]));
+            (inner.len() == total)
+                .then(|| RawIpDecoder::decode_as(LinkType::IPV4, inner).ok())
+                .flatten()
+        }
+        6 => {
+            const IPV6_HEADER_LEN: usize = 40;
+            let payload_len = usize::from(u16::from_be_bytes([*inner.get(4)?, *inner.get(5)?]));
+            (inner.len() == IPV6_HEADER_LEN + payload_len)
+                .then(|| RawIpDecoder::decode_as(LinkType::IPV6, inner).ok())
+                .flatten()
+        }
         _ => None,
     }
 }
@@ -454,15 +470,19 @@ mod tests {
     /// `01 09 04 00` : longueur 1 mot de quatre octets, contenu `09 04`,
     /// suivant `00` qui la ferme. L'IPv4 interne commence a l'octet 16.
     ///
-    /// **Un seul champ differe de la capture** : la longueur annoncee, aux
-    /// octets 2 et 3, ramenee de `0x05e4` (1508) a `0x0024` (36) pour valoir
-    /// cet extrait et non le datagramme entier. La trame d'origine etant un
-    /// premier fragment, sa longueur declaree parle du tout ; la garder
-    /// reviendrait a tester la chaine d'extension sur un message que le
-    /// peleur doit precisement refuser.
+    /// **Deux champs different de la capture, et tous deux sont des
+    /// longueurs** : celle du message GTP, aux octets 2 et 3, ramenee de
+    /// `0x05e4` (1508) a `0x0024` (36) ; et le `total length` de l'IPv4
+    /// interne, aux octets 18 et 19, ramene de `0x05dc` (1500) a `0x001c`
+    /// (28). La trame d'origine est un premier fragment : ses longueurs
+    /// declarees parlent du datagramme entier, pas de ce que la capture
+    /// porte. Les garder reviendrait a tester la chaine d'extension sur un
+    /// message que le peleur doit precisement refuser — ce qui ne
+    /// testerait plus la chaine du tout. Les octets de la chaine elle-meme,
+    /// `c0` puis `01 09 04 00`, sont intacts.
     const REAL_GTP_EXTENSION_HEADER: &[u8] = &[
         0x36, 0xff, 0x00, 0x24, 0x00, 0x10, 0x06, 0x57, 0x00, 0x05, 0x00, 0xc0, 0x01, 0x09, 0x04,
-        0x00, 0x45, 0x00, 0x05, 0xdc, 0xdc, 0xfa, 0x40, 0x00, 0x3f, 0x06, 0xd2, 0xe7, 0x0a, 0x9b,
+        0x00, 0x45, 0x00, 0x00, 0x1c, 0xdc, 0xfa, 0x40, 0x00, 0x3f, 0x06, 0xd2, 0xe7, 0x0a, 0x9b,
         0xb6, 0xca, 0x0a, 0x9b, 0xba, 0x39, 0xa2, 0x27, 0x17, 0x75, 0x96, 0x12, 0xe6, 0x03,
     ];
 
@@ -571,6 +591,29 @@ mod tests {
                 .map(|application| application.application_protocol),
             Some("GTP-U"),
             "l'etiquette ne peut pas etre plus sure que le paquet qui la porte"
+        );
+    }
+
+    /// Le paquet interne doit consommer tout le T-PDU. Sinon un reliquat
+    /// derriere un IP valide passerait inapercu : `validate_ipv4_total_length`
+    /// et son equivalent IPv6 acceptent un tampon plus long que la longueur
+    /// declaree et bornent silencieusement la charge lue, donc l'interne
+    /// ressort non corrompu et l'etiquette est posee sur un prefixe.
+    ///
+    /// Meme raison que pour l'egalite sur la longueur GTP : sans champ qui
+    /// annonce le contenu, tout ce qui traine derriere est une preuve en
+    /// moins.
+    #[test]
+    fn the_inner_packet_must_consume_the_whole_t_pdu() {
+        let mut padded = REAL_GTP_G_PDU.to_vec();
+        padded.extend_from_slice(&[0u8; 4]);
+        // La longueur GTP suit, pour que seul le reliquat interne differe.
+        let announced = (padded.len() - 8) as u16;
+        padded[2..4].copy_from_slice(&announced.to_be_bytes());
+
+        assert!(
+            peel_gtp_u(&padded).is_none(),
+            "un IPv4 interne qui ne consomme pas son T-PDU est refuse"
         );
     }
 
