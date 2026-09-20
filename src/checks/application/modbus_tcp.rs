@@ -59,19 +59,6 @@ pub fn validate_pdu_not_empty(pdu: &[u8]) -> Result<(), ModbusTcpError> {
     Ok(())
 }
 
-/// Vérifie que la progression de la boucle multi-ADU n'est pas nulle.
-///
-/// Conservée pour compatibilité d'API : le parseur ne l'appelle plus, car
-/// `extract_length` garantit `length >= 1`, donc `consumed = 6 + length >= 7`
-/// et la branche d'erreur est inatteignable depuis le parseur.
-pub fn validate_consumed_length(consumed: usize, length: u16) -> Result<(), ModbusTcpError> {
-    if consumed == 0 {
-        return Err(ModbusTcpError::InvalidLengthField { got: length });
-    }
-
-    Ok(())
-}
-
 /// Vérifie que les octets 0-1 de l'en-tête MBAP sont présents et extrait le
 /// Transaction Identifier (big-endian).
 pub fn extract_transaction_identifier(value: &[u8]) -> Result<u16, ModbusTcpError> {

@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PostgreSqlError {
     #[error("PostgreSQL packet is empty")]
     EmptyPacket,

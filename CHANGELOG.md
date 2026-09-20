@@ -6,6 +6,220 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [11.0.0] - 2026-09-20
+
+Version majeure : elle solde en une fois les ruptures d'API accumulees dans
+l'epic #76 pendant la fenetre de stabilite 10.x — et la cause qui les avait
+produites. Six des quatorze ruptures etaient « ajouter un champ ou une
+variante a un type exhaustif » : `#[non_exhaustive]` couvre desormais les
+erreurs et tout ce que le parseur construit, de sorte que completer un
+decodeur ou nommer une erreur redevient un changement mineur.
+
+Au passage : GIOP est decode en entier et tient la parite avec tshark
+message par message ; SYN+FIN ne fait plus disparaitre la couche transport ;
+les deux modeles rendent le meme JSON ; quatre decodeurs cessent d'allouer
+dans le chemin de detection (-7 a -17 % sur du trafic reel).
+
+Guide de migration, une entree par rupture : `MIGRATION-11.md`. La liste est
+recoupee avec `cargo semver-checks` (voir le guide, §Recoupement).
+
+### Rupture
+
+- **GIOP complet** (epic #76) : les huit types de message, GIOP 1.0, 1.1 et
+  1.2, les deux endianness. Migration : `MIGRATION-11.md` §GIOP.
+  - `GiopReply` n'est plus une struct vide : `GiopReply<'a> { request_id,
+    reply_status, service_contexts, body, detail }`. `GiopReplyDetail` type
+    le body selon le statut — `UserException { exception_id, members }`,
+    `SystemException { exception_id, minor_code, completion_status }`,
+    `LocationForward(Ior)`, `NeedsAddressingMode` — et degrade en
+    `Undecoded` sans faire echouer le message.
+  - `GiopMessage` gagne `CancelRequest`, `LocateRequest`, `LocateReply`,
+    `CloseConnection`, `MessageError` et un `Fragment(GiopFragment<'a>)`
+    decode (`request_id` a partir de GIOP 1.2 seulement) ; les unit structs
+    placeholder disparaissent. `Other` ne designe plus qu'un body illisible.
+  - `TargetAddress::ProfileAddr` porte un `TaggedProfile { tag,
+    profile_data }` ; `TargetAddress::ReferenceAddr` porte `{
+    selected_profile_index, ior }` au lieu d'un span brut. Nouveau module
+    `giop::ior` : `Ior`, `TaggedProfile`, et `IiopProfile` (hote, port, object
+    key) via `TaggedProfile::iiop()` / `Ior::iiop()`.
+  - `GiopRequest::requesting_principal: Option<&[u8]>` (GIOP 1.0/1.1).
+  - `GiopRequest::stub_data` exclut desormais le padding d'alignement sur 8
+    de GIOP 1.2 (il etait compte dans le stub : 96 octets au lieu des 92 de
+    tshark sur la trame 19 de `corba.pcap`).
+  - **Un message qui deborde de son segment TCP est accepte** et marque
+    `GiopPacket::truncated`, au lieu d'etre rejete en `TruncatedBody` : le
+    premier segment d'un gros message sortait `Unknown` du pipeline. La
+    variante `GiopParseError::TruncatedBody` et
+    `checks::...::validate_total_length` disparaissent.
+  - **Le domaine de chaque champ suit la version du message.** Un statut de
+    Reply (`LOCATION_FORWARD_PERM`, `NEEDS_ADDRESSING_MODE`) ou de
+    LocateReply (`OBJECT_FORWARD_PERM`, `LOC_SYSTEM_EXCEPTION`,
+    `LOC_NEEDS_ADDRESSING_MODE`) que seul GIOP 1.2 definit est refuse sur un
+    message 1.0 ou 1.1, et le message Fragment (type 7) sur un header 1.0 :
+    du trafic legacy malforme ou hostile exposait sinon un message valide
+    mais contradictoire. `GiopReplyStatus::from_wire(value, minor_version)`
+    et `GiopLocateStatus::from_wire(..)` remplacent leurs `TryFrom<u32>`, qui
+    ne pouvaient pas connaitre la version.
+  - `GiopParseError::UnknownTargetDiscriminator` porte le `u16` du wire (plus
+    de saturation a 255) ; nouvelles variantes `UnknownReplyStatus { status,
+    minor_version }`, `UnknownLocateStatus { .. }`,
+    `MessageTypeNotInVersion { .. }`, `InvalidProfileCount` ; l'enum devient
+    `#[non_exhaustive]`.
+  - `checks::application::giop::extract_message_length` (variante historique
+    big-endian seule) est supprimee au profit de `extract_message_size`.
+  - Tous les types GIOP publics deviennent `#[non_exhaustive]` : les
+    prochains ajouts seront additifs.
+
+- **Purge de la surface publique** (lot B de l'epic #76 : #26, #27, #32,
+  #48). Migration : `MIGRATION-11.md` §Purge.
+  - `checks` devient un module interne. Ses ~120 `validate_*` /
+    `extract_*` etaient publics sans etre une API assumee et figeaient par
+    SemVer tout refactor de validation. La seule brique destinee aux
+    consommateurs, la verification opt-in des checksums, est promue en
+    `packet_parser::checksum` (ex-`checks::checksum`).
+  - `PacketFlow::to_owned()` devient `to_owned_flow()` : l'ancien nom
+    masquait `ToOwned::to_owned` et rendait un type different et ampute
+    (#27). Pas d'alias deprecie : le nom etait le piege.
+  - `parse_timing` est enfin additive (#26) : une seule forme de
+    `ParseTiming` (5 `u64`, a zero sans la feature), `parse_timed` et
+    `PacketFlow::try_from_timed` toujours disponibles. Supprimes :
+    `timing::{now, elapsed_ns, ParseReport, LayerAttempt}` et la macro
+    exportee `time_block_ns!` (zero appelant). Le pipeline duplique
+    disparait au profit d'un pipeline unique ; `parse()` ne regresse pas
+    (~252 ns contre ~269 ns sur une trame TCP reelle) et activer la feature
+    ne le ralentit plus.
+  - Code mort public supprime : `ApplicationProtocol` et son `Display`, 9
+    des 10 variantes d'`ApplicationError` (qui devient `#[non_exhaustive]`),
+    `TryFrom<&[u8]> for Transport` (devinait TCP puis UDP a l'aveugle),
+    `ParseError::PacketTooShort`, l'alias `ParsedPacketError`,
+    `QuicPacketType::Unknown` et sa branche morte (#48).
+  - `Packet::packet_to_pcap(path)` prend le chemin de sortie au lieu
+    d'ecrire `output.pcap` en dur dans le repertoire courant.
+  - La feature vide `doc-diagrams` est supprimee.
+
+- **Erreurs** (lot A de l'epic #76 : #21, #24, reliquat de sprint_02).
+  Migration : `MIGRATION-11.md` §Erreurs.
+  - `#[non_exhaustive]` sur les 46 enums d'erreur publics (#21) : ajouter
+    une variante d'erreur n'est plus une rupture. Un test lit `src/errors`
+    pour qu'un nouveau protocole ne puisse pas l'oublier.
+  - **SYN+FIN : conserver et signaler** (#24). Un en-tete TCP lisible dont
+    les drapeaux (SYN et FIN ensemble) ou les bits reserves sont incoherents
+    **garde sa couche transport** — donc ses ports et la correlation de flux
+    — et l'anomalie est rapportee dans `corrupted`, nommee :
+    `TcpError::InvalidFlags { flags }` ou `ReservedBitsSet { bits }`, au
+    lieu du trompeur `InvalidHeaderLength`, qui disparait. La couche
+    application n'est pas sondee. `TcpPacket::try_from` ne rejette plus ces
+    segments ; `TcpPacket::anomaly()` les qualifie. `CorruptedLayer`
+    distingue desormais corruption structurelle (couche `None`) et anomalie
+    semantique (couche conservee).
+  - **Un seul chemin d'erreur de liaison** : Ethernet rapporte
+    `ParseError::InvalidLinkLayer(LinkLayerError::Truncated { link_type:
+    ETHERNET, required, actual })` comme RAW, SLL et SLL2.
+    `ParseError::InvalidDataLink` disparait ; `DataLinkError` reste l'erreur
+    de `DataLink::try_from`, hors de `ParseError`. Contrat verifie par test
+    sur les sept LINKTYPE cables.
+  - `DataLinkError::DataLinkTooShort(u8)` devient `{ required, actual }` en
+    `usize` : l'ancienne variante tronquait la longueur a 8 bits (une trame
+    de 300 octets coupee dans sa pile VLAN annoncait 44 octets).
+
+- **Champs et variantes** (lot C de l'epic #76 : #82, #9). Migration :
+  `MIGRATION-11.md` §Champs et variantes.
+  - `DataLink::vlan_stack` / `DataLinkOwned::vlan_stack` : la pile VLAN
+    complete, du tag externe (S-VLAN) au tag interne (C-VLAN) (#82).
+    `VlanStack<'a>` est une vue zero-copie, sans allocation ; serialisee
+    seulement a partir de deux tags, donc le JSON des trames sans tag ou a
+    tag unique ne change pas. `vlan` reste le tag interne. Le chemin sans
+    tag ne regresse pas (253 ns contre 252).
+  - `IpType::Broadcast` : `255.255.255.255` sortait classee `Public`, faute
+    de bras dedie (#9).
+  - `#[non_exhaustive]` etendu a 124 types de `parse` : les enums qui
+    suivent une spec ou un registre evolutif, et les structs que seul le
+    parseur construit. C'est la cause racine de l'epic : six des quatorze
+    ruptures etaient « ajouter un champ ou une variante a un type
+    exhaustif ». Restent exhaustifs, avec leur raison, les types que les
+    consommateurs construisent (`VlanTag`, `CorruptedLayer`, `TlsVersion`,
+    `BridgeId`, `ParseTiming`, `Packet`, tout `owned`) et les enums fermes
+    par construction (`Ecn`, `QuicPacketType`). Regle verrouillee par
+    `tests/public_types_are_non_exhaustive.rs`.
+
+- **Un seul schema JSON pour les deux modeles** (lot E de l'epic #76 : #22).
+  Migration : `MIGRATION-11.md` §JSON.
+  - `PacketFlow` et `PacketFlowOwned` decrivaient la meme trame sans une
+    seule cle L3/L4 commune. **Le schema du modele owned fait foi** : le
+    modele borrowed serialise desormais `source_ip`, `destination_ip`,
+    `ip_source_type`, `ip_destination_type`, `protocol_internet` et
+    `protocol_transport` (au lieu de `source`, `destination`, `source_type`,
+    `destination_type`, `protocol_name`, `protocol`). Decision du
+    2026-09-20, contre la recommandation de l'issue : le seul consommateur
+    connu, Sonar, lit les cles owned et aucune cle borrowed ; et dans
+    l'objet aplati du flux, `source_ip` a cote de `source_port` et
+    `source_mac` est moins ambigu que `source`. Les noms de champs Rust ne
+    changent pas.
+  - `protocol_transport` vaut le nom du protocole (`"TCP"`, `"UDP"`), dans
+    les deux modeles. `Display` de `TransportProtocol::Tcp` redevient
+    `"TCP"` : il avait ete deforme en `"Tcp"` pour faire passer un test qui
+    comparait au `Debug`, seule entree de casse mixte de la table.
+  - `payload_protocol` n'est plus serialise par le modele borrowed (le
+    protocole de transport n'apparait qu'une fois).
+  - Corrige : la conversion owned perdait le LINKTYPE declare quand
+    plusieurs LINKTYPE partagent une forme — un IPv6 encapsule dans de
+    l'IPv4 sortait `link_type: 101` (RAW) cote owned contre `229` (IPV6)
+    cote borrowed ; de meme pour IEEE802_3BR et ETHERNET. Trouve par le
+    nouveau test.
+  - `tests/json_schema_parity.rs` compare le JSON du **flux complet** des
+    deux modeles sur chaque trame de chaque capture du depot (> 4 000
+    trames : TCP, UDP, VLAN, tunnels, couches corrompues). Les tests
+    existants ne comparaient que `data_link`.
+
+- **Zero copie** (lot D de l'epic #76 : #61, #63). Migration :
+  `MIGRATION-11.md` §Zero copie. Regle du lot : chaque rupture est mesuree
+  sur du trafic reel (release, meilleur de 7), borne superieure prise au
+  prealable en neutralisant la collecte ; ce qui ne gagne rien est retire.
+  - DNS : la rdata des resource records est empruntee (`&'a [u8]`) ;
+    `DnsPacket`, `Answer`, `AuthoritativeNameServer`, `AdditionalRecord` et
+    `RawRecord` prennent une lifetime (#61). **-7,5 %** par message (357 ->
+    330 ns, 27 reponses DNS reelles).
+  - HTTP : `HttpRequest::headers` devient `HttpHeaders<'a>`, une vue validee
+    une fois au parsing (`iter()`, `get(nom)` insensible a la casse, `len()`)
+    (#63). **-17 %** sur le `parse()` d'une vraie requete (585 -> 488 ns) :
+    le `Vec` etait paye par chaque paquet HTTP rien que pour etre reconnu.
+  - EtherNet/IP : `EtherNetIpCommonPacketFormat::items` devient
+    `EtherNetIpCpfItems<'a>` (`iter()`, `get(i)`, `len()`). **-11,6 %** (159
+    -> 140,5 ns). Un compteur d'items forge ne pilote plus d'allocation.
+  - OPC UA : `OpcuaPacket::chunks` devient `OpcuaChunks<'a>` (`iter()`,
+    `get(i)`, `len()`), re-decodes a l'iteration. **-15 %** (160 -> 135 ns,
+    520 trames reelles).
+  - **Retire de la 11.0.0 : PostgreSQL (#62).** Mesure sur 8 209 trames
+    reelles (session JDBC de la wiki Wireshark, 3 708 Parse/Bind) :
+    neutraliser les `Vec` de Parse/Bind/Startup ne gagne que 1,5 % (402 ->
+    396 ns), et pre-dimensionner celui des messages ne gagne rien — a 5
+    messages par trame, le temps part dans leur decodage. La rupture ne se
+    justifie pas ; les types PostgreSQL restent en l'etat.
+
+### Deprecie
+
+- `convert::hex_stream_to_bytes`, qui panique sur une entree invalide : lui
+  preferer `try_hex_stream_to_bytes`.
+
+### Ajoute
+
+- `giop::giop_messages(payload)` : itere sur les messages GIOP consecutifs
+  d'un meme segment TCP. `giop::find_giop_message(payload)` : resynchronise
+  un appelant qui suit ses flux sur un header GIOP demarrant au milieu d'un
+  segment de continuation, ou sous un en-tete MIOP.
+- `GiopHeader::is_little_endian()` et `has_more_fragments()`.
+- **Regression differentielle GIOP contre tshark**
+  (`tests/giop_tshark_regression.rs`, oracle `tools/giop_oracle.sh`) : 134
+  messages reels compares sur 15 colonnes, aucune divergence ; les
+  comportements propres a tshark (suivi de flux, reassemblage, bug #1934 sur
+  les Fragment 1.1) sont nommes un par un. Couverture du corpus figee par
+  test ; troncature et mutation de chaque message reel sans panique ; cible
+  de fuzz `parse_giop`.
+- Dix captures GIOP reelles : trois pieces jointes du tracker Wireshark et
+  sept captures d'un labo omniORB rejouable (`tools/capture_giop.sh`,
+  `tools/giop_lab/`). Provenance et limites :
+  `pcaps_exemple/protocols/giop/SOURCE.md`.
+
 ## [10.5.0] - 2026-09-09
 
 Version mineure, strictement additive (`cargo semver-checks` : 223

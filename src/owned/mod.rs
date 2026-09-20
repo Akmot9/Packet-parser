@@ -46,6 +46,14 @@ pub struct DataLinkOwned {
     pub ethertype: Ethertype,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vlan: Option<VlanTag>,
+    /// The whole VLAN tag stack, outermost first. Serialized only when at
+    /// least two tags are stacked, like the borrowed model.
+    #[serde(skip_serializing_if = "vlan_stack_is_not_stacked")]
+    pub vlan_stack: Vec<VlanTag>,
+}
+
+fn vlan_stack_is_not_stacked(stack: &[VlanTag]) -> bool {
+    stack.len() < 2
 }
 
 /// Owned format-specific link-layer information.
@@ -462,6 +470,7 @@ impl From<&DataLink<'_>> for DataLinkOwned {
             source_mac: frame.source_mac,
             ethertype: frame.ethertype,
             vlan: frame.vlan.clone(),
+            vlan_stack: frame.vlan_stack.iter().collect(),
         }
     }
 }
@@ -508,6 +517,20 @@ impl From<&LinuxSll2Link<'_>> for LinuxSll2LinkOwned {
 
 impl From<&LinkLayer<'_>> for LinkLayerOwned {
     fn from(layer: &LinkLayer<'_>) -> Self {
+        // Les constructeurs publics posent le LINKTYPE canonique de leur
+        // forme (ETHERNET, RAW...). Plusieurs LINKTYPE partagent une forme —
+        // RAW, IPV4 et IPV6 ; ETHERNET et IEEE802_3BR — et la conversion doit
+        // rendre celui que la capture (ou le tunnel) a declare, pas le
+        // canonique : un IPv6 encapsule sortait `link_type: 101` cote owned
+        // contre `229` cote borrowed.
+        let mut owned = Self::from_kind(layer);
+        owned.link_type = layer.link_type();
+        owned
+    }
+}
+
+impl LinkLayerOwned {
+    fn from_kind(layer: &LinkLayer<'_>) -> Self {
         match layer.kind() {
             LinkLayerKind::Ethernet(frame) => Self::ethernet(DataLinkOwned::from(frame)),
             LinkLayerKind::RawIp(details) => {
@@ -564,6 +587,7 @@ mod tests {
             source_mac: MacAddress([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]),
             ethertype: Ethertype(0x0800),
             vlan: None,
+            vlan_stack: Vec::new(),
         }
     }
 

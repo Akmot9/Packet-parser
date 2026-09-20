@@ -34,6 +34,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 /// 192-223: "Target Protocol Address"
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct ArpPacket {
     /// Hardware type (e.g., 1 for Ethernet)
     pub hardware_type: u16,

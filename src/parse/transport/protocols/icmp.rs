@@ -29,6 +29,7 @@ const PARAMETER_PROBLEM_TYPE: u8 = 12;
 
 /// Corps d'un message Echo (types 0 et 8).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct IcmpEcho<'a> {
     pub identifier: u16,
     pub sequence_number: u16,
@@ -39,6 +40,7 @@ pub struct IcmpEcho<'a> {
 /// Corps d'un message d'erreur (types 3, 11, 12) : quatre octets dependant du
 /// type, puis le debut du datagramme qui a provoque l'erreur.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct IcmpErrorReport<'a> {
     /// Champ de 4 octets suivant le checksum. Inutilise pour Time Exceeded,
     /// il porte le MTU pour « fragmentation needed » ou le pointeur pour
@@ -77,6 +79,7 @@ pub enum IcmpBody<'a> {
 /// 64-95: "Data variable"
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct IcmpPacket<'a> {
     pub message_type: u8,
     pub code: u8,

@@ -1,6 +1,6 @@
 [package]
 name = "packet_parser"
-version = "10.5.0"
+version = "11.0.0"
 edition = "2024"
 # MSRV verifiee en CI : let-chains et u{n}::is_multiple_of exigent 1.88.
 rust-version = "1.88"
@@ -25,6 +25,9 @@ include = [
     "/README.md",
     "/README-fr.md",
     "/CHANGELOG.md",
+    # Le CHANGELOG de la 11.0.0 y renvoie a chaque rupture : sans lui, sept
+    # references mortes pour qui lit la crate depuis crates.io.
+    "/MIGRATION-11.md",
     "/LICENSE.md",
 ]
 
@@ -60,10 +63,5 @@ rpath = false         # No runtime path in binary
 
 [features]
 default = []
-# Feature videe, conservee pour compatibilite : elle activait aquamarine
-# (rendu des diagrammes mermaid dans rustdoc), retire car il tirait
-# proc-macro-error2, non maintenu (RUSTSEC-2026-0173, issue #14). Les blocs
-# ```mermaid des doc-comments restent en place, affiches comme du code.
-# Supprimer le nom de la feature serait une rupture pour qui l'active.
-doc-diagrams = []
+# Additive : l'API est la meme avec ou sans (voir src/timing/mod.rs).
 parse_timing = []

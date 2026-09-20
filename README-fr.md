@@ -20,7 +20,7 @@ decodees et laisse les couches suivantes a `None` quand c'est necessaire.
 
 ```toml
 [dependencies]
-packet_parser = "10.5.0"
+packet_parser = "11.0.0"
 ```
 
 Pour reproduire les exemples qui decodent de l'hexadecimal:
@@ -28,7 +28,7 @@ Pour reproduire les exemples qui decodent de l'hexadecimal:
 ```toml
 [dependencies]
 hex = "0.4"
-packet_parser = "10.5.0"
+packet_parser = "11.0.0"
 ```
 
 ## Exemple rapide
@@ -327,8 +327,7 @@ for level in flow.flatten() {
 
 | Feature | Effet |
 | --- | --- |
-| `doc-diagrams` | Active les diagrammes Rustdoc via `aquamarine` |
-| `parse_timing` | Expose `ParseTiming`, `parse_timed` et `PacketFlow::try_from_timed` |
+| `parse_timing` | Fait réellement mesurer chaque couche par `parse_timed` et `PacketFlow::try_from_timed` ; sans elle la même API existe et `ParseTiming` reste à zéro |
 
 La feature `parse_timing` est faite pour les benchmarks. Le chemin normal
 `PacketFlow::try_from` ne mesure pas le temps de parsing.

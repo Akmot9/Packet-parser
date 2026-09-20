@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ModbusTcpError {
     #[error("Modbus/TCP buffer too small: needed {needed} bytes, got {actual}")]
     BufferTooSmall { needed: usize, actual: usize },

@@ -82,36 +82,40 @@ pub fn parse_dns_name(message: &[u8], start: usize) -> Result<(String, usize), D
 /// Resource record brut (RFC 1035 §4.1.3), partagé par les sections answer,
 /// authority et additional.
 #[derive(Debug)]
-pub struct RawRecord {
+#[non_exhaustive]
+pub struct RawRecord<'a> {
     pub name: String,
     pub rtype: u16,
     pub rclass: u16,
     pub ttl: u32,
     pub data_length: u16,
-    pub data: Vec<u8>,
+    /// Rdata brute, empruntee au message (zero-copie) : elle y est
+    /// contigue, contrairement au nom, que la compression oblige a
+    /// reconstruire.
+    pub data: &'a [u8],
 }
 
 /// Parse un resource record à `*offset` dans `message` et avance l'offset
 /// après le record.
-pub(crate) fn parse_resource_record(
-    message: &[u8],
+pub(crate) fn parse_resource_record<'a>(
+    message: &'a [u8],
     offset: &mut usize,
-) -> Result<RawRecord, DnsQueryParseError> {
+) -> Result<RawRecord<'a>, DnsQueryParseError> {
     parse_resource_record_with_mode(message, offset, false)
 }
 
-pub(crate) fn parse_mdns_resource_record(
-    message: &[u8],
+pub(crate) fn parse_mdns_resource_record<'a>(
+    message: &'a [u8],
     offset: &mut usize,
-) -> Result<RawRecord, DnsQueryParseError> {
+) -> Result<RawRecord<'a>, DnsQueryParseError> {
     parse_resource_record_with_mode(message, offset, true)
 }
 
-fn parse_resource_record_with_mode(
-    message: &[u8],
+fn parse_resource_record_with_mode<'a>(
+    message: &'a [u8],
     offset: &mut usize,
     mdns: bool,
-) -> Result<RawRecord, DnsQueryParseError> {
+) -> Result<RawRecord<'a>, DnsQueryParseError> {
     let (name, after_name) = parse_dns_name(message, *offset)?;
 
     // Type (2) + classe (2) + TTL (4) + longueur des données (2).
@@ -133,7 +137,7 @@ fn parse_resource_record_with_mode(
 
     let data_start = after_name + 10;
     check_dns_query_size(message, data_start, data_length as usize)?;
-    let data = message[data_start..data_start + data_length as usize].to_vec();
+    let data = &message[data_start..data_start + data_length as usize];
 
     *offset = data_start + data_length as usize;
 

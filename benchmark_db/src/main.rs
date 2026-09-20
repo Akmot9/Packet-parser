@@ -360,7 +360,7 @@ fn main() -> Result<(), PacketCaptureError> {
 
             match parsed {
                 Ok(p) => {
-                    let owned = p.to_owned();
+                    let owned = p.to_owned_flow();
                     std::hint::black_box(&owned);
                     ok = true;
                 }

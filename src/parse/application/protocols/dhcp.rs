@@ -46,6 +46,7 @@ use crate::{
 /// Parsing is zero-copy: fixed-size fields (`chaddr`, `sname`, `file`) and the
 /// variable-length `options` area are borrowed slices into the original packet.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct DhcpPacket<'a> {
     pub op: u8,
     pub htype: u8,

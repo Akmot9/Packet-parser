@@ -8,6 +8,7 @@ use thiserror::Error;
 use crate::parse::application::protocols::mqtt::MqttPacketType;
 
 #[derive(Debug, Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MqttError {
     #[error("MQTT packet too short: {actual} bytes (min {min})")]
     PacketTooShort { actual: usize, min: usize },

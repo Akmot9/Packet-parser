@@ -35,6 +35,7 @@ const LLC_HEADER_LEN: usize = 3;
 
 /// Version de protocole annoncee par le BPDU.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum StpVersion {
     /// Spanning Tree classique (802.1D), version 0.
     Stp,
@@ -57,6 +58,7 @@ impl StpVersion {
 
 /// Type de BPDU.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BpduType {
     /// Configuration BPDU (0x00), STP classique.
     Configuration,
@@ -104,6 +106,7 @@ impl BridgeId {
 /// Les ages et delais sont des `u16` en 1/256 de seconde (802.1D-2004
 /// §9.2.8) : 20 s s'ecrit 0x1400.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ConfigurationBpdu<'a> {
     /// Flags : topology change, proposal/agreement et role de port (RST).
     pub flags: u8,
@@ -132,6 +135,7 @@ pub struct ConfigurationBpdu<'a> {
 
 /// Corps du BPDU selon son type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BpduBody<'a> {
     /// TCN : aucun corps apres l'en-tete de 4 octets.
     TopologyChangeNotification,
@@ -167,6 +171,7 @@ pub enum BpduBody<'a> {
 /// 304-319: "MST extension variable (MST)"
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct BpduPacket<'a> {
     /// Toujours 0x0000.
     pub protocol_identifier: u16,

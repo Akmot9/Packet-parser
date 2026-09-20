@@ -29,6 +29,7 @@ use crate::{
 /// 104-167: "Payload variable"
 /// ```
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct MqttPacket<'a> {
     pub fixed_header: MqttFixedHeader,
     pub variable_header: &'a [u8],
@@ -36,12 +37,14 @@ pub struct MqttPacket<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct MqttFixedHeader {
     pub packet_type: MqttPacketType,
     pub remaining_length: u32,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[non_exhaustive]
 pub enum MqttPacketType {
     Connect = 1,
     Connack,

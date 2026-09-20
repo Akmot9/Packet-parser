@@ -1,0 +1,14 @@
+// IDL du labo GIOP (tools/capture_giop.sh) : une interface minimale dont
+// chaque operation provoque un type de message ou de statut GIOP precis.
+module Lab {
+  exception Failure { string why; };
+
+  interface Target {
+    string echo(in string s);          // Request / Reply NO_EXCEPTION
+    string big(in string s);           // message > 8 Ko : Fragment
+    string slow(in string s);          // depasse le timeout client : CancelRequest
+    void fail() raises (Failure);      // Reply USER_EXCEPTION
+    void forward();                    // Reply LOCATION_FORWARD
+    oneway void fire(in string s);     // Request sans reponse attendue
+  };
+};

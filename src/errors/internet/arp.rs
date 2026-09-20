@@ -7,6 +7,7 @@ use thiserror::Error;
 
 /// Errors that can occur when parsing or processing ARP packets
 #[derive(Debug, Error, PartialEq)]
+#[non_exhaustive]
 pub enum ArpError {
     /// The packet is too short to be a valid ARP packet
     #[error("Invalid ARP packet length: expected at least {expected} bytes, got {actual} bytes")]

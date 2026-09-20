@@ -14,6 +14,7 @@ pub mod udp;
 
 /// Represents transport protocols AND IPv6 extension headers
 #[derive(Debug, Clone, Copy, Serialize, Hash, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TransportProtocol {
     // 0
     Hopopt,

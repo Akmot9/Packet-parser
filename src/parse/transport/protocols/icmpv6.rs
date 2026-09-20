@@ -38,6 +38,7 @@ const NEIGHBOR_ADVERTISEMENT_TYPE: u8 = 136;
 
 /// Corps d'un message Echo (types 128 et 129).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Icmpv6Echo<'a> {
     pub identifier: u16,
     pub sequence_number: u16,
@@ -47,6 +48,7 @@ pub struct Icmpv6Echo<'a> {
 /// Corps d'un message d'erreur (types 1 a 4) : quatre octets dependant du
 /// type, puis le debut du paquet qui a provoque l'erreur.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Icmpv6ErrorReport<'a> {
     /// Inutilise pour Destination Unreachable, porte le MTU pour Packet Too
     /// Big et le pointeur pour Parameter Problem : laisse brut.
@@ -57,6 +59,7 @@ pub struct Icmpv6ErrorReport<'a> {
 
 /// Neighbor Solicitation (type 135, RFC 4861 §4.3).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Icmpv6NeighborSolicitation<'a> {
     /// Adresse dont on cherche l'adresse de liaison.
     pub target_address: Ipv6Addr,
@@ -66,6 +69,7 @@ pub struct Icmpv6NeighborSolicitation<'a> {
 
 /// Neighbor Advertisement (type 136, RFC 4861 §4.4).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Icmpv6NeighborAdvertisement<'a> {
     /// L'emetteur est un routeur.
     pub router: bool,
@@ -81,6 +85,7 @@ pub struct Icmpv6NeighborAdvertisement<'a> {
 /// Router Solicitation (type 133, RFC 4861 §4.1). Un hote demande aux
 /// routeurs du lien de s'annoncer sans attendre leur prochaine emission.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Icmpv6RouterSolicitation<'a> {
     /// Options NDP brutes (souvent Source Link-Layer Address), zero-copy.
     pub options: &'a [u8],
@@ -88,6 +93,7 @@ pub struct Icmpv6RouterSolicitation<'a> {
 
 /// Router Advertisement (type 134, RFC 4861 §4.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Icmpv6RouterAdvertisement<'a> {
     /// Valeur que les hotes doivent placer dans leur champ Hop Limit ; 0
     /// signifie « non specifie ».
@@ -139,6 +145,7 @@ pub enum Icmpv6Body<'a> {
 /// 192-223: "Options variable"
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Icmpv6Packet<'a> {
     pub message_type: u8,
     pub code: u8,

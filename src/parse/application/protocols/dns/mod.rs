@@ -39,18 +39,19 @@ use utils::name::{RawRecord, parse_mdns_resource_record, parse_resource_record};
 /// 160-223: "Answers / Authority / Additional variable"
 /// ```
 #[derive(Debug)]
-pub struct DnsPacket {
+#[non_exhaustive]
+pub struct DnsPacket<'a> {
     pub header: DnsHeader,
     pub queries: DnsQueries,
-    pub answers: Option<Vec<Answer>>, // List of answer records
-    pub authorities: Option<Vec<AuthoritativeNameServer>>, // List of authority records
-    pub additionals: Option<Vec<AdditionalRecord>>, // List of additional records
+    pub answers: Option<Vec<Answer<'a>>>, // List of answer records
+    pub authorities: Option<Vec<AuthoritativeNameServer<'a>>>, // List of authority records
+    pub additionals: Option<Vec<AdditionalRecord<'a>>>, // List of additional records
 }
 
-impl TryFrom<&[u8]> for DnsPacket {
+impl<'a> TryFrom<&'a [u8]> for DnsPacket<'a> {
     type Error = DnsPacketError;
 
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &'a [u8]) -> Result<Self, Self::Error> {
         check_dns_minimum_size(bytes)?;
 
         let header = DnsHeader::try_from(bytes)?;
@@ -79,7 +80,7 @@ impl TryFrom<&[u8]> for DnsPacket {
     }
 }
 
-impl DnsPacket {
+impl<'a> DnsPacket<'a> {
     /// Decode un message DNS transporte sur TCP (RFC 1035 §4.2.2) : le flux
     /// prefixe chaque message d'une longueur sur deux octets. Seul le premier
     /// message du segment est decode — un segment AXFR peut en enchainer
@@ -89,7 +90,7 @@ impl DnsPacket {
     /// La longueur declaree doit couvrir au moins l'en-tete DNS et tenir dans
     /// le segment : c'est elle qui distingue un vrai flux DNS/TCP d'un payload
     /// arbitraire commencant par deux octets quelconques.
-    pub fn try_from_tcp(bytes: &[u8]) -> Result<Self, DnsPacketError> {
+    pub fn try_from_tcp(bytes: &'a [u8]) -> Result<Self, DnsPacketError> {
         check_dns_minimum_size(bytes)?;
 
         let declared = usize::from(u16::from_be_bytes([bytes[0], bytes[1]]));
@@ -107,7 +108,7 @@ impl DnsPacket {
     /// mDNS reuses the DNS wire format (RFC 6762 §1) but its responders send
     /// unsolicited announcements that never echo a question — rejected by
     /// the strict `TryFrom` used for classic unicast DNS.
-    pub fn try_from_mdns(bytes: &[u8]) -> Result<Self, DnsPacketError> {
+    pub fn try_from_mdns(bytes: &'a [u8]) -> Result<Self, DnsPacketError> {
         check_dns_minimum_size(bytes)?;
 
         let header = DnsHeader::try_from_mdns(bytes)?;
@@ -148,7 +149,7 @@ impl DnsPacket {
     /// inversement une requete LLMNR est un en-tete DNS valide. Les deux
     /// formats se recouvrent sur le wire — seul le port UDP (53 vs 5355)
     /// tranche, et c'est la table de dispatch qui applique cette garde.
-    pub fn try_from_llmnr(bytes: &[u8]) -> Result<Self, DnsPacketError> {
+    pub fn try_from_llmnr(bytes: &'a [u8]) -> Result<Self, DnsPacketError> {
         check_dns_minimum_size(bytes)?;
 
         let header = DnsHeader::try_from_llmnr(bytes)?;
@@ -177,8 +178,8 @@ impl DnsPacket {
 
 /// Parse `count` resource records à `*offset` dans `message`. Retourne `None`
 /// quand la section est vide.
-fn parse_record_section<T: From<RawRecord>>(
-    message: &[u8],
+fn parse_record_section<'a, T: From<RawRecord<'a>>>(
+    message: &'a [u8],
     offset: &mut usize,
     count: u16,
     mdns: bool,
@@ -203,7 +204,7 @@ fn parse_record_section<T: From<RawRecord>>(
     Ok(Some(records))
 }
 
-impl fmt::Display for DnsPacket {
+impl fmt::Display for DnsPacket<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

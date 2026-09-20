@@ -22,7 +22,7 @@ next layers as `None` when parsing cannot safely continue.
 
 ```toml
 [dependencies]
-packet_parser = "10.5.0"
+packet_parser = "11.0.0"
 ```
 
 For examples that decode hexadecimal packet dumps:
@@ -30,7 +30,7 @@ For examples that decode hexadecimal packet dumps:
 ```toml
 [dependencies]
 hex = "0.4"
-packet_parser = "10.5.0"
+packet_parser = "11.0.0"
 ```
 
 ## Quick Example
@@ -322,8 +322,7 @@ for level in flow.flatten() {
 
 | Feature | Effect |
 | --- | --- |
-| `doc-diagrams` | Enables Rustdoc diagrams through `aquamarine` |
-| `parse_timing` | Exposes `ParseTiming`, `parse_timed` and `PacketFlow::try_from_timed` |
+| `parse_timing` | Makes `parse_timed` and `PacketFlow::try_from_timed` actually measure each layer; without it the same API exists and `ParseTiming` stays zeroed |
 
 The `parse_timing` feature is intended for benchmarks. The normal
 `PacketFlow::try_from` path does not measure parsing time.

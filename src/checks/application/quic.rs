@@ -137,12 +137,12 @@ pub fn extract_first_byte(b0: u8) -> Result<(QuicPacketType, u8), QuicError> {
     let pn_len_code = b0 & 0b11; // PN length code
     let pn_length = pn_len_code + 1; // 1..=4
 
+    // Le masque 0b11 borne lptype a 0..=3 : les quatre valeurs sont nommees.
     let packet_type = match lptype {
         0 => QuicPacketType::Initial,
         1 => QuicPacketType::ZeroRtt,
         2 => QuicPacketType::Handshake,
-        3 => QuicPacketType::Retry,
-        x => QuicPacketType::Unknown(x),
+        _ => QuicPacketType::Retry,
     };
 
     Ok((packet_type, pn_length))
@@ -443,22 +443,24 @@ mod tests {
         assert_eq!(extract_first_byte(0xF2), Ok((QuicPacketType::Retry, 3)));
     }
 
-    /// `lptype` vaut `(b0 >> 4) & 0b11`, donc 0..=3, et les quatre valeurs ont
-    /// un bras nommé : `QuicPacketType::Unknown` n'est jamais construit, et la
-    /// branche qui le traite dans `parse::…::quic` est morte.
-    ///
-    /// Ce test fige la propriété sur les 256 premiers octets possibles. Il
-    /// autorise la suppression de la variante `Unknown` — qui est une rupture
-    /// d'API, donc réservée à la prochaine majeure (issue #48).
+    /// Les deux bits du Long Packet Type couvrent exactement les quatre types
+    /// de QUIC v1 (RFC 9000 §17.2) : chaque octet a Long Header valide donne
+    /// l'un d'eux. Verrouille la suppression de l'ancienne variante
+    /// `QuicPacketType::Unknown`, jamais construite (#48).
     #[test]
-    fn test_extract_first_byte_never_yields_unknown() {
+    fn test_extract_first_byte_maps_every_long_header_to_a_named_type() {
         for b0 in 0u8..=u8::MAX {
-            if let Ok((packet_type, _)) = extract_first_byte(b0) {
-                assert!(
-                    !matches!(packet_type, QuicPacketType::Unknown(_)),
-                    "b0={b0:#04x} a produit Unknown, la variante n'est donc plus morte"
-                );
-            }
+            let Ok((packet_type, pn_length)) = extract_first_byte(b0) else {
+                continue;
+            };
+            let expected = match (b0 >> 4) & 0b11 {
+                0 => QuicPacketType::Initial,
+                1 => QuicPacketType::ZeroRtt,
+                2 => QuicPacketType::Handshake,
+                _ => QuicPacketType::Retry,
+            };
+            assert_eq!(packet_type, expected, "b0={b0:#04x}");
+            assert_eq!(pn_length, (b0 & 0b11) + 1);
         }
     }
 

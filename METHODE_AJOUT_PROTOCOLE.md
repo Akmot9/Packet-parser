@@ -272,12 +272,11 @@ Exemples existants a suivre : `src/parse/transport/protocols/tcp.rs`, `src/parse
 
 Le type principal du protocole doit avoir une rustdoc qui decrit le format du paquet. Quand le format est fixe ou partiellement fixe, ajouter un schema Mermaid `packet-beta`, comme dans `src/parse/application/protocols/s7comm.rs`.
 
-Le schema doit servir a comprendre rapidement les offsets, tailles et champs importants avant de lire le code. Le rendu Mermaid avec `aquamarine` est optionnel et s'active avec la feature `doc-diagrams`.
+Le schema doit servir a comprendre rapidement les offsets, tailles et champs importants avant de lire le code. Le bloc ```mermaid reste affiche comme du code par rustdoc : `aquamarine`, qui le rendait, a ete retire (RUSTSEC-2026-0173), et la feature `doc-diagrams` avec lui en 11.0.0.
 
 Exemple :
 
 ````rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), aquamarine::aquamarine)]
 /// Foo Protocol Packet
 ///
 /// ```mermaid

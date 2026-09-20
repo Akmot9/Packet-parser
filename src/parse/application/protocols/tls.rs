@@ -29,6 +29,7 @@ use crate::{
 ///
 /// Représente un enregistrement TLS (TLS Record Layer).
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct TlsPacket<'a> {
     pub content_type: TlsContentType,
     pub version: TlsVersion,
@@ -47,6 +48,7 @@ impl fmt::Display for TlsPacket<'_> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TlsContentType {
     ChangeCipherSpec = 20,
     Alert = 21,

@@ -9,6 +9,7 @@ pub mod ipv6;
 pub mod profinet;
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum InternetProtocolType {
     Arp,
     Ipv4,

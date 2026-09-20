@@ -33,6 +33,7 @@ use crate::{
 /// 3977 §3.1): any following data block (e.g. an article body) is a separate
 /// concern, terminated by a lone `.` line, and is not modeled here.
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NntpMessage<'a> {
     /// A client command, e.g. `MODE READER`.
     Command {
