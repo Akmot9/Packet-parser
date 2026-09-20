@@ -47,7 +47,10 @@ aucun segment n'en enchaîne deux — le golden le vérifie.
 
 - **aucun chunk fragmenté** (`C` ou `A` en quatrième octet) : le chemin
   `OpcuaPayload::Partial` n'est pas couvert par une trame réelle ;
-- aucune trame IPv6, donc aucune famille `AF_INET6` réelle — les quatre
-  valeurs connues (10, 24, 28, 30) sont couvertes par des tests unitaires ;
+- aucune trame IPv6, donc aucune famille `AF_INET6` réelle — les cinq
+  valeurs que nomme `epan/aftypes.h` de Wireshark (10 Linux, 24
+  NetBSD/OpenBSD, 26 Solaris, 28 FreeBSD, 30 Darwin) sont couvertes par des
+  tests unitaires, de même que le refus de 23, qui est `AF_INET6` sur
+  Windows mais `AF_IPX` sur BSD ;
 - aucun trafic `LINKTYPE_LOOP` (108), le jumeau OpenBSD en ordre réseau,
   que le décodeur ne traite volontairement pas.
