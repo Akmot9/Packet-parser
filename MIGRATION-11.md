@@ -252,3 +252,38 @@ tuple (`MacAddress`, `Ethertype`, `LinkType`, `Dscp`, `DnsType`, …).
 `match` côté consommateur ont besoin d'un bras `_` (`NetworkProtocol` l'était
 déjà en 10.x).
 
+## JSON
+
+### Un seul schéma, celui du modèle owned
+
+Le JSON de `PacketFlowOwned` **ne change pas de clés**. C'est celui de
+`PacketFlow` (borrowed) qui s'aligne :
+
+| Clé 10.x (borrowed) | Clé 11.0 (les deux modèles) |
+|---|---|
+| `source` | `source_ip` |
+| `destination` | `destination_ip` |
+| `source_type` | `ip_source_type` |
+| `destination_type` | `ip_destination_type` |
+| `protocol_name` | `protocol_internet` |
+| `protocol` | `protocol_transport` |
+| `payload_protocol` | *(supprimée : redondante avec `protocol_transport`)* |
+
+Les champs Rust (`internet.source`, `transport.protocol`, …) gardent leur
+nom : seule la sérialisation change.
+
+### `protocol_transport` : `"TCP"`, plus `"Tcp"`
+
+Dans les deux modèles, la valeur est le nom du protocole tel que l'affiche
+`Display` : `"TCP"`, `"UDP"`, `"ICMP"`, `"SCTP"`… En 10.x le modèle borrowed
+rendait le nom de la variante Rust (`"Tcp"`, `"Udp"`) et le modèle owned un
+`Display` déformé (`"Tcp"` mais `"UDP"`).
+
+Qui compare `protocol_transport` (ou `TransportOwned::protocol`, ou
+`TransportProtocol::to_string()`) à `"Tcp"` doit comparer à `"TCP"`.
+
+### `link_type` du modèle owned
+
+Corrigé : il rend désormais le LINKTYPE déclaré (229 pour un IPv6 encapsulé,
+et non plus 101), comme le modèle borrowed.
+

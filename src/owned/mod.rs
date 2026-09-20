@@ -517,6 +517,20 @@ impl From<&LinuxSll2Link<'_>> for LinuxSll2LinkOwned {
 
 impl From<&LinkLayer<'_>> for LinkLayerOwned {
     fn from(layer: &LinkLayer<'_>) -> Self {
+        // Les constructeurs publics posent le LINKTYPE canonique de leur
+        // forme (ETHERNET, RAW...). Plusieurs LINKTYPE partagent une forme —
+        // RAW, IPV4 et IPV6 ; ETHERNET et IEEE802_3BR — et la conversion doit
+        // rendre celui que la capture (ou le tunnel) a declare, pas le
+        // canonique : un IPv6 encapsule sortait `link_type: 101` cote owned
+        // contre `229` cote borrowed.
+        let mut owned = Self::from_kind(layer);
+        owned.link_type = layer.link_type();
+        owned
+    }
+}
+
+impl LinkLayerOwned {
+    fn from_kind(layer: &LinkLayer<'_>) -> Self {
         match layer.kind() {
             LinkLayerKind::Ethernet(frame) => Self::ethernet(DataLinkOwned::from(frame)),
             LinkLayerKind::RawIp(details) => {

@@ -117,6 +117,35 @@ Travaux de la 11.0.0 (epic #76) — branche `release/11.0.0`.
     par construction (`Ecn`, `QuicPacketType`). Regle verrouillee par
     `tests/public_types_are_non_exhaustive.rs`.
 
+- **Un seul schema JSON pour les deux modeles** (lot E de l'epic #76 : #22).
+  Migration : `MIGRATION-11.md` §JSON.
+  - `PacketFlow` et `PacketFlowOwned` decrivaient la meme trame sans une
+    seule cle L3/L4 commune. **Le schema du modele owned fait foi** : le
+    modele borrowed serialise desormais `source_ip`, `destination_ip`,
+    `ip_source_type`, `ip_destination_type`, `protocol_internet` et
+    `protocol_transport` (au lieu de `source`, `destination`, `source_type`,
+    `destination_type`, `protocol_name`, `protocol`). Decision du
+    2026-09-20, contre la recommandation de l'issue : le seul consommateur
+    connu, Sonar, lit les cles owned et aucune cle borrowed ; et dans
+    l'objet aplati du flux, `source_ip` a cote de `source_port` et
+    `source_mac` est moins ambigu que `source`. Les noms de champs Rust ne
+    changent pas.
+  - `protocol_transport` vaut le nom du protocole (`"TCP"`, `"UDP"`), dans
+    les deux modeles. `Display` de `TransportProtocol::Tcp` redevient
+    `"TCP"` : il avait ete deforme en `"Tcp"` pour faire passer un test qui
+    comparait au `Debug`, seule entree de casse mixte de la table.
+  - `payload_protocol` n'est plus serialise par le modele borrowed (le
+    protocole de transport n'apparait qu'une fois).
+  - Corrige : la conversion owned perdait le LINKTYPE declare quand
+    plusieurs LINKTYPE partagent une forme — un IPv6 encapsule dans de
+    l'IPv4 sortait `link_type: 101` (RAW) cote owned contre `229` (IPV6)
+    cote borrowed ; de meme pour IEEE802_3BR et ETHERNET. Trouve par le
+    nouveau test.
+  - `tests/json_schema_parity.rs` compare le JSON du **flux complet** des
+    deux modeles sur chaque trame de chaque capture du depot (> 4 000
+    trames : TCP, UDP, VLAN, tunnels, couches corrompues). Les tests
+    existants ne comparaient que `data_link`.
+
 ### Deprecie
 
 - `convert::hex_stream_to_bytes`, qui panique sur une entree invalide : lui

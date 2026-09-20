@@ -1725,9 +1725,13 @@ mod tests {
 
         match (&owned.transport, &flow.transport) {
             (Some(owned_transport), Some(flow_transport)) => {
+                // Le nom de protocole du modele owned est le `Display` du
+                // modele borrowed. Le comparer au `Debug` ne tenait que pour
+                // un paquet TCP, et au prix d'un `Display` deforme en "Tcp"
+                // (#22).
                 assert_eq!(
                     owned_transport.protocol,
-                    format!("{:?}", flow_transport.protocol)
+                    flow_transport.protocol.to_string()
                 );
                 assert_eq!(owned_transport.source_port, flow_transport.source_port);
                 assert_eq!(

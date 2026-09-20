@@ -40,7 +40,7 @@ impl fmt::Display for TransportProtocol {
             TransportProtocol::Ipv6Opts => "IPv6 Destination Options",
             TransportProtocol::MobilityHeader => "IPv6 Mobility Header",
             TransportProtocol::Ipv6NoNxt => "No Next Header",
-            TransportProtocol::Tcp => "Tcp",
+            TransportProtocol::Tcp => "TCP",
             TransportProtocol::Udp => "UDP",
             TransportProtocol::Icmp => "ICMP",
             TransportProtocol::Ipv6Icmp => "ICMPv6",
@@ -211,7 +211,7 @@ mod tests {
 
         let displayed = format!("{transport}");
 
-        assert!(displayed.contains("protocol: Tcp"));
+        assert!(displayed.contains("protocol: TCP"));
         assert!(displayed.contains("source_port: 12345"));
         assert!(displayed.contains("destination_port: 80"));
         assert!(displayed.contains("payload_length: 4"));
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn test_transport_protocol_display_tcp() {
-        assert_eq!(TransportProtocol::Tcp.to_string(), "Tcp");
+        assert_eq!(TransportProtocol::Tcp.to_string(), "TCP");
     }
 
     #[test]
