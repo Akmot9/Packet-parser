@@ -309,11 +309,25 @@ precis, utilisez directement le module correspondant dans
 
 `PacketFlow` peut representer plusieurs niveaux de flux via `inner`.
 
-Le tunnel supporte aujourd'hui:
+Les tunnels supportes aujourd'hui:
 
-- CAPWAP-Data sur UDP/5247
-- IEEE 802.11 encapsule
-- LLC/SNAP vers la couche L3 interne
+| Tunnel | Porte par | Interne |
+| --- | --- | --- |
+| CAPWAP-Data | UDP/5247 | IEEE 802.11 → LLC/SNAP → L3 |
+| GRE (v0) | protocole IP 47 | IPv4, IPv6 ou Ethernet |
+| IP-in-IP | protocoles IP 4 et 41 | IPv4 / IPv6 nu |
+| VXLAN | UDP/4789 | trame Ethernet complete |
+| Geneve | UDP/6081 | Ethernet (0x6558) ou IP nue |
+| GTP-U | UDP/2152 | IP nue, sans couche 2 |
+
+Les variantes que rien n'atteste sont refusees plutot que devinees : ERSPAN
+et GRE version 1, les extensions de flags GBP/GPE de VXLAN, les messages de
+controle OAM de Geneve, et — pour GTP-U — GTPv0, GTP' et tout message type
+autre que G-PDU.
+
+Les datagrammes externes fragmentes ne sont pas peles : le reassemblage est
+a etat, hors perimetre de ce parseur. Un tunnel n'est donc jamais annonce
+plus complet que le datagramme qui le porte.
 
 Exemple:
 

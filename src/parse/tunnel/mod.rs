@@ -23,10 +23,12 @@
 //! - **VXLAN** (RFC 7348, UDP 4789) carrying a full Ethernet frame — the
 //!   GBP/GPE flag extensions are refused, not guessed ;
 //! - **Geneve** (RFC 8926, UDP 6081) carrying Ethernet (0x6558) or bare IP,
-//!   variable-length options skipped — OAM control messages are refused.
-//!
-//! Designed to grow: the remaining UDP tunnel (GTP-U) plugs into
-//! [`detect_inner`] the same way once a real capture exists (issue #15).
+//!   variable-length options skipped — OAM control messages are refused ;
+//! - **GTP-U** (3GPP TS 29.281, UDP 2152) carrying a bare IP packet, with the
+//!   optional fields and the chained extension headers walked — only G-PDU
+//!   messages are peeled, everything else refused. Alone among these, it
+//!   announces nothing about what it carries, so it is also the only one to
+//!   require that its inner packet parse cleanly before the label is set.
 
 use super::PacketFlow;
 use super::data_link::DataLink;
@@ -48,6 +50,9 @@ const CAPWAP_DATA_PORT: u16 = 5247;
 
 /// UDP port assigned to VXLAN (RFC 7348).
 const VXLAN_PORT: u16 = 4789;
+
+/// UDP port of the GTP-U user plane (3GPP TS 29.281).
+const GTP_U_PORT: u16 = 2152;
 
 /// UDP port assigned to Geneve (RFC 8926).
 const GENEVE_PORT: u16 = 6081;
@@ -100,6 +105,25 @@ pub(crate) fn detect_inner<'a>(
         && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
     {
         return Some(("Geneve", inner));
+    }
+
+    // --- GTP-U over UDP 2152 → paquet IP interne, sans couche 2 ---
+    //
+    // Seul tunnel du module a exiger que son interne se decode **sans
+    // corruption**, et c'est delibere : les autres declarent ce qu'ils
+    // portent — EtherType pour GRE et Geneve, protocole IP externe pour
+    // IP-in-IP, Ethernet par construction pour VXLAN — et gardent donc une
+    // preuve independante du contenu. GTP-U ne declare rien : son paquet
+    // interne est sa seule preuve. L'etiqueter alors qu'on vient d'echouer a
+    // le lire reviendrait a affirmer ce qu'on n'a pas su verifier.
+    if transport.protocol == TransportProtocol::Udp
+        && (transport.source_port == Some(GTP_U_PORT)
+            || transport.destination_port == Some(GTP_U_PORT))
+        && let Some(inner_link) = peel_gtp_u(payload)
+        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
+        && inner.corrupted.is_none()
+    {
+        return Some(("GTP-U", inner));
     }
 
     None
@@ -231,6 +255,112 @@ fn peel_geneve(payload: &[u8]) -> Option<DecodedLink<'_>> {
     }
 }
 
+/// Pele un GTP-U (3GPP TS 29.281) et rend le paquet IP encapsule.
+///
+/// L'en-tete fait huit octets, suivis de quatre octets optionnels — numero
+/// de sequence, N-PDU, type de l'extension suivante — presents des qu'un des
+/// trois flags E/S/PN est pose. Vient ensuite, si E est pose, une **chaine**
+/// d'extension headers : chacun donne sa longueur en mots de quatre octets et
+/// se termine par le type du suivant, zero fermant la chaine. C'est le seul
+/// tunnel du module dont l'en-tete se parcourt plutot qu'il ne se saute.
+///
+/// Deux refus, pas deux devinettes :
+/// - la version doit valoir 1 et le bit PT doit etre pose. GTP' (PT = 0) est
+///   un protocole de facturation, pas un tunnel ;
+/// - le message type doit valoir 255 (G-PDU). Les Echo, les notifications et
+///   tout le plan de controle circulent sur le meme port sans porter le
+///   moindre paquet utilisateur.
+///
+/// Contrairement a VXLAN (toujours Ethernet) et a Geneve (qui annonce son
+/// interne par un EtherType), **rien dans l'en-tete GTP-U ne dit ce qui
+/// suit** : la version se lit sur le quartet de tete du paquet encapsule,
+/// et `RawIpDecoder` la verifie ensuite.
+///
+/// Le champ de longueur borne le message, et tout ce qui suit se lit dans
+/// cette borne. Sans elle, n'importe quel datagramme sur 2152 dont les
+/// octets 8 et suivants ressemblent a de l'IP passerait pour un tunnel : la
+/// lecture du quartet de version est une confirmation, pas un filtre.
+///
+/// La fragmentation ne peut pas la mettre en defaut, contrairement a ce
+/// qu'on pourrait craindre — un premier fragment annonce bien la longueur du
+/// datagramme entier, mais il n'arrive jamais ici : `validate_udp_length`
+/// exige l'egalite stricte entre la longueur UDP declaree et les octets
+/// presents, donc un datagramme fragmente n'expose aucune couche transport.
+fn peel_gtp_u(payload: &[u8]) -> Option<DecodedLink<'_>> {
+    /// Numero de version de GTPv1, sur les trois bits de poids fort.
+    const VERSION_1: u8 = 1;
+    /// Bit PT : 1 = GTP, 0 = GTP' (facturation).
+    const PROTOCOL_TYPE_GTP: u8 = 0x10;
+    /// Bit E : un ou plusieurs extension headers suivent.
+    const FLAG_EXTENSION: u8 = 0x04;
+    /// Bits E, S et PN : l'un d'eux suffit a rendre les quatre octets
+    /// optionnels presents — tous les trois, pas seulement celui qui est pose.
+    const OPTIONAL_FIELDS: u8 = 0x07;
+    /// Message type d'un G-PDU : le seul qui porte un paquet.
+    const G_PDU: u8 = 0xff;
+    const HEADER_LEN: usize = 8;
+    const OPTIONAL_LEN: usize = 4;
+
+    let flags = *payload.first()?;
+    if payload.len() < HEADER_LEN
+        || flags >> 5 != VERSION_1
+        || flags & PROTOCOL_TYPE_GTP == 0
+        || payload[1] != G_PDU
+    {
+        return None;
+    }
+
+    // Le champ porte la longueur de tout ce qui suit les huit premiers
+    // octets, et un datagramme UDP porte un message GTP-U et un seul. La
+    // longueur annoncee doit donc valoir la charge utile exactement : ni
+    // moins, ce qui laisserait un reliquat non declare derriere le message,
+    // ni plus, ce qui reclamerait des octets absents.
+    let announced = usize::from(u16::from_be_bytes([payload[2], payload[3]]));
+    if payload.len() != HEADER_LEN + announced {
+        return None;
+    }
+
+    let mut offset = HEADER_LEN;
+    if flags & OPTIONAL_FIELDS != 0 {
+        offset += OPTIONAL_LEN;
+
+        if flags & FLAG_EXTENSION != 0 {
+            // Le type de la premiere extension occupe le dernier des quatre
+            // octets optionnels ; chaque extension nomme ensuite la suivante.
+            let mut next = *payload.get(HEADER_LEN + OPTIONAL_LEN - 1)?;
+            while next != 0 {
+                let length = usize::from(*payload.get(offset)?);
+                // Une longueur nulle ne progresse pas : la chaine boucle.
+                offset = offset.checked_add(length.checked_mul(4).filter(|n| *n > 0)?)?;
+                next = *payload.get(offset - 1)?;
+            }
+        }
+    }
+
+    let inner = payload.get(offset..)?;
+    // Le paquet interne doit consommer tout le T-PDU. Les validateurs IP
+    // acceptent un tampon plus long que la longueur declaree et bornent
+    // silencieusement ce qu'ils lisent : sans ce controle, un reliquat
+    // derriere un IP valide passerait inapercu, et l'etiquette serait posee
+    // sur un prefixe. Meme raison que l'egalite exigee sur la longueur GTP.
+    match inner.first()? >> 4 {
+        4 => {
+            let total = usize::from(u16::from_be_bytes([*inner.get(2)?, *inner.get(3)?]));
+            (inner.len() == total)
+                .then(|| RawIpDecoder::decode_as(LinkType::IPV4, inner).ok())
+                .flatten()
+        }
+        6 => {
+            const IPV6_HEADER_LEN: usize = 40;
+            let payload_len = usize::from(u16::from_be_bytes([*inner.get(4)?, *inner.get(5)?]));
+            (inner.len() == IPV6_HEADER_LEN + payload_len)
+                .then(|| RawIpDecoder::decode_as(LinkType::IPV6, inner).ok())
+                .flatten()
+        }
+        _ => None,
+    }
+}
+
 /// Peels CAPWAP-Data → IEEE 802.11 → LLC/SNAP and returns the inner data-link
 /// layer (802.11 MAC addresses + SNAP EtherType + L3 payload).
 fn peel_capwap_ieee80211(payload: &[u8]) -> Option<LinkLayer<'_>> {
@@ -328,6 +458,193 @@ fn peel_llc_snap(llc: &[u8]) -> Option<(u16, &[u8])> {
 
 #[cfg(test)]
 mod tests {
+    /// Octets reels : le debut de la charge UDP de la trame 1 de
+    /// `pcaps_exemple/tunnels/gtp_u/gtp_ext_header.pcap`, tronquee apres le
+    /// debut du TCP interne. C'est le seul en-tete d'extension GTP-U du
+    /// corpus, et son datagramme est fragmente — la couche transport se
+    /// retire donc avant GTP, et aucun golden de bout en bout ne peut
+    /// l'atteindre. Le peleur, lui, se teste directement.
+    ///
+    /// `36` = version 1, PT=1, flags E et S ; `ff` = G-PDU ; puis le type de
+    /// la premiere extension (`c0`, PDCP PDU number) et la chaine elle-meme,
+    /// `01 09 04 00` : longueur 1 mot de quatre octets, contenu `09 04`,
+    /// suivant `00` qui la ferme. L'IPv4 interne commence a l'octet 16.
+    ///
+    /// **Deux champs different de la capture, et tous deux sont des
+    /// longueurs** : celle du message GTP, aux octets 2 et 3, ramenee de
+    /// `0x05e4` (1508) a `0x0024` (36) ; et le `total length` de l'IPv4
+    /// interne, aux octets 18 et 19, ramene de `0x05dc` (1500) a `0x001c`
+    /// (28). La trame d'origine est un premier fragment : ses longueurs
+    /// declarees parlent du datagramme entier, pas de ce que la capture
+    /// porte. Les garder reviendrait a tester la chaine d'extension sur un
+    /// message que le peleur doit precisement refuser — ce qui ne
+    /// testerait plus la chaine du tout. Les octets de la chaine elle-meme,
+    /// `c0` puis `01 09 04 00`, sont intacts.
+    const REAL_GTP_EXTENSION_HEADER: &[u8] = &[
+        0x36, 0xff, 0x00, 0x24, 0x00, 0x10, 0x06, 0x57, 0x00, 0x05, 0x00, 0xc0, 0x01, 0x09, 0x04,
+        0x00, 0x45, 0x00, 0x00, 0x1c, 0xdc, 0xfa, 0x40, 0x00, 0x3f, 0x06, 0xd2, 0xe7, 0x0a, 0x9b,
+        0xb6, 0xca, 0x0a, 0x9b, 0xba, 0x39, 0xa2, 0x27, 0x17, 0x75, 0x96, 0x12, 0xe6, 0x03,
+    ];
+
+    #[test]
+    fn gtp_u_walks_the_extension_header_chain_to_find_the_inner_packet() {
+        let (layer, _, _) = peel_gtp_u(REAL_GTP_EXTENSION_HEADER)
+            .expect("la chaine d'extension est franchie")
+            .into_parts();
+        // L'interne est un paquet IP nu : aucune couche 2 a exposer.
+        assert!(layer.as_ethernet().is_none());
+        assert_eq!(layer.link_type(), LinkType::IPV4);
+    }
+
+    /// Une longueur d'extension nulle ne fait avancer aucun offset : la
+    /// chaine bouclerait indefiniment. Le peleur doit s'arreter.
+    #[test]
+    fn a_zero_length_extension_header_is_refused_rather_than_looped_on() {
+        let mut bytes = REAL_GTP_EXTENSION_HEADER.to_vec();
+        bytes[12] = 0x00;
+        assert!(peel_gtp_u(&bytes).is_none());
+    }
+
+    /// Octets reels : la charge UDP complete de la trame 3 de
+    /// `gtp1_gn_normal_incl_fragmentation.pcap`. Datagramme entier, non
+    /// fragmente — `30` = version 1, PT=1, aucun flag ; `ff` = G-PDU ;
+    /// longueur `0x0028` = 40, soit exactement les 48 octets de charge moins
+    /// les 8 de l'en-tete. Interne : TCP 1923 -> 80.
+    const REAL_GTP_G_PDU: &[u8] = &[
+        0x30, 0xff, 0x00, 0x28, 0x8c, 0x61, 0xbe, 0x36, 0x45, 0x00, 0x00, 0x28, 0x52, 0x66, 0x40,
+        0x00, 0x80, 0x06, 0xb0, 0x3b, 0x0a, 0x83, 0x2f, 0xb9, 0x4f, 0x65, 0x6e, 0x8d, 0x07, 0x83,
+        0x00, 0x50, 0xcd, 0x6c, 0x69, 0xb8, 0x6f, 0xc3, 0x54, 0x94, 0x50, 0x10, 0xfd, 0xca, 0xb6,
+        0x8b, 0x00, 0x00,
+    ];
+
+    /// La longueur annoncee borne le message. Sans elle, n'importe quel
+    /// datagramme sur 2152 dont les octets 8 et suivants ressemblent a de
+    /// l'IP serait etiquete GTP-U — la lecture du quartet de version ne
+    /// suffit pas a s'en premunir.
+    ///
+    /// Le champ est fiable : sur les 34 G-PDU reels du corpus, il vaut
+    /// exactement la charge utile moins huit octets, sans une exception. Et
+    /// il ne peut pas etre mis en defaut par la fragmentation, puisque UDP
+    /// exige deja l'egalite entre sa longueur declaree et les octets
+    /// presents — un datagramme fragmente n'expose aucune couche transport,
+    /// donc n'arrive jamais ici.
+    #[test]
+    fn the_announced_length_bounds_the_message() {
+        assert!(
+            peel_gtp_u(REAL_GTP_G_PDU).is_some(),
+            "la trame reelle passe"
+        );
+
+        // Longueur nulle : le message ne couvre meme pas son propre en-tete.
+        let mut empty = REAL_GTP_G_PDU.to_vec();
+        empty[2] = 0x00;
+        empty[3] = 0x00;
+        assert!(peel_gtp_u(&empty).is_none(), "longueur nulle refusee");
+
+        // Longueur qui deborde de la charge utile.
+        let mut beyond = REAL_GTP_G_PDU.to_vec();
+        beyond[3] = 0xff;
+        assert!(peel_gtp_u(&beyond).is_none(), "longueur debordante refusee");
+
+        // Et l'inverse : des octets que la longueur ne declare pas. Un
+        // datagramme UDP porte un message GTP-U et un seul ; un reliquat
+        // derriere lui ne peut pas etre du GTP-U bien forme, et l'accepter
+        // reviendrait a etiqueter la trame sur son seul prefixe.
+        let mut trailing = REAL_GTP_G_PDU.to_vec();
+        trailing.extend_from_slice(&[0u8; 4]);
+        assert!(
+            peel_gtp_u(&trailing).is_none(),
+            "octets non declares refuses"
+        );
+    }
+
+    /// Le paquet interne **est** la seule preuve qu'on tient un GTP-U.
+    ///
+    /// Les cinq autres tunnels du module declarent ce qu'ils portent : GRE
+    /// et Geneve par un EtherType, IP-in-IP par le protocole IP externe,
+    /// VXLAN par construction. GTP-U ne declare rien — `RawIpDecoder` ne
+    /// verifie qu'un quartet de version, et `0x40` le satisfait tout en
+    /// etant un IPv4 impossible (IHL nul). Sans autre garde, un datagramme
+    /// sur 2152 dont le T-PDU commence par un 4 ou un 6 serait etiquete
+    /// GTP-U alors qu'on vient d'echouer a le decoder.
+    ///
+    /// Octets fabriques, et non une capture : c'est un test de robustesse
+    /// sur une forme qu'aucune trame reelle du corpus ne presente. Il faut
+    /// bien construire ce qu'on veut voir refuse.
+    #[test]
+    fn a_tunnel_is_not_labelled_when_its_inner_packet_does_not_parse() {
+        let bytes = hex::decode(concat!(
+            "00000c07ace888e0f3c8bff008004500004c000000003d111dacef729b6f3f5e",
+            "95b50868086800380b4230ff00288c61be364000000000000000000000000000",
+            "0000000000000000000000000000000000000000000000000000"
+        ))
+        .expect("fixture hex");
+
+        let flow = crate::parse(LinkType::ETHERNET, bytes.as_slice()).expect("la trame decode");
+        assert!(
+            flow.inner.is_none(),
+            "rien n'est pele quand l'interne ne se decode pas"
+        );
+        assert_ne!(
+            flow.application
+                .as_ref()
+                .map(|application| application.application_protocol),
+            Some("GTP-U"),
+            "l'etiquette ne peut pas etre plus sure que le paquet qui la porte"
+        );
+    }
+
+    /// Le paquet interne doit consommer tout le T-PDU. Sinon un reliquat
+    /// derriere un IP valide passerait inapercu : `validate_ipv4_total_length`
+    /// et son equivalent IPv6 acceptent un tampon plus long que la longueur
+    /// declaree et bornent silencieusement la charge lue, donc l'interne
+    /// ressort non corrompu et l'etiquette est posee sur un prefixe.
+    ///
+    /// Meme raison que pour l'egalite sur la longueur GTP : sans champ qui
+    /// annonce le contenu, tout ce qui traine derriere est une preuve en
+    /// moins.
+    #[test]
+    fn the_inner_packet_must_consume_the_whole_t_pdu() {
+        let mut padded = REAL_GTP_G_PDU.to_vec();
+        padded.extend_from_slice(&[0u8; 4]);
+        // La longueur GTP suit, pour que seul le reliquat interne differe.
+        let announced = (padded.len() - 8) as u16;
+        padded[2..4].copy_from_slice(&announced.to_be_bytes());
+
+        assert!(
+            peel_gtp_u(&padded).is_none(),
+            "un IPv4 interne qui ne consomme pas son T-PDU est refuse"
+        );
+    }
+
+    /// Seul un G-PDU porte un paquet utilisateur. Le plan de controle et les
+    /// Echo circulent sur le meme port, et rien n'empeche leur charge utile
+    /// de commencer par un quartet 4 ou 6 : la verification du message type
+    /// ne peut pas etre deleguee a la lecture de la version interne.
+    ///
+    /// La trame reelle, avec son seul message type change — le corpus n'a pas
+    /// de non-G-PDU dont la charge ressemble a de l'IP.
+    #[test]
+    fn a_non_g_pdu_is_refused_even_when_its_payload_looks_like_ip() {
+        let mut echo_request = REAL_GTP_EXTENSION_HEADER.to_vec();
+        echo_request[1] = 0x01;
+        assert!(peel_gtp_u(&echo_request).is_none());
+    }
+
+    /// GTPv0 (version 0) et GTP' (bit PT a zero) circulent sur le meme port
+    /// sans avoir la meme en-tete. Le corpus porte 12 trames en 0x1e, soit
+    /// une version 0 : les refuser, pas les peler de travers.
+    #[test]
+    fn only_version_1_with_the_protocol_type_bit_is_peeled() {
+        let mut v0 = REAL_GTP_EXTENSION_HEADER.to_vec();
+        v0[0] = 0x1e;
+        assert!(peel_gtp_u(&v0).is_none(), "GTPv0 refuse");
+
+        let mut gtp_prime = REAL_GTP_EXTENSION_HEADER.to_vec();
+        gtp_prime[0] = 0x26; // version 1, PT = 0
+        assert!(peel_gtp_u(&gtp_prime).is_none(), "GTP' refuse");
+    }
+
     use super::*;
     use crate::{LinkType, parse};
 

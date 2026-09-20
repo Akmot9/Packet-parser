@@ -201,26 +201,49 @@ Livres et **publies en 10.1.0** depuis le cadrage de cette liste :
   CHANGELOG : un parseur stateless en identifie huit sur les 542 trames
   qu'un dissecteur a etat etiquette SSH dans `The-Ultimate-PCAP`.
 
-Reste a faire, dans l'ordre (liste rafraichie le 2026-09-20 : #79 etait en
-tete alors qu'il est livre et ferme, et la numerotation sautait de 4 a 6) :
+Reste a faire, dans l'ordre. Chaque ligne porte desormais son issue : le
+suivi vit sur GitHub, pas dans ce fichier.
 
-1. **GTP-U** — derniere case de #15, seul ticket ouvert du depot. Sa capture
-   existe desormais (corpus nDPI), avec une reserve : deux trames utiles la
-   ou VXLAN et Geneve ont six golden chacun, et aucun G-PDU portant de
-   l'IPv4.
-2. **PostgreSQL** — golden sur trames reelles. Bloque sur un arbitrage :
-   quatre reponses `N`/`G` font un seul octet, sans en-tete de longueur ;
-   les reconnaitre a l'aveugle produirait des faux positifs partout.
-3. **DNP3** — ouvre le secteur energie.
-4. **RDP** — rentabilise TPKT/COTP.
-5. RADIUS, NetBIOS, LLMNR (#68), SSDP (#69) au fil de l'eau.
-6. Tier 2 restant (IEC 104, BACnet, GOOSE/SV), puis Tier 3 restant.
+> Liste rafraichie deux fois le 2026-09-20. D'abord parce que **#79** y
+> figurait en tete alors qu'il etait livre et ferme, et que la numerotation
+> sautait de 4 a 6. Puis parce que la ligne « au fil de l'eau » citait
+> **NetBIOS, LLMNR (#68) et SSDP (#69)** comme restant a faire : les trois
+> sont livres, et les deux issues fermees depuis. Seul RADIUS en restait.
+> Une liste de priorites fausse coute plus cher que le temps de la relire.
 
-Le corpus de tests de **nDPI** (LGPL-3.0) a comble cinq trous du depot en
-une journee : UMAS (#10), S7CommPlus (#93), OPC UA (#95), et il porte encore
-les captures PostgreSQL et GTP-U ci-dessus. C'est la premiere source a
-consulter avant de conclure qu'une trame n'existe pas — deux affirmations du
-depot en ce sens se sont revelees fausses le meme jour.
+1. **PostgreSQL** (#98) — golden sur trames reelles. Le decodeur fait 2 000 lignes
+   et compte pres de cinquante tests internes, sans une seule trame reelle
+   pour l'exercer. Le blocage est leve : le corpus de Zeek porte dix-huit
+   captures, dont `greenhouse-app.pcap` (180 trames) et surtout deux
+   **negatifs construits expres**, `http-on-port-5432.pcap` et
+   `mysql-on-port-5432.pcap`. L'arbitrage sur les reponses d'un seul octet
+   cesse d'etre une devinette : il devient une mesure de faux positifs.
+2. **DNP3** (#99) — ouvre le secteur energie. Le corpus de Zeek en porte
+   dix-sept captures, TCP et UDP, dont un port non standard qui prouve le
+   probing aveugle.
+3. **RDP** (#100) — rentabilise TPKT/COTP. Quatre captures Zeek, dont une
+   sans le cookie `mstshash` et une qui bascule en TLS.
+4. **RADIUS** (#101) — seul restant de l'ancienne ligne « au fil de l'eau ».
+5. **Tier 2 restant** (#102) : IEC 104, BACnet/IP, GOOSE/SV.
+6. **Tier 3 restant** (#103) : SMB2/3, DTLS, WireGuard, SIP.
+
+**GTP-U est livre** (#15 close, 2026-09-20), et avec lui le dernier tunnel
+de l'issue. Il vient du corpus de **Zeek** (BSD 3-clause), pas de nDPI : la
+capture nDPI que cette liste citait ne portait que deux trames utiles et
+aucun G-PDU IPv4. Zeek en donne 32 pelables dans un seul fichier, plus
+l'IPv6 encapsule, une chaine d'extension headers et deux negatifs.
+
+Deux corpus de tests valent donc d'etre consultes avant de conclure qu'une
+trame n'existe pas — **nDPI** (LGPL-3.0), qui a comble UMAS (#10),
+S7CommPlus (#93) et OPC UA (#95) en une journee, et **Zeek** (BSD 3-clause),
+qui a comble GTP-U et tient les captures PostgreSQL ci-dessus. Trois
+affirmations du depot sur l'inexistence d'une trame se sont revelees fausses.
+
+Une mise en garde sur Zeek : le `README` de son dossier `Traces` signale
+qu'une partie de ses captures est **generee par scapy ou par un LLM**, l'une
+etant annotee « Not real traffic ». La regle du depot les interdit. Verifier
+la provenance sur les octets — horodatage, checksums, MAC, TTL — avant de
+verser quoi que ce soit.
 
 En parallele des protocoles : solder #56 (golden tests manquants), qui est
 de la dette plus que de la feature.

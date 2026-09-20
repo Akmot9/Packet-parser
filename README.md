@@ -304,11 +304,24 @@ use the corresponding module under
 
 `PacketFlow` can represent several flow levels through `inner`.
 
-The currently supported tunnel path is:
+The currently supported tunnels are:
 
-- CAPWAP-Data over UDP/5247
-- Encapsulated IEEE 802.11
-- LLC/SNAP to the inner L3 packet
+| Tunnel | Carried over | Inner |
+| --- | --- | --- |
+| CAPWAP-Data | UDP/5247 | IEEE 802.11 → LLC/SNAP → L3 |
+| GRE (v0) | IP protocol 47 | IPv4, IPv6 or Ethernet |
+| IP-in-IP | IP protocols 4 and 41 | bare IPv4 / IPv6 |
+| VXLAN | UDP/4789 | full Ethernet frame |
+| Geneve | UDP/6081 | Ethernet (0x6558) or bare IP |
+| GTP-U | UDP/2152 | bare IP, no L2 |
+
+Variants we cannot attest are refused rather than guessed: ERSPAN and GRE
+version 1, the VXLAN GBP/GPE flag extensions, Geneve OAM control messages,
+and — for GTP-U — GTPv0, GTP' and every message type other than G-PDU.
+
+Fragmented outer datagrams are not peeled: reassembly is stateful and out of
+scope for this parser, so a tunnel is never reported as more complete than
+the datagram carrying it.
 
 Example:
 
