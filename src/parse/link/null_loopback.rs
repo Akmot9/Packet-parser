@@ -12,10 +12,17 @@ const HEADER_LEN: usize = 4;
 /// `AF_INET`, identique sur toutes les plateformes.
 const AF_INET: u32 = 2;
 
-/// Valeurs d'`AF_INET6` rencontrees : 10 sur Linux, 24 sur NetBSD et
-/// OpenBSD, 28 sur FreeBSD, 30 sur macOS. La constante depend du systeme qui
-/// a capture, et le format n'en garde aucune trace.
-const AF_INET6: [u32; 4] = [10, 24, 28, 30];
+/// Valeurs d'`AF_INET6`, telles que `epan/aftypes.h` de Wireshark les
+/// nomme : 10 sur Linux, 24 sur NetBSD, OpenBSD et BSD/OS, 26 sur Solaris,
+/// 28 sur FreeBSD et DragonFly, 30 sur Darwin. La constante depend du
+/// systeme qui a capture, et le format n'en garde aucune trace : restreindre
+/// la liste rejetterait en bloc les captures d'une plateforme entiere.
+///
+/// 23 en est volontairement absent. C'est `AF_INET6` sur Windows, mais aussi
+/// `AF_IPX` sur BSD, et c'est ainsi que la table `family_vals` de
+/// `packet-null.c` le lit. Trancher cette collision a la place du dissecteur
+/// de reference demanderait une capture qui l'atteste ; nous n'en avons pas.
+const AF_INET6: [u32; 5] = [10, 24, 26, 28, 30];
 
 /// Decodeur LINKTYPE_NULL : encapsulation loopback BSD.
 ///
@@ -46,6 +53,25 @@ fn ip_version_of(family: [u8; HEADER_LEN]) -> Option<u8> {
     })
 }
 
+/// Ramene une erreur de troncature levee sur la tranche interne aux
+/// longueurs du paquet complet, en y rajoutant l'en-tete. Les autres erreurs
+/// passent telles quelles : elles ne portent pas de longueur.
+fn rebase_truncation(error: ParseError, header_len: usize) -> ParseError {
+    match error {
+        ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+            link_type,
+            required,
+            actual,
+        }) => LinkLayerError::Truncated {
+            link_type,
+            required: required + header_len,
+            actual: actual + header_len,
+        }
+        .into(),
+        other => other,
+    }
+}
+
 impl LinkDecoder for NullLoopbackDecoder {
     #[inline(always)]
     fn decode<'a>(bytes: &'a [u8]) -> Result<DecodedLink<'a>, ParseError> {
@@ -64,8 +90,12 @@ impl LinkDecoder for NullLoopbackDecoder {
         })?;
 
         // Le paquet IP porte lui-meme sa version : RawIpDecoder la lit et
-        // rejette ce qui n'est ni v4 ni v6.
-        let decoded = RawIpDecoder::decode_as(LinkType::NULL, &bytes[HEADER_LEN..])?;
+        // rejette ce qui n'est ni v4 ni v6. Il ne voit que la tranche qui
+        // suit l'en-tete, donc les longueurs qu'il rapporte parlent d'elle ;
+        // le contrat de la couche liaison veut qu'elles parlent du paquet
+        // entier, en-tete comprise.
+        let decoded = RawIpDecoder::decode_as(LinkType::NULL, &bytes[HEADER_LEN..])
+            .map_err(|error| rebase_truncation(error, HEADER_LEN))?;
 
         // La famille annoncee doit confirmer la version lue, sans quoi le
         // conteneur et son contenu se contredisent.
@@ -132,6 +162,21 @@ mod tests {
         }
     }
 
+    /// 23 est `AF_INET6` sur Windows, mais `AF_IPX` sur BSD -- et c'est
+    /// ainsi que la table de `packet-null.c` le lit. Le refuser, plutot que
+    /// de trancher une collision a la place du dissecteur de reference.
+    #[test]
+    fn the_windows_af_inet6_value_is_refused_because_it_collides_with_ipx() {
+        let mut ipv6 = vec![0x60, 0, 0, 0, 0, 0, 59, 64];
+        ipv6.extend_from_slice(&[0u8; 32]);
+        assert!(matches!(
+            NullLoopbackDecoder::decode(&frame(23, true, &ipv6)),
+            Err(ParseError::InvalidLinkLayer(
+                LinkLayerError::InvalidAddressFamily { family: 23, .. }
+            ))
+        ));
+    }
+
     #[test]
     fn an_unknown_address_family_is_named_not_guessed() {
         let bytes = frame(0x1234, true, &IPV4_HEADER);
@@ -164,6 +209,23 @@ mod tests {
             Err(ParseError::InvalidLinkLayer(
                 LinkLayerError::InvalidAddressFamily { .. }
             ))
+        ));
+    }
+
+    #[test]
+    fn truncation_lengths_describe_the_whole_packet_not_the_inner_slice() {
+        // Famille valide, mais pas un octet d'IP derriere. Les longueurs
+        // rapportees doivent parler du paquet LINKTYPE_NULL entier -- quatre
+        // octets recus, cinq au minimum -- et non de la tranche interne que
+        // RawIpDecoder a vue.
+        let bytes = frame(AF_INET, true, &[]);
+        assert!(matches!(
+            NullLoopbackDecoder::decode(&bytes),
+            Err(ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+                link_type: LinkType::NULL,
+                required: 5,
+                actual: 4,
+            }))
         ));
     }
 
