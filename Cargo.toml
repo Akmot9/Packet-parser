@@ -25,6 +25,9 @@ include = [
     "/README.md",
     "/README-fr.md",
     "/CHANGELOG.md",
+    # Le CHANGELOG de la 11.0.0 y renvoie a chaque rupture : sans lui, sept
+    # references mortes pour qui lit la crate depuis crates.io.
+    "/MIGRATION-11.md",
     "/LICENSE.md",
 ]
 
