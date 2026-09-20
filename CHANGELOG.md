@@ -6,6 +6,41 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+Strictement additif : **UMAS**, le protocole proprietaire de Schneider
+Electric qui pilote les automates Modicon, est reconnu et son en-tete
+decode (issue #10).
+
+L'issue attendait depuis un an une capture que la ROADMAP decrivait comme
+inexistante — « aucune trame publique n'existe ». C'etait faux : le corpus
+de tests de nDPI en porte 180.
+
+### Ajoute
+
+- **UMAS** (issue #10) : `UmasPacket` decode l'identifiant de session, le
+  code fonction et les donnees brutes (zero-copie) d'un PDU UMAS, transporte
+  par Modbus/TCP sous le code fonction 0x5A reserve au constructeur.
+  L'enveloppe Modbus n'est pas redecodee : le parseur reutilise `MBAP`, qui
+  valide deja l'identifiant de protocole et la longueur declaree.
+  - La sonde passe **avant** celle de Modbus/TCP — meme relation que S7Comm
+    devant COTP, le protocole le plus specifique gagne l'etiquette. Un test
+    dedie verifie qu'elle ne vole pas le trafic Modbus ordinaire : sur le
+    corpus Modbus du depot, 382 trames restent `ModbusTCP` et une seule
+    devient `UMAS` (`MODBUS-TestDataPart2.pcap` trame 229, une requete 0x5A
+    que l'automate refuse — sa reponse, code fonction 0xDA, est une exception
+    Modbus et reste `ModbusTCP`).
+  - `UmasFunction` ne nomme que `Reply` (0xFE), la seule valeur qu'une trame
+    reelle du depot atteste. UMAS etant sans specification publique, les noms
+    de codes de requete qui circulent viennent de retro-ingenierie et ne sont
+    pas verifiables depuis une capture : ils sont exposes bruts. L'enum est
+    `#[non_exhaustive]`, chaque nom pourra arriver en mineure le jour ou une
+    trame le justifie.
+  - Golden sur trames reelles (`tests/umas_golden.rs`) : requete et reponse
+    recoupees champ a champ, la reponse portant le modele de l'automate en
+    clair (`140 CPU 311 10`), puis les 180 trames de la capture — deux
+    sessions, quatorze valeurs distinctes de code fonction.
+- Capture `pcaps_exemple/protocols/umas/umas.pcap` (corpus nDPI, LGPL-3.0,
+  commit epingle et SHA-256 dans son `SOURCE.md`), 191 trames.
+
 ## [11.0.0] - 2026-09-20
 
 Version majeure : elle solde en une fois les ruptures d'API accumulees dans

@@ -275,6 +275,7 @@ Application detection is intentionally best-effort. Parser modules include:
 - SSH (identification string only: everything after the version exchange is
   encrypted, so a stateless parser labels the banner frames and nothing else)
 - Modbus TCP
+- UMAS (Schneider Electric)
 - EtherNet/IP
 - OPC UA
 - S7Comm

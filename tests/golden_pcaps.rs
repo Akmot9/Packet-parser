@@ -131,9 +131,20 @@ fn application_classification_histogram_is_frozen() {
     // - "Unknown" 434 -> 468 : +35 segments de continuation (suite d'un
     //   message GIOP ou d'une reponse HTTP, sans magic : non reconnaissables
     //   sans etat), -1 pour la trame 8 de corba.pcap.
+    //
+    // 2026-09-20 (issue #10, UMAS) : +1 capture protocols/umas/umas.pcap
+    // (corpus nDPI, 191 trames Ethernet/IPv4/TCP), et le code fonction
+    // Modbus 0x5A reconnu comme UMAS :
+    // - "UMAS" 0 -> 181 : les 180 trames 0x5A de la nouvelle capture, plus
+    //   la trame 229 de protocols/modbus/MODBUS-TestDataPart2.pcap, une
+    //   requete UMAS adressee a un automate qui la refuse (sa reponse, code
+    //   fonction 0xDA, est une exception Modbus et reste ModbusTCP) ;
+    // - "ModbusTCP" 383 -> 382 : cette seule trame change d'etiquette ;
+    // - "(sans application)" 1566 -> 1577 : les 11 trames TCP sans payload
+    //   de la nouvelle capture.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 1566),
+        (NO_APPLICATION, 1577),
         ("DHCP", 6),
         ("DHCPv6", 4),
         ("DNS", 104),
@@ -143,7 +154,8 @@ fn application_classification_histogram_is_frozen() {
         ("HTTP", 72),
         ("IP-in-IP", 5),
         ("MQTT", 38),
-        ("ModbusTCP", 383),
+        ("ModbusTCP", 382),
+        ("UMAS", 181),
         ("NNTP", 6),
         ("OpenVPN", 766),
         ("SMTP", 6),
