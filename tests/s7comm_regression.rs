@@ -643,14 +643,19 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // GIOP 1.2 + ZIOP, et datagrammes UDP MIOP), toutes Ethernet/IPv4 et
     // decodees sans erreur L2 : 64 -> 65 captures, 63 -> 64 fichiers lus,
     // 3 784 -> 3 812 trames, 3 742 -> 3 770 flux.
-    assert_eq!(captures.len(), 65);
-    assert_eq!(opened_files, 64);
-    assert_eq!(frame_count, 3_812);
+    // 2026-09-19 (epic #76) : +10 captures GIOP dans protocols/giop/ (trois
+    // pieces jointes du tracker Wireshark, 216 + 12 + 7 trames, et sept
+    // captures du labo omniORB, 137 trames — voir SOURCE.md), toutes
+    // Ethernet/IPv4/TCP et decodees sans erreur L2 : 65 -> 75 captures,
+    // 64 -> 74 fichiers lus, 3 812 -> 4 184 trames, 3 770 -> 4 142 flux.
+    assert_eq!(captures.len(), 75);
+    assert_eq!(opened_files, 74);
+    assert_eq!(frame_count, 4_184);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 3_770);
+    assert_eq!(parsed_flows, 4_142);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,
