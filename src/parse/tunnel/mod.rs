@@ -26,7 +26,9 @@
 //!   variable-length options skipped — OAM control messages are refused ;
 //! - **GTP-U** (3GPP TS 29.281, UDP 2152) carrying a bare IP packet, with the
 //!   optional fields and the chained extension headers walked — only G-PDU
-//!   messages are peeled, everything else refused.
+//!   messages are peeled, everything else refused. Alone among these, it
+//!   announces nothing about what it carries, so it is also the only one to
+//!   require that its inner packet parse cleanly before the label is set.
 
 use super::PacketFlow;
 use super::data_link::DataLink;
@@ -106,11 +108,20 @@ pub(crate) fn detect_inner<'a>(
     }
 
     // --- GTP-U over UDP 2152 → paquet IP interne, sans couche 2 ---
+    //
+    // Seul tunnel du module a exiger que son interne se decode **sans
+    // corruption**, et c'est delibere : les autres declarent ce qu'ils
+    // portent — EtherType pour GRE et Geneve, protocole IP externe pour
+    // IP-in-IP, Ethernet par construction pour VXLAN — et gardent donc une
+    // preuve independante du contenu. GTP-U ne declare rien : son paquet
+    // interne est sa seule preuve. L'etiqueter alors qu'on vient d'echouer a
+    // le lire reviendrait a affirmer ce qu'on n'a pas su verifier.
     if transport.protocol == TransportProtocol::Udp
         && (transport.source_port == Some(GTP_U_PORT)
             || transport.destination_port == Some(GTP_U_PORT))
         && let Some(inner_link) = peel_gtp_u(payload)
         && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
+        && inner.corrupted.is_none()
     {
         return Some(("GTP-U", inner));
     }
@@ -524,6 +535,42 @@ mod tests {
         assert!(
             peel_gtp_u(&trailing).is_none(),
             "octets non declares refuses"
+        );
+    }
+
+    /// Le paquet interne **est** la seule preuve qu'on tient un GTP-U.
+    ///
+    /// Les cinq autres tunnels du module declarent ce qu'ils portent : GRE
+    /// et Geneve par un EtherType, IP-in-IP par le protocole IP externe,
+    /// VXLAN par construction. GTP-U ne declare rien — `RawIpDecoder` ne
+    /// verifie qu'un quartet de version, et `0x40` le satisfait tout en
+    /// etant un IPv4 impossible (IHL nul). Sans autre garde, un datagramme
+    /// sur 2152 dont le T-PDU commence par un 4 ou un 6 serait etiquete
+    /// GTP-U alors qu'on vient d'echouer a le decoder.
+    ///
+    /// Octets fabriques, et non une capture : c'est un test de robustesse
+    /// sur une forme qu'aucune trame reelle du corpus ne presente. Il faut
+    /// bien construire ce qu'on veut voir refuse.
+    #[test]
+    fn a_tunnel_is_not_labelled_when_its_inner_packet_does_not_parse() {
+        let bytes = hex::decode(concat!(
+            "00000c07ace888e0f3c8bff008004500004c000000003d111dacef729b6f3f5e",
+            "95b50868086800380b4230ff00288c61be364000000000000000000000000000",
+            "0000000000000000000000000000000000000000000000000000"
+        ))
+        .expect("fixture hex");
+
+        let flow = crate::parse(LinkType::ETHERNET, bytes.as_slice()).expect("la trame decode");
+        assert!(
+            flow.inner.is_none(),
+            "rien n'est pele quand l'interne ne se decode pas"
+        );
+        assert_ne!(
+            flow.application
+                .as_ref()
+                .map(|application| application.application_protocol),
+            Some("GTP-U"),
+            "l'etiquette ne peut pas etre plus sure que le paquet qui la porte"
         );
     }
 
