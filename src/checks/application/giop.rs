@@ -133,25 +133,54 @@ pub fn validate_target_discriminator(discriminator: u16) -> Result<(), GiopParse
     Ok(())
 }
 
+/// Le message Fragment (type 7) n'existe qu'a partir de GIOP 1.1 : GIOP 1.0
+/// ne definit que les types 0 a 6 (CORBA 2.3 §15.4.1).
+///
+/// Le domaine d'un champ depend de la version du message : un decodeur qui
+/// l'ignore accepte, sur du trafic 1.0 malforme ou hostile, des valeurs que
+/// seule une version ulterieure definit. Meme regle pour
+/// [`validate_reply_status`] et [`validate_locate_status`].
+pub fn validate_message_type_in_version(
+    message_type: u8,
+    minor_version: u8,
+) -> Result<(), GiopParseError> {
+    if message_type == 7 && minor_version < 1 {
+        return Err(GiopParseError::MessageTypeNotInVersion {
+            message_type,
+            minor_version,
+        });
+    }
+
+    Ok(())
+}
+
 /// Validates the ReplyStatusType (CORBA formal/04-03-12 §15.4.3.1) : 0 =
 /// NO_EXCEPTION, 1 = USER_EXCEPTION, 2 = SYSTEM_EXCEPTION, 3 =
-/// LOCATION_FORWARD, 4 = LOCATION_FORWARD_PERM, 5 = NEEDS_ADDRESSING_MODE
-/// (4 et 5 introduits par GIOP 1.2). Returns the value unchanged.
-pub fn validate_reply_status(status: u32) -> Result<u32, GiopParseError> {
-    if status > 5 {
-        return Err(GiopParseError::UnknownReplyStatus(status));
+/// LOCATION_FORWARD ; GIOP 1.2 ajoute 4 = LOCATION_FORWARD_PERM et 5 =
+/// NEEDS_ADDRESSING_MODE. Returns the value unchanged.
+pub fn validate_reply_status(status: u32, minor_version: u8) -> Result<u32, GiopParseError> {
+    let max = if minor_version >= 2 { 5 } else { 3 };
+    if status > max {
+        return Err(GiopParseError::UnknownReplyStatus {
+            status,
+            minor_version,
+        });
     }
 
     Ok(status)
 }
 
 /// Validates the LocateStatusType (§15.4.6.1) : 0 = UNKNOWN_OBJECT, 1 =
-/// OBJECT_HERE, 2 = OBJECT_FORWARD, 3 = OBJECT_FORWARD_PERM, 4 =
-/// LOC_SYSTEM_EXCEPTION, 5 = LOC_NEEDS_ADDRESSING_MODE (3 a 5 introduits par
-/// GIOP 1.2). Returns the value unchanged.
-pub fn validate_locate_status(status: u32) -> Result<u32, GiopParseError> {
-    if status > 5 {
-        return Err(GiopParseError::UnknownLocateStatus(status));
+/// OBJECT_HERE, 2 = OBJECT_FORWARD ; GIOP 1.2 ajoute 3 = OBJECT_FORWARD_PERM,
+/// 4 = LOC_SYSTEM_EXCEPTION et 5 = LOC_NEEDS_ADDRESSING_MODE. Returns the
+/// value unchanged.
+pub fn validate_locate_status(status: u32, minor_version: u8) -> Result<u32, GiopParseError> {
+    let max = if minor_version >= 2 { 5 } else { 2 };
+    if status > max {
+        return Err(GiopParseError::UnknownLocateStatus {
+            status,
+            minor_version,
+        });
     }
 
     Ok(status)
@@ -321,19 +350,69 @@ mod tests {
         ));
     }
 
+    /// Le domaine de chaque champ suit la version du message : les statuts
+    /// que seul GIOP 1.2 definit sont refuses sur un message 1.0 ou 1.1.
     #[test]
-    fn test_validate_reply_and_locate_status() {
-        assert_eq!(validate_reply_status(0), Ok(0));
-        assert_eq!(validate_reply_status(5), Ok(5));
+    fn test_reply_and_locate_status_domains_follow_the_version() {
+        for minor in 0..=2 {
+            assert_eq!(validate_reply_status(0, minor), Ok(0));
+            assert_eq!(validate_reply_status(3, minor), Ok(3));
+            assert_eq!(validate_locate_status(2, minor), Ok(2));
+        }
+
+        // LOCATION_FORWARD_PERM et NEEDS_ADDRESSING_MODE : GIOP 1.2 seulement.
+        for status in [4, 5] {
+            assert_eq!(validate_reply_status(status, 2), Ok(status));
+            for minor in [0, 1] {
+                assert!(matches!(
+                    validate_reply_status(status, minor),
+                    Err(GiopParseError::UnknownReplyStatus { status: s, minor_version })
+                        if s == status && minor_version == minor
+                ));
+            }
+        }
+
+        // OBJECT_FORWARD_PERM, LOC_SYSTEM_EXCEPTION, LOC_NEEDS_ADDRESSING_MODE.
+        for status in [3, 4, 5] {
+            assert_eq!(validate_locate_status(status, 2), Ok(status));
+            for minor in [0, 1] {
+                assert!(matches!(
+                    validate_locate_status(status, minor),
+                    Err(GiopParseError::UnknownLocateStatus { status: s, .. }) if s == status
+                ));
+            }
+        }
+
+        // Au-dela du domaine de toute version.
         assert!(matches!(
-            validate_reply_status(6),
-            Err(GiopParseError::UnknownReplyStatus(6))
+            validate_reply_status(6, 2),
+            Err(GiopParseError::UnknownReplyStatus { status: 6, .. })
         ));
-        assert_eq!(validate_locate_status(5), Ok(5));
         assert!(matches!(
-            validate_locate_status(6),
-            Err(GiopParseError::UnknownLocateStatus(6))
+            validate_locate_status(6, 2),
+            Err(GiopParseError::UnknownLocateStatus { status: 6, .. })
         ));
+    }
+
+    /// Le message Fragment n'existe qu'a partir de GIOP 1.1.
+    #[test]
+    fn test_fragment_message_type_is_rejected_in_giop_1_0() {
+        assert!(matches!(
+            validate_message_type_in_version(7, 0),
+            Err(GiopParseError::MessageTypeNotInVersion {
+                message_type: 7,
+                minor_version: 0
+            })
+        ));
+        for minor in [1, 2] {
+            assert!(validate_message_type_in_version(7, minor).is_ok());
+        }
+        // Les types 0 a 6 existent dans les trois versions.
+        for message_type in 0..=6 {
+            for minor in 0..=2 {
+                assert!(validate_message_type_in_version(message_type, minor).is_ok());
+            }
+        }
     }
 
     #[test]
