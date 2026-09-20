@@ -24,7 +24,7 @@
 use std::{fs, path::Path};
 
 /// Types volontairement exhaustifs, avec la raison.
-const CONSTRUCTIBLE: [(&str, &str); 10] = [
+const CONSTRUCTIBLE: [(&str, &str); 11] = [
     ("VlanTag", "type valeur construit par les consommateurs"),
     ("TlsVersion", "type valeur { major, minor }"),
     ("BridgeId", "type valeur"),
@@ -36,6 +36,7 @@ const CONSTRUCTIBLE: [(&str, &str); 10] = [
     ("GiopMessages", "iterateur a champs prives"),
     ("VlanStack", "vue a champs prives"),
     ("HttpHeaders", "vue a champs prives"),
+    ("EtherNetIpCpfItems", "vue a champs prives"),
     ("Ecn", "deux bits : quatre valeurs, toutes nommees"),
     (
         "QuicPacketType",

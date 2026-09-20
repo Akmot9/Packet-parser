@@ -180,12 +180,15 @@ fn real_send_rr_data_response_decodes_its_common_packet_format() {
     assert_eq!(cpf.timeout, 5);
     assert_eq!(cpf.items.len(), 2);
     // Null Address Item : adresse vide d'un echange unconnected.
-    assert_eq!(cpf.items[0].type_id, 0x0000);
-    assert!(cpf.items[0].data.is_empty());
+    assert_eq!(cpf.items.get(0).expect("item present").type_id, 0x0000);
+    assert!(cpf.items.get(0).expect("item present").data.is_empty());
     // Unconnected Data Item : reponse CIP Set Attribute Single (0x10 | 0x80),
     // statut general 0x00 (succes).
-    assert_eq!(cpf.items[1].type_id, 0x00B2);
-    assert_eq!(cpf.items[1].data, &[0x90, 0x00, 0x00, 0x00]);
+    assert_eq!(cpf.items.get(1).expect("item present").type_id, 0x00B2);
+    assert_eq!(
+        cpf.items.get(1).expect("item present").data,
+        &[0x90, 0x00, 0x00, 0x00]
+    );
 }
 
 #[test]
@@ -212,15 +215,21 @@ fn real_send_unit_data_request_decodes_its_connected_items() {
     assert_eq!(cpf.timeout, 1);
     assert_eq!(cpf.items.len(), 2);
     // Connected Address Item : l'identifiant de connexion O->T.
-    assert_eq!(cpf.items[0].type_id, 0x00A1);
-    assert_eq!(cpf.items[0].data, &0x0007_6B01_u32.to_le_bytes());
+    assert_eq!(cpf.items.get(0).expect("item present").type_id, 0x00A1);
+    assert_eq!(
+        cpf.items.get(0).expect("item present").data,
+        &0x0007_6B01_u32.to_le_bytes()
+    );
     // Connected Data Item : compteur de sequence CIP puis requete (service
     // 0x4C, chemin classe 0x8E / instance 0x2474 / attribut 0x2474...).
-    assert_eq!(cpf.items[1].type_id, 0x00B1);
-    assert_eq!(cpf.items[1].data.len(), 12);
+    assert_eq!(cpf.items.get(1).expect("item present").type_id, 0x00B1);
+    assert_eq!(cpf.items.get(1).expect("item present").data.len(), 12);
     assert_eq!(
-        u16::from_le_bytes([cpf.items[1].data[0], cpf.items[1].data[1]]),
+        u16::from_le_bytes([
+            cpf.items.get(1).expect("item present").data[0],
+            cpf.items.get(1).expect("item present").data[1]
+        ]),
         7244
     );
-    assert_eq!(cpf.items[1].data[2], 0x4C);
+    assert_eq!(cpf.items.get(1).expect("item present").data[2], 0x4C);
 }

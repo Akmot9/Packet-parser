@@ -180,7 +180,7 @@ mod tests {
                 assert_eq!(request.version, "HTTP/1.1");
                 assert_eq!(request.headers.len(), 3);
                 assert_eq!(
-                    request.headers.iter().nth(0).expect("header present"),
+                    request.headers.iter().next().expect("header present"),
                     ("Host", "www.example.com")
                 );
                 assert_eq!(
@@ -207,7 +207,7 @@ mod tests {
                 assert_eq!(request.version, "HTTP/1.1");
                 assert_eq!(request.headers.len(), 3);
                 assert_eq!(
-                    request.headers.iter().nth(0).expect("header present"),
+                    request.headers.iter().next().expect("header present"),
                     ("Host", "www.example.com")
                 );
                 assert_eq!(
@@ -253,8 +253,8 @@ mod tests {
             request.method,
             request.uri,
             request.version,
-            request.headers.iter().nth(0).expect("header present").0,
-            request.headers.iter().nth(0).expect("header present").1,
+            request.headers.iter().next().expect("header present").0,
+            request.headers.iter().next().expect("header present").1,
             request.body,
         ] {
             let ptr = s.as_ptr();
