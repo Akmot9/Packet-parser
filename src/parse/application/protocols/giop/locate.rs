@@ -6,8 +6,6 @@
 //! Messages GIOP LocateRequest / LocateReply (CORBA formal/04-03-12
 //! §15.4.5 et §15.4.6), CancelRequest (§15.4.4) et Fragment (§15.4.9).
 
-use std::convert::TryFrom;
-
 use super::{
     TargetAddress, cursor::Cursor, ior::Ior, parse_target_address, reply::GiopSystemException,
 };
@@ -77,12 +75,13 @@ pub enum GiopLocateStatus {
     LocNeedsAddressingMode,
 }
 
-impl TryFrom<u32> for GiopLocateStatus {
-    type Error = GiopParseError;
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
+impl GiopLocateStatus {
+    /// Type la valeur lue sur le wire pour un message GIOP 1.`minor_version`.
+    /// La version est exigee : `ObjectForwardPerm`, `LocSystemException` et
+    /// `LocNeedsAddressingMode` n'existent qu'en GIOP 1.2.
+    pub fn from_wire(value: u32, minor_version: u8) -> Result<Self, GiopParseError> {
         use GiopLocateStatus::*;
-        let value = validate_locate_status(value)?;
+        let value = validate_locate_status(value, minor_version)?;
         Ok(match value {
             0 => UnknownObject,
             1 => ObjectHere,
@@ -90,8 +89,13 @@ impl TryFrom<u32> for GiopLocateStatus {
             3 => ObjectForwardPerm,
             4 => LocSystemException,
             5 => LocNeedsAddressingMode,
-            // Inatteignable : validate_locate_status garantit value <= 5.
-            _ => return Err(GiopParseError::UnknownLocateStatus(value)),
+            // Inatteignable : validate_locate_status borne value.
+            _ => {
+                return Err(GiopParseError::UnknownLocateStatus {
+                    status: value,
+                    minor_version,
+                });
+            }
         })
     }
 }
@@ -123,10 +127,14 @@ pub struct GiopLocateReply<'a> {
 }
 
 impl<'a> GiopLocateReply<'a> {
-    pub fn parse(body: &'a [u8], little_endian: bool) -> Result<Self, GiopParseError> {
+    pub fn parse(
+        body: &'a [u8],
+        little_endian: bool,
+        minor_version: u8,
+    ) -> Result<Self, GiopParseError> {
         let mut cur = Cursor::new(body, little_endian);
         let request_id = cur.read_u32()?;
-        let locate_status = GiopLocateStatus::try_from(cur.read_u32()?)?;
+        let locate_status = GiopLocateStatus::from_wire(cur.read_u32()?, minor_version)?;
         let rest = cur.rest();
         let detail =
             parse_locate_detail(locate_status, cur).unwrap_or(GiopLocateReplyDetail::Undecoded);
@@ -205,12 +213,34 @@ mod tests {
             (4, GiopLocateStatus::LocSystemException),
             (5, GiopLocateStatus::LocNeedsAddressingMode),
         ] {
-            assert_eq!(GiopLocateStatus::try_from(raw), Ok(expected));
+            assert_eq!(GiopLocateStatus::from_wire(raw, 2), Ok(expected));
         }
         assert!(matches!(
-            GiopLocateStatus::try_from(6),
-            Err(GiopParseError::UnknownLocateStatus(6))
+            GiopLocateStatus::from_wire(6, 2),
+            Err(GiopParseError::UnknownLocateStatus { status: 6, .. })
         ));
+    }
+
+    /// Meme regle que pour le Reply : les statuts introduits par GIOP 1.2
+    /// sont refuses sur un LocateReply 1.0 ou 1.1.
+    #[test]
+    fn legacy_locate_reply_rejects_the_statuses_introduced_by_giop_1_2() {
+        for status in [3u32, 4, 5] {
+            let mut body = Vec::new();
+            body.extend_from_slice(&2u32.to_be_bytes()); // request_id
+            body.extend_from_slice(&status.to_be_bytes());
+
+            for minor in [0, 1] {
+                assert!(
+                    matches!(
+                        GiopLocateReply::parse(&body, false, minor),
+                        Err(GiopParseError::UnknownLocateStatus { status: s, .. }) if s == status
+                    ),
+                    "statut {status} accepte en GIOP 1.{minor}"
+                );
+            }
+            assert!(GiopLocateReply::parse(&body, false, 2).is_ok());
+        }
     }
 
     #[test]
@@ -247,14 +277,14 @@ mod tests {
         body.extend_from_slice(&4u32.to_be_bytes());
         body.extend_from_slice(&5u32.to_be_bytes());
         body.extend_from_slice(&2u16.to_be_bytes());
-        let reply = GiopLocateReply::parse(&body, false).expect("locate reply");
+        let reply = GiopLocateReply::parse(&body, false, 2).expect("locate reply");
         assert_eq!(reply.detail, GiopLocateReplyDetail::NeedsAddressingMode(2));
 
         // OBJECT_FORWARD sans IOR : l'en-tete reste lisible.
         let mut body = Vec::new();
         body.extend_from_slice(&4u32.to_be_bytes());
         body.extend_from_slice(&2u32.to_be_bytes());
-        let reply = GiopLocateReply::parse(&body, false).expect("en-tete lisible");
+        let reply = GiopLocateReply::parse(&body, false, 2).expect("en-tete lisible");
         assert_eq!(reply.locate_status, GiopLocateStatus::ObjectForward);
         assert_eq!(reply.detail, GiopLocateReplyDetail::Undecoded);
     }

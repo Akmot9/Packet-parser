@@ -72,9 +72,30 @@ En GIOP 1.2 le stub data est aligné sur 8 octets. Le padding était compté
 dans `GiopRequest::stub_data` ; il ne l'est plus. Qui décodait les arguments
 CDR à partir de `stub_data` doit retirer son propre saut de padding.
 
+### Les domaines dépendent de la version du message
+
+`LOCATION_FORWARD_PERM` et `NEEDS_ADDRESSING_MODE` (Reply),
+`OBJECT_FORWARD_PERM`, `LOC_SYSTEM_EXCEPTION` et `LOC_NEEDS_ADDRESSING_MODE`
+(LocateReply), ainsi que le message `Fragment`, ne sont définis qu'à partir
+de GIOP 1.2 (1.1 pour `Fragment`). Le décodeur les refuse désormais sur un
+message qui déclare une version antérieure — un `GiopReply` valide mais
+contradictoire n'est plus exposé. La conversion exige donc la version :
+
+```rust
+// 10.x / première version de cette branche
+let status = GiopReplyStatus::try_from(raw)?;
+
+// 11.0
+let status = GiopReplyStatus::from_wire(raw, header.minor_version)?;
+let status = GiopLocateStatus::from_wire(raw, header.minor_version)?;
+let reply = GiopLocateReply::parse(body, little_endian, header.minor_version)?;
+```
+
 ### Erreurs et `checks`
 
 - `GiopParseError::UnknownTargetDiscriminator(u8)` → `(u16)`.
+- `GiopParseError::UnknownReplyStatus(u32)` → `{ status, minor_version }` ;
+  idem `UnknownLocateStatus`. Nouvelle variante `MessageTypeNotInVersion`.
 - `GiopParseError::TruncatedBody` supprimée (voir ci-dessus).
 - `GiopParseError` est `#[non_exhaustive]` : bras `_` requis.
 - `checks::application::giop::extract_message_length(payload)` →

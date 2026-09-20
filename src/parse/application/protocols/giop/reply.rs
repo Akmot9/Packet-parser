@@ -5,8 +5,6 @@
 
 //! Message GIOP Reply (CORBA formal/04-03-12 §15.4.3).
 
-use std::convert::TryFrom;
-
 use super::{ServiceContext, cursor::Cursor, ior::Ior, parse_service_context_list};
 use crate::{
     checks::application::giop::validate_reply_status, errors::application::giop::GiopParseError,
@@ -26,14 +24,18 @@ pub enum GiopReplyStatus {
     NeedsAddressingMode,
 }
 
-impl TryFrom<u32> for GiopReplyStatus {
-    type Error = GiopParseError;
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
+impl GiopReplyStatus {
+    /// Type la valeur lue sur le wire pour un message GIOP 1.`minor_version`.
+    ///
+    /// La version est exigee parce que le domaine du champ en depend :
+    /// `LocationForwardPerm` et `NeedsAddressingMode` n'existent qu'en GIOP
+    /// 1.2, et les accepter sur un message 1.0 exposerait un `GiopReply`
+    /// valide mais contradictoire.
+    pub fn from_wire(value: u32, minor_version: u8) -> Result<Self, GiopParseError> {
         use GiopReplyStatus::*;
-        // La regle de validation (0..=5) vit dans checks ; ce match ne fait
-        // que typer une valeur deja validee.
-        let value = validate_reply_status(value)?;
+        // La regle de validation vit dans checks ; ce match ne fait que typer
+        // une valeur deja validee.
+        let value = validate_reply_status(value, minor_version)?;
         Ok(match value {
             0 => NoException,
             1 => UserException,
@@ -41,8 +43,13 @@ impl TryFrom<u32> for GiopReplyStatus {
             3 => LocationForward,
             4 => LocationForwardPerm,
             5 => NeedsAddressingMode,
-            // Inatteignable : validate_reply_status garantit value <= 5.
-            _ => return Err(GiopParseError::UnknownReplyStatus(value)),
+            // Inatteignable : validate_reply_status borne value.
+            _ => {
+                return Err(GiopParseError::UnknownReplyStatus {
+                    status: value,
+                    minor_version,
+                });
+            }
         })
     }
 }
@@ -112,7 +119,7 @@ impl<'a> GiopReply<'a> {
         let mut cur = Cursor::new(body, little_endian);
 
         let request_id = cur.read_u32()?;
-        let reply_status = GiopReplyStatus::try_from(cur.read_u32()?)?;
+        let reply_status = GiopReplyStatus::from_wire(cur.read_u32()?, 2)?;
         let service_contexts = parse_service_context_list(&mut cur)?;
         cur.align_body_1_2();
 
@@ -130,12 +137,13 @@ impl<'a> GiopReply<'a> {
     pub(super) fn parse_1_0_1_1(
         body: &'a [u8],
         little_endian: bool,
+        minor_version: u8,
     ) -> Result<Self, GiopParseError> {
         let mut cur = Cursor::new(body, little_endian);
 
         let service_contexts = parse_service_context_list(&mut cur)?;
         let request_id = cur.read_u32()?;
-        let reply_status = GiopReplyStatus::try_from(cur.read_u32()?)?;
+        let reply_status = GiopReplyStatus::from_wire(cur.read_u32()?, minor_version)?;
 
         Ok(Self::finish(
             request_id,
@@ -201,12 +209,44 @@ mod tests {
             (4, GiopReplyStatus::LocationForwardPerm),
             (5, GiopReplyStatus::NeedsAddressingMode),
         ] {
-            assert_eq!(GiopReplyStatus::try_from(raw), Ok(expected));
+            assert_eq!(GiopReplyStatus::from_wire(raw, 2), Ok(expected));
         }
         assert!(matches!(
-            GiopReplyStatus::try_from(6),
-            Err(GiopParseError::UnknownReplyStatus(6))
+            GiopReplyStatus::from_wire(6, 2),
+            Err(GiopParseError::UnknownReplyStatus { status: 6, .. })
         ));
+    }
+
+    /// Un Reply 1.0 ou 1.1 annoncant un statut que seul GIOP 1.2 definit est
+    /// refuse : le dispatch le degrade en `Other` au lieu d'exposer un
+    /// `GiopReply` valide mais contradictoire.
+    #[test]
+    fn legacy_reply_rejects_the_statuses_introduced_by_giop_1_2() {
+        for status in [4u32, 5] {
+            let mut body = Vec::new();
+            body.extend_from_slice(&0u32.to_be_bytes()); // 0 service context
+            body.extend_from_slice(&7u32.to_be_bytes()); // request_id
+            body.extend_from_slice(&status.to_be_bytes());
+
+            for minor in [0, 1] {
+                assert!(
+                    matches!(
+                        GiopReply::parse_1_0_1_1(&body, false, minor),
+                        Err(GiopParseError::UnknownReplyStatus { status: s, minor_version })
+                            if s == status && minor_version == minor
+                    ),
+                    "statut {status} accepte en GIOP 1.{minor}"
+                );
+            }
+        }
+
+        // Le meme statut reste valide au layout 1.2.
+        let mut body = Vec::new();
+        body.extend_from_slice(&7u32.to_be_bytes());
+        body.extend_from_slice(&4u32.to_be_bytes());
+        body.extend_from_slice(&0u32.to_be_bytes());
+        let reply = GiopReply::parse(&body, false).expect("LOCATION_FORWARD_PERM en 1.2");
+        assert_eq!(reply.reply_status, GiopReplyStatus::LocationForwardPerm);
     }
 
     #[test]
@@ -252,7 +292,7 @@ mod tests {
         body.extend_from_slice(&0x4f4d_0001u32.to_le_bytes()); // minor
         body.extend_from_slice(&1u32.to_le_bytes()); // COMPLETED_NO
 
-        let reply = GiopReply::parse_1_0_1_1(&body, true).expect("reply 1.0 valide");
+        let reply = GiopReply::parse_1_0_1_1(&body, true, 0).expect("reply 1.0 valide");
         assert_eq!(reply.request_id, 9);
         assert_eq!(reply.reply_status, GiopReplyStatus::SystemException);
         let GiopReplyDetail::SystemException(exception) = reply.detail else {
@@ -286,7 +326,7 @@ mod tests {
         body.extend_from_slice(&9u32.to_be_bytes());
         assert!(matches!(
             GiopReply::parse(&body, false),
-            Err(GiopParseError::UnknownReplyStatus(9))
+            Err(GiopParseError::UnknownReplyStatus { status: 9, .. })
         ));
         assert!(matches!(
             GiopReply::parse(&[0xDE, 0xAD], false),
