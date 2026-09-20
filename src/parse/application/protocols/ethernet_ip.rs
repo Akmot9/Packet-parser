@@ -7,15 +7,14 @@ use core::convert::TryFrom;
 
 use crate::{
     checks::application::ethernet_ip::{
-        CPF_ITEM_HEADER_LEN, ENCAPSULATION_HEADER_LEN, extract_command, extract_cpf_item,
-        extract_interface_handle, extract_item_count, extract_length, extract_options,
-        extract_protocol_version, extract_register_options_flags, extract_sender_context,
-        extract_session_handle, extract_status, extract_timeout,
-        validate_common_packet_format_min_length, validate_cpf_consumed,
-        validate_empty_command_data, validate_min_length, validate_register_session_length,
+        ENCAPSULATION_HEADER_LEN, extract_command, extract_cpf_item, extract_interface_handle,
+        extract_item_count, extract_length, extract_options, extract_protocol_version,
+        extract_register_options_flags, extract_sender_context, extract_session_handle,
+        extract_status, extract_timeout, validate_common_packet_format_min_length,
+        validate_cpf_consumed, validate_empty_command_data, validate_min_length,
+        validate_register_session_length,
     },
     errors::application::ethernet_ip::EtherNetIpError,
-    parse::application::protocols::bounded_capacity,
 };
 
 /// EtherNet/IP Encapsulation Packet
@@ -68,11 +67,54 @@ pub enum EtherNetIpCommandData<'a> {
 pub struct EtherNetIpCommonPacketFormat<'a> {
     pub interface_handle: u32,
     pub timeout: u16,
-    /// Decision alloc/emprunt (issue #63) : items zero-copy, preallocation
-    /// plafonnee par `bounded_capacity` (compteur declare croise avec les
-    /// octets restants). L'emprunt integral changerait ce champ public :
-    /// rupture portee par l'epic #76.
-    pub items: Vec<EtherNetIpCpfItem<'a>>,
+    /// Items CPF, en vue zero-copie sur leur region : chaque item est valide
+    /// une fois au parsing, aucun n'est collecte (#63). Le `Vec` coutait
+    /// ~11 % du `parse()` d'une trame EtherNet/IP reelle.
+    pub items: EtherNetIpCpfItems<'a>,
+}
+
+/// Les items d'un [`EtherNetIpCommonPacketFormat`] : vue empruntee sur une
+/// region deja validee — iterer n'echoue pas et n'alloue pas.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub struct EtherNetIpCpfItems<'a> {
+    // Suite d'items (type_id u16, length u16, donnees), bornee et validee par
+    // le parseur : exactement `count` items, sans octet residuel.
+    region: &'a [u8],
+    count: usize,
+}
+
+impl<'a> EtherNetIpCpfItems<'a> {
+    /// Les items, dans l'ordre du wire.
+    pub fn iter(&self) -> impl Iterator<Item = EtherNetIpCpfItem<'a>> + 'a {
+        let region = self.region;
+        let mut offset = 0;
+        (0..self.count).filter_map(move |_| {
+            // Infaillible : la region a ete marchee item par item au parsing.
+            let (type_id, data, item_end) = extract_cpf_item(region, offset).ok()?;
+            offset = item_end;
+            Some(EtherNetIpCpfItem { type_id, data })
+        })
+    }
+
+    /// Nombre d'items.
+    pub fn len(&self) -> usize {
+        self.count
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
+    /// Item a l'index `index`, dans l'ordre du wire.
+    pub fn get(&self, index: usize) -> Option<EtherNetIpCpfItem<'a>> {
+        self.iter().nth(index)
+    }
+}
+
+impl std::fmt::Debug for EtherNetIpCpfItems<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
 }
 
 #[derive(Debug)]
@@ -218,24 +260,22 @@ fn parse_common_packet_format<'a>(
     let timeout = extract_timeout(data)?;
     let item_count = extract_item_count(data)? as usize;
 
-    let mut offset = 8usize;
-    // Un item CPF pèse au minimum CPF_ITEM_HEADER_LEN octets (type_id 2 +
-    // length 2), ce qui borne la pré-allocation pilotée par item_count.
-    let remaining = data.len().saturating_sub(offset);
-    let mut items =
-        Vec::with_capacity(bounded_capacity(item_count, remaining, CPF_ITEM_HEADER_LEN));
-
+    // Les items sont marches ici, une fois, pour les valider ; ils sont
+    // exposes comme une vue sur leur region, rien n'est collecte. Un compteur
+    // forge echoue a la premiere lecture hors borne : il ne pilote aucune
+    // allocation.
+    const ITEMS_START: usize = 8;
+    let mut offset = ITEMS_START;
     for _ in 0..item_count {
-        let (type_id, item_data, item_end) = extract_cpf_item(data, offset)?;
-
-        items.push(EtherNetIpCpfItem {
-            type_id,
-            data: item_data,
-        });
+        let (_, _, item_end) = extract_cpf_item(data, offset)?;
         offset = item_end;
     }
 
     validate_cpf_consumed(offset, data.len())?;
+    let items = EtherNetIpCpfItems {
+        region: &data[ITEMS_START..offset],
+        count: item_count,
+    };
 
     Ok(EtherNetIpCommonPacketFormat {
         interface_handle,
@@ -295,10 +335,13 @@ mod tests {
         assert_eq!(cpf.interface_handle, 0);
         assert_eq!(cpf.timeout, 0);
         assert_eq!(cpf.items.len(), 2);
-        assert_eq!(cpf.items[0].type_id, 0x0000);
-        assert!(cpf.items[0].data.is_empty());
-        assert_eq!(cpf.items[1].type_id, 0x00B2);
-        assert_eq!(cpf.items[1].data, &[0x4C, 0x02, 0x20, 0x01]);
+        assert_eq!(cpf.items.get(0).expect("item present").type_id, 0x0000);
+        assert!(cpf.items.get(0).expect("item present").data.is_empty());
+        assert_eq!(cpf.items.get(1).expect("item present").type_id, 0x00B2);
+        assert_eq!(
+            cpf.items.get(1).expect("item present").data,
+            &[0x4C, 0x02, 0x20, 0x01]
+        );
     }
 
     #[test]

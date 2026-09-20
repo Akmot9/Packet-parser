@@ -38,12 +38,55 @@ pub struct HttpRequest<'a> {
     pub method: &'a str,
     pub uri: &'a str,
     pub version: &'a str,
-    /// Decision alloc/emprunt (issue #63) : les paires nom/valeur sont deja
-    /// empruntees ; seul le Vec porteur alloue, borne par le nombre de
-    /// lignes reelles du payload. Supprimer le Vec changerait ce champ
-    /// public : rupture portee par l'epic #76.
-    pub headers: Vec<(&'a str, &'a str)>,
+    /// Header fields, as a zero-copy view over the header block: every line
+    /// is validated once while parsing, none is collected (#63). A `Vec`
+    /// here cost ~18 % of the whole `parse()` of a real HTTP request, paid by
+    /// every HTTP packet just to be recognized.
+    pub headers: HttpHeaders<'a>,
     pub body: &'a str,
+}
+
+/// The header fields of an [`HttpRequest`]: a borrowed view over the header
+/// block, already validated — iterating cannot fail and does not allocate.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub struct HttpHeaders<'a> {
+    // Lignes de headers, sans la request line ni la ligne vide finale. Chaque
+    // ligne est passee par `extract_header_line` au parsing.
+    block: &'a str,
+}
+
+impl<'a> HttpHeaders<'a> {
+    /// The `(name, value)` pairs, in wire order, both trimmed.
+    pub fn iter(&self) -> impl Iterator<Item = (&'a str, &'a str)> + 'a {
+        self.block
+            .split("\r\n")
+            .take_while(|line| !line.is_empty())
+            // Infaillible : chaque ligne a ete validee au parsing.
+            .filter_map(|line| extract_header_line(line).ok())
+    }
+
+    /// Value of the first header named `name`, compared case-insensitively
+    /// (RFC 9110 §5.1).
+    pub fn get(&self, name: &str) -> Option<&'a str> {
+        self.iter()
+            .find(|(header, _)| header.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value)
+    }
+
+    /// Number of header fields.
+    pub fn len(&self) -> usize {
+        self.iter().count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.iter().next().is_none()
+    }
+}
+
+impl std::fmt::Debug for HttpHeaders<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
 }
 
 impl<'a> TryFrom<&'a [u8]> for HttpRequest<'a> {
@@ -77,13 +120,17 @@ pub fn parse_http_request(payload: &[u8]) -> Result<HttpRequest<'_>, HttpParseEr
     let uri = require_uri(request_parts.next())?;
     let version = require_version(request_parts.next())?;
 
-    let mut headers = Vec::new();
+    // Les headers sont valides ici, une fois, et exposes comme une vue sur
+    // leur bloc : rien n'est collecte.
+    let block = head.get(request_line.len()..).unwrap_or_default();
+    let block = block.strip_prefix("\r\n").unwrap_or(block);
     for line in lines {
         if line.is_empty() {
             break;
         }
-        headers.push(extract_header_line(line)?);
+        extract_header_line(line)?;
     }
+    let headers = HttpHeaders { block };
 
     Ok(HttpRequest {
         method,
@@ -99,6 +146,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_headers_view_is_zero_copy_case_insensitive_and_validated_once() {
+        let payload = b"GET / HTTP/1.1\r\nHost: example.com\r\nX-Empty:\r\n\r\nbody";
+        let request = HttpRequest::try_from(&payload[..]).expect("requete valide");
+
+        assert_eq!(request.headers.len(), 2);
+        assert_eq!(request.headers.get("host"), Some("example.com"));
+        assert_eq!(request.headers.get("X-EMPTY"), Some(""));
+        assert_eq!(request.headers.get("absent"), None);
+        assert_eq!(request.body, "body");
+        // Zero copie : les valeurs pointent dans le payload d'origine.
+        let host = request.headers.get("Host").expect("header Host");
+        assert!(payload.as_ptr_range().contains(&host.as_ptr()));
+        assert_eq!(
+            format!("{:?}", request.headers),
+            r#"[("Host", "example.com"), ("X-Empty", "")]"#
+        );
+
+        // Une ligne de header invalide fait toujours echouer le parsing.
+        assert!(HttpRequest::try_from(&b"GET / HTTP/1.1\r\nno-colon\r\n\r\n"[..]).is_err());
+        // Sans header : vue vide.
+        let bare = HttpRequest::try_from(&b"GET / HTTP/1.1\r\n\r\n"[..]).expect("requete valide");
+        assert!(bare.headers.is_empty());
+    }
+
+    #[test]
     fn test_parse_http_request() {
         let http_payload = b"GET /index.html HTTP/1.1\r\nHost: www.example.com\r\nUser-Agent: curl/7.68.0\r\nAccept: */*\r\n\r\n";
         match HttpRequest::try_from(&http_payload[..]) {
@@ -107,9 +179,18 @@ mod tests {
                 assert_eq!(request.uri, "/index.html");
                 assert_eq!(request.version, "HTTP/1.1");
                 assert_eq!(request.headers.len(), 3);
-                assert_eq!(request.headers[0], ("Host", "www.example.com"));
-                assert_eq!(request.headers[1], ("User-Agent", "curl/7.68.0"));
-                assert_eq!(request.headers[2], ("Accept", "*/*"));
+                assert_eq!(
+                    request.headers.iter().next().expect("header present"),
+                    ("Host", "www.example.com")
+                );
+                assert_eq!(
+                    request.headers.iter().nth(1).expect("header present"),
+                    ("User-Agent", "curl/7.68.0")
+                );
+                assert_eq!(
+                    request.headers.iter().nth(2).expect("header present"),
+                    ("Accept", "*/*")
+                );
                 assert_eq!(request.body, "");
             }
             Err(_) => panic!("Expected HTTP request"),
@@ -125,12 +206,18 @@ mod tests {
                 assert_eq!(request.uri, "/submit");
                 assert_eq!(request.version, "HTTP/1.1");
                 assert_eq!(request.headers.len(), 3);
-                assert_eq!(request.headers[0], ("Host", "www.example.com"));
                 assert_eq!(
-                    request.headers[1],
+                    request.headers.iter().next().expect("header present"),
+                    ("Host", "www.example.com")
+                );
+                assert_eq!(
+                    request.headers.iter().nth(1).expect("header present"),
                     ("Content-Type", "application/x-www-form-urlencoded")
                 );
-                assert_eq!(request.headers[2], ("Content-Length", "13"));
+                assert_eq!(
+                    request.headers.iter().nth(2).expect("header present"),
+                    ("Content-Length", "13")
+                );
                 assert_eq!(request.body, "field1=value1");
             }
             Err(_) => panic!("Expected HTTP request with body"),
@@ -166,8 +253,8 @@ mod tests {
             request.method,
             request.uri,
             request.version,
-            request.headers[0].0,
-            request.headers[0].1,
+            request.headers.iter().next().expect("header present").0,
+            request.headers.iter().next().expect("header present").1,
             request.body,
         ] {
             let ptr = s.as_ptr();

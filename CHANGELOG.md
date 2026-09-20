@@ -156,6 +156,31 @@ Travaux de la 11.0.0 (epic #76) — branche `release/11.0.0`.
     trames : TCP, UDP, VLAN, tunnels, couches corrompues). Les tests
     existants ne comparaient que `data_link`.
 
+- **Zero copie** (lot D de l'epic #76 : #61, #63). Migration :
+  `MIGRATION-11.md` §Zero copie. Regle du lot : chaque rupture est mesuree
+  sur du trafic reel (release, meilleur de 7), borne superieure prise au
+  prealable en neutralisant la collecte ; ce qui ne gagne rien est retire.
+  - DNS : la rdata des resource records est empruntee (`&'a [u8]`) ;
+    `DnsPacket`, `Answer`, `AuthoritativeNameServer`, `AdditionalRecord` et
+    `RawRecord` prennent une lifetime (#61). **-7,5 %** par message (357 ->
+    330 ns, 27 reponses DNS reelles).
+  - HTTP : `HttpRequest::headers` devient `HttpHeaders<'a>`, une vue validee
+    une fois au parsing (`iter()`, `get(nom)` insensible a la casse, `len()`)
+    (#63). **-17 %** sur le `parse()` d'une vraie requete (585 -> 488 ns) :
+    le `Vec` etait paye par chaque paquet HTTP rien que pour etre reconnu.
+  - EtherNet/IP : `EtherNetIpCommonPacketFormat::items` devient
+    `EtherNetIpCpfItems<'a>` (`iter()`, `get(i)`, `len()`). **-11,6 %** (159
+    -> 140,5 ns). Un compteur d'items forge ne pilote plus d'allocation.
+  - OPC UA : `OpcuaPacket::chunks` devient `OpcuaChunks<'a>` (`iter()`,
+    `get(i)`, `len()`), re-decodes a l'iteration. **-15 %** (160 -> 135 ns,
+    520 trames reelles).
+  - **Retire de la 11.0.0 : PostgreSQL (#62).** Mesure sur 8 209 trames
+    reelles (session JDBC de la wiki Wireshark, 3 708 Parse/Bind) :
+    neutraliser les `Vec` de Parse/Bind/Startup ne gagne que 1,5 % (402 ->
+    396 ns), et pre-dimensionner celui des messages ne gagne rien — a 5
+    messages par trame, le temps part dans leur decodage. La rupture ne se
+    justifie pas ; les types PostgreSQL restent en l'etat.
+
 ### Deprecie
 
 - `convert::hex_stream_to_bytes`, qui panique sur une entree invalide : lui

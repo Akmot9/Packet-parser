@@ -23,13 +23,8 @@ mod tests {
 
     #[test]
     fn test_http_request_display() {
-        let request = HttpRequest {
-            method: "GET",
-            uri: "/index.html",
-            version: "HTTP/1.1",
-            headers: vec![("Host", "www.example.com")],
-            body: "",
-        };
+        let payload = b"GET /index.html HTTP/1.1\r\nHost: www.example.com\r\n\r\n";
+        let request = HttpRequest::try_from(&payload[..]).expect("requete valide");
 
         let rendered = request.to_string();
         assert!(rendered.starts_with("HTTP Request:"));

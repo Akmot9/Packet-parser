@@ -29,12 +29,11 @@ use crate::{
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct OpcuaPacket<'a> {
-    /// Decision alloc/emprunt (issue #63) : le Vec est conserve — les chunks
-    /// sont dej a zero-copy (&'a [u8]) et le Vec croit par iteration bornee
-    /// par la taille du payload, jamais par un compteur declare par le
-    /// paquet. L'emprunt integral exigerait de changer ce champ public :
-    /// rupture portee par l'epic #76.
-    pub chunks: Vec<OpcuaChunk<'a>>,
+    /// Les chunks du segment, en vue zero-copie : chacun est decode une fois
+    /// au parsing pour le valider, aucun n'est collecte (#63). Le `Vec`
+    /// coutait ~14 % du `parse()` d'une trame OPC UA reelle, paye par chaque
+    /// paquet OPC UA rien que pour etre reconnu.
+    pub chunks: OpcuaChunks<'a>,
 }
 
 #[derive(Debug)]
@@ -165,40 +164,90 @@ impl TryFrom<&[u8]> for OpcuaTcpHeader {
     }
 }
 
+/// Les chunks d'un [`OpcuaPacket`] : vue empruntee sur un segment deja
+/// valide — iterer n'echoue pas et n'alloue pas. Chaque chunk est re-decode
+/// a l'iteration.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub struct OpcuaChunks<'a> {
+    // Segment complet, marche chunk par chunk au parsing.
+    bytes: &'a [u8],
+}
+
+impl<'a> OpcuaChunks<'a> {
+    /// Les chunks, dans l'ordre du wire.
+    pub fn iter(&self) -> impl Iterator<Item = OpcuaChunk<'a>> + 'a {
+        let mut remaining = self.bytes;
+        std::iter::from_fn(move || {
+            if remaining.is_empty() {
+                return None;
+            }
+            // Infaillible : le segment a ete marche en entier au parsing.
+            let (chunk, consumed) = next_chunk(remaining).ok()?;
+            remaining = &remaining[consumed..];
+            Some(chunk)
+        })
+    }
+
+    /// Nombre de chunks.
+    pub fn len(&self) -> usize {
+        self.iter().count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
+    /// Chunk a l'index `index`, dans l'ordre du wire.
+    pub fn get(&self, index: usize) -> Option<OpcuaChunk<'a>> {
+        self.iter().nth(index)
+    }
+}
+
+impl std::fmt::Debug for OpcuaChunks<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+
+/// Decode le chunk en tete de `remaining` et rend le nombre d'octets qu'il
+/// couvre. Partage par la passe de validation et par l'iteration.
+fn next_chunk<'a>(remaining: &'a [u8]) -> Result<(OpcuaChunk<'a>, usize), OpcuaParseError> {
+    validate_tcp_header_length(remaining.len())?;
+
+    let header = OpcuaTcpHeader::try_from(remaining)?;
+    let message_size = header.message_size as usize;
+
+    let (consumed, payload) = match validate_chunk_available(remaining.len(), message_size) {
+        // Chunk annoncé plus grand que le buffer restant → chunk partiel.
+        Err(_) => {
+            let body = &remaining[OPCUA_TCP_HEADER_LEN..];
+            (remaining.len(), OpcuaPayload::Partial(body))
+        }
+        Ok(()) => {
+            let body = &remaining[OPCUA_TCP_HEADER_LEN..message_size];
+            (message_size, parse_payload(header.message_type, body)?)
+        }
+    };
+
+    Ok((OpcuaChunk { header, payload }, consumed))
+}
+
 impl<'a> TryFrom<&'a [u8]> for OpcuaPacket<'a> {
     type Error = OpcuaParseError;
 
     fn try_from(bytes: &'a [u8]) -> Result<Self, Self::Error> {
         validate_tcp_header_length(bytes.len())?;
 
-        let mut chunks = Vec::new();
+        // Passe de validation : chaque chunk est decode, aucun n'est garde.
         let mut offset = 0usize;
-
         while offset < bytes.len() {
-            let remaining = &bytes[offset..];
-            validate_tcp_header_length(remaining.len())?;
-
-            let header = OpcuaTcpHeader::try_from(remaining)?;
-            let message_size = header.message_size as usize;
-
-            let (consumed, payload) = match validate_chunk_available(remaining.len(), message_size)
-            {
-                // Chunk annoncé plus grand que le buffer restant → chunk partiel.
-                Err(_) => {
-                    let body = &remaining[OPCUA_TCP_HEADER_LEN..];
-                    (remaining.len(), OpcuaPayload::Partial(body))
-                }
-                Ok(()) => {
-                    let body = &remaining[OPCUA_TCP_HEADER_LEN..message_size];
-                    (message_size, parse_payload(header.message_type, body)?)
-                }
-            };
-
-            chunks.push(OpcuaChunk { header, payload });
+            let (_, consumed) = next_chunk(&bytes[offset..])?;
             offset += consumed;
         }
 
-        Ok(OpcuaPacket { chunks })
+        Ok(OpcuaPacket {
+            chunks: OpcuaChunks { bytes },
+        })
     }
 }
 
@@ -310,11 +359,16 @@ mod tests {
         let packet = OpcuaPacket::try_from(bytes.as_slice()).unwrap();
         assert_eq!(packet.chunks.len(), 1);
         assert_eq!(
-            packet.chunks[0].header.message_type,
+            packet
+                .chunks
+                .get(0)
+                .expect("chunk present")
+                .header
+                .message_type,
             OpcuaMessageType::Hello
         );
 
-        match &packet.chunks[0].payload {
+        match &packet.chunks.get(0).expect("chunk present").payload {
             OpcuaPayload::Hello(hello) => {
                 assert_eq!(hello.receive_buffer_size, 65536);
                 assert_eq!(hello.endpoint_url, Some("opc.tcp:"));
@@ -336,7 +390,7 @@ mod tests {
         let packet = OpcuaPacket::try_from(bytes.as_slice()).unwrap();
         assert_eq!(packet.chunks.len(), 1);
 
-        match &packet.chunks[0].payload {
+        match &packet.chunks.get(0).expect("chunk present").payload {
             OpcuaPayload::Acknowledge(ack) => {
                 assert_eq!(ack.send_buffer_size, 65536);
                 assert_eq!(ack.max_chunk_count, 0);
@@ -361,8 +415,16 @@ mod tests {
 
         let packet = OpcuaPacket::try_from(bytes.as_slice()).unwrap();
         assert_eq!(packet.chunks.len(), 1);
-        assert_eq!(packet.chunks[0].header.message_size, 28);
-        match packet.chunks[0].payload {
+        assert_eq!(
+            packet
+                .chunks
+                .get(0)
+                .expect("chunk present")
+                .header
+                .message_size,
+            28
+        );
+        match packet.chunks.get(0).expect("chunk present").payload {
             OpcuaPayload::Partial(body) => assert!(body.is_empty()),
             _ => panic!("expected partial OPC UA payload"),
         }
@@ -377,8 +439,16 @@ mod tests {
 
         let packet = OpcuaPacket::try_from(bytes.as_slice()).unwrap();
         assert_eq!(packet.chunks.len(), 1);
-        assert_eq!(packet.chunks[0].header.message_size, 64);
-        match packet.chunks[0].payload {
+        assert_eq!(
+            packet
+                .chunks
+                .get(0)
+                .expect("chunk present")
+                .header
+                .message_size,
+            64
+        );
+        match packet.chunks.get(0).expect("chunk present").payload {
             OpcuaPayload::Partial(body) => assert_eq!(body, &[0xDE, 0xAD, 0xBE, 0xEF]),
             _ => panic!("expected partial OPC UA payload"),
         }

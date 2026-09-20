@@ -11,17 +11,18 @@ use crate::parse::application::protocols::dns::utils::{
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct AuthoritativeNameServer {
+pub struct AuthoritativeNameServer<'a> {
     pub name: String,           // Domain name
     pub answer_type: DnsType,   // Type of record
     pub answer_class: DnsClass, // Class of record
     pub ttl: u32,               // Time to live
     pub data_length: u16,       // Length of the data
-    pub address: Vec<u8>,       // Address or other data (variable length)
+    /// Rdata brute, empruntee au message (zero-copie).
+    pub address: &'a [u8],
 }
 
-impl From<RawRecord> for AuthoritativeNameServer {
-    fn from(record: RawRecord) -> Self {
+impl<'a> From<RawRecord<'a>> for AuthoritativeNameServer<'a> {
+    fn from(record: RawRecord<'a>) -> Self {
         AuthoritativeNameServer {
             name: record.name,
             answer_type: DnsType::new(record.rtype),
@@ -33,7 +34,7 @@ impl From<RawRecord> for AuthoritativeNameServer {
     }
 }
 
-impl fmt::Display for AuthoritativeNameServer {
+impl fmt::Display for AuthoritativeNameServer<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -63,7 +64,7 @@ mod tests {
             answer_class: DnsClasses::IN,
             ttl: 300,
             data_length: 4,
-            address: vec![93, 184, 216, 34],
+            address: &[93, 184, 216, 34],
         };
 
         let rendered = record.to_string();

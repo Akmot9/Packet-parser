@@ -308,3 +308,48 @@ Qui compare `protocol_transport` (ou `TransportOwned::protocol`, ou
 Corrigé : il rend désormais le LINKTYPE déclaré (229 pour un IPv6 encapsulé,
 et non plus 101), comme le modèle borrowed.
 
+## Zéro copie
+
+Quatre décodeurs cessent d'allouer un `Vec` porteur. Le patron est le même
+partout : une **vue** empruntée, validée une fois au parsing — l'itérer ne
+peut pas échouer et n'alloue pas.
+
+| 10.x | 11.0 |
+|---|---|
+| `request.headers: Vec<(&str, &str)>` | `request.headers: HttpHeaders<'a>` |
+| `cpf.items: Vec<EtherNetIpCpfItem>` | `cpf.items: EtherNetIpCpfItems<'a>` |
+| `packet.chunks: Vec<OpcuaChunk>` | `packet.chunks: OpcuaChunks<'a>` |
+| `answer.address: Vec<u8>` (et `authorities`, `additionals`) | `answer.address: &'a [u8]` |
+
+```rust
+// 10.x
+let host = request.headers.iter().find(|(n, _)| *n == "Host").map(|(_, v)| *v);
+let first = &cpf.items[0];
+
+// 11.0
+let host = request.headers.get("host");          // insensible à la casse
+let first = cpf.items.get(0);                     // Option, plus d'indexation
+for chunk in packet.chunks.iter() { /* … */ }
+let all: Vec<_> = cpf.items.iter().collect();    // si un Vec est vraiment voulu
+```
+
+`len()` et `is_empty()` existent sur les trois vues. L'indexation `[i]`
+disparaît au profit de `get(i)`.
+
+### DNS : une lifetime sur `DnsPacket`
+
+```rust
+// 10.x
+fn keep(packet: DnsPacket) { … }
+// 11.0 : le paquet emprunte le buffer
+fn keep<'a>(packet: DnsPacket<'a>) { … }
+```
+
+Pour garder une rdata au-delà du buffer : `answer.address.to_vec()`.
+
+### PostgreSQL : inchangé
+
+Le passage aux slices empruntées (#62) a été mesuré et retiré : aucun gain
+sur du trafic réel. `PostgreSqlParse`, `PostgreSqlBind`, `PostgreSqlStartup`
+et `PostgreSqlPacket::messages` gardent leurs `Vec`.
+
