@@ -30,7 +30,10 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   dont le port source vaut 2152, et du GTP authentique qui n'est pas un
   G-PDU.
   - La ROADMAP annoncait que le corpus nDPI levait ce blocage. Il ne le
-    levait qu'a moitie : deux trames utiles, aucun G-PDU portant de l'IPv4.
+    levait pas pour un golden de peeling : sur ses cinq captures GTP, aucun
+    G-PDU ne transporte de paquet IPv4, et le seul a porter une chaine
+    d'extension a un T-PDU vide. Rien a peler. Le corpus lui-meme est bien
+    fourni — il couvre GTP-C, GTP', l'IPv6 et un faux positif.
   - Le `README` du corpus Zeek avertit qu'une partie de ses captures est
     generee par scapy ou par un LLM. La provenance a donc ete verifiee sur
     les octets — MAC virtuelles HSRP et VRRP, TTL varies, checksums valides,

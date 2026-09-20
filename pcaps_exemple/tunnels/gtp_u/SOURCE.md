@@ -27,11 +27,27 @@ n'a longtemps contenu qu'un `.gitkeep`.
 
 ## Pourquoi celles-ci, et pas le corpus nDPI
 
-Le `ROADMAP.md` indiquait qu'une capture GTP-U existait dans le corpus de
-tests de nDPI. Elle existe, mais elle ne portait que **deux trames utiles et
-aucun G-PDU transportant de l'IPv4** — là où VXLAN et Geneve ont six golden
-chacun. Le corpus de Zeek donne 32 G-PDU pelables dans un seul fichier, plus
-l'IPv6, une chaîne d'extension headers et deux négatifs construits exprès.
+Non parce que le corpus GTP de nDPI serait pauvre — il ne l'est pas — mais
+parce qu'il ne répond pas au besoin d'un golden de **peeling**.
+
+nDPI porte cinq captures GTP, délibérément réparties sur les variantes du
+protocole : `gtp.pcap` (GTP-U), `gtp_c.pcap` (plan de contrôle),
+`gtp_prime.pcapng` (GTP', facturation), `ipv6_in_gtp.pcap`, et
+`gtp_false_positive.pcapng`. Les flags rencontrés incluent `0x34` et `0x37`,
+donc des **chaînes d'extension** — ce que le corpus Zeek ne porte, lui, que
+sous forme fragmentée. Sept trames y couvrent plus de cas de figure que nos
+108.
+
+Ce qui nous manquait est plus étroit, et c'est mesuré : sur l'ensemble de
+ces cinq captures, **aucun G-PDU ne transporte de paquet IPv4**. Leur seul
+G-PDU à extension (`gtp.pcap` trame 6) a un T-PDU **vide**, la chaîne
+consommant tout le message ; `ipv6_in_gtp.pcap` ne porte que de l'IPv6. Pour
+un décodeur qui pèle et ré-analyse l'encapsulé, il n'y avait donc rien à
+peler.
+
+Zeek donne 32 G-PDU pelables dans un seul fichier, plus l'IPv6 encapsulé,
+une chaîne d'extension et deux négatifs. C'est ce besoin-là qui a tranché,
+pas une comparaison de qualité entre les deux corpus.
 
 ## Ces trames sont-elles réelles ?
 

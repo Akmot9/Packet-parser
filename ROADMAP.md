@@ -228,10 +228,19 @@ suivi vit sur GitHub, pas dans ce fichier.
 6. **Tier 3 restant** (#103) : SMB2/3, DTLS, WireGuard, SIP.
 
 **GTP-U est livre** (#15 close, 2026-09-20), et avec lui le dernier tunnel
-de l'issue. Il vient du corpus de **Zeek** (BSD 3-clause), pas de nDPI : la
-capture nDPI que cette liste citait ne portait que deux trames utiles et
-aucun G-PDU IPv4. Zeek en donne 32 pelables dans un seul fichier, plus
-l'IPv6 encapsule, une chaine d'extension headers et deux negatifs.
+de l'issue. Il vient du corpus de **Zeek** (BSD 3-clause) et non de nDPI,
+pour une raison etroite et mesuree : sur les cinq captures GTP de nDPI,
+**aucun G-PDU ne transporte de paquet IPv4** — le seul a porter une chaine
+d'extension a un T-PDU vide, et `ipv6_in_gtp.pcap` ne porte que de l'IPv6.
+Rien a peler, donc rien a figer dans un golden de peeling. Zeek en donne 32
+pelables dans un seul fichier.
+
+Ce n'est pas un reproche au corpus de nDPI, qui repartit delibere ses cinq
+captures sur les variantes du protocole — GTP-U, plan de controle, GTP',
+IPv6, faux positif — et couvre les chaines d'extension que Zeek n'a, lui,
+que sous forme fragmentee. Sept trames y couvrent plus de cas de figure que
+nos 108. C'est une lecon de conception de corpus a retenir : plusieurs
+petites captures ciblees valent mieux qu'un gros fichier.
 
 Deux corpus de tests valent donc d'etre consultes avant de conclure qu'une
 trame n'existe pas — **nDPI** (LGPL-3.0), qui a comble UMAS (#10),
