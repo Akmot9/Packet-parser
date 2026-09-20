@@ -112,6 +112,7 @@ LINKTYPE supportes:
 
 | LINKTYPE | Valeur | Etat du decodeur |
 | --- | ---: | --- |
+| Loopback BSD (NULL) | 0 | Supporte : quatre octets de famille d'adresses, puis le paquet IP. L'ordre d'octets est celui de la machine de capture, donc le champ est lu dans les deux sens et recoupe avec la version IP. `LINKTYPE_LOOP` (108), son jumeau OpenBSD en ordre reseau, n'est pas traite — aucune capture ne l'atteste |
 | Ethernet | 1 | Supporte |
 | RAW IP | 101 | Supporte pour IPv4 et IPv6 |
 | IEEE 802.11 natif | 105 | Modelise pour les flux internes CAPWAP ; decodeur de capture non disponible |

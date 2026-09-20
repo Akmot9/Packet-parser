@@ -655,14 +655,19 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // (umas.pcap, corpus nDPI, 191 trames), Ethernet/IPv4/TCP et decodee
     // sans erreur L2 : 75 -> 76 captures, 74 -> 75 fichiers lus,
     // 4 184 -> 4 375 trames, 4 142 -> 4 333 flux.
-    assert_eq!(captures.len(), 76);
-    assert_eq!(opened_files, 75);
-    assert_eq!(frame_count, 4_375);
+    // 2026-09-20 (issue #95) : +1 capture OPC UA dans protocols/opcua/
+    // (opcua_loopback.pcap, corpus nDPI, 381 trames en LINKTYPE_NULL,
+    // decodees sans erreur L2 depuis le decodeur de liaison) :
+    // 76 -> 77 captures, 75 -> 76 fichiers lus, 4 375 -> 4 756 trames,
+    // 4 333 -> 4 714 flux.
+    assert_eq!(captures.len(), 77);
+    assert_eq!(opened_files, 76);
+    assert_eq!(frame_count, 4_756);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 4_333);
+    assert_eq!(parsed_flows, 4_714);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

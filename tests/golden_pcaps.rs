@@ -142,9 +142,18 @@ fn application_classification_histogram_is_frozen() {
     // - "ModbusTCP" 383 -> 382 : cette seule trame change d'etiquette ;
     // - "(sans application)" 1566 -> 1577 : les 11 trames TCP sans payload
     //   de la nouvelle capture.
+    //
+    // 2026-09-20 (issue #95, LINKTYPE_NULL) : +1 capture
+    // protocols/opcua/opcua_loopback.pcap (corpus nDPI, 381 trames en
+    // encapsulation loopback BSD), que le decodeur de liaison rend enfin
+    // lisible — elles echouaient toutes en UnsupportedLinkType :
+    // - "OPC UA" 0 -> 187 : parite exacte avec `tshark -Y opcua` ;
+    // - "(sans application)" 1577 -> 1771 : les 194 trames TCP sans payload
+    //   de la capture, ce que tshark compte aussi.
+    // "(erreur L2)" ne bouge pas : aucune de ces trames n'echoue au L2.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 1577),
+        (NO_APPLICATION, 1771),
         ("DHCP", 6),
         ("DHCPv6", 4),
         ("DNS", 104),
@@ -157,6 +166,7 @@ fn application_classification_histogram_is_frozen() {
         ("ModbusTCP", 382),
         ("UMAS", 181),
         ("NNTP", 6),
+        ("OPC UA", 187),
         ("OpenVPN", 766),
         ("SMTP", 6),
         ("TLS", 587),

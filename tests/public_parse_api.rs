@@ -892,6 +892,7 @@ fn ethernet_bytes_labelled_as_linux_sll_never_fall_back_to_ethernet() {
 
 #[test]
 fn support_preflight_matches_the_decoder_catalogue() {
+    assert!(is_supported(LinkType::NULL));
     assert!(is_supported(LinkType::ETHERNET));
     assert!(is_supported(LinkType::RAW));
     assert!(!is_supported(LinkType::IEEE802_11));
@@ -931,6 +932,8 @@ fn explicit_ethernet_errors_match_the_legacy_api() {
 fn every_wired_link_type_reports_truncation_through_the_same_contract() {
     // (LINKTYPE, plus petit en-tete de liaison lisible)
     let wired = [
+        // LINKTYPE_NULL : quatre octets de famille d'adresses.
+        (LinkType::NULL, 4),
         (LinkType::ETHERNET, 14),
         (LinkType::RAW, 1),
         (LinkType::IPV4, 1),

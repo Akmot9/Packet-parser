@@ -6,6 +6,33 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **LINKTYPE_NULL** (issue #95) : l'encapsulation loopback BSD est decodee —
+  quatre octets de famille d'adresses, puis le paquet IP. `LinkType::NULL`
+  rejoint le catalogue.
+  - L'ordre d'octets de la famille est celui de la machine qui a capture, et
+    le format n'en garde aucune trace : le champ est lu dans les deux sens,
+    et seule une lecture coherente est retenue. Il sert de controle, pas de
+    source de verite — la version reelle vient du paquet IP. Une famille
+    inconnue, ou qui contredit cette version, rend
+    `LinkLayerError::InvalidAddressFamily` : une erreur nommee, pas une
+    devinette, comme pour LINKTYPE_IPV4 et IPV6.
+  - `LINKTYPE_LOOP` (108), le jumeau OpenBSD en ordre reseau, n'est
+    volontairement pas traite : aucune capture ne l'atteste.
+- **Premiere capture OPC UA du depot** et son golden (issue #95). Le
+  decodeur etait publie depuis plusieurs versions sans qu'aucune trame
+  reelle ne l'exerce ; il tient la parite exacte avec tshark, 187 trames sur
+  381, types de message compris (`HEL`, `ACK`, 2 × `OPN`, 182 × `MSG`,
+  `CLO`) et l'URL du point de terminaison lue en clair. C'est cette capture,
+  en LINKTYPE_NULL, qui a motive le decodeur de liaison.
+- **Golden S7CommPlus sur trames reelles** (issue #93) : les 36 trames
+  `0x72` de `s7comm_plus.pcap` remplacent la fixture synthetique qui
+  couvrait seule ce chemin. Le commentaire qui la justifiait affirmait
+  qu'aucune trame reelle n'existait, « verifie avec `tshark -Y s7comm-plus` » ;
+  ce filtre rend zero y compris sur une capture qui en est pleine. Corrige,
+  avec la methode fiable.
+
 ## [11.1.0] - 2026-09-20
 
 Strictement additif par rapport a la 11.0.0 : **UMAS**, le protocole proprietaire de Schneider
