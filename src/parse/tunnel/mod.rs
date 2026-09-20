@@ -300,10 +300,14 @@ fn peel_gtp_u(payload: &[u8]) -> Option<DecodedLink<'_>> {
     }
 
     // Le champ porte la longueur de tout ce qui suit les huit premiers
-    // octets. On s'y tient : ce qui deborde n'appartient pas au message, et
-    // ce que le message annonce doit etre present.
+    // octets, et un datagramme UDP porte un message GTP-U et un seul. La
+    // longueur annoncee doit donc valoir la charge utile exactement : ni
+    // moins, ce qui laisserait un reliquat non declare derriere le message,
+    // ni plus, ce qui reclamerait des octets absents.
     let announced = usize::from(u16::from_be_bytes([payload[2], payload[3]]));
-    let payload = payload.get(..HEADER_LEN + announced)?;
+    if payload.len() != HEADER_LEN + announced {
+        return None;
+    }
 
     let mut offset = HEADER_LEN;
     if flags & OPTIONAL_FIELDS != 0 {
@@ -510,6 +514,17 @@ mod tests {
         let mut beyond = REAL_GTP_G_PDU.to_vec();
         beyond[3] = 0xff;
         assert!(peel_gtp_u(&beyond).is_none(), "longueur debordante refusee");
+
+        // Et l'inverse : des octets que la longueur ne declare pas. Un
+        // datagramme UDP porte un message GTP-U et un seul ; un reliquat
+        // derriere lui ne peut pas etre du GTP-U bien forme, et l'accepter
+        // reviendrait a etiqueter la trame sur son seul prefixe.
+        let mut trailing = REAL_GTP_G_PDU.to_vec();
+        trailing.extend_from_slice(&[0u8; 4]);
+        assert!(
+            peel_gtp_u(&trailing).is_none(),
+            "octets non declares refuses"
+        );
     }
 
     /// Seul un G-PDU porte un paquet utilisateur. Le plan de controle et les

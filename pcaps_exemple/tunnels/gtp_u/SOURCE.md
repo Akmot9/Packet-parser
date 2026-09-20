@@ -7,8 +7,12 @@ Les cinq captures proviennent du corpus de tests du projet
 - Téléchargées le 2026-09-20 depuis la branche `master`.
 - Licence du dépôt source : **BSD 3-clause** (The Regents of the University
   of California, Lawrence Berkeley National Laboratory et International
-  Computer Science Institute). Permissive, compatible avec la licence MIT de
-  cette crate, sous réserve d'attribution — c'est l'objet de ce fichier.
+  Computer Science Institute). Permissive et compatible avec la licence MIT
+  de cette crate.
+- **Le texte complet de la licence est reproduit dans `LICENSE-ZEEK.txt`**,
+  à côté des captures. La BSD 3-clause ne se satisfait pas d'une mention du
+  nom : redistribuer ces fichiers oblige à retenir la notice de copyright,
+  la liste des conditions **et** le disclaimer.
 
 | Fichier | SHA-256 |
 | --- | --- |
