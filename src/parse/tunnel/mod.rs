@@ -265,10 +265,16 @@ fn peel_geneve(payload: &[u8]) -> Option<DecodedLink<'_>> {
 /// suit** : la version se lit sur le quartet de tete du paquet encapsule,
 /// et `RawIpDecoder` la verifie ensuite.
 ///
-/// Le champ de longueur n'est volontairement pas impose comme borne : quand
-/// le datagramme externe est fragmente, seul le premier fragment porte
-/// l'en-tete GTP, et il annonce la longueur du tout. L'exiger reviendrait a
-/// refuser de nommer le flux interne d'une trame que l'on sait lire.
+/// Le champ de longueur borne le message, et tout ce qui suit se lit dans
+/// cette borne. Sans elle, n'importe quel datagramme sur 2152 dont les
+/// octets 8 et suivants ressemblent a de l'IP passerait pour un tunnel : la
+/// lecture du quartet de version est une confirmation, pas un filtre.
+///
+/// La fragmentation ne peut pas la mettre en defaut, contrairement a ce
+/// qu'on pourrait craindre — un premier fragment annonce bien la longueur du
+/// datagramme entier, mais il n'arrive jamais ici : `validate_udp_length`
+/// exige l'egalite stricte entre la longueur UDP declaree et les octets
+/// presents, donc un datagramme fragmente n'expose aucune couche transport.
 fn peel_gtp_u(payload: &[u8]) -> Option<DecodedLink<'_>> {
     /// Numero de version de GTPv1, sur les trois bits de poids fort.
     const VERSION_1: u8 = 1;
@@ -292,6 +298,12 @@ fn peel_gtp_u(payload: &[u8]) -> Option<DecodedLink<'_>> {
     {
         return None;
     }
+
+    // Le champ porte la longueur de tout ce qui suit les huit premiers
+    // octets. On s'y tient : ce qui deborde n'appartient pas au message, et
+    // ce que le message annonce doit etre present.
+    let announced = usize::from(u16::from_be_bytes([payload[2], payload[3]]));
+    let payload = payload.get(..HEADER_LEN + announced)?;
 
     let mut offset = HEADER_LEN;
     if flags & OPTIONAL_FIELDS != 0 {
@@ -426,8 +438,15 @@ mod tests {
     /// la premiere extension (`c0`, PDCP PDU number) et la chaine elle-meme,
     /// `01 09 04 00` : longueur 1 mot de quatre octets, contenu `09 04`,
     /// suivant `00` qui la ferme. L'IPv4 interne commence a l'octet 16.
+    ///
+    /// **Un seul champ differe de la capture** : la longueur annoncee, aux
+    /// octets 2 et 3, ramenee de `0x05e4` (1508) a `0x0024` (36) pour valoir
+    /// cet extrait et non le datagramme entier. La trame d'origine etant un
+    /// premier fragment, sa longueur declaree parle du tout ; la garder
+    /// reviendrait a tester la chaine d'extension sur un message que le
+    /// peleur doit precisement refuser.
     const REAL_GTP_EXTENSION_HEADER: &[u8] = &[
-        0x36, 0xff, 0x05, 0xe4, 0x00, 0x10, 0x06, 0x57, 0x00, 0x05, 0x00, 0xc0, 0x01, 0x09, 0x04,
+        0x36, 0xff, 0x00, 0x24, 0x00, 0x10, 0x06, 0x57, 0x00, 0x05, 0x00, 0xc0, 0x01, 0x09, 0x04,
         0x00, 0x45, 0x00, 0x05, 0xdc, 0xdc, 0xfa, 0x40, 0x00, 0x3f, 0x06, 0xd2, 0xe7, 0x0a, 0x9b,
         0xb6, 0xca, 0x0a, 0x9b, 0xba, 0x39, 0xa2, 0x27, 0x17, 0x75, 0x96, 0x12, 0xe6, 0x03,
     ];
@@ -449,6 +468,48 @@ mod tests {
         let mut bytes = REAL_GTP_EXTENSION_HEADER.to_vec();
         bytes[12] = 0x00;
         assert!(peel_gtp_u(&bytes).is_none());
+    }
+
+    /// Octets reels : la charge UDP complete de la trame 3 de
+    /// `gtp1_gn_normal_incl_fragmentation.pcap`. Datagramme entier, non
+    /// fragmente — `30` = version 1, PT=1, aucun flag ; `ff` = G-PDU ;
+    /// longueur `0x0028` = 40, soit exactement les 48 octets de charge moins
+    /// les 8 de l'en-tete. Interne : TCP 1923 -> 80.
+    const REAL_GTP_G_PDU: &[u8] = &[
+        0x30, 0xff, 0x00, 0x28, 0x8c, 0x61, 0xbe, 0x36, 0x45, 0x00, 0x00, 0x28, 0x52, 0x66, 0x40,
+        0x00, 0x80, 0x06, 0xb0, 0x3b, 0x0a, 0x83, 0x2f, 0xb9, 0x4f, 0x65, 0x6e, 0x8d, 0x07, 0x83,
+        0x00, 0x50, 0xcd, 0x6c, 0x69, 0xb8, 0x6f, 0xc3, 0x54, 0x94, 0x50, 0x10, 0xfd, 0xca, 0xb6,
+        0x8b, 0x00, 0x00,
+    ];
+
+    /// La longueur annoncee borne le message. Sans elle, n'importe quel
+    /// datagramme sur 2152 dont les octets 8 et suivants ressemblent a de
+    /// l'IP serait etiquete GTP-U — la lecture du quartet de version ne
+    /// suffit pas a s'en premunir.
+    ///
+    /// Le champ est fiable : sur les 34 G-PDU reels du corpus, il vaut
+    /// exactement la charge utile moins huit octets, sans une exception. Et
+    /// il ne peut pas etre mis en defaut par la fragmentation, puisque UDP
+    /// exige deja l'egalite entre sa longueur declaree et les octets
+    /// presents — un datagramme fragmente n'expose aucune couche transport,
+    /// donc n'arrive jamais ici.
+    #[test]
+    fn the_announced_length_bounds_the_message() {
+        assert!(
+            peel_gtp_u(REAL_GTP_G_PDU).is_some(),
+            "la trame reelle passe"
+        );
+
+        // Longueur nulle : le message ne couvre meme pas son propre en-tete.
+        let mut empty = REAL_GTP_G_PDU.to_vec();
+        empty[2] = 0x00;
+        empty[3] = 0x00;
+        assert!(peel_gtp_u(&empty).is_none(), "longueur nulle refusee");
+
+        // Longueur qui deborde de la charge utile.
+        let mut beyond = REAL_GTP_G_PDU.to_vec();
+        beyond[3] = 0xff;
+        assert!(peel_gtp_u(&beyond).is_none(), "longueur debordante refusee");
     }
 
     /// Seul un G-PDU porte un paquet utilisateur. Le plan de controle et les
