@@ -14,6 +14,7 @@ pub mod udp;
 
 /// Errors that can occur when parsing transport layer packets
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum TransportError {
     #[error("Packet is too short to be a valid transport packet")]
     PacketTooShort,

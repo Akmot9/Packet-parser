@@ -3,44 +3,15 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-use crate::errors::ParsedPacketError;
+//! Regles de validation et d'extraction des parseurs, par couche.
+//!
+//! Module interne depuis la 11.0.0 : ses ~120 `validate_*` / `extract_*`
+//! etaient publics sans etre une API assumee, et figeaient par SemVer le
+//! moindre refactor de validation. La seule brique destinee aux
+//! consommateurs, la verification opt-in des checksums, vit dans
+//! [`crate::checksum`].
 
 pub mod application;
-pub mod checksum;
 pub mod data_link;
 pub mod internet;
 pub mod transport;
-
-pub fn validate_packet_length(packets: &[u8]) -> Result<(), ParsedPacketError> {
-    if packets.len() < 14 {
-        return Err(ParsedPacketError::PacketTooShort(packets.len() as u8));
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::validate_packet_length;
-    use crate::errors::ParsedPacketError;
-
-    #[test]
-    fn test_validate_packet_length_too_short() {
-        let short_packet = vec![0x00, 0x11, 0x22]; // Only 3 bytes, should fail
-        let result = validate_packet_length(&short_packet);
-        assert!(matches!(result, Err(ParsedPacketError::PacketTooShort(_))));
-    }
-
-    #[test]
-    fn test_validate_packet_length_valid() {
-        let valid_packet = vec![0x00; 14]; // Exactly 14 bytes, should pass
-        let result = validate_packet_length(&valid_packet);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_validate_packet_length_long() {
-        let long_packet = vec![0x00; 100]; // More than 14 bytes, should pass
-        let result = validate_packet_length(&long_packet);
-        assert!(result.is_ok());
-    }
-}

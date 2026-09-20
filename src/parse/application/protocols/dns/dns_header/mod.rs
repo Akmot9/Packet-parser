@@ -14,6 +14,7 @@ use crate::{
 };
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct DnsHeader {
     pub transaction_id: u16,
     pub flags: u16,

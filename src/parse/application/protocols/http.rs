@@ -33,6 +33,7 @@ use crate::{
 /// All variable-length fields are zero-copy borrows into the original
 /// packet payload: no packet bytes are copied during parsing.
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct HttpRequest<'a> {
     pub method: &'a str,
     pub uri: &'a str,

@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum TcpError {
     #[error("Packet too short to be a valid TCP header")]
     PacketTooShort,
@@ -13,6 +14,13 @@ pub enum TcpError {
     #[error("Invalid data offset: {0}")]
     InvalidDataOffset(u8),
 
-    #[error("Invalid TCP header length")]
-    InvalidHeaderLength,
+    /// SYN et FIN ensemble : aucune pile conforme n'emet cette combinaison
+    /// (ouvrir et fermer la connexion dans le meme segment). C'est une
+    /// signature classique de scan et d'evasion de pare-feu.
+    #[error("Invalid TCP flags {flags:#04x}: SYN and FIN are both set")]
+    InvalidFlags { flags: u8 },
+
+    /// Bits reserves non nuls (RFC 9293 §3.1 : « must be zero »).
+    #[error("TCP reserved bits are set: {bits:#05b}")]
+    ReservedBitsSet { bits: u8 },
 }

@@ -356,15 +356,6 @@ pub fn extract_s7_protocol_version(packet: &[u8]) -> Result<S7ProtocolVersion, S
         .ok_or(S7CommParseError::InvalidS7ProtocolId { protocol_id })
 }
 
-/// Returns `true` when the payload carries an S7CommPlus PDU (protocol id
-/// 0x72) behind a valid TPKT + COTP DT framing.
-pub fn is_s7commplus_payload(packet: &[u8]) -> bool {
-    matches!(
-        extract_s7_protocol_version(packet),
-        Ok(S7ProtocolVersion::S7CommPlus)
-    )
-}
-
 /// Checks the S7 header bytes starting at `s7_start` and returns the typed
 /// header, error class/code included when the packet carries them.
 ///
@@ -904,14 +895,12 @@ mod tests {
             extract_s7_protocol_version(&s7comm).unwrap(),
             S7ProtocolVersion::S7Comm
         );
-        assert!(!is_s7commplus_payload(&s7comm));
 
         let s7commplus = hex::decode(S7COMMPLUS_CONNECT).expect("valid hex");
         assert_eq!(
             extract_s7_protocol_version(&s7commplus).unwrap(),
             S7ProtocolVersion::S7CommPlus
         );
-        assert!(is_s7commplus_payload(&s7commplus));
     }
 
     #[test]
@@ -922,7 +911,6 @@ mod tests {
             extract_s7_protocol_version(&bytes).unwrap_err(),
             S7CommParseError::InvalidS7ProtocolId { protocol_id: 0x33 }
         );
-        assert!(!is_s7commplus_payload(&bytes));
 
         // Encapsulage non TPKT : la detection ne lit pas d'octet au hasard.
         assert_eq!(

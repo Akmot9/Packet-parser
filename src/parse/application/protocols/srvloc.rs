@@ -26,18 +26,21 @@ use crate::{checks::application::srvloc::*, errors::application::srvloc::SrvlocP
 ///
 /// Zero-copy: all variable-length fields borrow from the original packet.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct SrvlocPacket<'a> {
     pub header: SrvlocHeader<'a>,
     pub payload: SrvlocMessage<'a>,
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SrvlocHeader<'a> {
     V1(SrvlocHeaderV1<'a>),
     V2(SrvlocHeaderV2<'a>),
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct SrvlocHeaderV2<'a> {
     pub version: u8,
     pub function: u8,
@@ -62,6 +65,7 @@ pub struct SrvlocHeaderV2<'a> {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct SrvlocHeaderV1<'a> {
     pub version: u8,
     pub function: u8,
@@ -88,6 +92,7 @@ pub struct SrvlocHeaderV1<'a> {
 /// a la prochaine majeure (epic #76). Le decodage typed du body passe donc
 /// par [`SrvlocPacket::body`], qui retourne [`SrvlocBody`].
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SrvlocMessage<'a> {
     Raw(&'a [u8]),
 }

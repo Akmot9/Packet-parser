@@ -30,6 +30,7 @@ pub enum TransportDetails<'a> {
 
 /// Represents a transport layer packet (UDP, TCP, etc.)
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct Transport<'a> {
     /// The transport layer protocol name
     pub protocol: TransportProtocol,
@@ -116,40 +117,6 @@ impl<'a> Transport<'a> {
             }),
             None => Err(TransportError::UnsupportedProtocol),
         }
-    }
-}
-
-impl<'a> TryFrom<&'a [u8]> for Transport<'a> {
-    type Error = TransportError;
-
-    fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
-        // First try to parse as TCP (most common case)
-        // tempo de 100ms
-        // std::thread::sleep(std::time::Duration::from_nanos(1));
-        // println!("debug try_from: parsing TCP");
-        if let Ok(tcp_packet) = TcpPacket::try_from(packet) {
-            return Ok(Transport {
-                protocol: TransportProtocol::Tcp,
-                source_port: Some(tcp_packet.header.source_port),
-                destination_port: Some(tcp_packet.header.destination_port),
-                payload: Some(tcp_packet.payload),
-                details: Some(TransportDetails::Tcp(tcp_packet)),
-            });
-        }
-
-        // println!("debug try_from: parsing UDP");
-        // TODO: Add other protocol parsers here (UDP, etc.)
-        if let Ok(udp_packet) = UdpPacket::try_from(packet) {
-            return Ok(Transport {
-                protocol: TransportProtocol::Udp,
-                source_port: Some(udp_packet.source_port),
-                destination_port: Some(udp_packet.destination_port),
-                payload: Some(udp_packet.payload),
-                details: Some(TransportDetails::Udp(udp_packet)),
-            });
-        }
-        // If we get here, no parser could handle the packet
-        Err(TransportError::UnsupportedProtocol)
     }
 }
 

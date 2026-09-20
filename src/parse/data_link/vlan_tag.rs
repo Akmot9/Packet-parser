@@ -57,26 +57,102 @@ impl VlanTag {
     }
 }
 
+/// Taille d'un tag VLAN sur le wire : TCI (2 octets) + EtherType suivant (2).
+/// Au niveau du module et non associee a [`VlanStack`] : `Self` est generique
+/// (lifetime), donc interdit dans l'argument const de `as_chunks`.
+const TAG_LEN: usize = 4;
+
+/// Pile complete des tags VLAN d'une trame, du tag externe au tag interne
+/// (802.1ad / QinQ : S-tag puis C-tag ; ou deux 802.1Q empiles).
+///
+/// Vue zero-copie sur les octets de tags de la trame, deja valides par le
+/// parseur : aucune allocation sur le chemin chaud, quelle que soit la
+/// profondeur de la pile (bornee par la seule longueur de la trame).
+/// Vide pour une trame sans tag ; un seul element pour du 802.1Q simple.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct VlanStack<'a> {
+    // Suite de blocs de 4 octets : TCI puis EtherType suivant.
+    tags: &'a [u8],
+}
+
+impl<'a> VlanStack<'a> {
+    /// `tags` : les octets de la trame entre le premier TPID (exclu) et
+    /// l'EtherType de couche 3 (inclus), soit 4 octets par tag.
+    pub(crate) fn new(tags: &'a [u8]) -> Self {
+        debug_assert!(tags.len().is_multiple_of(TAG_LEN));
+        Self { tags }
+    }
+
+    /// Nombre de tags empiles.
+    pub fn len(&self) -> usize {
+        self.tags.len() / TAG_LEN
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tags.is_empty()
+    }
+
+    /// Les tags, du plus externe (S-tag) au plus interne (C-tag).
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = VlanTag> + ExactSizeIterator + 'a {
+        // `as_chunks` plutot que `chunks_exact` : la taille etant constante,
+        // il rend des `&[u8; TAG_LEN]` et supprime l'indexation.
+        self.tags
+            .as_chunks::<TAG_LEN>()
+            .0
+            .iter()
+            .map(|tag| VlanTag::from_tag_bytes(*tag))
+    }
+
+    /// Tag externe : le S-VLAN (reseau du fournisseur) d'une pile QinQ.
+    pub fn outer(&self) -> Option<VlanTag> {
+        self.iter().next()
+    }
+
+    /// Tag interne : le C-VLAN (reseau du client), celui que porte aussi
+    /// `DataLink::vlan`.
+    pub fn inner(&self) -> Option<VlanTag> {
+        self.iter().next_back()
+    }
+
+    /// Vrai pour une pile d'au moins deux tags : en dessous, `vlan` dit deja
+    /// tout et la pile n'est pas serialisee.
+    pub(crate) fn is_not_stacked(&self) -> bool {
+        self.len() < 2
+    }
+}
+
+impl Serialize for VlanStack<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(self.iter())
+    }
+}
+
 impl TryFrom<&[u8]> for VlanTag {
     type Error = crate::errors::data_link::DataLinkError; // adapte si tu as un VlanError
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         validate_vlan_tag_length(bytes)?;
+        Ok(Self::from_tag_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3],
+        ]))
+    }
+}
 
+impl VlanTag {
+    /// Decode les 4 octets d'un tag (TCI puis EtherType suivant). Infaillible :
+    /// toute valeur de TCI est un tag valide.
+    fn from_tag_bytes(bytes: [u8; 4]) -> Self {
         let tci = u16::from_be_bytes([bytes[0], bytes[1]]);
         let pcp = ((tci & 0b1110_0000_0000_0000) >> 13) as u8;
         let dei = ((tci & 0b0001_0000_0000_0000) >> 12) != 0;
         let id = tci & 0x0FFF;
 
-        let inner_ethertype_raw = u16::from_be_bytes([bytes[2], bytes[3]]);
-        let inner_ethertype = Ethertype::from(inner_ethertype_raw);
-
-        Ok(Self {
+        Self {
             id,
             pcp,
             dei,
-            inner_ethertype,
-        })
+            inner_ethertype: Ethertype::from(u16::from_be_bytes([bytes[2], bytes[3]])),
+        }
     }
 }
 
@@ -145,7 +221,10 @@ mod tests {
         let err = VlanTag::try_from(&[][..]).unwrap_err();
         assert_eq!(
             err,
-            crate::errors::data_link::DataLinkError::DataLinkTooShort(0)
+            crate::errors::data_link::DataLinkError::DataLinkTooShort {
+                required: 4,
+                actual: 0
+            }
         );
     }
 
@@ -154,7 +233,10 @@ mod tests {
         let err = VlanTag::try_from(&[0x00, 0x01, 0x08][..]).unwrap_err();
         assert_eq!(
             err,
-            crate::errors::data_link::DataLinkError::DataLinkTooShort(3)
+            crate::errors::data_link::DataLinkError::DataLinkTooShort {
+                required: 4,
+                actual: 3
+            }
         );
     }
 

@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use packet_parser::parse::transport::protocols::TransportProtocol;
 use packet_parser::{
     CorruptedLayerKind, LinkLayerError, LinkType, LinuxArphrdType, LinuxCookedPacketType,
-    NetworkProtocol, PacketFlow, ParseError, ParsedPacketError, is_supported, parse,
+    NetworkProtocol, PacketFlow, ParseError, is_supported, parse,
 };
 
 /// Packet #1 extracted from Sonar's `test_files/raw_ip.pcapng` fixture.
@@ -243,7 +243,7 @@ fn assert_ethernet_apis_match(bytes: &[u8]) {
     assert!(explicit.data_link.as_ethernet().is_some());
 }
 
-fn parse_through_legacy_api(bytes: &[u8]) -> Result<PacketFlow<'_>, ParsedPacketError> {
+fn parse_through_legacy_api(bytes: &[u8]) -> Result<PacketFlow<'_>, ParseError> {
     PacketFlow::try_from(bytes)
 }
 
@@ -280,7 +280,7 @@ fn borrowed_and_owned_link_layers_share_the_same_schema() {
     let bytes = ethernet_frame_with_unknown_ethertype();
     let flow = parse(LinkType::ETHERNET, bytes.as_slice()).unwrap();
     let borrowed = serde_json::to_value(&flow.data_link).unwrap();
-    let owned = serde_json::to_value(&flow.to_owned().data_link).unwrap();
+    let owned = serde_json::to_value(&flow.to_owned_flow().data_link).unwrap();
 
     assert_eq!(borrowed, owned);
     assert_eq!(
@@ -303,7 +303,7 @@ fn borrowed_and_owned_vlan_link_layers_share_the_same_schema() {
     let bytes = vlan_ipv4_udp();
     let flow = parse(LinkType::ETHERNET, bytes.as_slice()).unwrap();
     let borrowed = serde_json::to_value(&flow.data_link).unwrap();
-    let owned = serde_json::to_value(&flow.to_owned().data_link).unwrap();
+    let owned = serde_json::to_value(&flow.to_owned_flow().data_link).unwrap();
 
     assert_eq!(borrowed, owned);
     assert_eq!(borrowed["network_protocol"]["kind"], "ipv4");
@@ -363,7 +363,7 @@ fn raw_borrowed_and_owned_models_share_a_schema_without_ethernet_fields() {
     ] {
         let flow = assert_raw_link(bytes, protocol, version);
         let borrowed = serde_json::to_value(&flow.data_link).unwrap();
-        let owned_link = flow.to_owned().data_link;
+        let owned_link = flow.to_owned_flow().data_link;
         let owned = serde_json::to_value(&owned_link).unwrap();
 
         assert_eq!(borrowed, owned);
@@ -502,7 +502,7 @@ fn linux_sll_borrowed_and_owned_models_share_a_non_ethernet_schema() {
     let bytes = sll_ipv4_loopback_fixture();
     let flow = assert_sll_link(&bytes, NetworkProtocol::Ipv4);
     let borrowed = serde_json::to_value(&flow.data_link).unwrap();
-    let owned_link = flow.to_owned().data_link;
+    let owned_link = flow.to_owned_flow().data_link;
     let owned = serde_json::to_value(&owned_link).unwrap();
 
     assert_eq!(borrowed, owned);
@@ -693,7 +693,7 @@ fn linux_sll2_borrowed_and_owned_models_share_a_non_ethernet_schema() {
     let bytes = sll2_ipv4_tshark_vector();
     let flow = assert_sll2_link(&bytes, NetworkProtocol::Ipv4);
     let borrowed = serde_json::to_value(&flow.data_link).unwrap();
-    let owned_link = flow.to_owned().data_link;
+    let owned_link = flow.to_owned_flow().data_link;
     let owned = serde_json::to_value(&owned_link).unwrap();
 
     assert_eq!(borrowed, owned);
@@ -908,10 +908,77 @@ fn explicit_ethernet_errors_match_the_legacy_api() {
         let explicit = parse(LinkType::ETHERNET, bytes.as_slice()).unwrap_err();
         let legacy = parse_through_legacy_api(bytes.as_slice()).unwrap_err();
 
-        assert!(matches!(&explicit, ParseError::InvalidDataLink(_)));
-        assert!(matches!(&legacy, ParseError::InvalidDataLink(_)));
+        for error in [&explicit, &legacy] {
+            assert!(matches!(
+                error,
+                ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+                    link_type: LinkType::ETHERNET,
+                    required: 14,
+                    actual,
+                }) if *actual == len
+            ));
+        }
         assert_eq!(explicit.to_string(), legacy.to_string());
     }
+}
+
+/// Contrat d'erreur de `sprint_02.md`, verifie sur tous les LINKTYPE cables,
+/// Ethernet compris (epic #76) : un paquet trop court pour son en-tete de
+/// liaison rend `InvalidLinkLayer(Truncated)` avec **son** LINKTYPE, la
+/// taille requise et la taille reelle. Traiter une erreur de liaison ne
+/// depend plus du LINKTYPE de la capture.
+#[test]
+fn every_wired_link_type_reports_truncation_through_the_same_contract() {
+    // (LINKTYPE, plus petit en-tete de liaison lisible)
+    let wired = [
+        (LinkType::ETHERNET, 14),
+        (LinkType::RAW, 1),
+        (LinkType::IPV4, 1),
+        (LinkType::IPV6, 1),
+        (LinkType::LINUX_SLL, 16),
+        (LinkType::LINUX_SLL2, 20),
+        (LinkType::IEEE802_3BR, 8),
+    ];
+    for (link_type, header_len) in wired {
+        assert!(is_supported(link_type), "{link_type}");
+        for len in 0..header_len {
+            let bytes = vec![0x55_u8; len];
+            let error = parse(link_type, bytes.as_slice()).unwrap_err();
+            assert!(
+                matches!(
+                    &error,
+                    ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+                        link_type: reported,
+                        required,
+                        actual,
+                    }) if *reported == link_type && *actual == len && *required > len
+                ),
+                "{link_type} tronque a {len} octets : {error:?}"
+            );
+        }
+    }
+}
+
+/// Une trame Ethernet coupee au milieu de sa pile VLAN rapporte la taille
+/// requise **tags compris**, et la taille reelle sans troncature a 8 bits
+/// (l'ancienne variante `DataLinkTooShort(u8)` annoncait 44 octets pour une
+/// trame de 300).
+#[test]
+fn ethernet_truncated_inside_its_vlan_stack_reports_exact_sizes() {
+    // 12 octets de MAC, S-tag 0x88a8 complet, puis C-tag ampute de son
+    // dernier octet : 21 octets pour 22 requis.
+    let mut frame = vec![0_u8; 12];
+    frame.extend_from_slice(&[0x88, 0xA8, 0x00, 0xC8, 0x81, 0x00, 0x00, 0x68, 0x08]);
+
+    let error = parse(LinkType::ETHERNET, frame.as_slice()).unwrap_err();
+    assert!(matches!(
+        error,
+        ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+            link_type: LinkType::ETHERNET,
+            required: 22,
+            actual: 21,
+        })
+    ));
 }
 
 #[test]
@@ -928,7 +995,6 @@ fn truncated_vlan_errors_match_the_legacy_api() {
     }
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_api_matches_normal_dispatch() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -942,7 +1008,6 @@ fn explicit_timed_api_matches_normal_dispatch() {
     assert!(timing.total_ns >= timing.l2_ns);
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_raw_api_matches_success_and_l3_corruption() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -966,7 +1031,6 @@ fn explicit_timed_raw_api_matches_success_and_l3_corruption() {
     }
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_raw_errors_match_normal_errors() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -990,7 +1054,6 @@ fn explicit_timed_raw_errors_match_normal_errors() {
     }
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_linux_sll_api_matches_success_and_l3_corruption() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -1018,7 +1081,6 @@ fn explicit_timed_linux_sll_api_matches_success_and_l3_corruption() {
     }
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_linux_sll_error_matches_the_normal_error() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -1042,7 +1104,6 @@ fn explicit_timed_linux_sll_error_matches_the_normal_error() {
     assert!(timing.total_ns >= timing.l2_ns);
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_linux_sll2_api_matches_success_and_l3_corruption() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -1074,7 +1135,6 @@ fn explicit_timed_linux_sll2_api_matches_success_and_l3_corruption() {
     }
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn explicit_timed_linux_sll2_error_matches_the_normal_error() {
     use packet_parser::{parse_timed, timing::ParseTiming};
@@ -1098,7 +1158,6 @@ fn explicit_timed_linux_sll2_error_matches_the_normal_error() {
     assert!(timing.total_ns >= timing.l2_ns);
 }
 
-#[cfg(feature = "parse_timing")]
 #[test]
 fn timed_api_rejects_unsupported_link_type_before_decoding() {
     use packet_parser::{parse_timed, timing::ParseTiming};

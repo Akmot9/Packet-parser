@@ -69,7 +69,7 @@ fn main() -> Result<(), PacketCaptureError> {
                 println!("{parsed_packet}");
 
                 // 2) version owned sérialisable
-                let owned = parsed_packet.to_owned();
+                let owned = parsed_packet.to_owned_flow();
 
                 // 3) JSON compact (recommandé pour fichier / IPC)
                 let json = serde_json::to_string(&owned)

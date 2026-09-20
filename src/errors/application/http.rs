@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum HttpParseError {
     #[error("Invalid UTF-8 in HTTP request")]
     InvalidUtf8,

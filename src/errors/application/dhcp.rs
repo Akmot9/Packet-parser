@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DhcpParseError {
     #[error("DHCP packet too short: expected at least {expected} bytes, got {actual}")]
     PacketTooShort { expected: usize, actual: usize },

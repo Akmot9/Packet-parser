@@ -29,6 +29,7 @@ use crate::{
 ///
 /// All borrowed fields are zero-copy views into the original packet payload.
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SmtpMessage<'a> {
     /// A client command, e.g. `MAIL FROM:<a@b.com>`.
     Command {

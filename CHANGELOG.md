@@ -55,6 +55,83 @@ Travaux de la 11.0.0 (epic #76) — branche `release/11.0.0`.
   - Tous les types GIOP publics deviennent `#[non_exhaustive]` : les
     prochains ajouts seront additifs.
 
+- **Purge de la surface publique** (lot B de l'epic #76 : #26, #27, #32,
+  #48). Migration : `MIGRATION-11.md` §Purge.
+  - `checks` devient un module interne. Ses ~120 `validate_*` /
+    `extract_*` etaient publics sans etre une API assumee et figeaient par
+    SemVer tout refactor de validation. La seule brique destinee aux
+    consommateurs, la verification opt-in des checksums, est promue en
+    `packet_parser::checksum` (ex-`checks::checksum`).
+  - `PacketFlow::to_owned()` devient `to_owned_flow()` : l'ancien nom
+    masquait `ToOwned::to_owned` et rendait un type different et ampute
+    (#27). Pas d'alias deprecie : le nom etait le piege.
+  - `parse_timing` est enfin additive (#26) : une seule forme de
+    `ParseTiming` (5 `u64`, a zero sans la feature), `parse_timed` et
+    `PacketFlow::try_from_timed` toujours disponibles. Supprimes :
+    `timing::{now, elapsed_ns, ParseReport, LayerAttempt}` et la macro
+    exportee `time_block_ns!` (zero appelant). Le pipeline duplique
+    disparait au profit d'un pipeline unique ; `parse()` ne regresse pas
+    (~252 ns contre ~269 ns sur une trame TCP reelle) et activer la feature
+    ne le ralentit plus.
+  - Code mort public supprime : `ApplicationProtocol` et son `Display`, 9
+    des 10 variantes d'`ApplicationError` (qui devient `#[non_exhaustive]`),
+    `TryFrom<&[u8]> for Transport` (devinait TCP puis UDP a l'aveugle),
+    `ParseError::PacketTooShort`, l'alias `ParsedPacketError`,
+    `QuicPacketType::Unknown` et sa branche morte (#48).
+  - `Packet::packet_to_pcap(path)` prend le chemin de sortie au lieu
+    d'ecrire `output.pcap` en dur dans le repertoire courant.
+  - La feature vide `doc-diagrams` est supprimee.
+
+- **Erreurs** (lot A de l'epic #76 : #21, #24, reliquat de sprint_02).
+  Migration : `MIGRATION-11.md` §Erreurs.
+  - `#[non_exhaustive]` sur les 46 enums d'erreur publics (#21) : ajouter
+    une variante d'erreur n'est plus une rupture. Un test lit `src/errors`
+    pour qu'un nouveau protocole ne puisse pas l'oublier.
+  - **SYN+FIN : conserver et signaler** (#24). Un en-tete TCP lisible dont
+    les drapeaux (SYN et FIN ensemble) ou les bits reserves sont incoherents
+    **garde sa couche transport** — donc ses ports et la correlation de flux
+    — et l'anomalie est rapportee dans `corrupted`, nommee :
+    `TcpError::InvalidFlags { flags }` ou `ReservedBitsSet { bits }`, au
+    lieu du trompeur `InvalidHeaderLength`, qui disparait. La couche
+    application n'est pas sondee. `TcpPacket::try_from` ne rejette plus ces
+    segments ; `TcpPacket::anomaly()` les qualifie. `CorruptedLayer`
+    distingue desormais corruption structurelle (couche `None`) et anomalie
+    semantique (couche conservee).
+  - **Un seul chemin d'erreur de liaison** : Ethernet rapporte
+    `ParseError::InvalidLinkLayer(LinkLayerError::Truncated { link_type:
+    ETHERNET, required, actual })` comme RAW, SLL et SLL2.
+    `ParseError::InvalidDataLink` disparait ; `DataLinkError` reste l'erreur
+    de `DataLink::try_from`, hors de `ParseError`. Contrat verifie par test
+    sur les sept LINKTYPE cables.
+  - `DataLinkError::DataLinkTooShort(u8)` devient `{ required, actual }` en
+    `usize` : l'ancienne variante tronquait la longueur a 8 bits (une trame
+    de 300 octets coupee dans sa pile VLAN annoncait 44 octets).
+
+- **Champs et variantes** (lot C de l'epic #76 : #82, #9). Migration :
+  `MIGRATION-11.md` §Champs et variantes.
+  - `DataLink::vlan_stack` / `DataLinkOwned::vlan_stack` : la pile VLAN
+    complete, du tag externe (S-VLAN) au tag interne (C-VLAN) (#82).
+    `VlanStack<'a>` est une vue zero-copie, sans allocation ; serialisee
+    seulement a partir de deux tags, donc le JSON des trames sans tag ou a
+    tag unique ne change pas. `vlan` reste le tag interne. Le chemin sans
+    tag ne regresse pas (253 ns contre 252).
+  - `IpType::Broadcast` : `255.255.255.255` sortait classee `Public`, faute
+    de bras dedie (#9).
+  - `#[non_exhaustive]` etendu a 124 types de `parse` : les enums qui
+    suivent une spec ou un registre evolutif, et les structs que seul le
+    parseur construit. C'est la cause racine de l'epic : six des quatorze
+    ruptures etaient « ajouter un champ ou une variante a un type
+    exhaustif ». Restent exhaustifs, avec leur raison, les types que les
+    consommateurs construisent (`VlanTag`, `CorruptedLayer`, `TlsVersion`,
+    `BridgeId`, `ParseTiming`, `Packet`, tout `owned`) et les enums fermes
+    par construction (`Ecn`, `QuicPacketType`). Regle verrouillee par
+    `tests/public_types_are_non_exhaustive.rs`.
+
+### Deprecie
+
+- `convert::hex_stream_to_bytes`, qui panique sur une entree invalide : lui
+  preferer `try_hex_stream_to_bytes`.
+
 ### Ajoute
 
 - `giop::giop_messages(payload)` : itere sur les messages GIOP consecutifs

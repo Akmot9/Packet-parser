@@ -39,8 +39,9 @@ use transport::Transport;
 
 use crate::{
     LinkLayer, LinkType, NetworkProtocol, ParseError,
-    errors::{ParsedPacketError, internet::InternetError, transport::TransportError},
+    errors::{internet::InternetError, transport::TransportError},
     owned::PacketFlowOwned,
+    timing::{NoTiming, Stage, TimingSink},
 };
 
 pub mod application;
@@ -108,28 +109,27 @@ impl ParseConfig {
     }
 }
 
-/// Timed counterpart of [`fn@parse`], using the exact same link-type dispatcher.
-#[cfg(feature = "parse_timing")]
+/// Timed counterpart of [`fn@parse`]: the exact same pipeline, reporting the
+/// time spent in each layer.
+///
+/// Always available. Without the `parse_timing` feature nothing is measured
+/// and `timing` comes back zeroed, so enabling the feature anywhere in the
+/// dependency graph never changes this signature (issue #26).
 #[inline(always)]
 pub fn parse_timed<'a>(
     link_type: LinkType,
     bytes: &'a [u8],
     timing: &mut crate::timing::ParseTiming,
 ) -> Result<PacketFlow<'a>, ParseError> {
-    use crate::timing::{elapsed_ns, now};
-
-    *timing = crate::timing::ParseTiming::default();
-    let total_t0 = now();
-    let result = (|| {
-        let decoded = link::decode_timed(link_type, bytes, timing)?;
-        PacketFlow::parse_decoded_timed(decoded, timing, 0)
-    })();
-    timing.total_ns = elapsed_ns(total_t0);
-    result
+    timing.time_total(|timing| {
+        let decoded = link::decode_into(link_type, bytes, timing)?;
+        PacketFlow::parse_decoded_into(decoded, 0, &[], timing)
+    })
 }
 
 /// Layer at which recognized-but-invalid bytes stopped the parsing.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum CorruptedLayerKind {
     /// The EtherType announced a known L3 protocol but its bytes are invalid.
     Internet,
@@ -142,8 +142,17 @@ pub enum CorruptedLayerKind {
 /// field) but whose bytes are invalid.
 ///
 /// Parsing degrades gracefully instead of failing: every layer *above* the
-/// corrupted one stays filled, the corrupted layer and everything below it
-/// are `None`, and the corruption is reported here.
+/// reported one stays filled, and the problem is reported here. Two cases:
+///
+/// - **structural corruption** — the bytes cannot be read as this protocol
+///   (truncated header, impossible length): the reported layer and
+///   everything below it are `None`;
+/// - **semantic anomaly** — the header reads fine but says something no
+///   conforming stack emits (TCP SYN+FIN, non-zero reserved bits): the
+///   reported layer is **kept**, so its ports remain available for flow
+///   correlation, and only the layers below it are `None`.
+///
+/// To tell them apart, check whether the layer named by `layer` is `Some`.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
 pub struct CorruptedLayer {
     /// Which layer had invalid bytes.
@@ -173,6 +182,7 @@ pub struct CorruptedLayer {
 /// ignored. Two packets of the same conversation carrying different data
 /// therefore compare equal and hash identically.
 #[derive(Debug, Clone, Serialize, Eq)]
+#[non_exhaustive]
 pub struct PacketFlow<'a> {
     /// Link layer (mandatory), tagged with its canonical LINKTYPE.
     pub data_link: LinkLayer<'a>,
@@ -264,12 +274,18 @@ impl<'a> PacketFlow<'a> {
         dispatch::classify(transport, decode_as)
     }
 
-    /// Converts this borrowed [`PacketFlow`] into an owned version.
+    /// Converts this borrowed [`PacketFlow`] into a [`PacketFlowOwned`].
     ///
     /// This performs the necessary allocations to detach from the original
     /// packet buffer and is suitable for storage, serialization or cross-thread
-    /// usage.
-    pub fn to_owned(&self) -> PacketFlowOwned {
+    /// usage. The conversion is **lossy**: the owned form drops the payloads
+    /// and the per-layer `details`.
+    ///
+    /// Named `to_owned_flow` rather than `to_owned` on purpose: `to_owned`
+    /// shadowed [`ToOwned::to_owned`], so `flow.to_owned()` read as a clone
+    /// while returning a different, amputated type (issue #27). To clone a
+    /// flow, use [`Clone::clone`].
+    pub fn to_owned_flow(&self) -> PacketFlowOwned {
         PacketFlowOwned::from(self)
     }
 
@@ -318,7 +334,20 @@ impl<'a> PacketFlow<'a> {
         match internet {
             Some(internet) => {
                 match Transport::try_from_parts(internet.payload_protocol, internet.payload) {
-                    Ok(transport) => (Some(transport), None),
+                    Ok(transport) => {
+                        // Anomalie semantique (SYN+FIN, bits reserves) :
+                        // conserver et signaler. Les ports restent, donc la
+                        // correlation de flux aussi (#24).
+                        let anomaly = match &transport.details {
+                            Some(crate::TransportDetails::Tcp(tcp)) => tcp.anomaly(),
+                            _ => None,
+                        };
+                        let corrupted = anomaly.map(|anomaly| CorruptedLayer {
+                            layer: CorruptedLayerKind::Transport,
+                            error: TransportError::from(anomaly).to_string(),
+                        });
+                        (Some(transport), corrupted)
+                    }
                     Err(TransportError::UnsupportedProtocol) => (None, None),
                     Err(e) => (
                         None,
@@ -404,7 +433,7 @@ impl<'a> PacketFlow<'a> {
     pub(crate) fn parse_decoded(
         decoded: link::DecodedLink<'a>,
         depth: u8,
-    ) -> Result<Self, ParsedPacketError> {
+    ) -> Result<Self, ParseError> {
         Self::parse_decoded_with(decoded, depth, &[])
     }
 
@@ -414,55 +443,35 @@ impl<'a> PacketFlow<'a> {
         decoded: link::DecodedLink<'a>,
         depth: u8,
         decode_as: &[(u16, DecodeAsProtocol)],
-    ) -> Result<Self, ParsedPacketError> {
-        let (data_link, network_protocol, network_payload) = decoded.into_parts();
-        let (internet, l3_corruption) = Self::parse_l3(network_protocol, network_payload);
-        let (transport, l4_corruption) = Self::parse_l4(internet.as_ref());
-        let (application, inner) =
-            Self::parse_l7_and_inner(internet.as_ref(), transport.as_ref(), depth, decode_as);
-        let application = application.or_else(|| Self::detect_stp(&data_link));
-
-        Ok(PacketFlow {
-            data_link,
-            internet,
-            transport,
-            application,
-            inner,
-            corrupted: l3_corruption.or(l4_corruption),
-        })
+    ) -> Result<Self, ParseError> {
+        Self::parse_decoded_into(decoded, depth, decode_as, &mut NoTiming)
     }
 
-    // -------------------------------------------------------------------------
-    // Timed parsing (feature-gated) — does NOT change PacketFlow API/fields.
-    // Uses crate::timing helpers so "feature off" has zero impact elsewhere.
-    // -------------------------------------------------------------------------
-
-    #[cfg(feature = "parse_timing")]
+    /// Le pipeline L3/L4/L7, unique : le chemin normal le traverse avec
+    /// [`NoTiming`] (chaque etape se reduit a son corps), [`parse_timed`]
+    /// avec un [`ParseTiming`](crate::timing::ParseTiming). `l7` inclut la
+    /// detection de tunnel et le parsing recursif des paquets encapsules,
+    /// qui eux ne sont pas chronometres separement.
     #[inline(always)]
-    pub(crate) fn parse_decoded_timed(
+    pub(crate) fn parse_decoded_into(
         decoded: link::DecodedLink<'a>,
-        timing: &mut crate::timing::ParseTiming,
         depth: u8,
-    ) -> Result<Self, ParsedPacketError> {
-        use crate::timing::{elapsed_ns, now};
-
+        decode_as: &[(u16, DecodeAsProtocol)],
+        sink: &mut impl TimingSink,
+    ) -> Result<Self, ParseError> {
         let (data_link, network_protocol, network_payload) = decoded.into_parts();
-        let t0 = now();
-        let internet = Self::parse_l3(network_protocol, network_payload);
-        timing.l3_ns = elapsed_ns(t0);
-        let (internet, l3_corruption) = internet;
-
-        let t0 = now();
-        let (transport, l4_corruption) = Self::parse_l4(internet.as_ref());
-        timing.l4_ns = elapsed_ns(t0);
-
-        // l7_ns includes tunnel detection and the recursive parsing of any
-        // encapsulated packet.
-        let t0 = now();
-        let (application, inner) =
-            Self::parse_l7_and_inner(internet.as_ref(), transport.as_ref(), depth, &[]);
-        let application = application.or_else(|| Self::detect_stp(&data_link));
-        timing.l7_ns = elapsed_ns(t0);
+        let (internet, l3_corruption) = sink.time(Stage::L3, || {
+            Self::parse_l3(network_protocol, network_payload)
+        });
+        let (transport, l4_corruption) = sink.time(Stage::L4, || Self::parse_l4(internet.as_ref()));
+        // Un transport signale anormal n'est pas sonde au-dela : son payload
+        // ne vient pas d'une pile conforme.
+        let probed_transport = transport.as_ref().filter(|_| l4_corruption.is_none());
+        let (application, inner) = sink.time(Stage::L7, || {
+            let (application, inner) =
+                Self::parse_l7_and_inner(internet.as_ref(), probed_transport, depth, decode_as);
+            (application.or_else(|| Self::detect_stp(&data_link)), inner)
+        });
 
         Ok(PacketFlow {
             data_link,
@@ -474,13 +483,9 @@ impl<'a> PacketFlow<'a> {
         })
     }
 
-    /// Parses a raw packet buffer into a [`PacketFlow`] and fills timing data.
-    ///
-    /// This is feature-gated (`parse_timing`) and does not affect normal parsing.
-    ///
-    /// Convention:
-    /// - `l*_ns` is the cost of the *attempt* (so it may be >0 even if unsupported).
-    #[cfg(feature = "parse_timing")]
+    /// Parses an Ethernet frame into a [`PacketFlow`] and fills timing data.
+    /// See [`parse_timed`]: the timing stays zeroed without the
+    /// `parse_timing` feature.
     #[inline(always)]
     pub fn try_from_timed(
         bytes: &'a [u8],
@@ -1699,9 +1704,9 @@ mod tests {
         let packet = sample_ipv6_tcp_packet();
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
-        let owned = flow.to_owned();
+        let owned = flow.to_owned_flow();
 
-        assert_eq!(owned.data_link, flow.to_owned().data_link);
+        assert_eq!(owned.data_link, flow.to_owned_flow().data_link);
 
         match (&owned.internet, &flow.internet) {
             (Some(owned_internet), Some(flow_internet)) => {
@@ -1734,14 +1739,14 @@ mod tests {
             _ => panic!("owned.transport and flow.transport differ"),
         }
 
-        assert_eq!(owned.application, flow.to_owned().application);
+        assert_eq!(owned.application, flow.to_owned_flow().application);
     }
 
     #[cfg(feature = "parse_timing")]
     fn timed_parse(
         packet: &[u8],
     ) -> (
-        Result<PacketFlow<'_>, ParsedPacketError>,
+        Result<PacketFlow<'_>, ParseError>,
         crate::timing::ParseTiming,
     ) {
         let mut timing = crate::timing::ParseTiming::default();
@@ -1774,7 +1779,16 @@ mod tests {
     fn packetflow_timing_records_total_on_l2_error() {
         let (result, timing) = timed_parse(&[]);
 
-        assert!(matches!(result, Err(ParsedPacketError::InvalidDataLink(_))));
+        assert!(matches!(
+            result,
+            Err(ParseError::InvalidLinkLayer(
+                crate::LinkLayerError::Truncated {
+                    link_type: LinkType::ETHERNET,
+                    required: 14,
+                    actual: 0
+                }
+            ))
+        ));
         assert_total_timing_is_recorded(timing);
         assert!(timing.l2_ns > 0);
         assert_eq!(timing.l3_ns, 0);
@@ -2408,7 +2422,7 @@ mod tests {
         packet.extend_from_slice(&[0xFF; 6]);
 
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
-        let owned = flow.to_owned();
+        let owned = flow.to_owned_flow();
 
         assert_eq!(owned.corrupted, flow.corrupted);
     }
@@ -2418,7 +2432,7 @@ mod tests {
         let packet = sample_capwap_ieee80211_inner_tcp();
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
-        let owned = flow.to_owned();
+        let owned = flow.to_owned_flow();
 
         assert_eq!(
             owned
@@ -2442,7 +2456,6 @@ mod tests {
         assert!(inner.inner.is_none());
     }
 
-    #[cfg(feature = "parse_timing")]
     #[test]
     fn try_from_timed_returns_same_flow_as_try_from() {
         let packet = sample_capwap_ieee80211_inner_tcp();
@@ -2712,14 +2725,13 @@ mod tests {
         assert_eq!(records[0].length, 19);
     }
 
-    /// Politique SYN+FIN figee bout-en-bout (issue #24) : la combinaison
-    /// d'evasion classique est rejetee — la couche transport disparait et la
-    /// corruption est signalee. L'appelant perd les ports, donc la
-    /// correlation de flux : ce choix, comme le nom trompeur de l'erreur
-    /// partagee (`InvalidHeaderLength`), est reevalue avec l'epic #76 qui
-    /// pourra etendre `TcpError`.
+    /// Politique SYN+FIN figee bout-en-bout (issue #24, epic #76) :
+    /// **conserver et signaler**. La combinaison d'evasion classique garde
+    /// sa couche transport — donc ses ports, et la correlation de flux — et
+    /// l'anomalie est rapportee, nommee, dans `corrupted`. La couche
+    /// application n'est pas sondee.
     #[test]
-    fn syn_fin_packet_is_dropped_as_a_corrupted_transport_layer() {
+    fn syn_fin_packet_keeps_its_transport_layer_and_is_reported() {
         let mut packet = vec![
             0x00, 0x11, 0x22, 0x33, 0x44, 0x55, // dst MAC
             0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, // src MAC
@@ -2743,16 +2755,38 @@ mod tests {
         let flow = parse(LinkType::ETHERNET, packet.as_slice()).expect("frame decodes");
 
         assert!(flow.internet.is_some(), "la couche IP est conservee");
-        assert!(flow.transport.is_none(), "SYN+FIN supprime le transport");
-        let corrupted = flow.corrupted.as_ref().expect("corruption signalee");
+        let transport = flow
+            .transport
+            .as_ref()
+            .expect("SYN+FIN garde sa couche transport");
+        assert_eq!(transport.source_port, Some(12345));
+        assert_eq!(transport.destination_port, Some(443));
+        let corrupted = flow.corrupted.as_ref().expect("anomalie signalee");
         assert_eq!(corrupted.layer, CorruptedLayerKind::Transport);
-        // Nom d'erreur partage et trompeur, fige en attendant #76.
-        assert_eq!(corrupted.error, "TCP error: Invalid TCP header length");
+        assert_eq!(
+            corrupted.error,
+            "TCP error: Invalid TCP flags 0x03: SYN and FIN are both set"
+        );
+        assert!(flow.application.is_none(), "pas de sondage applicatif");
+        // Le modele owned porte les deux informations.
+        let owned = flow.to_owned_flow();
+        assert!(owned.transport.is_some());
+        assert!(owned.corrupted.is_some());
 
-        // Le meme paquet avec SYN seul garde sa couche transport : c'est
-        // bien la combinaison qui est rejetee.
+        // Bits reserves non nuls : meme politique, autre motif.
+        let reserved_index = packet.len() - 8;
         let syn_index = packet.len() - 7;
+        packet[reserved_index] = 0x54; // data offset 5, bits reserves 0b010
         packet[syn_index] = 0x02;
+        let flow = parse(LinkType::ETHERNET, packet.as_slice()).expect("frame decodes");
+        assert!(flow.transport.is_some());
+        assert_eq!(
+            flow.corrupted.as_ref().map(|c| c.error.as_str()),
+            Some("TCP error: TCP reserved bits are set: 0b010")
+        );
+
+        // Le meme paquet avec SYN seul et bits reserves nuls : rien a signaler.
+        packet[reserved_index] = 0x50;
         let flow = parse(LinkType::ETHERNET, packet.as_slice()).expect("frame decodes");
         let transport = flow.transport.expect("SYN seul est un transport valide");
         assert_eq!(transport.source_port, Some(12345));

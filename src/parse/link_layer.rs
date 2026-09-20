@@ -338,6 +338,7 @@ pub enum LinkLayerKind<'a> {
 /// Construction goes through format-specific constructors so `link_type`,
 /// `network_protocol` and `kind` cannot disagree.
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct LinkLayer<'a> {
     link_type: LinkType,
     network_protocol: NetworkProtocol,
@@ -572,6 +573,7 @@ mod tests {
             destination_mac: MacAddress([0, 1, 2, 3, 4, 5]),
             source_mac: MacAddress([6, 7, 8, 9, 10, 11]),
             vlan: None,
+            vlan_stack: Default::default(),
             ethertype: Ethertype(0x0800),
             payload,
         })
@@ -734,6 +736,7 @@ mod tests {
             destination_mac: MacAddress([0, 1, 2, 3, 4, 5]),
             source_mac: MacAddress([6, 7, 8, 9, 10, 11]),
             vlan: None,
+            vlan_stack: Default::default(),
             ethertype: Ethertype(0xabcd),
             payload: &[],
         });

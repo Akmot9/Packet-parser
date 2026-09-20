@@ -82,6 +82,7 @@ pub fn parse_dns_name(message: &[u8], start: usize) -> Result<(String, usize), D
 /// Resource record brut (RFC 1035 §4.1.3), partagé par les sections answer,
 /// authority et additional.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct RawRecord {
     pub name: String,
     pub rtype: u16,

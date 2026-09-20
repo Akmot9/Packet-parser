@@ -29,6 +29,7 @@ use crate::{
 
 /// Type d'un message SSDP, donne par sa premiere ligne.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SsdpMessageType {
     /// Recherche multicast `M-SEARCH * HTTP/1.1`.
     MSearch,
@@ -54,6 +55,7 @@ pub enum SsdpMessageType {
 /// 128-143: "CRLF final (ligne vide)"
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct SsdpPacket<'a> {
     /// Type de message donne par la premiere ligne.
     pub message_type: SsdpMessageType,

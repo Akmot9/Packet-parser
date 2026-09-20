@@ -115,6 +115,7 @@ use crate::{checks::application::ntp::*, errors::application::ntp::NtpPacketPars
 ///
 /// The `NtpPacket` struct represents a parsed NTP packet.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct NtpPacket {
     /// The first byte containing LI, Version, and Mode.
     pub flags: (u8, u8, u8),
@@ -147,6 +148,7 @@ pub struct NtpPacket {
 /// `[u8; 4]` (no allocation); use [`Refid::code`] or the `Display`
 /// implementation for a readable form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Refid {
     Ipv4(Ipv4Addr),
     KissCode([u8; 4]),

@@ -49,6 +49,7 @@ use crate::{
 /// Utilisé pour identifier le type de paquet reçu.
 #[repr(u16)]
 #[derive(Debug, Serialize, Clone, Eq, PartialEq, Hash, Default)]
+#[non_exhaustive]
 pub enum FrameId {
     /// Trame unicast générique.
     #[default]
@@ -100,6 +101,7 @@ impl FrameId {
 /// 112-127: "DCP Block Length"
 /// ```
 #[derive(Debug, Default, Serialize, Clone, Eq, PartialEq, Hash)]
+#[non_exhaustive]
 pub struct ProfinetPacket<'a> {
     /// Type de trame DCP.
     pub frame_id: FrameId,

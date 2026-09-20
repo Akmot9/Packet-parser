@@ -29,6 +29,7 @@ use crate::{
 ///
 /// Zero-copy: `command` and `payload` borrow from the original packet.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct BitcoinPacket<'a> {
     pub magic: u32,
     pub command: &'a str,

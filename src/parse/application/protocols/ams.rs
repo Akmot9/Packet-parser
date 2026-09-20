@@ -36,6 +36,7 @@ use crate::{
 ///
 /// Représente un paquet AMS (header + payload)
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AmsPacket<'a> {
     pub ams_target_net_id: [u8; 6], // ex: [0,0,0,0,0,130] => "0.0.0.0.0.130"
     pub ams_target_port: u16,

@@ -9,7 +9,11 @@ mod linux_sll;
 mod linux_sll2;
 pub(crate) mod raw_ip;
 
-use crate::{LinkLayer, LinkType, NetworkProtocol, ParseError};
+use crate::{
+    DataLink, LinkLayer, LinkLayerError, LinkType, NetworkProtocol, ParseError,
+    errors::data_link::DataLinkError,
+    timing::{NoTiming, Stage, TimingSink},
+};
 
 use ethernet::EthernetDecoder;
 use ieee802_3br::Ieee8023brDecoder;
@@ -73,6 +77,36 @@ pub(crate) const fn is_supported(link_type: LinkType) -> bool {
     decoder_for(link_type).is_some()
 }
 
+/// En-tete Ethernet II : deux adresses MAC et l'EtherType.
+pub(super) const ETHERNET_HEADER_LEN: usize = 14;
+
+/// Decode une trame Ethernet II portee par `link_type` et rapporte son
+/// echec dans le contrat d'erreur commun a tous les LINKTYPE :
+/// [`LinkLayerError::Truncated`], tailles exprimees sur le **paquet entier**.
+/// `framing` compte les octets du paquet hors de la trame (preambule et mCRC
+/// d'un mPacket 802.3br ; zero pour Ethernet).
+#[inline(always)]
+pub(super) fn decode_ethernet_frame<'a>(
+    link_type: LinkType,
+    frame: &'a [u8],
+    framing: usize,
+) -> Result<DataLink<'a>, ParseError> {
+    DataLink::try_from(frame).map_err(|error| {
+        let required = match error {
+            DataLinkError::DataLinkTooShort { required, .. } => required,
+            // Inatteignable : le parsing MAC n'echoue que sur une longueur,
+            // deja validee.
+            _ => ETHERNET_HEADER_LEN,
+        };
+        LinkLayerError::Truncated {
+            link_type,
+            required: required.saturating_add(framing),
+            actual: frame.len() + framing,
+        }
+        .into()
+    })
+}
+
 /// Internal contract implemented by each supported link-layer decoder.
 pub(crate) trait LinkDecoder {
     fn decode<'a>(bytes: &'a [u8]) -> Result<DecodedLink<'a>, ParseError>;
@@ -92,22 +126,17 @@ fn decode_with<'a>(kind: DecoderKind, bytes: &'a [u8]) -> Result<DecodedLink<'a>
 /// Selects a link decoder from the numeric link type.
 #[inline(always)]
 pub(crate) fn decode(link_type: LinkType, bytes: &[u8]) -> Result<DecodedLink<'_>, ParseError> {
-    match decoder_for(link_type) {
-        Some(kind) => decode_with(kind, bytes),
-        None => Err(ParseError::UnsupportedLinkType(link_type)),
-    }
+    decode_into(link_type, bytes, &mut NoTiming)
 }
 
-#[cfg(feature = "parse_timing")]
+/// Same dispatcher, reporting the decoding time to `sink`. An unsupported
+/// link type is rejected before anything is timed.
 #[inline(always)]
-pub(crate) fn decode_timed<'a>(
+pub(crate) fn decode_into<'a>(
     link_type: LinkType,
     bytes: &'a [u8],
-    timing: &mut crate::timing::ParseTiming,
+    sink: &mut impl TimingSink,
 ) -> Result<DecodedLink<'a>, ParseError> {
     let kind = decoder_for(link_type).ok_or(ParseError::UnsupportedLinkType(link_type))?;
-    let t0 = crate::timing::now();
-    let result = decode_with(kind, bytes);
-    timing.l2_ns = crate::timing::elapsed_ns(t0);
-    result
+    sink.time(Stage::L2, || decode_with(kind, bytes))
 }

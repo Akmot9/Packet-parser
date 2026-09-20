@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SrvlocPacketParseError {
     #[error("SRVLOC packet too short")]
     InvalidPacketLength,

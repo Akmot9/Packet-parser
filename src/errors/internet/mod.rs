@@ -11,6 +11,7 @@ pub mod ipv6;
 pub mod profinet;
 /// Errors that can occur when parsing or processing internet layer protocols
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum InternetError {
     /// Error related to ARP protocol
     #[error("ARP error: {0}")]

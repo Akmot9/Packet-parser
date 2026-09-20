@@ -8,8 +8,14 @@ use std::fmt;
 use std::net::IpAddr;
 // Définition de l'énumération `IpType`
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, Hash, PartialEq, Default)]
+#[non_exhaustive]
 pub enum IpType {
     Private,
+    /// Diffusion limitee IPv4, `255.255.255.255` (RFC 919). La diffusion
+    /// dirigee (`192.168.1.255` sur un /24) n'est pas reconnaissable sans le
+    /// masque du sous-reseau, hors de portee d'un parseur de paquets : elle
+    /// reste classee selon sa plage.
+    Broadcast,
     Multicast,
     Loopback,
     Apipa,
@@ -32,6 +38,7 @@ impl IpType {
 
     pub fn from_addr(ip: &IpAddr) -> Self {
         match ip {
+            IpAddr::V4(ipv4_addr) if ipv4_addr.is_broadcast() => Self::Broadcast,
             IpAddr::V4(ipv4_addr) if ipv4_addr.is_private() => Self::Private,
             IpAddr::V4(ipv4_addr) if ipv4_addr.is_loopback() => Self::Loopback,
             IpAddr::V4(ipv4_addr) if is_apipa_ip(ipv4_addr) => Self::Apipa,
@@ -55,6 +62,7 @@ impl fmt::Display for IpType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let display_string = match self {
             IpType::Private => "Privée",
+            IpType::Broadcast => "Broadcast",
             IpType::Multicast => "Multicast",
             IpType::Loopback => "Loopback",
             IpType::Apipa => "APIPA",
@@ -88,6 +96,16 @@ fn is_ula(ip: &std::net::Ipv6Addr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 255.255.255.255 sortait « Publique » faute de bras dedie (#9).
+    #[test]
+    fn test_limited_broadcast_ipv4() {
+        assert_eq!(IpType::from_ip("255.255.255.255"), IpType::Broadcast);
+        assert_eq!(IpType::Broadcast.to_string(), "Broadcast");
+        // Diffusion dirigee : indiscernable sans le masque, classee par plage.
+        assert_eq!(IpType::from_ip("192.168.1.255"), IpType::Private);
+        assert_eq!(IpType::from_ip("255.255.255.254"), IpType::Public);
+    }
 
     #[test]
     fn test_apipa_ipv4() {
