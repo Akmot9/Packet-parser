@@ -42,6 +42,7 @@ réellement capturées sur un réseau.
 | `stp/` | #4 | BPDU STP, RSTP, MSTP |
 | `s7comm/` | #11 | trafic S7comm v2 **et** v3 pour les distinguer |
 | `umas/` | #10 | trafic UMAS (Schneider, sur Modbus/502) |
+| `opcua/` | #95 | ✅ OPC UA réel : 187 trames (`HEL`, `ACK`, `OPN`, 182 × `MSG`, `CLO`), parité exacte avec tshark, dont l'URL du point de terminaison en clair. Première capture OPC UA du dépôt, et la seule en **LINKTYPE_NULL** — corpus nDPI (LGPL-3.0), voir `SOURCE.md` |
 | `ntp/` | — | existant : `integration_test/pcap/ntp/ntp.pcap` (à migrer ici) |
 | `tls/` | — | ✅ `tls12-dsb.pcapng` (sample Wireshark, TLS 1.2 + secrets) et `dump.pcapng` (loopback 4430-4433) — voir `SOURCE.md` |
 | `dns/` | #2 | ✅ 11 captures (requête/réponse, NXDOMAIN, récursif, PTR, TCP, AXFR, hijack) — source Chris Sanders, voir `SOURCE.md` |

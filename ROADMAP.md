@@ -201,14 +201,26 @@ Livres et **publies en 10.1.0** depuis le cadrage de cette liste :
   CHANGELOG : un parseur stateless en identifie huit sur les 542 trames
   qu'un dissecteur a etat etiquette SSH dans `The-Ultimate-PCAP`.
 
-Reste a faire, dans l'ordre :
+Reste a faire, dans l'ordre (liste rafraichie le 2026-09-20 : #79 etait en
+tete alors qu'il est livre et ferme, et la numerotation sautait de 4 a 6) :
 
-1. **#79** — decodeur 802.3br, ce qui reste du deblocage de corpus (voir §1).
-   Additif, et l'architecture de `sprint_02` prevoit ce point d'extension.
-2. **DNP3** — ouvre le secteur energie.
-3. **RDP** — rentabilise TPKT/COTP.
-4. RADIUS, NetBIOS, LLMNR (#68), SSDP (#69) au fil de l'eau.
+1. **GTP-U** — derniere case de #15, seul ticket ouvert du depot. Sa capture
+   existe desormais (corpus nDPI), avec une reserve : deux trames utiles la
+   ou VXLAN et Geneve ont six golden chacun, et aucun G-PDU portant de
+   l'IPv4.
+2. **PostgreSQL** — golden sur trames reelles. Bloque sur un arbitrage :
+   quatre reponses `N`/`G` font un seul octet, sans en-tete de longueur ;
+   les reconnaitre a l'aveugle produirait des faux positifs partout.
+3. **DNP3** — ouvre le secteur energie.
+4. **RDP** — rentabilise TPKT/COTP.
+5. RADIUS, NetBIOS, LLMNR (#68), SSDP (#69) au fil de l'eau.
 6. Tier 2 restant (IEC 104, BACnet, GOOSE/SV), puis Tier 3 restant.
+
+Le corpus de tests de **nDPI** (LGPL-3.0) a comble cinq trous du depot en
+une journee : UMAS (#10), S7CommPlus (#93), OPC UA (#95), et il porte encore
+les captures PostgreSQL et GTP-U ci-dessus. C'est la premiere source a
+consulter avant de conclure qu'une trame n'existe pas — deux affirmations du
+depot en ce sens se sont revelees fausses le meme jour.
 
 En parallele des protocoles : solder #56 (golden tests manquants), qui est
 de la dette plus que de la feature.

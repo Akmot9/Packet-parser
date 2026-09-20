@@ -38,6 +38,18 @@ pub enum LinkLayerError {
         "LINKTYPE {link_type} mPacket is a preemptible fragment (SMD 0x{smd:02x}): reassembly is stateful and out of scope for a stateless parser"
     )]
     PreemptibleFragment { link_type: LinkType, smd: u8 },
+
+    /// Famille d'adresses inconnue, ou qui contredit la version du paquet IP
+    /// qu'elle annonce. `family` est la lecture little-endian du champ ; le
+    /// decodeur essaie les deux ordres avant de rapporter cette erreur.
+    ///
+    /// Ajoutee en fin d'enumeration : inseree plus haut, elle decalerait les
+    /// discriminants des variantes suivantes, ce qui est une rupture pour qui
+    /// les lit via `as`.
+    #[error(
+        "Malformed LINKTYPE {link_type} packet: address family {family} is unknown or contradicts the IP version"
+    )]
+    InvalidAddressFamily { link_type: LinkType, family: u32 },
 }
 
 #[cfg(test)]

@@ -19,6 +19,11 @@ use std::fmt;
 pub struct LinkType(pub u32);
 
 impl LinkType {
+    /// BSD loopback encapsulation (LINKTYPE_NULL / DLT_NULL) : four bytes
+    /// carrying the address family of the packet that follows, in the byte
+    /// order of the capturing host.
+    pub const NULL: Self = Self(0);
+
     /// Ethernet (LINKTYPE_ETHERNET / DLT_EN10MB).
     pub const ETHERNET: Self = Self(1);
 

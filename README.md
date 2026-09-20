@@ -112,6 +112,7 @@ Supported LINKTYPEs:
 
 | LINKTYPE | Value | Decoder status |
 | --- | ---: | --- |
+| BSD loopback (NULL) | 0 | Supported: four address-family bytes, then the IP packet. The byte order is the capturing host's, so the field is read both ways and cross-checked against the IP version. `LINKTYPE_LOOP` (108), its network-order OpenBSD twin, is not handled — no capture attests it |
 | Ethernet | 1 | Supported |
 | RAW IP | 101 | Supported for IPv4 and IPv6 |
 | Native IEEE 802.11 | 105 | Modelled for CAPWAP inner flows; top-level decoder not yet supported |

@@ -7,6 +7,7 @@ mod ethernet;
 mod ieee802_3br;
 mod linux_sll;
 mod linux_sll2;
+mod null_loopback;
 pub(crate) mod raw_ip;
 
 use crate::{
@@ -19,11 +20,13 @@ use ethernet::EthernetDecoder;
 use ieee802_3br::Ieee8023brDecoder;
 use linux_sll::LinuxSllDecoder;
 use linux_sll2::LinuxSll2Decoder;
+use null_loopback::NullLoopbackDecoder;
 pub(crate) use raw_ip::RawIpDecoder;
 
 #[derive(Clone, Copy)]
 enum DecoderKind {
     Ethernet,
+    NullLoopback,
     /// Carries the link type it was selected for: RAW, IPV4 and IPV6 share the
     /// same decoder but must each be reported back as declared by the capture.
     RawIp(LinkType),
@@ -58,6 +61,9 @@ impl<'a> DecodedLink<'a> {
 const fn decoder_for(link_type: LinkType) -> Option<DecoderKind> {
     match link_type {
         LinkType::ETHERNET => Some(DecoderKind::Ethernet),
+        // Loopback BSD : quatre octets de famille d'adresses, puis le
+        // paquet IP.
+        LinkType::NULL => Some(DecoderKind::NullLoopback),
         // RAW, IPV4 et IPV6 partagent la meme forme : les octets commencent
         // directement a l'en-tete IP. RawIpDecoder lit la version au premier
         // quartet, ce qui couvre les trois sans decodeur dedie.
@@ -116,6 +122,7 @@ pub(crate) trait LinkDecoder {
 fn decode_with<'a>(kind: DecoderKind, bytes: &'a [u8]) -> Result<DecodedLink<'a>, ParseError> {
     match kind {
         DecoderKind::Ethernet => EthernetDecoder::decode(bytes),
+        DecoderKind::NullLoopback => NullLoopbackDecoder::decode(bytes),
         DecoderKind::RawIp(link_type) => RawIpDecoder::decode_as(link_type, bytes),
         DecoderKind::LinuxSll => LinuxSllDecoder::decode(bytes),
         DecoderKind::LinuxSll2 => LinuxSll2Decoder::decode(bytes),
