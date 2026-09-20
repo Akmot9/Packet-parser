@@ -3,8 +3,8 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-use super::{DecodedLink, LinkDecoder};
-use crate::{DataLink, LinkLayer, LinkLayerError, LinkType, ParseError};
+use super::{DecodedLink, ETHERNET_HEADER_LEN, LinkDecoder, decode_ethernet_frame};
+use crate::{LinkLayer, LinkLayerError, LinkType, ParseError};
 
 /// LINKTYPE_ETHERNET_MPACKET captures the preamble then the SMD. The preamble
 /// is at most 7 octets of 0x55, but the standard lets the PHY shorten it: the
@@ -14,7 +14,6 @@ const MAX_PREAMBLE_LEN: usize = 7;
 const PREAMBLE_OCTET: u8 = 0x55;
 /// Canonical header length (full preamble + SMD), reported on truncation.
 const HEADER_LEN: usize = MAX_PREAMBLE_LEN + 1;
-const ETHERNET_HEADER_LEN: usize = 14;
 const CRC_LEN: usize = 4;
 
 /// SMD-E: complete express frame, no reassembly (IEEE 802.3br Table 99-1).
@@ -88,7 +87,11 @@ impl LinkDecoder for Ieee8023brDecoder {
             .into());
         }
 
-        let frame = DataLink::try_from(&bytes[header_len..bytes.len() - CRC_LEN])?;
+        let frame = decode_ethernet_frame(
+            LinkType::IEEE802_3BR,
+            &bytes[header_len..bytes.len() - CRC_LEN],
+            header_len + CRC_LEN,
+        )?;
         Ok(DecodedLink::new(LinkLayer::ethernet_as(
             LinkType::IEEE802_3BR,
             frame,

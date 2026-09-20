@@ -7,6 +7,7 @@ use thiserror::Error;
 
 /// Error types for NTP packet parsing.
 #[derive(Debug, Error, PartialEq)]
+#[non_exhaustive]
 pub enum NtpPacketParseError {
     #[error("Invalid NTP packet length")]
     InvalidPacketLength,

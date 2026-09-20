@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BitcoinError {
     #[error("Bitcoin packet too short: {actual} bytes (min 24)")]
     PacketTooShort { actual: usize },

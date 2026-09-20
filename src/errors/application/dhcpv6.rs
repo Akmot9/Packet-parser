@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
+#[non_exhaustive]
 pub enum Dhcpv6PacketParseError {
     #[error("Invalid DHCPv6 packet length")]
     PacketLength,

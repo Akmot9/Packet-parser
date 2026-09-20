@@ -9,7 +9,6 @@ use crate::LinkType;
 
 /// Failure while identifying or decoding a canonical LINKTYPE payload.
 ///
-/// Ethernet keeps its historical `DataLinkError` conversion for compatibility.
 /// New link decoders use this link-aware contract so capture consumers can
 /// account for truncation and malformed input without parsing error strings.
 #[non_exhaustive]

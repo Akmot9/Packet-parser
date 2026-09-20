@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq, Eq, Clone, Copy)]
+#[non_exhaustive]
 pub enum MacParseError {
     #[error("Invalid MAC address length: expected 6 bytes, found {actual} bytes")]
     InvalidLength { actual: usize },

@@ -172,3 +172,59 @@ packet.packet_to_pcap("capture.pcap")?;   // 10.x écrivait ./output.pcap
 
 `convert::hex_stream_to_bytes` panique sur une entrée invalide :
 `try_hex_stream_to_bytes` rend un `Result`.
+
+## Erreurs
+
+### Tous les enums d'erreur sont `#[non_exhaustive]`
+
+Un `match` exhaustif sur un enum d'erreur de `packet_parser::errors` doit
+gagner un bras `_`. En contrepartie, les prochaines variantes d'erreur
+arriveront en version mineure.
+
+### TCP : SYN+FIN et bits réservés ne font plus disparaître le transport
+
+C'est le changement de **comportement** le plus visible de la 11.0.0.
+
+| Paquet | 10.x | 11.0 |
+|---|---|---|
+| SYN+FIN, ou bits réservés ≠ 0 | `transport: None`, `corrupted: Transport` (« Invalid TCP header length ») | `transport: Some(..)` avec ses ports, `corrupted: Transport` (« Invalid TCP flags 0x03: SYN and FIN are both set »), `application: None` |
+
+```rust
+// Distinguer corruption structurelle et anomalie sémantique
+if let Some(corrupted) = &flow.corrupted
+    && corrupted.layer == CorruptedLayerKind::Transport
+{
+    match &flow.transport {
+        None => { /* en-tête illisible */ }
+        Some(transport) => { /* anomalie : ports exploitables, paquet suspect */ }
+    }
+}
+```
+
+Qui comptait les flux sur `transport.is_some()` verra ces paquets
+apparaître : c'est le but (corrélation de scans SYN+FIN). Qui veut les
+écarter filtre sur `flow.corrupted`.
+
+Côté décodeur : `TcpPacket::try_from` rend `Ok` sur ces segments ;
+`TcpPacket::anomaly()` rend `Some(TcpError::InvalidFlags { .. })` ou
+`Some(TcpError::ReservedBitsSet { .. })`. `TcpError::InvalidHeaderLength`
+est supprimée.
+
+### Erreurs de liaison : un seul chemin
+
+```rust
+// 10.x : deux variantes selon le LINKTYPE
+Err(ParseError::InvalidDataLink(_))      // Ethernet
+Err(ParseError::InvalidLinkLayer(_))     // RAW, SLL, SLL2
+
+// 11.0 : une seule, pour tous
+Err(ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+    link_type, required, actual,
+}))
+```
+
+`DataLinkError` existe toujours — c'est l'erreur de `DataLink::try_from`
+appelé directement — mais n'est plus convertible en `ParseError`. Sa
+variante `DataLinkTooShort(u8)` devient `DataLinkTooShort { required,
+actual }` (`usize`).
+

@@ -82,6 +82,31 @@ Travaux de la 11.0.0 (epic #76) — branche `release/11.0.0`.
     d'ecrire `output.pcap` en dur dans le repertoire courant.
   - La feature vide `doc-diagrams` est supprimee.
 
+- **Erreurs** (lot A de l'epic #76 : #21, #24, reliquat de sprint_02).
+  Migration : `MIGRATION-11.md` §Erreurs.
+  - `#[non_exhaustive]` sur les 46 enums d'erreur publics (#21) : ajouter
+    une variante d'erreur n'est plus une rupture. Un test lit `src/errors`
+    pour qu'un nouveau protocole ne puisse pas l'oublier.
+  - **SYN+FIN : conserver et signaler** (#24). Un en-tete TCP lisible dont
+    les drapeaux (SYN et FIN ensemble) ou les bits reserves sont incoherents
+    **garde sa couche transport** — donc ses ports et la correlation de flux
+    — et l'anomalie est rapportee dans `corrupted`, nommee :
+    `TcpError::InvalidFlags { flags }` ou `ReservedBitsSet { bits }`, au
+    lieu du trompeur `InvalidHeaderLength`, qui disparait. La couche
+    application n'est pas sondee. `TcpPacket::try_from` ne rejette plus ces
+    segments ; `TcpPacket::anomaly()` les qualifie. `CorruptedLayer`
+    distingue desormais corruption structurelle (couche `None`) et anomalie
+    semantique (couche conservee).
+  - **Un seul chemin d'erreur de liaison** : Ethernet rapporte
+    `ParseError::InvalidLinkLayer(LinkLayerError::Truncated { link_type:
+    ETHERNET, required, actual })` comme RAW, SLL et SLL2.
+    `ParseError::InvalidDataLink` disparait ; `DataLinkError` reste l'erreur
+    de `DataLink::try_from`, hors de `ParseError`. Contrat verifie par test
+    sur les sept LINKTYPE cables.
+  - `DataLinkError::DataLinkTooShort(u8)` devient `{ required, actual }` en
+    `usize` : l'ancienne variante tronquait la longueur a 8 bits (une trame
+    de 300 octets coupee dans sa pile VLAN annoncait 44 octets).
+
 ### Deprecie
 
 - `convert::hex_stream_to_bytes`, qui panique sur une entree invalide : lui

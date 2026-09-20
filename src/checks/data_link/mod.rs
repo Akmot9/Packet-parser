@@ -15,7 +15,10 @@ const VLAN_TAG_LEN: usize = 4;
 
 pub fn validate_data_link_length(packets: &[u8]) -> Result<(), DataLinkError> {
     if packets.len() < DATALINK_HEADER_LEN {
-        return Err(DataLinkError::DataLinkTooShort(packets.len() as u8));
+        return Err(DataLinkError::DataLinkTooShort {
+            required: DATALINK_HEADER_LEN,
+            actual: packets.len(),
+        });
     }
     Ok(())
 }
@@ -36,13 +39,20 @@ pub fn validate_data_link_vlan_stack_length(
         .and_then(|stack| stack.checked_add(DATALINK_HEADER_LEN));
     match required {
         Some(required) if packets.len() >= required => Ok(()),
-        _ => Err(DataLinkError::DataLinkTooShort(packets.len() as u8)),
+        // Taille requise non representable : rapportee saturee.
+        _ => Err(DataLinkError::DataLinkTooShort {
+            required: required.unwrap_or(usize::MAX),
+            actual: packets.len(),
+        }),
     }
 }
 
 pub fn validate_vlan_tag_length(bytes: &[u8]) -> Result<(), DataLinkError> {
     if bytes.len() < VLAN_TAG_LEN {
-        return Err(DataLinkError::DataLinkTooShort(bytes.len() as u8));
+        return Err(DataLinkError::DataLinkTooShort {
+            required: VLAN_TAG_LEN,
+            actual: bytes.len(),
+        });
     }
     Ok(())
 }
@@ -67,7 +77,10 @@ mod tests {
         assert!(validate_data_link_vlan_stack_length(&two_tags, 1).is_ok());
         assert!(matches!(
             validate_data_link_vlan_stack_length(&two_tags[..21], 2),
-            Err(DataLinkError::DataLinkTooShort(21))
+            Err(DataLinkError::DataLinkTooShort {
+                required: 22,
+                actual: 21
+            })
         ));
     }
 
@@ -79,7 +92,10 @@ mod tests {
         for tags in [usize::MAX, usize::MAX / VLAN_TAG_LEN, 1 << 62] {
             assert!(matches!(
                 validate_data_link_vlan_stack_length(&frame, tags),
-                Err(DataLinkError::DataLinkTooShort(64))
+                Err(DataLinkError::DataLinkTooShort {
+                    required: usize::MAX,
+                    actual: 64
+                })
             ));
         }
     }

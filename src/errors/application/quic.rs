@@ -7,6 +7,7 @@ use thiserror::Error;
 
 /// Error types for QUIC packet parsing (RFC 9000 / RFC 9001, Long Header).
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum QuicError {
     #[error("Packet truncated: needed {needed} more bytes, only {remaining} remaining")]
     Truncated { needed: usize, remaining: usize },

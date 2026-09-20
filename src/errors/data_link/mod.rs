@@ -9,9 +9,12 @@ pub mod stp;
 use mac_addres::MacParseError;
 
 #[derive(Error, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum DataLinkError {
-    #[error("Data link too short: {0} bytes")]
-    DataLinkTooShort(u8),
+    /// La trame (ou le tag VLAN) est plus courte que ce que son en-tete
+    /// exige. `required` compte les tags VLAN deja rencontres.
+    #[error("Data link too short: required bytes {required}, actual bytes {actual}")]
+    DataLinkTooShort { required: usize, actual: usize },
     #[error("MAC address parsing error: {0}")]
     MacParseError(#[from] MacParseError),
 }

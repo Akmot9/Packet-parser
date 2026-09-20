@@ -908,10 +908,77 @@ fn explicit_ethernet_errors_match_the_legacy_api() {
         let explicit = parse(LinkType::ETHERNET, bytes.as_slice()).unwrap_err();
         let legacy = parse_through_legacy_api(bytes.as_slice()).unwrap_err();
 
-        assert!(matches!(&explicit, ParseError::InvalidDataLink(_)));
-        assert!(matches!(&legacy, ParseError::InvalidDataLink(_)));
+        for error in [&explicit, &legacy] {
+            assert!(matches!(
+                error,
+                ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+                    link_type: LinkType::ETHERNET,
+                    required: 14,
+                    actual,
+                }) if *actual == len
+            ));
+        }
         assert_eq!(explicit.to_string(), legacy.to_string());
     }
+}
+
+/// Contrat d'erreur de `sprint_02.md`, verifie sur tous les LINKTYPE cables,
+/// Ethernet compris (epic #76) : un paquet trop court pour son en-tete de
+/// liaison rend `InvalidLinkLayer(Truncated)` avec **son** LINKTYPE, la
+/// taille requise et la taille reelle. Traiter une erreur de liaison ne
+/// depend plus du LINKTYPE de la capture.
+#[test]
+fn every_wired_link_type_reports_truncation_through_the_same_contract() {
+    // (LINKTYPE, plus petit en-tete de liaison lisible)
+    let wired = [
+        (LinkType::ETHERNET, 14),
+        (LinkType::RAW, 1),
+        (LinkType::IPV4, 1),
+        (LinkType::IPV6, 1),
+        (LinkType::LINUX_SLL, 16),
+        (LinkType::LINUX_SLL2, 20),
+        (LinkType::IEEE802_3BR, 8),
+    ];
+    for (link_type, header_len) in wired {
+        assert!(is_supported(link_type), "{link_type}");
+        for len in 0..header_len {
+            let bytes = vec![0x55_u8; len];
+            let error = parse(link_type, bytes.as_slice()).unwrap_err();
+            assert!(
+                matches!(
+                    &error,
+                    ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+                        link_type: reported,
+                        required,
+                        actual,
+                    }) if *reported == link_type && *actual == len && *required > len
+                ),
+                "{link_type} tronque a {len} octets : {error:?}"
+            );
+        }
+    }
+}
+
+/// Une trame Ethernet coupee au milieu de sa pile VLAN rapporte la taille
+/// requise **tags compris**, et la taille reelle sans troncature a 8 bits
+/// (l'ancienne variante `DataLinkTooShort(u8)` annoncait 44 octets pour une
+/// trame de 300).
+#[test]
+fn ethernet_truncated_inside_its_vlan_stack_reports_exact_sizes() {
+    // 12 octets de MAC, S-tag 0x88a8 complet, puis C-tag ampute de son
+    // dernier octet : 21 octets pour 22 requis.
+    let mut frame = vec![0_u8; 12];
+    frame.extend_from_slice(&[0x88, 0xA8, 0x00, 0xC8, 0x81, 0x00, 0x00, 0x68, 0x08]);
+
+    let error = parse(LinkType::ETHERNET, frame.as_slice()).unwrap_err();
+    assert!(matches!(
+        error,
+        ParseError::InvalidLinkLayer(LinkLayerError::Truncated {
+            link_type: LinkType::ETHERNET,
+            required: 22,
+            actual: 21,
+        })
+    ));
 }
 
 #[test]

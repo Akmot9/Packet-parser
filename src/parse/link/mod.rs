@@ -10,7 +10,8 @@ mod linux_sll2;
 pub(crate) mod raw_ip;
 
 use crate::{
-    LinkLayer, LinkType, NetworkProtocol, ParseError,
+    DataLink, LinkLayer, LinkLayerError, LinkType, NetworkProtocol, ParseError,
+    errors::data_link::DataLinkError,
     timing::{NoTiming, Stage, TimingSink},
 };
 
@@ -74,6 +75,36 @@ const fn decoder_for(link_type: LinkType) -> Option<DecoderKind> {
 #[inline(always)]
 pub(crate) const fn is_supported(link_type: LinkType) -> bool {
     decoder_for(link_type).is_some()
+}
+
+/// En-tete Ethernet II : deux adresses MAC et l'EtherType.
+pub(super) const ETHERNET_HEADER_LEN: usize = 14;
+
+/// Decode une trame Ethernet II portee par `link_type` et rapporte son
+/// echec dans le contrat d'erreur commun a tous les LINKTYPE :
+/// [`LinkLayerError::Truncated`], tailles exprimees sur le **paquet entier**.
+/// `framing` compte les octets du paquet hors de la trame (preambule et mCRC
+/// d'un mPacket 802.3br ; zero pour Ethernet).
+#[inline(always)]
+pub(super) fn decode_ethernet_frame<'a>(
+    link_type: LinkType,
+    frame: &'a [u8],
+    framing: usize,
+) -> Result<DataLink<'a>, ParseError> {
+    DataLink::try_from(frame).map_err(|error| {
+        let required = match error {
+            DataLinkError::DataLinkTooShort { required, .. } => required,
+            // Inatteignable : le parsing MAC n'echoue que sur une longueur,
+            // deja validee.
+            _ => ETHERNET_HEADER_LEN,
+        };
+        LinkLayerError::Truncated {
+            link_type,
+            required: required.saturating_add(framing),
+            actual: frame.len() + framing,
+        }
+        .into()
+    })
 }
 
 /// Internal contract implemented by each supported link-layer decoder.

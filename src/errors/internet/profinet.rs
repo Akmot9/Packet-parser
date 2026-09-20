@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum ProfinetPacketError {
     #[error("Packet too short: minimum length required is 16 bytes, found {0} bytes")]
     PacketTooShort(usize),

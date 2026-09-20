@@ -8,6 +8,7 @@ use thiserror::Error;
 use crate::parse::application::protocols::snmp::SnmpVersion;
 
 #[derive(Debug, Error, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SnmpError {
     #[error("SNMP packet too short: min {min} bytes, got {actual}")]
     PacketTooShort { min: usize, actual: usize },

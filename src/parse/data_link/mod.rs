@@ -215,7 +215,10 @@ mod tests {
         let short_packet: [u8; 10] = [0x00; 10];
 
         let result = DataLink::try_from(short_packet.as_ref());
-        assert!(matches!(result, Err(DataLinkError::DataLinkTooShort(_))));
+        assert!(matches!(
+            result,
+            Err(DataLinkError::DataLinkTooShort { .. })
+        ));
     }
 
     #[test]
@@ -352,7 +355,13 @@ mod tests {
         ];
 
         let result = DataLink::try_from(raw_packet.as_ref());
-        assert!(matches!(result, Err(DataLinkError::DataLinkTooShort(21))));
+        assert!(matches!(
+            result,
+            Err(DataLinkError::DataLinkTooShort {
+                required: 22,
+                actual: 21
+            })
+        ));
 
         // Et un tag exactement complet mais sans un seul octet de charge
         // utile reste accepte : charge utile vide, comme en Ethernet nu.

@@ -6,6 +6,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum AmsParseError {
     #[error("AMS header too short: expected at least {expected} bytes, got {actual}")]
     HeaderTooShort { expected: usize, actual: usize },
