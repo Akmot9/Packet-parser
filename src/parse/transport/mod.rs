@@ -63,6 +63,13 @@ fn serialize_protocol_name<S: serde::Serializer>(
 }
 
 impl<'a> Transport<'a> {
+    /// Segment TCP lisible mais porteur d'une anomalie semantique (voir
+    /// `TcpPacket::anomaly`).
+    #[inline(always)]
+    pub(crate) fn is_anomalous_tcp(&self) -> bool {
+        matches!(&self.details, Some(TransportDetails::Tcp(tcp)) if tcp.is_anomalous())
+    }
+
     pub fn transport_from_u8(protocol: &u8) -> TransportProtocol {
         TransportProtocol::from_u8(*protocol)
     }
