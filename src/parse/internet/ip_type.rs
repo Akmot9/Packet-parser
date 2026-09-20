@@ -11,11 +11,6 @@ use std::net::IpAddr;
 #[non_exhaustive]
 pub enum IpType {
     Private,
-    /// Diffusion limitee IPv4, `255.255.255.255` (RFC 919). La diffusion
-    /// dirigee (`192.168.1.255` sur un /24) n'est pas reconnaissable sans le
-    /// masque du sous-reseau, hors de portee d'un parseur de paquets : elle
-    /// reste classee selon sa plage.
-    Broadcast,
     Multicast,
     Loopback,
     Apipa,
@@ -25,6 +20,14 @@ pub enum IpType {
     Documentation,
     #[default]
     Unknown,
+    // En fin d'enum : inseree plus haut, la variante decalait le discriminant
+    // de toutes les suivantes (`IpType::Multicast as u8` passait de 1 a 2),
+    // rupture silencieuse pour qui stocke ou transmet ces valeurs.
+    /// Diffusion limitee IPv4, `255.255.255.255` (RFC 919). La diffusion
+    /// dirigee (`192.168.1.255` sur un /24) n'est pas reconnaissable sans le
+    /// masque du sous-reseau, hors de portee d'un parseur de paquets : elle
+    /// reste classee selon sa plage.
+    Broadcast,
 }
 
 // Implémentation des méthodes pour `IpType`
@@ -98,6 +101,22 @@ mod tests {
     use super::*;
 
     /// 255.255.255.255 sortait « Publique » faute de bras dedie (#9).
+    /// Les discriminants des variantes historiques sont figes : une nouvelle
+    /// variante s'ajoute en fin d'enum.
+    #[test]
+    fn test_historical_discriminants_are_stable() {
+        assert_eq!(IpType::Private as u8, 0);
+        assert_eq!(IpType::Multicast as u8, 1);
+        assert_eq!(IpType::Loopback as u8, 2);
+        assert_eq!(IpType::Apipa as u8, 3);
+        assert_eq!(IpType::LinkLocal as u8, 4);
+        assert_eq!(IpType::Ula as u8, 5);
+        assert_eq!(IpType::Public as u8, 6);
+        assert_eq!(IpType::Documentation as u8, 7);
+        assert_eq!(IpType::Unknown as u8, 8);
+        assert_eq!(IpType::Broadcast as u8, 9);
+    }
+
     #[test]
     fn test_limited_broadcast_ipv4() {
         assert_eq!(IpType::from_ip("255.255.255.255"), IpType::Broadcast);
