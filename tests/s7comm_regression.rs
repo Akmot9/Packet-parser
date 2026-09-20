@@ -6,9 +6,12 @@
 use std::{fs::File, path::Path};
 
 use packet_parser::{
-    LinkType, parse,
+    LinkType,
+    errors::application::s7comm::S7CommParseError,
+    parse,
     parse::{
-        application::protocols::s7comm::S7CommPacket, transport::protocols::TransportProtocol,
+        application::protocols::s7comm::{S7CommPacket, S7ProtocolVersion},
+        transport::protocols::TransportProtocol,
     },
 };
 use pcap_file::pcap::PcapReader;
@@ -679,4 +682,82 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
         cotp_frames.is_empty(),
         "false-positive COTP labels: {cotp_frames:?}"
     );
+}
+
+/// Golden S7CommPlus sur trames reelles (issue #93).
+///
+/// Le chemin qui distingue S7CommPlus (protocol id 0x72) d'un S7Comm
+/// corrompu n'avait qu'une fixture synthetique, faute de trame reelle dans
+/// le corpus. `s7comm_plus.pcap` en apporte 36.
+///
+/// La capture est dans `protocols/s7comm/`, que `collect_capture_files`
+/// exclut du parcours de corpus : ni l'histogramme de `golden_pcaps` ni les
+/// compteurs ci-dessus ne bougent.
+#[test]
+fn real_s7commplus_frames_are_recognized_and_never_parsed_as_s7comm() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("pcaps_exemple/protocols/s7comm/s7comm_plus.pcap");
+    let FileRead::Frames { frames, .. } = read_capture(&path) else {
+        panic!("s7comm_plus.pcap : capture illisible");
+    };
+    assert_eq!(frames.len(), 79, "s7comm_plus.pcap compte 79 trames");
+
+    let mut s7commplus = 0;
+    let mut labelled_cotp = 0;
+    for (index, (link_type, data)) in frames.iter().enumerate() {
+        let flow =
+            parse(*link_type, data).unwrap_or_else(|error| panic!("trame {} : {error}", index + 1));
+        if flow.application.as_ref().map(|a| a.application_protocol) == Some("COTP") {
+            labelled_cotp += 1;
+        }
+        let Some(payload) = flow
+            .transport
+            .as_ref()
+            .and_then(|transport| transport.payload)
+        else {
+            continue;
+        };
+        if payload.is_empty() {
+            continue;
+        }
+
+        match S7CommPacket::detect_protocol_version(payload) {
+            Some(S7ProtocolVersion::S7CommPlus) => {
+                s7commplus += 1;
+                // La propriete qui compte : un PDU 0x72 ne doit jamais etre
+                // decode comme du S7Comm, ni ressortir en erreur generique.
+                assert_eq!(
+                    S7CommPacket::try_from(payload).unwrap_err(),
+                    S7CommParseError::InvalidS7ProtocolId { protocol_id: 0x72 },
+                    "trame {}",
+                    index + 1
+                );
+            }
+            // Trames COTP sans charge S7 (connexion, acquittements).
+            None => {}
+            other => panic!("trame {} : {other:?} inattendu", index + 1),
+        }
+    }
+
+    // tshark ne reconnait pas ces trames : son filtre `-Y s7comm-plus` rend
+    // zero, y compris ici. L'oracle est la recherche d'octets
+    // `tcp.payload =~ ^0300[0-9a-f]{4}02f08072`, qui en compte 36.
+    assert_eq!(s7commplus, 36);
+
+    // S7CommPlus n'est pas decode : le pipeline s'arrete a COTP, l'etiquette
+    // la plus precise qu'il puisse produire. Fige ici pour que ce choix soit
+    // visible plutot que subi.
+    //
+    // 63 et non les 38 de `tshark -Y cotp` : l'ecart est entier et explique.
+    // La capture porte 26 retransmissions TCP, dont 25 rejouent un TPKT
+    // valide (la 26e est un ACK sans charge utile). tshark suit les numeros
+    // de sequence et ne redissecte pas un segment deja vu ; ce parseur est
+    // sans etat et decode chaque segment sur ses propres merites — un
+    // segment retransmis porte bel et bien un PDU COTP valide.
+    //
+    //   38 (tshark) + 25 (retransmissions porteuses) = 63
+    //
+    // Douze de ces retransmissions portent du 0x72 : sur les 36 trames
+    // S7CommPlus ci-dessus, 24 sont des originaux et 12 des rejeux.
+    assert_eq!(labelled_cotp, 63);
 }

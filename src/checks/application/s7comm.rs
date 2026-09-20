@@ -883,9 +883,16 @@ mod tests {
 
     /// En-tete S7CommPlus synthetique : TPKT + COTP DT puis protocol id
     /// 0x72, pdu type 0x01 (Connect), longueur de donnees et 4 octets.
-    /// Le corpus du depot ne contient aucune trame 0x72 (verifie avec
-    /// tshark -Y s7comm-plus sur pcaps_exemple, 4SICS inclus), d'ou une
-    /// trame synthetique plutot qu'un golden.
+    ///
+    /// Fixture unitaire, volontairement synthetique : le golden sur trames
+    /// reelles vit dans `tests/s7comm_regression.rs`, sur les 36 trames 0x72
+    /// de `pcaps_exemple/protocols/s7comm/s7comm_plus.pcap`.
+    ///
+    /// Ce commentaire affirmait auparavant qu'aucune trame 0x72 n'existait,
+    /// « verifie avec tshark -Y s7comm-plus ». **Cette methode ne prouve
+    /// rien** : le filtre rend zero y compris sur une capture qui en
+    /// contient manifestement. Pour chercher du S7CommPlus, lire les octets :
+    /// `tshark -T fields -e tcp.payload | grep -E '^0300[0-9a-f]{4}02f08072'`.
     const S7COMMPLUS_CONNECT: &str = "0300001102f08072010006deadbeefcafe";
 
     #[test]
