@@ -12,17 +12,18 @@ use crate::parse::application::protocols::dns::utils::{
 // more can be a list of this possible struct (those strcut may on may not be on the liste: "more"):
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct Answer {
+pub struct Answer<'a> {
     pub name: String,           // Domain name
     pub answer_type: DnsType,   // Type of record (e.g., A, AAAA, MX, etc.)
     pub answer_class: DnsClass, // Class of record (typically IN for Internet)
     pub ttl: u32,               // Time to live
     pub data_length: u16,       // Length of the data
-    pub address: Vec<u8>,       // Address or other data (variable length)
+    /// Rdata brute, empruntee au message (zero-copie).
+    pub address: &'a [u8],
 }
 
-impl From<RawRecord> for Answer {
-    fn from(record: RawRecord) -> Self {
+impl<'a> From<RawRecord<'a>> for Answer<'a> {
+    fn from(record: RawRecord<'a>) -> Self {
         Answer {
             name: record.name,
             answer_type: DnsType::new(record.rtype),
@@ -34,7 +35,7 @@ impl From<RawRecord> for Answer {
     }
 }
 
-impl fmt::Display for Answer {
+impl fmt::Display for Answer<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -64,7 +65,7 @@ mod tests {
             answer_class: DnsClasses::IN,
             ttl: 300,
             data_length: 4,
-            address: vec![93, 184, 216, 34],
+            address: &[93, 184, 216, 34],
         };
 
         let rendered = record.to_string();
