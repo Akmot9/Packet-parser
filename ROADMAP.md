@@ -1,7 +1,10 @@
 # Roadmap packet_parser
 
-Etat au 2026-09-20 (soir) : **UMAS est livre** (#10), sur une capture
-reelle trouvee dans le corpus nDPI. L'affirmation ci-dessous « aucune trame
+Etat au 2026-09-20 (soir) : la **11.1.0 est publiee**. Elle porte l'epic
+#76 solde — les quatorze ruptures d'API en une majeure — et **UMAS** (#10),
+sur une capture reelle trouvee dans le corpus nDPI. La 11.0.0 n'a jamais ete
+publiee : UMAS est arrive avant que le tag ne soit pose, et la 11.1.0 la
+contient entierement. L'affirmation ci-dessous « aucune trame
 publique n'existe » etait fausse : `tests/cfgs/default/pcap/umas.pcap` en
 porte 180. Le meme corpus comble quatre autres trous du depot — OPC UA,
 PostgreSQL, S7CommPlus (dont le commentaire de `checks/application/s7comm.rs`

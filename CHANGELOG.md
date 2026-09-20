@@ -6,7 +6,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
-Strictement additif : **UMAS**, le protocole proprietaire de Schneider
+## [11.1.0] - 2026-09-20
+
+Strictement additif par rapport a la 11.0.0 : **UMAS**, le protocole proprietaire de Schneider
 Electric qui pilote les automates Modicon, est reconnu et son en-tete
 decode (issue #10).
 
@@ -42,6 +44,11 @@ de tests de nDPI en porte 180.
   commit epingle et SHA-256 dans son `SOURCE.md`), 191 trames.
 
 ## [11.0.0] - 2026-09-20
+
+**Jamais publiee sur crates.io** : UMAS (ci-dessus) a ete livre avant que le
+tag ne soit pose, et la 11.1.0 la remplace en la contenant entierement. Les
+ruptures decrites ici sont donc celles que rencontre un consommateur qui
+passe de la 10.5.0 a la 11.1.0, et `MIGRATION-11.md` reste son guide.
 
 Version majeure : elle solde en une fois les ruptures d'API accumulees dans
 l'epic #76 pendant la fenetre de stabilite 10.x — et la cause qui les avait
