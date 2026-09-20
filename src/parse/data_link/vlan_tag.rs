@@ -57,6 +57,11 @@ impl VlanTag {
     }
 }
 
+/// Taille d'un tag VLAN sur le wire : TCI (2 octets) + EtherType suivant (2).
+/// Au niveau du module et non associee a [`VlanStack`] : `Self` est generique
+/// (lifetime), donc interdit dans l'argument const de `as_chunks`.
+const TAG_LEN: usize = 4;
+
 /// Pile complete des tags VLAN d'une trame, du tag externe au tag interne
 /// (802.1ad / QinQ : S-tag puis C-tag ; ou deux 802.1Q empiles).
 ///
@@ -71,18 +76,16 @@ pub struct VlanStack<'a> {
 }
 
 impl<'a> VlanStack<'a> {
-    const TAG_LEN: usize = 4;
-
     /// `tags` : les octets de la trame entre le premier TPID (exclu) et
     /// l'EtherType de couche 3 (inclus), soit 4 octets par tag.
     pub(crate) fn new(tags: &'a [u8]) -> Self {
-        debug_assert!(tags.len().is_multiple_of(Self::TAG_LEN));
+        debug_assert!(tags.len().is_multiple_of(TAG_LEN));
         Self { tags }
     }
 
     /// Nombre de tags empiles.
     pub fn len(&self) -> usize {
-        self.tags.len() / Self::TAG_LEN
+        self.tags.len() / TAG_LEN
     }
 
     pub fn is_empty(&self) -> bool {
@@ -91,9 +94,13 @@ impl<'a> VlanStack<'a> {
 
     /// Les tags, du plus externe (S-tag) au plus interne (C-tag).
     pub fn iter(&self) -> impl DoubleEndedIterator<Item = VlanTag> + ExactSizeIterator + 'a {
+        // `as_chunks` plutot que `chunks_exact` : la taille etant constante,
+        // il rend des `&[u8; TAG_LEN]` et supprime l'indexation.
         self.tags
-            .chunks_exact(Self::TAG_LEN)
-            .map(|tag| VlanTag::from_tag_bytes([tag[0], tag[1], tag[2], tag[3]]))
+            .as_chunks::<TAG_LEN>()
+            .0
+            .iter()
+            .map(|tag| VlanTag::from_tag_bytes(*tag))
     }
 
     /// Tag externe : le S-VLAN (reseau du fournisseur) d'une pile QinQ.
