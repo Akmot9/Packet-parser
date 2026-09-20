@@ -334,20 +334,7 @@ impl<'a> PacketFlow<'a> {
         match internet {
             Some(internet) => {
                 match Transport::try_from_parts(internet.payload_protocol, internet.payload) {
-                    Ok(transport) => {
-                        // Anomalie semantique (SYN+FIN, bits reserves) :
-                        // conserver et signaler. Les ports restent, donc la
-                        // correlation de flux aussi (#24).
-                        let anomaly = match &transport.details {
-                            Some(crate::TransportDetails::Tcp(tcp)) => tcp.anomaly(),
-                            _ => None,
-                        };
-                        let corrupted = anomaly.map(|anomaly| CorruptedLayer {
-                            layer: CorruptedLayerKind::Transport,
-                            error: TransportError::from(anomaly).to_string(),
-                        });
-                        (Some(transport), corrupted)
-                    }
+                    Ok(transport) => (Some(transport), None),
                     Err(TransportError::UnsupportedProtocol) => (None, None),
                     Err(e) => (
                         None,
@@ -359,6 +346,42 @@ impl<'a> PacketFlow<'a> {
                 }
             }
             None => (None, None),
+        }
+    }
+
+    /// Anomalie semantique TCP (SYN+FIN, bits reserves) : **conserver et
+    /// signaler** (#24). La couche transport reste — donc ses ports, et la
+    /// correlation de flux — l'anomalie est rapportee dans `corrupted`, et la
+    /// couche application n'est pas sondee : ce payload ne vient pas d'une
+    /// pile conforme.
+    ///
+    /// Fonction froide, hors du pipeline commun : tisser ce cas dans
+    /// `parse_l4` et dans l'etape L7 coutait ~10 ns a CHAQUE segment TCP
+    /// (mesure sur le paquet de reference), pour un cas qui ne se presente
+    /// presque jamais. Le chemin chaud n'en garde qu'un branchement.
+    #[cold]
+    #[inline(never)]
+    fn anomalous_tcp_flow(
+        data_link: LinkLayer<'a>,
+        internet: Option<Internet<'a>>,
+        transport: Transport<'a>,
+        l3_corruption: Option<CorruptedLayer>,
+    ) -> Self {
+        let anomaly = match &transport.details {
+            Some(crate::TransportDetails::Tcp(tcp)) => tcp.anomaly(),
+            _ => None,
+        };
+        let l4_corruption = anomaly.map(|anomaly| CorruptedLayer {
+            layer: CorruptedLayerKind::Transport,
+            error: TransportError::from(anomaly).to_string(),
+        });
+        PacketFlow {
+            data_link,
+            internet,
+            transport: Some(transport),
+            application: None,
+            inner: None,
+            corrupted: l3_corruption.or(l4_corruption),
         }
     }
 
@@ -464,12 +487,20 @@ impl<'a> PacketFlow<'a> {
             Self::parse_l3(network_protocol, network_payload)
         });
         let (transport, l4_corruption) = sink.time(Stage::L4, || Self::parse_l4(internet.as_ref()));
-        // Un transport signale anormal n'est pas sonde au-dela : son payload
-        // ne vient pas d'une pile conforme.
-        let probed_transport = transport.as_ref().filter(|_| l4_corruption.is_none());
+        let transport = match transport {
+            Some(transport) if transport.is_anomalous_tcp() => {
+                return Ok(Self::anomalous_tcp_flow(
+                    data_link,
+                    internet,
+                    transport,
+                    l3_corruption,
+                ));
+            }
+            transport => transport,
+        };
         let (application, inner) = sink.time(Stage::L7, || {
             let (application, inner) =
-                Self::parse_l7_and_inner(internet.as_ref(), probed_transport, depth, decode_as);
+                Self::parse_l7_and_inner(internet.as_ref(), transport.as_ref(), depth, decode_as);
             (application.or_else(|| Self::detect_stp(&data_link)), inner)
         });
 

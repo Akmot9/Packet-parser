@@ -117,6 +117,13 @@ impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
 }
 
 impl TcpPacket<'_> {
+    /// Test rapide : cet en-tete porte-t-il une anomalie semantique ? Voir
+    /// [`TcpPacket::anomaly`] pour la qualifier.
+    #[inline(always)]
+    pub fn is_anomalous(&self) -> bool {
+        self.header.reserved != 0 || (self.header.syn && self.header.fin)
+    }
+
     /// Anomalie semantique d'un en-tete par ailleurs lisible : bits reserves
     /// non nuls ([`TcpError::ReservedBitsSet`]) ou SYN et FIN ensemble
     /// ([`TcpError::InvalidFlags`]), combinaison classique de scan et
@@ -139,6 +146,31 @@ impl TcpPacket<'_> {
         validate_tcp_reserved(header.reserved)
             .and_then(|()| validate_tcp_flags(flags))
             .err()
+    }
+}
+
+#[cfg(test)]
+mod anomaly_tests {
+    use super::*;
+
+    /// `is_anomalous` est le raccourci du chemin chaud : il doit dire
+    /// exactement la meme chose que `anomaly().is_some()`, pour les 256
+    /// octets de flags et les 8 valeurs de bits reserves.
+    #[test]
+    fn fast_check_agrees_with_the_qualified_anomaly_on_every_header() {
+        for flags in 0u8..=u8::MAX {
+            for reserved in 0u8..8 {
+                let mut segment = [0u8; 20];
+                segment[12] = 0x50 | (reserved << 1);
+                segment[13] = flags;
+                let packet = TcpPacket::try_from(&segment[..]).expect("en-tete lisible");
+                assert_eq!(
+                    packet.is_anomalous(),
+                    packet.anomaly().is_some(),
+                    "flags {flags:#04x}, reserves {reserved:#05b}"
+                );
+            }
+        }
     }
 }
 

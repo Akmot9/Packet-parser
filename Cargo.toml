@@ -1,6 +1,6 @@
 [package]
 name = "packet_parser"
-version = "10.5.0"
+version = "11.0.0"
 edition = "2024"
 # MSRV verifiee en CI : let-chains et u{n}::is_multiple_of exigent 1.88.
 rust-version = "1.88"
@@ -25,6 +25,9 @@ include = [
     "/README.md",
     "/README-fr.md",
     "/CHANGELOG.md",
+    # Le CHANGELOG de la 11.0.0 y renvoie a chaque rupture : sans lui, sept
+    # references mortes pour qui lit la crate depuis crates.io.
+    "/MIGRATION-11.md",
     "/LICENSE.md",
 ]
 

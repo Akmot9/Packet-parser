@@ -6,7 +6,22 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
-Travaux de la 11.0.0 (epic #76) — branche `release/11.0.0`.
+## [11.0.0] - 2026-09-20
+
+Version majeure : elle solde en une fois les ruptures d'API accumulees dans
+l'epic #76 pendant la fenetre de stabilite 10.x — et la cause qui les avait
+produites. Six des quatorze ruptures etaient « ajouter un champ ou une
+variante a un type exhaustif » : `#[non_exhaustive]` couvre desormais les
+erreurs et tout ce que le parseur construit, de sorte que completer un
+decodeur ou nommer une erreur redevient un changement mineur.
+
+Au passage : GIOP est decode en entier et tient la parite avec tshark
+message par message ; SYN+FIN ne fait plus disparaitre la couche transport ;
+les deux modeles rendent le meme JSON ; quatre decodeurs cessent d'allouer
+dans le chemin de detection (-7 a -17 % sur du trafic reel).
+
+Guide de migration, une entree par rupture : `MIGRATION-11.md`. La liste est
+recoupee avec `cargo semver-checks` (voir le guide, §Recoupement).
 
 ### Rupture
 

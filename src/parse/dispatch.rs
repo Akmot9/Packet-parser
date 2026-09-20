@@ -157,7 +157,10 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         ProbeId::Tls => TlsPacket::try_from(payload).is_ok(),
         ProbeId::Ssh => SshPacket::try_from(payload).is_ok(),
         ProbeId::Http => HttpRequest::try_from(payload).is_ok(),
-        ProbeId::Giop => GiopPacket::try_from(payload).is_ok(),
+        // Garde a cout constant : la sonde est tentee sur chaque paquet TCP, et
+        // le Result d'un GiopPacket (qui porte desormais tout le message
+        // decode) coute a construire et a liberer meme quand le magic echoue.
+        ProbeId::Giop => payload.starts_with(b"GIOP") && GiopPacket::try_from(payload).is_ok(),
         ProbeId::Dhcp => DhcpPacket::try_from(payload).is_ok(),
         ProbeId::Srvloc => SrvlocPacket::try_from(payload).is_ok(),
         ProbeId::ModbusTcp => ModbusTcpPacket::try_from(payload).is_ok(),
