@@ -1,6 +1,25 @@
 # Roadmap packet_parser
 
-Etat au 2026-09-09 : la **10.5.0 est publiee** (mineure, additive : tunnels
+Etat au 2026-09-20 : la **11.0.0 est prete, pas publiee**. L'epic #76 est
+solde en sept PR empilees (#84 a #89, puis la PR de release) vers la branche
+`release/11.0.0` : GIOP complet en parite avec tshark, purge de la surface
+publique, erreurs `non_exhaustive` et SYN+FIN conserve, `vlan_stack`, schema
+JSON unique, zero copie mesure. Detail au §1 bis ; migration dans
+`MIGRATION-11.md` ; `sonar-rust` compile contre la copie locale avec sept
+lignes changees. Restent a la main du mainteneur : relecture et merge des PR,
+tag, `cargo publish`, integration Sonar.
+
+Point ouvert : sur le paquet de reference de verbench (IPv6/TCP chiffre,
+aucune sonde L7 ne matche — le pire cas), la 11.0.0 est entre la parite et
++7 % selon la mesure (394 -> 424 ns au passage complet ; 412-435 contre
+416-424 en A/B alterne ; `parse()` nu : 210 -> 219 ns). L4 y gagne 8 ns, L7
+en perd 10 a 18, non attribues : une bissection par branche ne designe aucun
+commit, deux formes de code equivalentes donnent 208 ou 219 ns, et `perf`
+est verrouille sur la machine de mesure. Deux causes reelles ont ete
+corrigees (garde GIOP a cout constant, anomalie TCP hors du chemin chaud).
+Le trafic reconnu, lui, gagne 7 a 17 % (DNS, HTTP, EtherNet/IP, OPC UA).
+
+Etat anterieur (2026-09-09) : la **10.5.0 est publiee** (mineure, additive : tunnels
 VXLAN/Geneve depuis des captures produites au labo, et pile de tags VLAN
 802.1ad / QinQ consommee entiere — #82, decouvert par SONAR sur une matrice
 multi-VLAN). `vlan` retient le tag interne ; le champ `vlan_stack` qui
@@ -102,23 +121,27 @@ reassemblage TCP (tcp.segment.count 2 a 4), hors de portee d'un parseur
 stateless. Meme frontiere que le QUIC Short Header documente dans
 `src/parse/mod.rs`. Rien a voir avec ECH.
 
-## 1 bis. Ruptures en attente (#76)
+## 1 bis. Ruptures soldees par la 11.0.0 (#76)
 
-Trois changements identifies touchent une surface publique et sont donc
-incompatibles avec la fenetre de stabilite du §4. Ils sont regroupes dans
-l'epic **#76** plutot que de declencher trois majeures successives :
+L'epic **#76** regroupait les ruptures d'API accumulees pendant la fenetre
+de stabilite 10.x. Elles partent toutes dans la 11.0.0, lot par lot (design :
+`docs/superpowers/specs/2026-09-19-api-11-0-0-design.md` ; migration :
+`MIGRATION-11.md`) :
 
-| Issue | Rupture | Etat |
+| Lot | Contenu | PR |
 |---|---|---|
-| #21 | `#[non_exhaustive]` sur les ~34 enums d'erreur qui ne l'ont pas | volet public **livre**, #21 close le 2026-08-15 ; reste le volet SemVer |
-| #24 | Variantes distinctes pour `validate_tcp_flags` / `validate_tcp_reserved` (`TcpError` n'est pas `non_exhaustive`) | ouvert |
-| #48 | Suppression de `QuicPacketType::Unknown` et de sa branche morte | #48 close ; inaccessibilite verrouillee par test (#75), reste la suppression |
-| sprint_02 | Unifier les deux chemins d'erreur de liaison de `ParseError` (`InvalidDataLink` historique vs `InvalidLinkLayer`) | reliquat de phase 1, reverse dans #76 |
-| #82 | `vlan_stack` : exposer la pile QinQ complete sur `DataLink`/`DataLinkOwned` (pas `non_exhaustive`) | decodage livre en 10.x (`vlan` = tag interne, couche 3 atteinte) ; reste le champ |
+| GIOP | les huit types de message, GIOP 1.0/1.1/1.2, parite tshark message par message | #84 |
+| B — purge | `checks` interne (#32), `parse_timing` additive (#26), `to_owned_flow` (#27), `QuicPacketType::Unknown` (#48) | #85 |
+| A — erreurs | `non_exhaustive` sur les 46 enums d'erreur (#21), SYN+FIN conserve et signale (#24), un seul chemin d'erreur de liaison (reliquat sprint_02) | #86 |
+| C — champs | `vlan_stack` (#82), `IpType::Broadcast` (#9), `non_exhaustive` etendu a 124 types | #87 |
+| E — JSON | un seul schema, celui du modele owned (#22) | #88 |
+| D — zero copie | DNS (#61), HTTP / EtherNet/IP / OPC UA (#63), chacun mesure sur trafic reel | #89 |
 
-Tant que #76 n'est pas ouvert en chantier, ces trois points restent
-volontairement en l'etat. Rien d'autre n'est connu comme bloque par la
-fenetre de stabilite.
+**Retire, mesure a l'appui : PostgreSQL (#62).** Sur 8 209 trames reelles,
+emprunter les `Vec` de Parse/Bind/Startup ne gagne que 1,5 %. La rupture ne
+se justifie pas ; a rouvrir seulement si un profil reel montre autre chose.
+
+Rien d'autre n'est connu comme bloque par une rupture d'API.
 
 ## 2. Nouveaux protocoles proposes
 
@@ -190,13 +213,27 @@ deux chemins d'erreur de liaison — est une rupture d'API et vit desormais dans
 
 ## 4. Regles de la fenetre de stabilite
 
-- Aucune rupture d'API sans necessite majeure ; les nouveaux protocoles
-  sont additifs (nouveaux modules, nouveaux variants d'enum non_exhaustive).
+- Aucune rupture d'API sans necessite majeure. Depuis la 11.0.0, **ajouter
+  un champ a une struct de decodage, une variante a un enum de protocole ou
+  une variante d'erreur est additif** : ces types sont `#[non_exhaustive]`.
+  La regle, ses exceptions motivees et le test qui la verrouille :
+  `tests/public_types_are_non_exhaustive.rs`.
+- Une nouvelle variante d'enum sans donnees s'ajoute **en fin d'enum** : les
+  discriminants historiques sont une surface publique (`as u8`).
+- `checks` est interne : une regle de validation se refactore librement.
+- Une rupture motivee par la performance est **mesuree sur du trafic reel**
+  avant d'etre ecrite (borne superieure du gain en neutralisant le code
+  vise), et retiree si elle ne gagne rien.
 - Tout nouveau parseur arrive complet : errors + checks + parse + cablage
-  detection + golden tests sur trames reelles + entree CHANGELOG.
+  detection + golden tests sur trames reelles + entree CHANGELOG. Une sonde
+  tentee sur tout le trafic d'un transport passe derriere une garde a cout
+  constant (magic, octets d'en-tete) avant son decodeur.
 - Les protocoles a grande surface (DNP3, SMB2) recoivent une cible de fuzz
-  et, si des captures riches existent, une regression tshark a la
-  s7comm_regression.
+  et, si des captures riches existent, une regression tshark — par trame
+  (`tshark_regression`) ou, mieux, message par message
+  (`giop_tshark_regression`).
 - L'integration aval (Sonar_desktop_app) se fait par version mineure :
   la procedure est documentee et rodee (sonar-flows-core, vendor,
-  cargo-vet, snapshots).
+  cargo-vet, snapshots). Pour une majeure, compiler une copie de
+  `sonar-rust` contre la copie locale donne la liste exacte des lignes a
+  migrer (voir `MIGRATION-11.md` §Impact Sonar).
