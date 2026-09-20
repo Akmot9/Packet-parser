@@ -55,6 +55,38 @@ Travaux de la 11.0.0 (epic #76) — branche `release/11.0.0`.
   - Tous les types GIOP publics deviennent `#[non_exhaustive]` : les
     prochains ajouts seront additifs.
 
+- **Purge de la surface publique** (lot B de l'epic #76 : #26, #27, #32,
+  #48). Migration : `MIGRATION-11.md` §Purge.
+  - `checks` devient un module interne. Ses ~120 `validate_*` /
+    `extract_*` etaient publics sans etre une API assumee et figeaient par
+    SemVer tout refactor de validation. La seule brique destinee aux
+    consommateurs, la verification opt-in des checksums, est promue en
+    `packet_parser::checksum` (ex-`checks::checksum`).
+  - `PacketFlow::to_owned()` devient `to_owned_flow()` : l'ancien nom
+    masquait `ToOwned::to_owned` et rendait un type different et ampute
+    (#27). Pas d'alias deprecie : le nom etait le piege.
+  - `parse_timing` est enfin additive (#26) : une seule forme de
+    `ParseTiming` (5 `u64`, a zero sans la feature), `parse_timed` et
+    `PacketFlow::try_from_timed` toujours disponibles. Supprimes :
+    `timing::{now, elapsed_ns, ParseReport, LayerAttempt}` et la macro
+    exportee `time_block_ns!` (zero appelant). Le pipeline duplique
+    disparait au profit d'un pipeline unique ; `parse()` ne regresse pas
+    (~252 ns contre ~269 ns sur une trame TCP reelle) et activer la feature
+    ne le ralentit plus.
+  - Code mort public supprime : `ApplicationProtocol` et son `Display`, 9
+    des 10 variantes d'`ApplicationError` (qui devient `#[non_exhaustive]`),
+    `TryFrom<&[u8]> for Transport` (devinait TCP puis UDP a l'aveugle),
+    `ParseError::PacketTooShort`, l'alias `ParsedPacketError`,
+    `QuicPacketType::Unknown` et sa branche morte (#48).
+  - `Packet::packet_to_pcap(path)` prend le chemin de sortie au lieu
+    d'ecrire `output.pcap` en dur dans le repertoire courant.
+  - La feature vide `doc-diagrams` est supprimee.
+
+### Deprecie
+
+- `convert::hex_stream_to_bytes`, qui panique sur une entree invalide : lui
+  preferer `try_hex_stream_to_bytes`.
+
 ### Ajoute
 
 - `giop::giop_messages(payload)` : itere sur les messages GIOP consecutifs

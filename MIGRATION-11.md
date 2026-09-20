@@ -107,3 +107,68 @@ let reply = GiopLocateReply::parse(body, little_endian, header.minor_version)?;
 
 Tous les types GIOP sont `#[non_exhaustive]` : ils ne se construisent plus
 par littéral hors de la crate, et se déstructurent avec `..`.
+
+## Purge de la surface publique
+
+### `checks` n'est plus public ; les checksums déménagent
+
+```rust
+// 10.x
+use packet_parser::checks::checksum::verify_tcp_checksum;
+
+// 11.0
+use packet_parser::checksum::verify_tcp_checksum;
+```
+
+Le reste de `packet_parser::checks` (les `validate_*` / `extract_*` des
+parseurs) n'a pas de remplaçant : c'étaient des détails d'implémentation.
+Pour savoir si des octets sont un message valide, passer par le décodeur
+(`XxxPacket::try_from`) ; pour reconnaître S7CommPlus,
+`S7CommPacket::detect_protocol_version`.
+
+### `PacketFlow::to_owned()` → `to_owned_flow()`
+
+```rust
+let owned: PacketFlowOwned = flow.to_owned_flow();   // conversion lossy
+let copy: PacketFlow<'_> = flow.clone();              // vrai clone
+```
+
+Attention : après migration, un `flow.to_owned()` oublié **compile encore**
+— il résout désormais vers `ToOwned::to_owned` et rend un `PacketFlow`, plus
+un `PacketFlowOwned`. Le compilateur le signale dès que le résultat est
+utilisé comme un `PacketFlowOwned`.
+
+### `parse_timing`
+
+L'API ne dépend plus de la feature : `ParseTiming` a toujours cinq champs
+`u64`, `parse_timed` et `PacketFlow::try_from_timed` existent toujours. Sans
+la feature ils parsent normalement et laissent les mesures à zéro. Les
+`#[cfg(feature = "parse_timing")]` côté consommateur autour de ces appels
+peuvent disparaître.
+
+Supprimés, sans remplaçant (aucun n'avait d'usage hors de la crate) :
+`timing::now`, `timing::elapsed_ns`, `timing::ParseReport`,
+`timing::LayerAttempt`, `time_block_ns!`.
+
+### Code mort supprimé
+
+| Supprimé | À la place |
+|---|---|
+| `ApplicationProtocol` | l'étiquette `Application::application_protocol`, et les décodeurs de `parse::application::protocols` |
+| `ApplicationError::*ParseError` (9 variantes) | jamais émises ; seul `EmptyPacket` existe. L'enum est `#[non_exhaustive]` |
+| `Transport::try_from(&[u8])` | `Transport::try_from_parts(protocole_ip, payload)` |
+| `ParseError::PacketTooShort` | jamais émise |
+| `ParsedPacketError` | `ParseError` (c'était un alias) |
+| `QuicPacketType::Unknown` | jamais construite : les quatre types de Long Header sont nommés |
+| feature `doc-diagrams` | vide depuis le retrait d'`aquamarine` ; la retirer de `features = [...]` |
+
+### `Packet::packet_to_pcap`
+
+```rust
+packet.packet_to_pcap("capture.pcap")?;   // 10.x écrivait ./output.pcap
+```
+
+### Déprécié
+
+`convert::hex_stream_to_bytes` panique sur une entrée invalide :
+`try_hex_stream_to_bytes` rend un `Result`.

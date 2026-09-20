@@ -3,9 +3,27 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-// packet_parser/src/timing.rs
-#[cfg(feature = "parse_timing")]
-#[derive(Debug, Clone, Copy, Default)]
+//! Chronometrage optionnel du pipeline de parsing.
+//!
+//! L'API est **la meme que la feature `parse_timing` soit activee ou non** :
+//! [`ParseTiming`] a toujours ses cinq champs et
+//! [`parse_timed`](crate::parse_timed) existe toujours. Sans la feature,
+//! rien n'est mesure et les champs restent a zero ; avec, chaque couche est
+//! chronometree. Une feature Cargo doit etre additive : comme Cargo unifie
+//! les features du graphe, une forme de struct qui change avec la feature
+//! casserait un consommateur qui ne l'a jamais demandee (#26).
+//!
+//! Le chemin normal ([`parse`](fn@crate::parse)) n'est jamais chronometre,
+//! que la feature soit activee ou non : il est monomorphise sur un puits de
+//! mesures vide, dont chaque etape se reduit a l'appel du corps.
+
+/// Duree de chaque couche du pipeline, en nanosecondes. Tous les champs sont
+/// a zero quand la feature `parse_timing` est desactivee.
+///
+/// `l*_ns` est le cout de la *tentative* : il peut etre non nul meme quand
+/// la couche n'est pas supportee. `l7_ns` inclut la detection de tunnel et
+/// le parsing recursif des paquets encapsules.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ParseTiming {
     pub l2_ns: u64,
     pub l3_ns: u64,
@@ -14,221 +32,112 @@ pub struct ParseTiming {
     pub total_ns: u64,
 }
 
-#[cfg(feature = "parse_timing")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LayerAttempt {
-    #[default]
-    Skipped = 0,
-    Ok = 1,
-    Unsupported = 2,
+/// Etape chronometree du pipeline.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Stage {
+    L2,
+    L3,
+    L4,
+    L7,
 }
 
-#[cfg(feature = "parse_timing")]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ParseReport {
-    pub timing: ParseTiming,
-    pub l3: LayerAttempt,
-    pub l4: LayerAttempt,
-    pub l7: LayerAttempt,
+/// Puits de mesures traverse par le pipeline unique. Le pipeline est
+/// generique dessus : le chemin normal et le chemin chronometre partagent le
+/// meme code source, sans branche ni cout a l'execution.
+pub(crate) trait TimingSink {
+    fn time<T>(&mut self, stage: Stage, body: impl FnOnce() -> T) -> T;
 }
 
-#[cfg(not(feature = "parse_timing"))]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ParseTiming;
+/// Puits du chemin normal : ne mesure rien.
+pub(crate) struct NoTiming;
 
-// packet_parser/src/timing.rs
-#[cfg(feature = "parse_timing")]
-#[inline(always)]
-pub fn now() -> std::time::Instant {
-    std::time::Instant::now()
+impl TimingSink for NoTiming {
+    #[inline(always)]
+    fn time<T>(&mut self, _stage: Stage, body: impl FnOnce() -> T) -> T {
+        body()
+    }
 }
 
-#[cfg(feature = "parse_timing")]
-#[inline(always)]
-pub fn elapsed_ns(t0: std::time::Instant) -> u64 {
-    t0.elapsed().as_nanos() as u64
+impl TimingSink for ParseTiming {
+    #[inline(always)]
+    fn time<T>(&mut self, stage: Stage, body: impl FnOnce() -> T) -> T {
+        #[cfg(feature = "parse_timing")]
+        {
+            let t0 = std::time::Instant::now();
+            let out = body();
+            let elapsed = t0.elapsed().as_nanos() as u64;
+            match stage {
+                Stage::L2 => self.l2_ns = elapsed,
+                Stage::L3 => self.l3_ns = elapsed,
+                Stage::L4 => self.l4_ns = elapsed,
+                Stage::L7 => self.l7_ns = elapsed,
+            }
+            out
+        }
+        #[cfg(not(feature = "parse_timing"))]
+        {
+            let _ = stage;
+            body()
+        }
+    }
 }
 
-#[cfg(not(feature = "parse_timing"))]
-#[inline(always)]
-pub fn now() {}
-
-#[cfg(not(feature = "parse_timing"))]
-#[inline(always)]
-pub fn elapsed_ns(_: ()) -> u64 {
-    0
-}
-
-// packet_parser/src/timing.rs
-#[cfg(feature = "parse_timing")]
-#[macro_export]
-macro_rules! time_block_ns {
-    ($dst:expr, $body:block) => {{
-        let t0 = $crate::timing::now();
-        let out = $body;
-        *$dst = $crate::timing::elapsed_ns(t0);
-        out
-    }};
-}
-
-#[cfg(not(feature = "parse_timing"))]
-#[macro_export]
-macro_rules! time_block_ns {
-    ($dst:expr, $body:block) => {{
-        let _ = $dst;
-        $body
-    }};
+impl ParseTiming {
+    /// Remet les mesures a zero, execute `body` et renseigne `total_ns`.
+    #[inline(always)]
+    pub(crate) fn time_total<T>(&mut self, body: impl FnOnce(&mut Self) -> T) -> T {
+        *self = Self::default();
+        #[cfg(feature = "parse_timing")]
+        {
+            let t0 = std::time::Instant::now();
+            let out = body(self);
+            self.total_ns = t0.elapsed().as_nanos() as u64;
+            out
+        }
+        #[cfg(not(feature = "parse_timing"))]
+        {
+            body(self)
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[cfg(feature = "parse_timing")]
     #[test]
-    fn test_parse_timing_default() {
+    fn parse_timing_has_one_shape_whatever_the_feature() {
         let timing = ParseTiming::default();
-
-        assert_eq!(timing.l2_ns, 0);
-        assert_eq!(timing.l3_ns, 0);
-        assert_eq!(timing.l4_ns, 0);
-        assert_eq!(timing.l7_ns, 0);
-        assert_eq!(timing.total_ns, 0);
+        assert_eq!(
+            (
+                timing.l2_ns,
+                timing.l3_ns,
+                timing.l4_ns,
+                timing.l7_ns,
+                timing.total_ns
+            ),
+            (0, 0, 0, 0, 0)
+        );
     }
 
-    #[cfg(feature = "parse_timing")]
     #[test]
-    fn test_layer_attempt_default_is_skipped() {
-        let attempt = LayerAttempt::default();
-        assert_eq!(attempt, LayerAttempt::Skipped);
+    fn no_timing_sink_only_runs_the_body() {
+        assert_eq!(NoTiming.time(Stage::L3, || 41 + 1), 42);
     }
 
-    #[cfg(feature = "parse_timing")]
     #[test]
-    fn test_layer_attempt_variants_values() {
-        assert_eq!(LayerAttempt::Skipped as u8, 0);
-        assert_eq!(LayerAttempt::Ok as u8, 1);
-        assert_eq!(LayerAttempt::Unsupported as u8, 2);
-    }
-
-    #[cfg(feature = "parse_timing")]
-    #[test]
-    fn test_parse_report_default() {
-        let report = ParseReport::default();
-
-        assert_eq!(report.timing.l2_ns, 0);
-        assert_eq!(report.timing.l3_ns, 0);
-        assert_eq!(report.timing.l4_ns, 0);
-        assert_eq!(report.timing.l7_ns, 0);
-        assert_eq!(report.timing.total_ns, 0);
-
-        assert_eq!(report.l3, LayerAttempt::Skipped);
-        assert_eq!(report.l4, LayerAttempt::Skipped);
-        assert_eq!(report.l7, LayerAttempt::Skipped);
-    }
-
-    #[cfg(feature = "parse_timing")]
-    #[test]
-    fn test_now_and_elapsed_ns() {
-        let t0 = now();
-        let first = elapsed_ns(t0);
-        let second = elapsed_ns(t0);
-
-        assert!(second >= first);
-    }
-
-    #[cfg(feature = "parse_timing")]
-    #[test]
-    fn test_elapsed_ns_is_non_zero_after_work() {
-        let t0 = now();
-
-        let mut acc = 0u64;
-        for i in 0..10_000 {
-            acc = acc.wrapping_add(i);
-        }
-
-        let elapsed = elapsed_ns(t0);
-
-        assert!(acc > 0);
-        assert!(elapsed > 0);
-    }
-
-    #[cfg(feature = "parse_timing")]
-    #[test]
-    fn test_time_block_ns_sets_duration_and_returns_value() {
-        let mut measured = 0u64;
-
-        let result = time_block_ns!(&mut measured, {
-            let mut sum = 0u64;
-            for i in 0..1_000 {
-                sum += i;
-            }
-            sum
+    fn parse_timing_sink_runs_the_body_and_records_only_with_the_feature() {
+        let mut timing = ParseTiming::default();
+        let out = timing.time_total(|timing| {
+            timing.time(Stage::L2, || {
+                std::hint::black_box((0..1_000u64).sum::<u64>())
+            })
         });
+        assert_eq!(out, 499_500);
 
-        assert_eq!(result, (0..1_000u64).sum::<u64>());
-        assert!(measured > 0);
-    }
-
-    #[cfg(feature = "parse_timing")]
-    #[test]
-    fn test_time_block_ns_with_unit_return() {
-        use std::cell::Cell;
-
-        let mut measured = 0u64;
-        let value = Cell::new(0u32);
-
-        time_block_ns!(&mut measured, {
-            value.set(42);
-        });
-
-        assert_eq!(value.get(), 42);
-        assert!(measured > 0);
-    }
-
-    #[cfg(not(feature = "parse_timing"))]
-    #[test]
-    fn test_parse_timing_default_without_feature() {
-        let _timing = ParseTiming;
-    }
-
-    #[cfg(not(feature = "parse_timing"))]
-    #[test]
-    fn test_now_without_feature() {
-        now();
-        let elapsed = elapsed_ns(());
-
-        assert_eq!(elapsed, 0);
-    }
-
-    #[cfg(not(feature = "parse_timing"))]
-    #[test]
-    fn test_time_block_ns_without_feature_returns_value_and_does_not_modify_dst() {
-        let mut measured = 123u64;
-
-        let result = time_block_ns!(&mut measured, {
-            let mut sum = 0u64;
-            for i in 0..10 {
-                sum += i;
-            }
-            sum
-        });
-
-        assert_eq!(result, 45);
-        assert_eq!(measured, 123);
-    }
-
-    #[cfg(not(feature = "parse_timing"))]
-    #[test]
-    fn test_time_block_ns_without_feature_with_unit_return() {
-        let mut measured = 999u64;
-        let value: u32;
-
-        time_block_ns!(&mut measured, {
-            value = 7;
-        });
-
-        assert_eq!(value, 7);
-        assert_eq!(measured, 999);
+        #[cfg(not(feature = "parse_timing"))]
+        assert_eq!(timing, ParseTiming::default());
+        #[cfg(feature = "parse_timing")]
+        assert!(timing.total_ns >= timing.l2_ns);
     }
 }

@@ -36,9 +36,6 @@ pub enum ParseError {
     #[error("Unsupported link type: {0}")]
     UnsupportedLinkType(LinkType),
 
-    #[error("Packet too short: {0} bytes")]
-    PacketTooShort(u8),
-
     #[error("Invalid DataLink segment: {0}")]
     InvalidDataLink(#[from] DataLinkError),
 
@@ -54,6 +51,3 @@ pub enum ParseError {
     #[error("Application layer error: {0}")]
     Application(#[from] ApplicationError),
 }
-
-/// Backward-compatible name for [`ParseError`].
-pub type ParsedPacketError = ParseError;

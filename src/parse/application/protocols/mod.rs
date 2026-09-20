@@ -3,26 +3,6 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-use bitcoin::BitcoinPacket;
-use copt::CotpHeader;
-use dhcp::DhcpPacket;
-use dhcpv6::Dhcpv6Packet;
-use dns::DnsPacket;
-use ethernet_ip::EtherNetIpPacket;
-use http::HttpRequest;
-use modbus_tcp::ModbusTcpPacket;
-use mqtt::MqttPacket;
-use ntp::NtpPacket;
-use opcua::OpcuaPacket;
-use postgresql::PostgreSqlPacket;
-use s7comm::S7CommPacket;
-use snmp::SnmpPacket;
-use tls::TlsPacket;
-
-use crate::parse::application::protocols::{
-    giop::GiopPacket, quic::QuicPacket, srvloc::SrvlocPacket,
-};
-
 pub mod ams;
 pub mod bitcoin;
 pub mod copt;
@@ -98,30 +78,4 @@ mod bounded_capacity_tests {
         // Un gros buffer ne doit pas gonfler la réservation au-delà du besoin.
         assert_eq!(bounded_capacity(3, 65_535, 4), 3);
     }
-}
-
-/// The `ApplicationProtocol` enum represents the possible layer 7 information that can be parsed.
-#[derive(Debug)]
-pub enum ApplicationProtocol<'a> {
-    Ntp(NtpPacket),
-    Tls(TlsPacket<'a>),
-    Http(HttpRequest<'a>),
-    Mqtt(MqttPacket<'a>),
-    Dhcp(DhcpPacket<'a>),
-    Dhcpv6(Dhcpv6Packet<'a>),
-    Bitcoin(BitcoinPacket<'a>),
-    Dns(DnsPacket),
-    EtherNetIp(EtherNetIpPacket<'a>),
-    S7Comm(S7CommPacket<'a>),
-    Snmp(SnmpPacket<'a>),
-    Cotp(CotpHeader<'a>),
-    Quic(QuicPacket<'a>),
-    Giop(GiopPacket<'a>),
-    Srvloc(SrvlocPacket<'a>),
-    Ams(ams::AmsPacket<'a>),
-    ModbusTcp(ModbusTcpPacket<'a>),
-    Opcua(OpcuaPacket<'a>),
-    PostgreSql(PostgreSqlPacket<'a>),
-    Raw(&'a [u8]),
-    None,
 }

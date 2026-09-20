@@ -7,6 +7,7 @@ use pcap_file::pcap::{PcapPacket, PcapWriter};
 use std::{
     fmt::{self, Write},
     fs::File,
+    path::Path,
 };
 
 /// # PacketConverter
@@ -23,8 +24,10 @@ pub struct Packet {
 }
 
 impl Packet {
-    pub fn packet_to_pcap(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let file = File::create("output.pcap")?;
+    /// Ecrit ce paquet dans un fichier PCAP a `path` (cree ou ecrase),
+    /// horodate a l'instant de l'appel.
+    pub fn packet_to_pcap(&self, path: impl AsRef<Path>) -> Result<(), Box<dyn std::error::Error>> {
+        let file = File::create(path)?;
 
         // Configurer le PacketWriter avec les paramètres par défaut
         let writer = PcapWriter::new(file);
@@ -42,10 +45,16 @@ impl Packet {
 }
 
 /// Implémentation du trait `From<&str>` pour convertir une chaîne hexadécimale en `Packet`.
+///
+/// # Panics
+///
+/// Panique sur une chaîne de longueur impaire ou non hexadécimale : `From`
+/// est infaillible par contrat. Pour une entrée utilisateur, passer par
+/// [`try_hex_stream_to_bytes`] et construire `Packet { data }`.
 impl From<&str> for Packet {
     fn from(hex: &str) -> Self {
         Packet {
-            data: hex_stream_to_bytes(hex),
+            data: hex_stream_or_panic(hex),
         }
     }
 }
@@ -92,11 +101,19 @@ pub fn try_hex_stream_to_bytes(hex: &str) -> Result<Vec<u8>, HexStreamError> {
 /// Panique si la chaîne a une longueur impaire ou contient un caractère non
 /// hexadécimal. Utiliser [`try_hex_stream_to_bytes`] pour une entrée
 /// utilisateur.
-#[expect(
-    clippy::panic,
-    reason = "panic documente dans la section Panics ; try_hex_stream_to_bytes est la variante faillible"
+#[deprecated(
+    since = "11.0.0",
+    note = "panique sur une entree invalide ; utiliser `try_hex_stream_to_bytes`"
 )]
 pub fn hex_stream_to_bytes(hex: &str) -> Vec<u8> {
+    hex_stream_or_panic(hex)
+}
+
+#[expect(
+    clippy::panic,
+    reason = "variante infaillible interne de From<&str> for Packet, panic documente"
+)]
+fn hex_stream_or_panic(hex: &str) -> Vec<u8> {
     match try_hex_stream_to_bytes(hex) {
         Ok(bytes) => bytes,
         Err(HexStreamError::OddLength(_)) => {
@@ -150,10 +167,10 @@ pub fn display_packet(bytes: &[u8]) {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use std::fs;
-    use std::path::Path;
 
     #[test]
     fn test_hex_stream_to_bytes_valid_ascii() {
@@ -291,21 +308,19 @@ mod tests {
 
     #[test]
     fn test_packet_to_pcap_creates_file_and_is_non_empty() {
-        let pcap_path = Path::new("output.pcap");
-
-        if pcap_path.exists() {
-            fs::remove_file(pcap_path).unwrap();
-        }
+        // Dans le repertoire temporaire, pas dans le repertoire courant : le
+        // chemin est celui que l'appelant donne.
+        let pcap_path =
+            std::env::temp_dir().join(format!("packet_parser_test_{}.pcap", std::process::id()));
+        let _ = fs::remove_file(&pcap_path);
 
         let packet = Packet::from("48656C6C6F");
-        let result = packet.packet_to_pcap();
+        let result = packet.packet_to_pcap(&pcap_path);
 
         assert!(result.is_ok());
-        assert!(pcap_path.exists());
-
-        let metadata = fs::metadata(pcap_path).unwrap();
+        let metadata = fs::metadata(&pcap_path).unwrap();
         assert!(metadata.len() > 0);
 
-        fs::remove_file(pcap_path).unwrap();
+        fs::remove_file(&pcap_path).unwrap();
     }
 }

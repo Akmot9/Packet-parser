@@ -322,8 +322,7 @@ for level in flow.flatten() {
 
 | Feature | Effect |
 | --- | --- |
-| `doc-diagrams` | Enables Rustdoc diagrams through `aquamarine` |
-| `parse_timing` | Exposes `ParseTiming`, `parse_timed` and `PacketFlow::try_from_timed` |
+| `parse_timing` | Makes `parse_timed` and `PacketFlow::try_from_timed` actually measure each layer; without it the same API exists and `ParseTiming` stays zeroed |
 
 The `parse_timing` feature is intended for benchmarks. The normal
 `PacketFlow::try_from` path does not measure parsing time.

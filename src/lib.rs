@@ -124,12 +124,15 @@
 //! ## Owned flows
 //!
 //! [`PacketFlow`] borrows the input buffer. To store a flow, send it across
-//! threads or serialize it, convert it with [`PacketFlow::to_owned`], which
+//! threads or serialize it, convert it with [`PacketFlow::to_owned_flow`], which
 //! returns an [`owned::PacketFlowOwned`]. Note that the owned form drops the
 //! payloads and the per-layer `details`.
 
-/// Module handling format and integrity checks for packets.
-pub mod checks;
+/// Validation and extraction rules used by the parsers (crate-internal).
+pub(crate) mod checks;
+
+/// Opt-in verification of IPv4, TCP and UDP checksums.
+pub mod checksum;
 
 /// Module for converting packet formats.
 pub mod convert;
@@ -146,11 +149,10 @@ mod displays;
 /// and match the per-layer error types (e.g.
 /// `errors::internet::InternetError`, `errors::transport::TransportError`).
 pub mod errors;
-pub use errors::{LinkLayerError, ParseError, ParsedPacketError};
+pub use errors::{LinkLayerError, ParseError};
 
 /// Main module for packet analysis.
 pub mod parse;
-#[cfg(feature = "parse_timing")]
 pub use parse::parse_timed;
 pub use parse::{DecodeAsProtocol, ParseConfig, is_supported, parse, parse_with};
 

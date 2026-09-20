@@ -31,15 +31,6 @@ fn main() {
         }
     };
 
-    match Transport::try_from(internet.payload) {
-        Ok(transport) => {
-            println!("{}", transport);
-        }
-        Err(e) => {
-            eprintln!("Erreur Transport : {:?}", e);
-        }
-    }
-
     match Transport::try_from_parts(internet.payload_protocol, internet.payload) {
         Ok(transport) => {
             println!("{}", transport);

@@ -11,18 +11,10 @@ use crate::{
 };
 
 const DATALINK_HEADER_LEN: usize = 14;
-const DATALINK_VLAN_HEADER_LEN: usize = 18;
 const VLAN_TAG_LEN: usize = 4;
 
 pub fn validate_data_link_length(packets: &[u8]) -> Result<(), DataLinkError> {
     if packets.len() < DATALINK_HEADER_LEN {
-        return Err(DataLinkError::DataLinkTooShort(packets.len() as u8));
-    }
-    Ok(())
-}
-
-pub fn validate_data_link_vlan_length(packets: &[u8]) -> Result<(), DataLinkError> {
-    if packets.len() < DATALINK_VLAN_HEADER_LEN {
         return Err(DataLinkError::DataLinkTooShort(packets.len() as u8));
     }
     Ok(())

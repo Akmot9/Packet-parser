@@ -6,7 +6,9 @@
 //! Module for parsing DHCPv6 packets.
 
 use crate::{
-    checks::application::dhcpv6::{validate_dhcpv6_message_type, validate_dhcpv6_min_length},
+    checks::application::dhcpv6::{
+        extract_transaction_id, validate_dhcpv6_message_type, validate_dhcpv6_min_length,
+    },
     errors::application::dhcpv6::Dhcpv6PacketParseError,
 };
 use std::fmt;
@@ -50,8 +52,8 @@ impl<'a> TryFrom<&'a [u8]> for Dhcpv6Packet<'a> {
         let message_type = payload[0];
         validate_dhcpv6_message_type(message_type)?;
 
-        // Transaction ID is 24 bits (3 bytes), so we pad it with a 0 to make a u32
-        let transaction_id = u32::from_be_bytes([0, payload[1], payload[2], payload[3]]);
+        // Transaction ID is 24 bits (3 bytes), zero-padded into a u32.
+        let transaction_id = extract_transaction_id(&payload[1..4])?;
 
         // The rest are options (zero-copy slice)
         let options = &payload[4..];
