@@ -332,3 +332,68 @@ Le passage aux slices empruntées (#62) a été mesuré et retiré : aucun gain
 sur du trafic réel. `PostgreSqlParse`, `PostgreSqlBind`, `PostgreSqlStartup`
 et `PostgreSqlPacket::messages` gardent leurs `Vec`.
 
+## Impact Sonar, vérifié
+
+`sonar-rust` (copie de travail, hors dépôt) a été compilé et testé contre la
+11.0.0 locale le 2026-09-20. **Sept lignes** suffisent, toutes dans
+`sonar-flows-core` :
+
+| Fichier | Changement |
+|---|---|
+| `src/packet.rs` (l. 221, 266, 373) | `flow.to_owned()` → `flow.to_owned_flow()` |
+| `src/link.rs` (l. 281, 300) | littéraux `DataLinkOwned { … }` : ajouter `vlan_stack: Vec::new()` |
+| `src/report.rs` (l. 120, 129, tests) | `ParseError::PacketTooShort(10)` n'existe plus : prendre `ParseError::InvalidLinkLayer(LinkLayerError::Truncated { link_type: LinkType::ETHERNET, required: 14, actual: 10 })` |
+
+Le piège annoncé plus haut se vérifie : sans le renommage, `flow.to_owned()`
+**compile encore** et rend un `PacketFlow` cloné ; le compilateur ne le
+signale qu'indirectement (« no field `source_ip` on type `Internet` »,
+« mismatched types »). Commencer par là.
+
+Après ces sept lignes : compilation propre, et aucun test ne passe de vert
+à rouge (les 27 échecs restants de la copie sont ceux de la 10.5.0 : des
+fixtures situées hors du dossier copié).
+
+Non couvert par cette vérification, à faire dans le dépôt Sonar :
+
+- `src-tauri` : deux littéraux `DataLinkOwned` de plus (`events/contract.rs`
+  l. 1002 et 1015) ; les structs miroir et leurs tests d'égalité JSON —
+  seule valeur qui change, `protocol_transport: "Tcp"` → `"TCP"` ;
+- `sonar-flows-core/tests/pcap_accuracy.rs:92` : `Some("Tcp")` → `Some("TCP")` ;
+- les snapshots `pcap_accuracy` : GIOP étiquette davantage de trames (premier
+  segment des messages fragmentés par TCP), et SYN+FIN garde sa couche
+  transport. À relire ligne à ligne avant de régénérer ;
+- majeure de `sonar-flows-core`, vendor, cargo-vet : procédure habituelle.
+
+## Recoupement avec `cargo semver-checks`
+
+`cargo semver-checks check-release --baseline-version 10.5.0` valide la
+11.0.0 comme majeure. Rejoué en `--release-type minor` pour lister les
+ruptures, il en trouve 17 catégories ; chacune renvoie à une section de ce
+guide :
+
+| Catégorie détectée | Section |
+|---|---|
+| `module_missing`, `function_missing`, `pub_module_level_const_missing`, `struct_missing` (`checks::*`, `timing::*`) | Purge — `checks`, `parse_timing` |
+| `declarative_macro_missing` (`time_block_ns!`) | Purge — `parse_timing` |
+| `enum_missing` (`ApplicationProtocol`, `ParsedPacketError`, `LayerAttempt`) | Purge — code mort |
+| `enum_variant_missing` (`ParseError::PacketTooShort`, `ParseError::InvalidDataLink`, `ApplicationError::*`, `QuicPacketType::Unknown`, `TcpError::InvalidHeaderLength`, `GiopParseError::TruncatedBody`) | Purge, Erreurs, GIOP |
+| `feature_missing` (`doc-diagrams`) | Purge — code mort |
+| `method_parameter_count_changed` (`packet_to_pcap`) | Purge |
+| `enum_marked_non_exhaustive`, `struct_marked_non_exhaustive` | Erreurs ; Champs et variantes |
+| `constructible_struct_adds_field` (`DataLinkOwned::vlan_stack`) | Champs et variantes |
+| `type_mismatched_generic_lifetimes` (`DnsPacket`, `RawRecord`, `GiopReply`, `GiopFragment`) | Zéro copie ; GIOP |
+| `unit_struct_changed_kind`, `enum_tuple_variant_changed_kind` (GIOP) | GIOP |
+| `copy_impl_added` (`GiopMessageType`) | sans effet pour un consommateur |
+
+Trois ruptures que l'outil **ne voit pas**, documentées ici quand même :
+
+- le retrait de `TryFrom<&[u8]> for Transport` (un `impl` de trait) ;
+- le renommage de `PacketFlow::to_owned`, masqué par `ToOwned::to_owned` ;
+- les changements de **comportement** : SYN+FIN conservé, messages GIOP
+  tronqués acceptés, clés JSON du modèle borrowed, `"TCP"`, `IpType::Broadcast`.
+
+Une rupture a été **évitée** grâce à ce recoupement : insérer
+`IpType::Broadcast` en deuxième position décalait le discriminant de toutes
+les variantes suivantes (`IpType::Multicast as u8` : 1 → 2). La variante est
+en fin d'enum, et un test fige les discriminants historiques.
+
