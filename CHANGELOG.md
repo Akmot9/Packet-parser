@@ -87,6 +87,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     la sonde hors port accepter tout verbe FTP : l'oracle echoue dans les
     deux cas, avec le message attendu. Sur le code intact, l'entree fautive
     de la CI passe.
+- **`parse_giop` tourne enfin la nuit.** Livree avec le decodeur GIOP
+  complet (11.0.0), la cible compilait en CI mais manquait a la matrice de
+  `fuzz.yml` : la CI ne l'executait jamais.
 
 ## [11.1.0] - 2026-09-20
 
