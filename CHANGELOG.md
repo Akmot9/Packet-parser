@@ -68,6 +68,26 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   ce filtre rend zero y compris sur une capture qui en est pleine. Corrige,
   avec la methode fiable.
 
+### Infrastructure
+
+- **Le fuzzing nocturne redevient un signal.** La cible `parse_packetflow`
+  echouait trois nuits sur quatre (19, 20 et 22 septembre) sur son propre
+  oracle, « FTP ne doit jamais etre detecte hors de TCP/21 ». Ce n'etait pas
+  un defaut du parseur : l'oracle date de la 9.0.0, et la 10.3.0 a rendu la
+  regle fausse en detectant hors port les verbes propres a FTP (issue #66).
+  Le fuzzer a fini par le trouver — `STOR +2\r\n` de TCP/1 vers TCP/0,
+  etiquete FTP comme voulu. Tant qu'il echouait, un vrai panic de cette
+  cible serait passe inapercu : libFuzzer s'arrete au premier crash.
+  - L'oracle suit desormais la politique entiere : TCP/21, ou hors de ce
+    port une commande dont le verbe n'appartient qu'a FTP, jamais sur un
+    port SMTP ou NNTP. Il recopie la liste des verbes au lieu de l'importer
+    — un oracle qui lirait celle du parseur ne pourrait pas la prendre en
+    defaut — et `FTP_ONLY_VERBS` renvoie a cette copie.
+  - Verifie par mutation. Retirer le veto des ports SMTP/NNTP, puis laisser
+    la sonde hors port accepter tout verbe FTP : l'oracle echoue dans les
+    deux cas, avec le message attendu. Sur le code intact, l'entree fautive
+    de la CI passe.
+
 ## [11.1.0] - 2026-09-20
 
 Strictement additif par rapport a la 11.0.0 : **UMAS**, le protocole proprietaire de Schneider

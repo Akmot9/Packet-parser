@@ -490,6 +490,10 @@ pub(super) fn classify(
 /// Verbes que seul FTP definit (RFC 959/2428). RETR figure dans la liste de
 /// l'issue #66 bien que POP3 le partage : la crate ne classe pas POP3, et le
 /// verbe est valide avec la syntaxe FTP. POST est exclu du set NNTP (HTTP).
+///
+/// L'oracle de `fuzz/fuzz_targets/parse_packetflow.rs` recopie cette liste et
+/// les ports de [`is_text_protocol_port`] : toute modification s'y reporte,
+/// sans quoi le fuzzing nocturne echoue sur un comportement voulu.
 const FTP_ONLY_VERBS: [&str; 11] = [
     "RETR", "STOR", "PASV", "APPE", "RNFR", "RNTO", "MKD", "CDUP", "EPSV", "EPRT", "NLST",
 ];

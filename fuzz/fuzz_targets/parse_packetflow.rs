@@ -17,6 +17,28 @@ const COTP_CONNECTION_REQUEST: [u8; 22] = [
     0x02, 0x01, 0x02, 0xc0, 0x01, 0x09,
 ];
 
+// Verbes que seul FTP definit : miroir de `FTP_ONLY_VERBS`
+// (src/parse/dispatch.rs, issue #66). Recopie a dessein plutot qu'importee :
+// un oracle qui lirait la liste du parseur ne pourrait pas la prendre en
+// defaut. Les deux listes evoluent ensemble.
+const FTP_ONLY_VERBS: [&str; 11] = [
+    "RETR", "STOR", "PASV", "APPE", "RNFR", "RNTO", "MKD", "CDUP", "EPSV", "EPRT", "NLST",
+];
+
+// Ports standards de SMTP et NNTP : un verbe propre a FTP y est du contenu en
+// transit (corps DATA, article), jamais une commande FTP.
+const SMTP_NNTP_PORTS: [u16; 3] = [25, 587, 119];
+
+fn starts_with_ftp_only_verb(payload: &[u8]) -> bool {
+    let first_word = payload
+        .split(|byte| matches!(byte, b' ' | b'\r'))
+        .next()
+        .unwrap_or_default();
+    FTP_ONLY_VERBS
+        .iter()
+        .any(|verb| first_word.eq_ignore_ascii_case(verb.as_bytes()))
+}
+
 fn ethernet_ipv4_payload(
     transport_protocol: TransportProtocol,
     destination_port: u16,
@@ -95,8 +117,10 @@ fn xor_overlay(seed: &mut [u8], data: &[u8]) {
 
 fn exercise(data: &[u8]) {
     if let Ok(flow) = PacketFlow::try_from(data) {
-        // FTP est volontairement garde par TCP/21 : le fuzzer doit aussi
-        // proteger cet invariant semantique, pas seulement l'absence de panic.
+        // FTP est garde par TCP/21, avec une seule exception (issue #66) : hors
+        // de ce port, une commande dont le verbe n'appartient qu'a FTP, jamais
+        // sur un port SMTP ou NNTP. Le fuzzer protege cette politique, pas
+        // seulement l'absence de panic.
         for parsed_flow in flow.flatten() {
             let application_protocol = parsed_flow
                 .application
@@ -109,11 +133,25 @@ fn exercise(data: &[u8]) {
                         .transport
                         .as_ref()
                         .expect("FTP doit toujours posseder une couche transport");
-                    assert_eq!(transport.protocol, TransportProtocol::Tcp);
-                    assert!(
-                        transport.source_port == Some(21) || transport.destination_port == Some(21),
-                        "FTP ne doit jamais etre detecte hors de TCP/21"
+                    assert_eq!(
+                        transport.protocol,
+                        TransportProtocol::Tcp,
+                        "FTP ne doit jamais etre detecte hors de TCP"
                     );
+                    let ports = [transport.source_port, transport.destination_port];
+                    if !ports.contains(&Some(21)) {
+                        assert!(
+                            !ports
+                                .iter()
+                                .flatten()
+                                .any(|port| SMTP_NNTP_PORTS.contains(port)),
+                            "FTP ne doit jamais etre detecte sur un port SMTP ou NNTP"
+                        );
+                        assert!(
+                            starts_with_ftp_only_verb(transport.payload.unwrap_or_default()),
+                            "hors de TCP/21, FTP exige un verbe qui n'appartient qu'a FTP"
+                        );
+                    }
                 }
                 Some("S7Comm") => {
                     let transport = parsed_flow
