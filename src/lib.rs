@@ -9,7 +9,8 @@
 // -D warnings, ce qui rend ces lints bloquants. `indexing_slicing` et
 // `arithmetic_side_effects` ne sont volontairement pas actives : plus de
 // 1000 acces idiomatiques (index apres controle de longueur explicite), dont
-// l'absence de panic est verifiee par les 7 cibles de fuzz.
+// l'absence de panic est verifiee par les cibles de fuzz de `fuzz/` (le
+// nombre n'est plus ecrit ici : il a deja derive une fois).
 #![cfg_attr(
     not(test),
     warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)

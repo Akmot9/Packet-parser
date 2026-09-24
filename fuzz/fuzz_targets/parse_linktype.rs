@@ -23,7 +23,9 @@ fuzz_target!(|data: &[u8]| {
         _ => LinkType(selector as u32),
     };
     if let Ok(flow) = parse(link_type, frame) {
-        let _ = flow.to_owned();
+        // `to_owned_flow`, pas `to_owned` : depuis a488065, ce dernier n'est
+        // plus que le `Clone` de `ToOwned`.
+        let _ = flow.to_owned_flow();
         let _ = flow.flatten();
     }
 });

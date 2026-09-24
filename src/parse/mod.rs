@@ -1499,19 +1499,23 @@ mod tests {
     #[test]
     fn packetflow_does_not_relabel_text_protocol_bodies_as_ftp() {
         // Regression : ces lignes sont du contenu valide pendant SMTP DATA ou
-        // dans un article NNTP. Sans etat de session, le port doit l'emporter.
-        for destination_port in [25, 587, 119] {
-            for payload in [&b"PASV\r\n"[..], &b"PORT 192,0,2,1,7,138\r\n"[..]] {
-                let packet = ethernet_ipv4_tcp_packet(51_845, destination_port, payload);
-                let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
+        // dans un article NNTP. Sans etat de session, le port doit l'emporter,
+        // dans les deux sens : un veto limite au port destination survivait a
+        // tous les tests (mutation verifiee pendant la revue de #107).
+        for port in [25, 587, 119] {
+            for (source_port, destination_port) in [(51_845, port), (port, 51_845)] {
+                for payload in [&b"PASV\r\n"[..], &b"PORT 192,0,2,1,7,138\r\n"[..]] {
+                    let packet = ethernet_ipv4_tcp_packet(source_port, destination_port, payload);
+                    let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
-                assert_ne!(
-                    flow.application
-                        .as_ref()
-                        .map(|application| application.application_protocol),
-                    Some("FTP"),
-                    "body on TCP/{destination_port} relabelled FTP: {payload:?}"
-                );
+                    assert_ne!(
+                        flow.application
+                            .as_ref()
+                            .map(|application| application.application_protocol),
+                        Some("FTP"),
+                        "body {source_port}->{destination_port} relabelled FTP: {payload:?}"
+                    );
+                }
             }
         }
     }
