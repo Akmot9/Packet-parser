@@ -113,6 +113,16 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 - **`parse_giop` tourne enfin la nuit.** Livree avec le decodeur GIOP
   complet (11.0.0), la cible compilait en CI mais manquait a la matrice de
   `fuzz.yml` : la CI ne l'executait jamais.
+- **`parse_linktype` fuzze enfin le decodeur LINKTYPE_NULL.** Son selecteur
+  etait une liste ecrite a la main, a laquelle le decodeur loopback BSD
+  (#95) n'avait pas ete ajoute : aucune cible ne l'atteignait. LINKTYPE_IPV4
+  et IPV6 manquaient aussi — leur decodeur, partage avec RAW, etait fuzze,
+  mais pas leur controle de version (une trame IPv6 declaree
+  LINKTYPE_IPV4). Le catalogue est desormais tire de `is_supported` : tout
+  decodeur que la bibliotheque dispatche est fuzze d'office. Verifie par
+  mutation : un panic injecte dans le decodeur NULL est atteint en 1 207
+  executions depuis un corpus vide, quand l'ancienne cible ne l'atteignait
+  pas en 7,5 millions.
 
 ## [11.1.0] - 2026-09-20
 
