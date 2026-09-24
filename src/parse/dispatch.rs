@@ -59,6 +59,8 @@ use crate::checks::application::quic::is_plausible_short_header;
 /// la classification est un verdict sur l'en-tete applicatif, pas sur la
 /// charge complete, et cette borne supprime le cout pathologique des
 /// segments jumbo hostiles mesures par l'audit (x2545).
+///
+/// Recopie par l'oracle FTP du fuzz : voir [`FTP_ONLY_VERBS`].
 const PROBE_CAP: usize = 18 * 1024;
 
 /// Transport requis par une regle.
@@ -491,9 +493,11 @@ pub(super) fn classify(
 /// l'issue #66 bien que POP3 le partage : la crate ne classe pas POP3, et le
 /// verbe est valide avec la syntaxe FTP. POST est exclu du set NNTP (HTTP).
 ///
-/// L'oracle de `fuzz/fuzz_targets/parse_packetflow.rs` recopie cette liste et
-/// les ports de [`is_text_protocol_port`] : toute modification s'y reporte,
-/// sans quoi le fuzzing nocturne echoue sur un comportement voulu.
+/// L'oracle de `fuzz/fuzz_targets/parse_packetflow.rs` recopie cette liste,
+/// les ports de [`is_text_protocol_port`] et [`is_ftp_tcp_port`], et
+/// [`PROBE_CAP`] : toute modification s'y reporte. Elargir la detection sans
+/// lui fait echouer le fuzzing nocturne sur un comportement voulu ; la
+/// restreindre le relache en silence.
 const FTP_ONLY_VERBS: [&str; 11] = [
     "RETR", "STOR", "PASV", "APPE", "RNFR", "RNTO", "MKD", "CDUP", "EPSV", "EPRT", "NLST",
 ];
@@ -554,6 +558,8 @@ fn is_unambiguous_nntp_command(payload: &[u8]) -> bool {
 /// Ports standards de la famille texte FTP/SMTP/NNTP : les regles de port
 /// ci-dessus y ont deja tranche, et un verbe distinctif y est probablement
 /// du contenu en transit (corps DATA, article) — jamais reclasse.
+///
+/// Recopie par l'oracle FTP du fuzz : voir [`FTP_ONLY_VERBS`].
 fn is_text_protocol_port(port: Option<u16>) -> bool {
     matches!(port, Some(21 | 25 | 587 | 119))
 }
@@ -587,6 +593,8 @@ fn is_quic_udp_port(port: Option<u16>) -> bool {
 }
 
 /// FTP control channel : TCP 21.
+///
+/// Recopie par l'oracle FTP du fuzz : voir [`FTP_ONLY_VERBS`].
 fn is_ftp_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(21))
 }
@@ -693,6 +701,23 @@ mod tests {
         assert_ne!(label, Some("FTP"));
         assert_ne!(label, Some("SMTP"));
         assert_ne!(label, Some("NNTP"));
+    }
+
+    /// Issue #66, l'autre moitie de la regle : un verbe propre a FTP en tete
+    /// du payload ne suffit pas, il faut une commande complete. Sans ce test,
+    /// reduire la sonde a sa garde `starts_with_one_of` passait inapercu.
+    #[test]
+    fn unambiguous_verbs_require_a_complete_command() {
+        for payload in [
+            &b"STOR\r\n"[..],          // STOR exige un argument
+            &b"PASV extra\r\n"[..],    // PASV n'en prend aucun
+            &b"STOR fichier.bin"[..],  // ligne sans CRLF
+            &b"RETR \xff\xfe\r\n"[..], // UTF-8 invalide
+        ] {
+            let transport = tcp_transport(payload);
+            let label = classify(&transport, &[]).map(|a| a.application_protocol);
+            assert_ne!(label, Some("FTP"), "payload {payload:?}");
+        }
     }
 
     /// Issue #65 : un port declare par l'appelant etend les gardes — port ET

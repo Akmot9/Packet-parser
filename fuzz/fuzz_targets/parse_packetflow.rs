@@ -3,7 +3,10 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use packet_parser::{PacketFlow, parse::transport::protocols::TransportProtocol};
+use packet_parser::{
+    PacketFlow,
+    parse::{application::protocols::ftp::FtpMessage, transport::protocols::TransportProtocol},
+};
 
 const READ_VAR_REQUEST: [u8; 31] = [
     0x03, 0x00, 0x00, 0x1f, 0x02, 0xf0, 0x80, 0x32, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0e, 0x00,
@@ -29,14 +32,24 @@ const FTP_ONLY_VERBS: [&str; 11] = [
 // transit (corps DATA, article), jamais une commande FTP.
 const SMTP_NNTP_PORTS: [u16; 3] = [25, 587, 119];
 
-fn starts_with_ftp_only_verb(payload: &[u8]) -> bool {
-    let first_word = payload
-        .split(|byte| matches!(byte, b' ' | b'\r'))
-        .next()
-        .unwrap_or_default();
-    FTP_ONLY_VERBS
-        .iter()
-        .any(|verb| first_word.eq_ignore_ascii_case(verb.as_bytes()))
+// Miroir de `PROBE_CAP` (src/parse/dispatch.rs) : la sonde ne lit que ce
+// prefixe du payload, l'oracle juge donc les memes octets qu'elle.
+const PROBE_CAP: usize = 18 * 1024;
+
+// Graine structuree de l'oracle FTP, comme READ_VAR_REQUEST pour S7Comm : sans
+// elle, le fuzzer n'atteignait le chemin FTP hors port que par hasard, quatre
+// nuits sur trente-quatre depuis la 10.3.0.
+const STOR_COMMAND: &[u8] = b"STOR fichier.bin\r\n";
+
+// La regle hors port exige une commande complete (ligne terminee par CRLF,
+// UTF-8, arite) et pas seulement un verbe propre a FTP en tete du payload.
+fn is_ftp_only_command(payload: &[u8]) -> bool {
+    let probed = &payload[..payload.len().min(PROBE_CAP)];
+    matches!(
+        FtpMessage::try_from(probed),
+        Ok(FtpMessage::Command { verb, .. })
+            if FTP_ONLY_VERBS.iter().any(|only| only.eq_ignore_ascii_case(verb))
+    )
 }
 
 fn ethernet_ipv4_payload(
@@ -117,10 +130,11 @@ fn xor_overlay(seed: &mut [u8], data: &[u8]) {
 
 fn exercise(data: &[u8]) {
     if let Ok(flow) = PacketFlow::try_from(data) {
-        // FTP est garde par TCP/21, avec une seule exception (issue #66) : hors
-        // de ce port, une commande dont le verbe n'appartient qu'a FTP, jamais
-        // sur un port SMTP ou NNTP. Le fuzzer protege cette politique, pas
-        // seulement l'absence de panic.
+        // En configuration par defaut, FTP est garde par TCP/21 avec une seule
+        // exception (issue #66) : hors de ce port, une commande complete dont
+        // le verbe n'appartient qu'a FTP, jamais sur un port SMTP ou NNTP. Le
+        // Decode As (#65) n'est pas exerce ici. Le fuzzer protege cette
+        // politique, pas seulement l'absence de panic.
         for parsed_flow in flow.flatten() {
             let application_protocol = parsed_flow
                 .application
@@ -148,8 +162,8 @@ fn exercise(data: &[u8]) {
                             "FTP ne doit jamais etre detecte sur un port SMTP ou NNTP"
                         );
                         assert!(
-                            starts_with_ftp_only_verb(transport.payload.unwrap_or_default()),
-                            "hors de TCP/21, FTP exige un verbe qui n'appartient qu'a FTP"
+                            transport.payload.is_some_and(is_ftp_only_command),
+                            "hors de TCP/21, FTP exige une commande complete propre a FTP"
                         );
                     }
                 }
@@ -188,17 +202,9 @@ fn exercise(data: &[u8]) {
     }
 }
 
-fuzz_target!(|data: &[u8]| {
-    exercise(data);
-
-    // A genuine Ethernet/IPv4/TCP/S7 frame reaches the positive invariant;
-    // the same application payload over UDP exercises the rejection path.
-    for protocol in [TransportProtocol::Tcp, TransportProtocol::Udp] {
-        let mut seeded = ethernet_ipv4_payload(protocol, 102, &READ_VAR_REQUEST);
-        xor_overlay(seeded.as_mut_slice(), data);
-        exercise(seeded.as_slice());
-    }
-
+// Oracles fixes de politique : ils ne dependent pas de l'entree, `init` les
+// execute une fois au demarrage au lieu de les rejouer a chaque iteration.
+fn fixed_policy_checks() {
     // COTP n'est annonce que pour une enveloppe TPKT valide sur TCP/102. Les
     // memes octets applicatifs sur UDP ou hors du port ISO-TSAP sont des
     // oracles negatifs explicites contre les faux positifs.
@@ -212,6 +218,35 @@ fuzz_target!(|data: &[u8]| {
     let cotp_udp_102 = ethernet_ipv4_payload(TransportProtocol::Udp, 102, &COTP_CONNECTION_REQUEST);
     assert_ne!(application_protocol(&cotp_udp_102), Some("COTP"));
 
+    // FTP hors port (issue #66) : une commande complete propre a FTP est
+    // detectee, jamais sur un port SMTP ou NNTP ; un verbe partage ou une
+    // commande incomplete ne le sont pas.
+    let ftp_off_port = ethernet_ipv4_payload(TransportProtocol::Tcp, 5_000, STOR_COMMAND);
+    assert_eq!(application_protocol(&ftp_off_port), Some("FTP"));
+
+    for port in SMTP_NNTP_PORTS {
+        let vetoed = ethernet_ipv4_payload(TransportProtocol::Tcp, port, STOR_COMMAND);
+        assert_ne!(application_protocol(&vetoed), Some("FTP"), "TCP/{port}");
+    }
+
+    for payload in [&b"LIST\r\n"[..], &b"STOR\r\n"[..]] {
+        let frame = ethernet_ipv4_payload(TransportProtocol::Tcp, 5_000, payload);
+        let payload = payload.escape_ascii();
+        assert_ne!(application_protocol(&frame), Some("FTP"), "{payload}");
+    }
+}
+
+fuzz_target!(init: fixed_policy_checks(), |data: &[u8]| {
+    exercise(data);
+
+    // A genuine Ethernet/IPv4/TCP/S7 frame reaches the positive invariant;
+    // the same application payload over UDP exercises the rejection path.
+    for protocol in [TransportProtocol::Tcp, TransportProtocol::Udp] {
+        let mut seeded = ethernet_ipv4_payload(protocol, 102, &READ_VAR_REQUEST);
+        xor_overlay(seeded.as_mut_slice(), data);
+        exercise(seeded.as_slice());
+    }
+
     for (protocol, destination_port) in [
         (TransportProtocol::Tcp, 102),
         (TransportProtocol::Tcp, 10_102),
@@ -219,6 +254,17 @@ fuzz_target!(|data: &[u8]| {
     ] {
         let mut seeded =
             ethernet_ipv4_payload(protocol, destination_port, &COTP_CONNECTION_REQUEST);
+        xor_overlay(seeded.as_mut_slice(), data);
+        exercise(seeded.as_slice());
+    }
+
+    // FTP : la meme commande hors port, sur un port SMTP, et sur UDP.
+    for (protocol, destination_port) in [
+        (TransportProtocol::Tcp, 5_000),
+        (TransportProtocol::Tcp, 25),
+        (TransportProtocol::Udp, 5_000),
+    ] {
+        let mut seeded = ethernet_ipv4_payload(protocol, destination_port, STOR_COMMAND);
         xor_overlay(seeded.as_mut_slice(), data);
         exercise(seeded.as_slice());
     }
