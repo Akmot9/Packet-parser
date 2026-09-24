@@ -1,26 +1,34 @@
 // Fuzz du point d'entrée multi-linktype : le premier octet choisit le
-// LinkType (Ethernet, RAW, LINUX_SLL, valeurs non supportées…), le reste
-// est la trame. Aucun couple (link type, octets) ne doit provoquer de
-// panic, seulement Ok(_) ou Err(_).
+// LinkType (supportés ou non), le reste est la trame. Aucun couple (link
+// type, octets) ne doit provoquer de panic, seulement Ok(_) ou Err(_).
 #![no_main]
 
+use std::sync::LazyLock;
+
 use libfuzzer_sys::fuzz_target;
-use packet_parser::{LinkType, parse};
+use packet_parser::{LinkType, is_supported, parse};
+
+// Le catalogue vient de la bibliotheque elle-meme : tout decodeur que
+// `is_supported` annonce est fuzze d'office. La liste ecrite a la main qui
+// le precedait avait oublie LINKTYPE_NULL (#95), IPV4 et IPV6.
+static SUPPORTED: LazyLock<Vec<LinkType>> = LazyLock::new(|| {
+    (0..=u32::from(u16::MAX))
+        .map(LinkType)
+        .filter(|&link_type| is_supported(link_type))
+        .collect()
+});
 
 fuzz_target!(|data: &[u8]| {
     let Some((&selector, frame)) = data.split_first() else {
         return;
     };
-    // Alterne entre les link types du catalogue (supportés ou non) et une
-    // valeur arbitraire, pour couvrir le dispatch et le refus propre.
-    let link_type = match selector % 7 {
-        0 => LinkType::ETHERNET,
-        1 => LinkType::RAW,
-        2 => LinkType::LINUX_SLL,
-        3 => LinkType::LINUX_SLL2,
-        4 => LinkType::IEEE802_3BR,
-        5 => LinkType(u32::MAX),
-        _ => LinkType(selector as u32),
+    // Les link types du catalogue, plus deux valeurs pour le refus propre :
+    // u32::MAX, et le selecteur lui-meme pris comme LINKTYPE arbitraire.
+    let index = usize::from(selector) % (SUPPORTED.len() + 2);
+    let link_type = match SUPPORTED.get(index) {
+        Some(&link_type) => link_type,
+        None if index == SUPPORTED.len() => LinkType(u32::MAX),
+        None => LinkType(u32::from(selector)),
     };
     if let Ok(flow) = parse(link_type, frame) {
         // `to_owned_flow`, pas `to_owned` : depuis a488065, ce dernier n'est
