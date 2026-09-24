@@ -181,7 +181,9 @@ fn exercise(data: &[u8]) {
         }
 
         // Exerce aussi les chemins de conversion et d'aplatissement.
-        let _ = flow.to_owned();
+        // `to_owned_flow`, pas `to_owned` : depuis a488065, ce dernier n'est
+        // plus que le `Clone` de `ToOwned`.
+        let _ = flow.to_owned_flow();
         let _ = flow.flatten();
     }
 }
