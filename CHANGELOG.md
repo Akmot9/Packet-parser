@@ -70,23 +70,46 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Infrastructure
 
-- **Le fuzzing nocturne redevient un signal.** La cible `parse_packetflow`
-  echouait trois nuits sur quatre (19, 20 et 22 septembre) sur son propre
-  oracle, « FTP ne doit jamais etre detecte hors de TCP/21 ». Ce n'etait pas
-  un defaut du parseur : l'oracle date de la 9.0.0, et la 10.3.0 a rendu la
-  regle fausse en detectant hors port les verbes propres a FTP (issue #66).
-  Le fuzzer a fini par le trouver — `STOR +2\r\n` de TCP/1 vers TCP/0,
-  etiquete FTP comme voulu. Tant qu'il echouait, un vrai panic de cette
-  cible serait passe inapercu : libFuzzer s'arrete au premier crash.
-  - L'oracle suit desormais la politique entiere : TCP/21, ou hors de ce
-    port une commande dont le verbe n'appartient qu'a FTP, jamais sur un
-    port SMTP ou NNTP. Il recopie la liste des verbes au lieu de l'importer
-    — un oracle qui lirait celle du parseur ne pourrait pas la prendre en
-    defaut — et `FTP_ONLY_VERBS` renvoie a cette copie.
-  - Verifie par mutation. Retirer le veto des ports SMTP/NNTP, puis laisser
-    la sonde hors port accepter tout verbe FTP : l'oracle echoue dans les
-    deux cas, avec le message attendu. Sur le code intact, l'entree fautive
-    de la CI passe.
+- **Le fuzzing nocturne redevient un signal.** La cible `parse_packetflow` a
+  echoue quatre nuits (30 aout, 19, 20 et 22 septembre) sur son propre
+  oracle, « FTP ne doit jamais etre detecte hors de TCP/21 », chaque fois
+  sur une entree differente — toujours une commande `STOR` hors port,
+  etiquetee FTP comme voulu. Ce n'etait pas un defaut du parseur : l'oracle
+  date de la 9.0.0, et la 10.3.0 a rendu la regle fausse en detectant hors
+  port les verbes propres a FTP (issue #66). Le fuzzer l'a trouve une
+  dizaine de jours plus tard, et ce premier signal rouge est reste plus de
+  trois semaines sans suite. Tant qu'il echouait, un vrai panic de cette
+  cible serait passe inapercu : libFuzzer s'arrete au premier crash, et un
+  job en echec ne sauvegarde pas son corpus.
+  - L'oracle suit desormais la politique par defaut : TCP/21, ou hors de ce
+    port une commande FTP complete (ligne CRLF, UTF-8, arite) dont le verbe
+    n'appartient qu'a FTP, jamais sur un port SMTP ou NNTP. Le Decode As
+    (#65) n'est pas couvert : aucune cible n'appelle `parse_with`. L'oracle
+    recopie la liste des verbes, les ports et `PROBE_CAP` au lieu de les
+    importer — un oracle qui lirait ceux du parseur ne pourrait pas les
+    prendre en defaut — et chacun renvoie a sa copie.
+  - La cible porte enfin une graine FTP, comme S7Comm et COTP : la meme
+    commande hors port, sur un port SMTP et sur UDP. Sans elle, le chemin
+    FTP hors port n'etait atteint que par hasard, quatre nuits sur
+    trente-quatre. Les oracles fixes de politique (COTP, et desormais FTP)
+    ne dependent pas de l'entree : ils passent dans le bloc `init`, executes
+    une fois au demarrage au lieu de chaque iteration.
+  - Verifie par mutation, cette fois par le fuzzer lui-meme. Si la sonde
+    hors port accepte tout verbe FTP, 3 millions d'executions en 300 s ne
+    voient rien sans graine ; avec, l'oracle casse en 4 191 executions,
+    oracles fixes desactives. Cette mutation, le retrait du veto SMTP/NNTP
+    et la reduction de la sonde a sa garde `starts_with_one_of` font tous
+    trois casser les oracles fixes au demarrage. Les quatre entrees
+    fautives de la CI passent.
+  - Ces mutations ont montre deux trous des tests unitaires : rien ne
+    verifiait que la regle exige une commande complete (nouveau test
+    `unambiguous_verbs_require_a_complete_command`), ni que le veto vaut
+    aussi pour le port source (`packetflow_does_not_relabel_text_protocol_bodies_as_ftp`
+    couvre desormais les deux sens).
+  - `flow.to_owned()` n'etait plus que le `Clone` de `ToOwned` depuis le
+    renommage en `to_owned_flow` (a488065) : aucune cible ne fuzzait la
+    conversion vers `PacketFlowOwned`. `parse_packetflow` et
+    `parse_linktype` appellent desormais `to_owned_flow`.
 - **`parse_giop` tourne enfin la nuit.** Livree avec le decodeur GIOP
   complet (11.0.0), la cible compilait en CI mais manquait a la matrice de
   `fuzz.yml` : la CI ne l'executait jamais.
