@@ -6,6 +6,27 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [11.2.0] - 2026-09-25
+
+Strictement additif par rapport a la 11.1.0 : deux decodeurs, et un fuzzing
+nocturne qui redevient un signal.
+
+**GTP-U** est le dernier tunnel de l'issue #15, et le premier dont rien
+n'annonce le contenu. **LINKTYPE_NULL** (#95) decode les captures loopback
+BSD et macOS ; il apporte au passage la premiere capture OPC UA reelle du
+depot. Un consommateur qui exporte les etiquettes applicatives verra
+apparaitre `GTP-U`, et les flux internes du tunnel via `flatten()`.
+
+Cote API publique, deux ajouts : `LinkType::NULL` et la variante
+`LinkLayerError::InvalidAddressFamily`, mineure puisque l'enum d'erreur est
+`#[non_exhaustive]` depuis la 11.0.0. `cargo semver-checks` contre la
+11.1.0 : aucune rupture.
+
+Le fuzzing nocturne echouait par intermittence depuis le 30 aout sur un
+oracle perime. Il repasse au vert sur les huit cibles le 25 septembre, et
+couvre enfin `parse_giop` et le decodeur LINKTYPE_NULL (section
+Infrastructure).
+
 ### Ajoute
 
 - **Tunnel GTP-U** (issue #15, la derniere case) : UDP 2152, message type

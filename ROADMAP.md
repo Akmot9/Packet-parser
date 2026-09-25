@@ -1,6 +1,18 @@
 # Roadmap packet_parser
 
-Etat au 2026-09-20 (soir) : la **11.1.0 est publiee**. Elle porte l'epic
+Etat au 2026-09-25 : la **11.2.0 est prete, pas encore publiee**.
+Strictement additive : **GTP-U** (#15, dernier tunnel de l'issue) et
+**LINKTYPE_NULL** (#95, loopback BSD et macOS, avec la premiere capture
+OPC UA reelle du depot). Le fuzzing nocturne repasse au vert sur les huit
+cibles le 25 septembre : oracle FTP realigne et dote de graines (#107),
+`parse_giop` enfin planifiee, catalogue de `parse_linktype` tire de
+`is_supported` (#110), qui atteint enfin le decodeur NULL. Restent
+ouvertes, sans bloquer la release : #108 (dette d'infrastructure du fuzz)
+et #109 (CR et LF nus acceptes par le parseur FTP). Reste a la main du
+mainteneur : merge de la PR de release, tag `v11.2.0` (qui declenche la
+publication), mesures, integration Sonar.
+
+Etat anterieur (2026-09-20, soir) : la **11.1.0 est publiee**. Elle porte l'epic
 #76 solde — les quatorze ruptures d'API en une majeure — et **UMAS** (#10),
 sur une capture reelle trouvee dans le corpus nDPI. La 11.0.0 n'a jamais ete
 publiee : UMAS est arrive avant que le tag ne soit pose, et la 11.1.0 la
