@@ -1,13 +1,14 @@
 # Roadmap packet_parser
 
-Etat au 2026-09-30 : la **11.3.0 est prete, pas encore publiee**.
+Etat au 2026-09-30 : la **11.3.0 est publiee** (tag `v11.3.0`, publication
+par le workflow, semver-checks vert).
 Strictement additive : **ASTERIX** (EUROCONTROL, surveillance aerienne),
 CAT 048, 034 et 021 ed. 2.x, reconnu par sa seule structure, 303 trames
 reelles en parite exacte avec tshark, capture du mainteneur anonymisee
 avant depot et deux echantillons CroatiaControlLtd (GPL-2.0, a valider).
-Nouvelle cible de fuzz `parse_asterix` dans la matrice nocturne. Reste a
-la main du mainteneur : merge des PR, tag `v11.3.0` (qui declenche la
-publication), mesures, integration Sonar.
+Nouvelle cible de fuzz `parse_asterix` dans la matrice nocturne. Restent a
+faire : les mesures de performance (`perf_by_version.json` n'a ni la
+11.1.0, ni la 11.2.0, ni la 11.3.0) et l'integration Sonar.
 
 Etat anterieur (2026-09-25) : la **11.2.0 est publiee** (tag `v11.2.0`).
 Strictement additive : **GTP-U** (#15, dernier tunnel de l'issue) et
