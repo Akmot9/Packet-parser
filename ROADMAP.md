@@ -1,6 +1,15 @@
 # Roadmap packet_parser
 
-Etat au 2026-09-25 : la **11.2.0 est publiee** (tag `v11.2.0`).
+Etat au 2026-09-30 : la **11.3.0 est prete, pas encore publiee**.
+Strictement additive : **ASTERIX** (EUROCONTROL, surveillance aerienne),
+CAT 048, 034 et 021 ed. 2.x, reconnu par sa seule structure, 303 trames
+reelles en parite exacte avec tshark, capture du mainteneur anonymisee
+avant depot et deux echantillons CroatiaControlLtd (GPL-2.0, a valider).
+Nouvelle cible de fuzz `parse_asterix` dans la matrice nocturne. Reste a
+la main du mainteneur : merge des PR, tag `v11.3.0` (qui declenche la
+publication), mesures, integration Sonar.
+
+Etat anterieur (2026-09-25) : la **11.2.0 est publiee** (tag `v11.2.0`).
 Strictement additive : **GTP-U** (#15, dernier tunnel de l'issue) et
 **LINKTYPE_NULL** (#95, loopback BSD et macOS, avec la premiere capture
 OPC UA reelle du depot). Le fuzzing nocturne repasse au vert sur les huit
@@ -11,11 +20,6 @@ ouvertes : #108 (dette d'infrastructure du fuzz) et #109 (CR et LF nus
 acceptes par le parseur FTP). Restent a faire : les mesures de
 performance (`perf_by_version.json` n'a ni la 11.1.0 ni la 11.2.0) et
 l'integration Sonar.
-
-En cours (2026-09-30, non publie) : **ASTERIX** (EUROCONTROL, surveillance
-aerienne) — CAT 048, 034 et 021 ed. 2.x, sonde structurelle sans port,
-303 trames reelles en parite exacte avec tshark, capture du mainteneur
-anonymisee avant depot. Additif : ira dans la prochaine mineure.
 
 A surveiller au fuzz nocturne : la couverture de `parse_linktype`, partie
 de 327 le 25 septembre parce que #110 a change le sens de son selecteur
