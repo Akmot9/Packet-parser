@@ -12,6 +12,11 @@ acceptes par le parseur FTP). Restent a faire : les mesures de
 performance (`perf_by_version.json` n'a ni la 11.1.0 ni la 11.2.0) et
 l'integration Sonar.
 
+En cours (2026-09-30, non publie) : **ASTERIX** (EUROCONTROL, surveillance
+aerienne) — CAT 048, 034 et 021 ed. 2.x, sonde structurelle sans port,
+303 trames reelles en parite exacte avec tshark, capture du mainteneur
+anonymisee avant depot. Additif : ira dans la prochaine mineure.
+
 A surveiller au fuzz nocturne : la couverture de `parse_linktype`, partie
 de 327 le 25 septembre parce que #110 a change le sens de son selecteur
 (elle etait a 6 263 la veille, avec l'ancien), et le debit de

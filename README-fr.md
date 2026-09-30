@@ -289,6 +289,10 @@ incluent notamment:
 - AMS
 - GIOP
 - SRVLOC
+- ASTERIX (donnees de surveillance EUROCONTROL : CAT 021 ADS-B, CAT 034 et
+  CAT 048 monoradar). Reconnu par sa seule structure — tous les data blocks
+  d'une categorie connue, records decoupes exactement selon l'UAP — faute de
+  magic et de port IANA
 - QUIC
 - Bitcoin
 

@@ -25,6 +25,7 @@
 
 use super::application::Application;
 use super::application::protocols::ams::AmsPacket;
+use super::application::protocols::asterix::AsterixPacket;
 use super::application::protocols::bitcoin::BitcoinPacket;
 use super::application::protocols::dhcp::DhcpPacket;
 use super::application::protocols::dhcpv6::Dhcpv6Packet;
@@ -109,6 +110,7 @@ enum ProbeId {
     NntpUnambiguous,
     QuicShortHeader,
     Ntp,
+    Asterix,
     Bitcoin,
     Opcua,
     EthernetIp,
@@ -152,6 +154,7 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         ProbeId::Ams => AmsPacket::try_from(payload).is_ok(),
         ProbeId::QuicShortHeader => is_plausible_short_header(payload),
         ProbeId::Ntp => NtpPacket::try_from(payload).is_ok(),
+        ProbeId::Asterix => AsterixPacket::try_from(payload).is_ok(),
         ProbeId::Bitcoin => BitcoinPacket::try_from(payload).is_ok(),
         ProbeId::Opcua => OpcuaPacket::try_from(payload).is_ok(),
         ProbeId::EthernetIp => EtherNetIpPacket::try_from(payload).is_ok(),
@@ -320,6 +323,11 @@ static RULES: &[Rule] = &[
     // plausible — trames 44/329/614 de dump.pcapng). Seuls les protocoles
     // reellement bi-transport restent en Guard::Any. ---
     rule("NTP", Guard::Udp, ProbeId::Ntp),
+    // ASTERIX (surveillance aerienne) circule en UDP, le plus souvent en
+    // multicast et sans port fixe : sonde structurelle (tous les data
+    // blocks d'une categorie connue, records decoupes exactement selon
+    // l'UAP). Avant DNS, dont la forme datagramme est moins contrainte.
+    rule("ASTERIX", Guard::Udp, ProbeId::Asterix),
     rule("Bitcoin", Guard::Tcp, ProbeId::Bitcoin),
     rule("OPC UA", Guard::Tcp, ProbeId::Opcua),
     // EtherNet/IP est reellement bi-transport (TCP 44818, UDP 2222).
@@ -857,6 +865,7 @@ mod tests {
                 "SMTP",
                 "NNTP",
                 "NTP",
+                "ASTERIX",
                 "Bitcoin",
                 "OPC UA",
                 "EtherNet/IP",

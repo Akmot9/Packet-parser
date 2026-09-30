@@ -7,6 +7,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 pub mod ams;
+pub mod asterix;
 pub mod bitcoin;
 pub mod copt;
 pub mod dhcp;

@@ -13,8 +13,8 @@ use serde::Serialize;
 use crate::{
     errors::application::ApplicationError,
     parse::application::protocols::{
-        dhcp::DhcpPacket, giop::GiopPacket, http::HttpRequest, modbus_tcp::ModbusTcpPacket,
-        mqtt::MqttPacket, ntp::NtpPacket, opcua::OpcuaPacket,
+        asterix::AsterixPacket, dhcp::DhcpPacket, giop::GiopPacket, http::HttpRequest,
+        modbus_tcp::ModbusTcpPacket, mqtt::MqttPacket, ntp::NtpPacket, opcua::OpcuaPacket,
         postgresql::is_likely_postgresql_payload, quic::QuicPacket, srvloc::SrvlocPacket,
         umas::UmasPacket,
     },
@@ -47,6 +47,15 @@ impl TryFrom<&[u8]> for Application {
             });
         }
 
+        // ASTERIX n'a ni magic ni port : sa sonde exige que tous les data
+        // blocks soient d'une categorie connue et se decoupent exactement
+        // selon leur UAP. Le premier octet (CAT) et la longueur declaree
+        // ecartent presque tout a cout constant.
+        if AsterixPacket::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "ASTERIX",
+            });
+        }
         if BitcoinPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "Bitcoin",

@@ -6,6 +6,43 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **ASTERIX** (EUROCONTROL-SPEC-0149), le format d'echange des donnees de
+  surveillance du controle aerien : etiquette `ASTERIX` et decodeur
+  `parse::application::protocols::asterix`.
+  - Trois categories : **CAT 048** (plots et pistes monoradar), **CAT 034**
+    (messages de service du meme radar — top nord, franchissement de
+    secteur — qui voyagent dans les memes datagrammes) et **CAT 021**
+    (ADS-B, editions 2.x). Chaque record est decoupe selon l'UAP de sa
+    categorie — items fixes, extensibles (FX), repetitifs, composes et
+    explicites (SP/RE) — et expose chaque item en zero-copie ; les items
+    d'identification, de temps et de position sont decodes en valeurs
+    typees (`cat048::TargetReport`, `cat034::ServiceMessage`,
+    `cat021::TargetReport`), valeur brute et conversion physique cote a
+    cote.
+  - **Reconnaissance par la structure seule** : ASTERIX n'a ni magic ni
+    port IANA (Wireshark propose 8600, la capture du mainteneur circule
+    sur 8611 et 8612). Un datagramme UDP n'est etiquete que si tous ses
+    data blocks sont d'une categorie connue et que leurs records se
+    decoupent exactement selon l'UAP jusqu'au dernier octet. Un bloc d'une
+    autre categorie (062, par exemple) fait echouer le decodage entier :
+    `CAT + LEN` seuls matchent trop de choses. Sur le corpus, la sonde
+    etiquette exactement les 303 trames que `tshark -Y asterix` voit, et
+    aucune autre.
+  - Les editions 0.2x de CAT 021, d'un UAP entierement different, ne sont
+    pas decodees : rien dans les octets ne permet de les distinguer.
+- **Corpus ASTERIX** dans `pcaps_exemple/protocols/asterix/` (voir son
+  `SOURCE.md`) : une capture CAT 048 multicast du mainteneur, anonymisee
+  avant depot (MAC, IP, metadonnees pcapng, trames ARP etrangeres — les 203
+  datagrammes sont identiques a l'original), et deux echantillons du depot
+  CroatiaControlLtd/asterix (GPL-2.0) — 100 datagrammes CAT 034 + 048 de
+  trafic reel, dont vingt a deux data blocks, et un flux brut de deux blocs
+  CAT 021. L'oracle tshark (`tests/data/asterix_tshark_oracle.tsv`) fige
+  la sequence des data items de chaque record des 303 trames.
+- **Cible de fuzz `parse_asterix`**, planifiee chaque nuit : les data
+  blocks pavent exactement l'entree, chaque item pointe dans le buffer.
+
 ## [11.2.0] - 2026-09-25
 
 Strictement additif par rapport a la 11.1.0 : deux decodeurs, et un fuzzing

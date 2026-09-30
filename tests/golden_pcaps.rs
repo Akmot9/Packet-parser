@@ -151,9 +151,22 @@ fn application_classification_histogram_is_frozen() {
     // - "(sans application)" 1577 -> 1771 : les 194 trames TCP sans payload
     //   de la capture, ce que tshark compte aussi.
     // "(erreur L2)" ne bouge pas : aucune de ces trames n'echoue au L2.
+    //
+    // 2026-09-30 (ASTERIX) : +2 captures dans protocols/asterix/ —
+    // cat048_multicast.pcap (203 datagrammes CAT 048 sur UDP 8611/8612,
+    // capture du mainteneur anonymisee) et cat_034_048.pcap (100
+    // datagrammes CAT 034 + 048, echantillon CroatiaControlLtd/asterix,
+    // GPL-2.0), voir SOURCE.md. La sonde structurelle etiquette
+    // exactement ces 303 trames (`tshark -Y asterix` en compte autant) :
+    // - "ASTERIX" 0 -> 303 ;
+    // - rien d'autre ne bouge : aucune trame du reste du corpus ne passe la
+    //   sonde (tous les data blocks d'une categorie connue, records
+    //   decoupes selon l'UAP jusqu'au dernier octet), et aucune trame
+    //   ASTERIX n'etait volee par une sonde precedente.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 1771),
+        ("ASTERIX", 303),
         ("DHCP", 6),
         ("DHCPv6", 4),
         ("DNS", 104),
