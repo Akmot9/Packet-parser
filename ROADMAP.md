@@ -6,9 +6,17 @@ Strictement additive : **ASTERIX** (EUROCONTROL, surveillance aerienne),
 CAT 048, 034 et 021 ed. 2.x, reconnu par sa seule structure, 303 trames
 reelles en parite exacte avec tshark, capture du mainteneur anonymisee
 avant depot et deux echantillons CroatiaControlLtd (GPL-2.0, a valider).
-Nouvelle cible de fuzz `parse_asterix` dans la matrice nocturne. Restent a
-faire : les mesures de performance (`perf_by_version.json` n'a ni la
-11.1.0, ni la 11.2.0, ni la 11.3.0) et l'integration Sonar.
+Nouvelle cible de fuzz `parse_asterix` dans la matrice nocturne.
+Mesures faites le 2026-09-30 (verbench, 37 versions publiees + copie
+locale) : 544 ns sur le paquet de reference en 11.3.0, contre 569 en 11.2.0
+et 534 en 11.1.0 dans le meme run. Un A/B alterne des trois binaires (cinq
+passes) donne 526-549 pour la 11.3.0, 543-586 pour la 11.2.0 et 532-578
+pour la 11.1.0 : la 11.3.0 est a la parite, l'ecart de la 11.2.0 dans le
+run complet est du bruit, et ASTERIX ne coute rien sur ce pire cas TCP
+(sa regle est gardee par UDP). Les valeurs absolues de ce run sont ~30 %
+au-dessus de celles du 20 septembre pour toutes les versions : machine
+differente, pas regression — comparer a l'interieur d'un run seulement.
+Reste a faire : l'integration Sonar.
 
 Etat anterieur (2026-09-25) : la **11.2.0 est publiee** (tag `v11.2.0`).
 Strictement additive : **GTP-U** (#15, dernier tunnel de l'issue) et
