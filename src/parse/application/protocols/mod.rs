@@ -4,6 +4,7 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 pub mod ams;
+pub mod asterix;
 pub mod bitcoin;
 pub mod copt;
 pub mod dhcp;

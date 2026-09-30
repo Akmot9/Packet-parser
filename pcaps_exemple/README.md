@@ -58,6 +58,7 @@ réellement capturées sur un réseau.
 | `nntp/` | — | ✅ commandes/statut NNTP, sans corps d'article — voir `SOURCE.md` |
 | `ethernet_ip/` | #57 | ✅ ListIdentity, SendRRData et SendUnitData (CIP) réels — source ITI/ICS-Security-Tools (CC-BY-4.0), voir `SOURCE.md` |
 | `giop/` | #58, #76 | ✅ GIOP 1.0, 1.1 et 1.2 réels, les deux endianness, 7 des 8 types de message (Request, Reply, LocateRequest, LocateReply, CloseConnection, MessageError, Fragment), fragments avec et sans request id, `LOCATION_FORWARD` avec profil IIOP, exceptions utilisateur et système — corpus nDPI (LGPL-3.0), pièces jointes du tracker Wireshark et labo omniORB rejouable (`tools/capture_giop.sh`), voir `SOURCE.md`. Seul CancelRequest n'a pas de trame réelle |
+| `asterix/` | — | ✅ ASTERIX réel (surveillance aérienne EUROCONTROL) : `cat048_multicast.pcap`, 203 datagrammes CAT 048 sur UDP 8611/8612 (capture du mainteneur, anonymisée) ; `cat_034_048.pcap`, 100 datagrammes CAT 034 + 048 dont 20 à deux data blocks et des blocs à trois records ; `cat21_re.ast`, flux brut de deux blocs CAT 021 éd. 2 — échantillons CroatiaControlLtd (GPL-2.0), voir `SOURCE.md`. Parité exacte avec tshark, item par item, sur les 303 trames |
 | `umas/` | #10 | ✅ UMAS réel (Schneider Electric) : 180 trames Modbus/TCP en code fonction 0x5A, deux sessions, treize codes de requête et les réponses `0xFE`, dont le modèle de l'automate en clair — corpus nDPI (LGPL-3.0), voir `SOURCE.md`. tshark ne décode pas UMAS : l'oracle des golden est double |
 
 ## Crédits
