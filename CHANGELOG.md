@@ -6,6 +6,24 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [11.3.0] - 2026-09-30
+
+Strictement additive par rapport a la 11.2.0 : un protocole, **ASTERIX**,
+le format d'echange des donnees de surveillance du controle aerien
+(EUROCONTROL-SPEC-0149), en trois categories — CAT 048 (plots et pistes
+monoradar), CAT 034 (messages de service du meme radar) et CAT 021 ed. 2.x
+(ADS-B). Un consommateur qui exporte les etiquettes applicatives verra
+apparaitre `ASTERIX`.
+
+C'est le premier protocole du depot reconnu par sa **seule structure** : ni
+magic ni port. Sur le corpus, la sonde etiquette exactement les 303 trames
+que tshark voit, et aucune autre.
+
+Cote API publique, un module `parse::application::protocols::asterix` et
+ses types d'erreur ; `cargo semver-checks` contre la 11.2.0 : aucune
+rupture. Le paquet gagne huit fichiers par rapport a l'archive 11.2.0 de
+crates.io, tous sous `src/**/asterix`.
+
 ### Ajoute
 
 - **ASTERIX** (EUROCONTROL-SPEC-0149), le format d'echange des donnees de
