@@ -1,7 +1,15 @@
 # Roadmap packet_parser
 
-Etat au 2026-09-30 : la **11.3.0 est publiee** (tag `v11.3.0`, publication
-par le workflow, semver-checks vert).
+Etat au 2026-10-08 : la **11.4.0 est prete, pas encore publiee**.
+Mineure de correction : deux faux positifs reveles par le corpus du lot
+defense, **SRVLOC** (#117, 829 PTPv2 Delay_Req lus comme des en-tetes
+SLPv1) et **DNS** (#118, 37 datagrammes radar acceptes par la sonde
+aveugle). Une variante d'erreur ajoutee, semver-checks vert contre la
+11.3.0. Reste a la main du mainteneur : merge de la PR, tag `v11.4.0` (qui
+declenche la publication), mesures.
+
+Etat anterieur (2026-09-30) : la **11.3.0 est publiee** (tag `v11.3.0`,
+publication par le workflow, semver-checks vert).
 Strictement additive : **ASTERIX** (EUROCONTROL, surveillance aerienne),
 CAT 048, 034 et 021 ed. 2.x, reconnu par sa seule structure, 303 trames
 reelles en parite exacte avec tshark, capture du mainteneur anonymisee
