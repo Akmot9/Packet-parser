@@ -24,7 +24,7 @@
 > - 34 captures versées dans `pcaps_exemple/protocols/`, chacune documentée
 >   dans le `SOURCE.md` de son dossier ;
 > - une issue par protocole retenu, #119 à #124 ;
-> - deux faux positifs révélés en route, #117 et #118.
+> - deux faux positifs révélés en route, #117 et #118, corrigés depuis.
 
 ## Synthèse
 
@@ -241,18 +241,20 @@ la satisfait.
 
 ## 6. Défauts révélés par le nouveau corpus
 
-Verser ces captures a exposé deux faux positifs des sondes existantes. Ils
-sont figés dans l'histogramme de `tests/golden_pcaps.rs` en attendant leur
-correction :
+Verser ces captures a exposé deux faux positifs des sondes existantes,
+corrigés depuis :
 
 - **#117 — SRVLOC.** Un PTP Delay_Req (`01 02 00 2c …`) a exactement la forme
   d'un en-tête SLPv1 : version 1, fonction 2, longueur 44 égale au
   datagramme, et un champ langue accepté parce qu'il est de l'UTF-8 valide.
   La sonde SRVLOC n'a pas de garde de port : 829 trames de la NodeB sont
-  étiquetées SRVLOC. RFC 2165 impose deux lettres ASCII pour la langue.
+  étiquetées SRVLOC. RFC 2165 impose deux lettres ASCII pour la langue :
+  c'est désormais vérifié.
 - **#118 — DNS.** La sonde UDP aveugle accepte un en-tête aux quatre
   compteurs nuls et ignore les octets qui suivent la dernière section : 37
-  datagrammes d'un flux radar de 132 octets passent pour du DNS.
+  datagrammes d'un flux radar de 132 octets passent pour du DNS. Hors port
+  53, la sonde exige désormais des sections qui consomment tout le
+  datagramme et au moins un enregistrement.
 
 ## Sources
 

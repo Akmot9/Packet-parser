@@ -20,11 +20,19 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     couche 2), `stanag5066/` (SIS), `dis/` (versions 4 a 7) et `ipsec/`
     (IKEv1, IKEv2, ESP, NAT-T).
 
-### Connu
+### Corrige
 
-- Deux faux positifs, reveles par ce corpus et figes dans
-  `tests/golden_pcaps.rs` en attendant leur correction : 829 PTP Delay_Req
-  etiquetes SRVLOC (#117) et 37 datagrammes radar etiquetes DNS (#118).
+- **SRVLOC** (#117) : 829 PTPv2 Delay_Req etaient etiquetes SRVLOC, leur
+  en-tete ayant exactement la forme d'un SLPv1 (version 1, SrvRply,
+  longueur egale au datagramme). Le champ language d'un SLPv1 doit
+  desormais etre un code ISO 639 de deux lettres ASCII (RFC 2165 §7) ; un
+  autre contenu sort en `SrvlocPacketParseError::InvalidLanguageCode`,
+  nouvelle variante.
+- **DNS** (#118) : hors port 53, la sonde aveugle prenait pour du DNS tout
+  datagramme UDP dont les douze premiers octets forment un en-tete vide
+  plausible (37 datagrammes d'un flux radar). Elle exige maintenant que les
+  sections consomment exactement le datagramme et qu'il porte au moins une
+  question ou un enregistrement. Le port 53 garde son decodeur tolerant.
 
 ## [11.3.0] - 2026-09-30
 

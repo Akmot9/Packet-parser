@@ -28,4 +28,7 @@ pub enum SrvlocPacketParseError {
 
     #[error("Invalid UTF-8 in SRVLOC field '{0}'")]
     InvalidUtf8(&'static str),
+
+    #[error("SRVLOC v1 language {0:02x?} is not a two-letter ISO 639 code")]
+    InvalidLanguageCode([u8; 2]),
 }

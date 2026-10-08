@@ -146,7 +146,7 @@ en forçant le décodage ASTERIX sur les flux concernés.
     l'édition CAT 001 retenue (1.2 à 1.4) ;
   - le reste de la capture : 1 530 fragments IPv4, des flux multicast et
     broadcast de formats que tshark n'identifie pas (dont
-    `225.10.1.1:20201`, source du faux positif DNS #118), 95 BPDU STP,
+    `225.10.1.1:20201`, source du faux positif DNS corrigé par #118), 95 BPDU STP,
     92 IGMP, 3 DHCP et une requête SLPv2.
 
   La crate en étiquette aujourd'hui **11 881** — exactement les datagrammes

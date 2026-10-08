@@ -268,7 +268,7 @@ sprint : ASTERIX multi-categories (#119), RTPS (#120), PTP (#121), STANAG
 5066 SIS (#122), DIS (#123), IKE/ESP (#124). Le choix et ses ecartes sont
 argumentes dans `docs/protocoles-defense.md`. Les 34 captures sont deja
 versees et comptees par `tests/golden_pcaps.rs` ; en les versant, deux faux
-positifs sont apparus, #117 (SRVLOC) et #118 (DNS).
+positifs sont apparus, #117 (SRVLOC) et #118 (DNS), corriges depuis.
 
 **GTP-U est livre** (#15 close, 2026-09-20), et avec lui le dernier tunnel
 de l'issue. Il vient du corpus de **Zeek** (BSD 3-clause) et non de nDPI,
