@@ -162,9 +162,24 @@ pub fn extract_dialect(dialect: u8) -> Result<u8, SrvlocPacketParseError> {
     Ok(dialect)
 }
 
-/// Extracts the SLPv1 language field (2 bytes) as validated UTF-8.
+/// Extracts the SLPv1 language field (2 bytes), which RFC 2165 section 7
+/// defines as a two-letter ISO 639 code.
+///
+/// The letter check is what tells a real SLPv1 header from a PTPv2 Delay_Req
+/// (issue #117): both share version 1, function 2 and a length equal to the
+/// datagram, but the PTP flagField lands on `04 00` here.
 pub fn extract_language(bytes: &[u8]) -> Result<&str, SrvlocPacketParseError> {
-    validate_utf8(bytes, "language")
+    let language = validate_utf8(bytes, "language")?;
+    let [a, b] = *bytes else {
+        return Err(SrvlocPacketParseError::Truncated {
+            expected_at_least: 2,
+            actual: bytes.len(),
+        });
+    };
+    if !(a.is_ascii_alphabetic() && b.is_ascii_alphabetic()) {
+        return Err(SrvlocPacketParseError::InvalidLanguageCode([a, b]));
+    }
+    Ok(language)
 }
 
 /// Extracts the SLPv1 character encoding byte at `offset` and advances the
@@ -433,6 +448,17 @@ mod tests {
             extract_language(&[0xC0, 0x00]),
             Err(SrvlocPacketParseError::InvalidUtf8("language"))
         ));
+    }
+
+    #[test]
+    fn test_extract_language_requires_two_ascii_letters() {
+        assert_eq!(extract_language(b"FR"), Ok("FR"));
+        for bad in [*b"e1", *b"e ", [0x04, 0x00], [0x00, 0x00], *b"-n"] {
+            assert_eq!(
+                extract_language(&bad),
+                Err(SrvlocPacketParseError::InvalidLanguageCode(bad))
+            );
+        }
     }
 
     #[test]

@@ -773,6 +773,24 @@ mod tests {
         ));
     }
 
+    /// Trame 113 de `ptp/wireshark_6126_nodeb_startup.pcap` (issue #117) :
+    /// un PTPv2 Delay_Req, dont les 8 premiers octets ont la forme d'un
+    /// en-tete SLPv1 (version 1, SrvRply, longueur 44 egale au datagramme).
+    /// Son champ language, `04 00`, n'est pas un code ISO 639.
+    #[test]
+    fn test_v1_rejects_ptp_delay_req() {
+        let bytes: [u8; 44] = [
+            0x01, 0x02, 0x00, 0x2c, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x80, 0xf5, 0xff, 0xff, 0x31, 0x35, 0x3d,
+            0x00, 0x01, 0x00, 0x01, 0x01, 0x7f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x18, 0x39,
+            0xf1, 0xa8,
+        ];
+        assert!(matches!(
+            SrvlocPacket::try_from(&bytes[..]),
+            Err(SrvlocPacketParseError::InvalidLanguageCode([0x04, 0x00]))
+        ));
+    }
+
     #[test]
     fn test_v2_truncated_header() {
         assert!(matches!(

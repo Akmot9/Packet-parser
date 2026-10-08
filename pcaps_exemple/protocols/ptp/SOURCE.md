@@ -34,8 +34,8 @@ couche 2. Deux d'entre elles sont des ICMP qui citent un datagramme PTP
   collision avec celui du wiki ; capturé le 2011-09-16.
 - **`wireshark_6126_nodeb_startup.pcap`** — démarrage d'une NodeB (station de
   base 3G), 2011-07-07 : 933 Sync, 829 Delay_Req, 829 Delay_Resp, 562
-  Announce, 26 Signaling. **Ses 829 Delay_Req sont étiquetés SRVLOC par la
-  crate** : faux positif suivi dans #117.
+  Announce, 26 Signaling. Ses 829 Delay_Req étaient étiquetés SRVLOC par la
+  crate : faux positif corrigé par #117.
 - **`wireshark_14578_white_rabbit.pcap`** — deux équipements Seven Solutions.
   Horodatages au 1970-01-01, mais intervalles réguliers et réalistes sur
   16,8 s : vraisemblablement une capture prise sur un équipement sans horloge

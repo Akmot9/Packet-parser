@@ -127,6 +127,7 @@ enum ProbeId {
     Umas,
     QuicLongHeader,
     Mqtt,
+    DnsBlind,
 }
 
 fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
@@ -174,6 +175,9 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         ProbeId::ModbusTcp => ModbusTcpPacket::try_from(payload).is_ok(),
         ProbeId::QuicLongHeader => QuicPacket::try_from(payload).is_ok(),
         ProbeId::Mqtt => MqttPacket::try_from(payload).is_ok(),
+        // Sur le payload plafonne : un datagramme plus long que PROBE_CAP ne
+        // peut pas prouver qu'il est consomme exactement, et reste Unknown.
+        ProbeId::DnsBlind => DnsPacket::is_blind_udp_match(payload),
     }
 }
 
@@ -337,7 +341,9 @@ static RULES: &[Rule] = &[
     rule("PostgreSQL", Guard::Tcp, ProbeId::Postgresql),
     // Forme datagramme : UDP uniquement (RFC 1035 §4.2.1) — sur TCP elle ne
     // peut matcher que des fragments, la forme prefixee est port-guardee.
-    rule("DNS", Guard::Udp, ProbeId::Dns),
+    // Hors port 53, sonde stricte : sections consommant tout le datagramme
+    // et au moins un enregistrement (issue #118).
+    rule("DNS", Guard::Udp, ProbeId::DnsBlind),
     // SNMP sur TCP existe (RFC 3430) meme s'il est rare : bi-transport.
     rule("SNMP", Guard::Any, ProbeId::Snmp),
     rule("TLS", Guard::Tcp, ProbeId::Tls),

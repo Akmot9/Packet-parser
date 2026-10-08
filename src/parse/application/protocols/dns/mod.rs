@@ -52,6 +52,14 @@ impl<'a> TryFrom<&'a [u8]> for DnsPacket<'a> {
     type Error = DnsPacketError;
 
     fn try_from(bytes: &'a [u8]) -> Result<Self, Self::Error> {
+        Self::parse_datagram(bytes).map(|(packet, _)| packet)
+    }
+}
+
+impl<'a> DnsPacket<'a> {
+    /// Decode la forme datagramme et retourne, avec le paquet, l'offset ou
+    /// s'arrete la derniere section.
+    fn parse_datagram(bytes: &'a [u8]) -> Result<(Self, usize), DnsPacketError> {
         check_dns_minimum_size(bytes)?;
 
         let header = DnsHeader::try_from(bytes)?;
@@ -70,17 +78,30 @@ impl<'a> TryFrom<&'a [u8]> for DnsPacket<'a> {
         let additionals =
             parse_record_section::<AdditionalRecord>(bytes, &mut offset, header.counts[3], false)?;
 
-        Ok(DnsPacket {
+        let packet = DnsPacket {
             header,
             queries,
             answers,
             authorities,
             additionals,
+        };
+        Ok((packet, offset))
+    }
+
+    /// Sonde DNS aveugle, hors port 53 (issue #118).
+    ///
+    /// Plus stricte que [`TryFrom::try_from`], que le port 53 garde tolerant :
+    /// un message DNS sur UDP n'a pas de bourrage (RFC 1035 §4.2.1), ses
+    /// sections doivent donc consommer exactement le datagramme, et un
+    /// en-tete aux quatre compteurs nuls n'apporte aucune preuve. Sans ces
+    /// deux gardes, tout datagramme dont les douze premiers octets forment un
+    /// en-tete vide plausible passait pour du DNS.
+    pub(crate) fn is_blind_udp_match(bytes: &[u8]) -> bool {
+        DnsPacket::parse_datagram(bytes).is_ok_and(|(packet, end)| {
+            end == bytes.len() && packet.header.counts.iter().any(|&count| count != 0)
         })
     }
-}
 
-impl<'a> DnsPacket<'a> {
     /// Decode un message DNS transporte sur TCP (RFC 1035 §4.2.2) : le flux
     /// prefixe chaque message d'une longueur sur deux octets. Seul le premier
     /// message du segment est decode — un segment AXFR peut en enchainer
@@ -218,10 +239,40 @@ impl fmt::Display for DnsPacket<'_> {
 mod tests {
     use super::*;
 
+    /// Trame 1249 de `asterix/wireshark_8579_radardata.pcap` (issue #118),
+    /// flux radar 172.18.110.175:32811 -> 225.10.1.1:20201 : un en-tete aux
+    /// quatre compteurs nuls suivi de 120 octets que tshark, force en DNS,
+    /// classe en « Extraneous Data ».
+    const RADAR_FRAME_1249: &str = "0300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080000000800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a8e80808";
+
+    /// Reponse DNS a `us.pool.ntp.org` : 15 reponses, 6 autorites, 2
+    /// additionnels, avec pointeurs de compression.
+    const NTP_POOL_RESPONSE: &str = "002b81800001000f0006000202757304706f6f6c036e7470036f72670000010001c00c0001000100000d87000443814409c00c0001000100000d870004452c393cc00c0001000100000d870004cfead1b5c00c0001000100000d870004d184b004c00c0001000100000d870004d81bb92ac00c0001000100000d87000418224f2ac00c0001000100000d870004187bcae6c00c0001000100000d8700043fa43ef9c00c0001000100000d8700044070bd0bc00c0001000100000d870004417de9cec00c0001000100000d8700044221ce05c00c0001000100000d8700044221d80bc00c0001000100000d870004425c44f6c00c0001000100000d870004426f2ec8c00c0001000100000d8700044273880404504f4f4c036e7470036f72670000020001000010d60012036e7331086d61696c776f7278036e657400c11100020001000010d6000f067573656e6574036e6574026e7a00c11100020001000010d60014067a626173656c08666f72747974776f02636800c11100020001000010d60018086176656e747572610a62686d732d67726f6570026e6c00c11100020001000010d600110e736c617274696261727466617374c18bc11100020001000010d6000f0161026e73076d61646475636bc136c12900010001000272a500044501c844c1470001000100000daf0004ca313b06";
+
+    #[test]
+    fn blind_probe_rejects_empty_header_with_trailing_bytes() {
+        let data = hex::decode(RADAR_FRAME_1249).expect("hex valide");
+        // Le decodeur tolerant du port 53 l'accepte...
+        assert!(DnsPacket::try_from(data.as_slice()).is_ok());
+        // ...la sonde aveugle, non.
+        assert!(!DnsPacket::is_blind_udp_match(&data));
+        // En-tete vide sans octet en trop : aucune preuve non plus.
+        assert!(!DnsPacket::is_blind_udp_match(&data[..12]));
+    }
+
+    #[test]
+    fn blind_probe_rejects_trailing_byte_after_last_section() {
+        let mut data = hex::decode(NTP_POOL_RESPONSE).expect("hex valide");
+        assert!(DnsPacket::is_blind_udp_match(&data));
+        data.push(0);
+        assert!(DnsPacket::try_from(data.as_slice()).is_ok());
+        assert!(!DnsPacket::is_blind_udp_match(&data));
+    }
+
     #[test]
     fn test_dns_packet_parsing() {
         // Example DNS packet data
-        let data = hex::decode("002b81800001000f0006000202757304706f6f6c036e7470036f72670000010001c00c0001000100000d87000443814409c00c0001000100000d870004452c393cc00c0001000100000d870004cfead1b5c00c0001000100000d870004d184b004c00c0001000100000d870004d81bb92ac00c0001000100000d87000418224f2ac00c0001000100000d870004187bcae6c00c0001000100000d8700043fa43ef9c00c0001000100000d8700044070bd0bc00c0001000100000d870004417de9cec00c0001000100000d8700044221ce05c00c0001000100000d8700044221d80bc00c0001000100000d870004425c44f6c00c0001000100000d870004426f2ec8c00c0001000100000d8700044273880404504f4f4c036e7470036f72670000020001000010d60012036e7331086d61696c776f7278036e657400c11100020001000010d6000f067573656e6574036e6574026e7a00c11100020001000010d60014067a626173656c08666f72747974776f02636800c11100020001000010d60018086176656e747572610a62686d732d67726f6570026e6c00c11100020001000010d600110e736c617274696261727466617374c18bc11100020001000010d6000f0161026e73076d61646475636bc136c12900010001000272a500044501c844c1470001000100000daf0004ca313b06").expect("Invalid hex string");
+        let data = hex::decode(NTP_POOL_RESPONSE).expect("Invalid hex string");
 
         match DnsPacket::try_from(data.as_slice()) {
             Ok(packet) => {
