@@ -20,11 +20,10 @@
 use crate::{
     checks::application::ptp::{
         PTP_MESSAGE_ANNOUNCE, PTP_MESSAGE_DELAY_REQ, PTP_MESSAGE_DELAY_RESP, PTP_MESSAGE_FOLLOW_UP,
-        PTP_MESSAGE_MANAGEMENT, PTP_MESSAGE_PDELAY_REQ, PTP_MESSAGE_PDELAY_RESP,
-        PTP_MESSAGE_PDELAY_RESP_FOLLOW_UP, PTP_MESSAGE_SIGNALING, PTP_MESSAGE_SYNC,
-        PTP_V1_HEADER_LENGTH, PTP_V2_HEADER_LENGTH, ensure_len, extract_message_type,
-        extract_network_version, extract_v1_control, extract_version, validate_message_length,
-        validate_udp_trailing, validate_v1_length,
+        PTP_MESSAGE_PDELAY_REQ, PTP_MESSAGE_PDELAY_RESP, PTP_MESSAGE_PDELAY_RESP_FOLLOW_UP,
+        PTP_MESSAGE_SIGNALING, PTP_MESSAGE_SYNC, PTP_V1_HEADER_LENGTH, PTP_V2_HEADER_LENGTH,
+        ensure_len, extract_message_type, extract_network_version, extract_v1_control,
+        extract_version, validate_message_length, validate_udp_trailing, validate_v1_length,
     },
     errors::application::ptp::PtpPacketParseError,
 };
@@ -227,18 +226,17 @@ pub struct PtpTlv<'a> {
     pub value: &'a [u8],
 }
 
-/// Zone TLV d'un message PTPv2, parcourue a la demande.
+/// Zone TLV d'un message PTPv2 : une vue sans etat, que chaque
+/// [`PtpTlvs::iter`] (ou `for tlv in message.tlvs`) parcourt depuis le debut.
 ///
-/// Le decodage du message ne depend pas de sa validite : un TLV tronque
-/// sort en erreur de l'iterateur, qui s'arrete ensuite. Zero-copie : chaque
-/// valeur emprunte au paquet.
+/// Le decodage du message ne depend pas de la validite des TLV : un TLV
+/// tronque sort en erreur de l'iterateur, qui s'arrete ensuite. Zero-copie :
+/// chaque valeur emprunte au paquet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PtpTlvs<'a> {
     bytes: &'a [u8],
     /// Offset de `bytes` dans le message, pour situer une erreur.
     base: usize,
-    offset: usize,
-    failed: bool,
 }
 
 impl<'a> PtpTlvs<'a> {
@@ -246,9 +244,37 @@ impl<'a> PtpTlvs<'a> {
     pub fn as_bytes(&self) -> &'a [u8] {
         self.bytes
     }
+
+    /// Parcourt les TLV dans l'ordre du message.
+    pub fn iter(&self) -> PtpTlvIter<'a> {
+        PtpTlvIter {
+            bytes: self.bytes,
+            base: self.base,
+            offset: 0,
+            failed: false,
+        }
+    }
 }
 
-impl<'a> Iterator for PtpTlvs<'a> {
+impl<'a> IntoIterator for PtpTlvs<'a> {
+    type Item = Result<PtpTlv<'a>, PtpPacketParseError>;
+    type IntoIter = PtpTlvIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// Iterateur rendu par [`PtpTlvs::iter`].
+#[derive(Debug, Clone)]
+pub struct PtpTlvIter<'a> {
+    bytes: &'a [u8],
+    base: usize,
+    offset: usize,
+    failed: bool,
+}
+
+impl<'a> Iterator for PtpTlvIter<'a> {
     type Item = Result<PtpTlv<'a>, PtpPacketParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -373,21 +399,6 @@ fn v2_body(message_type: u8, message: &[u8]) -> PtpV2Body {
     }
 }
 
-/// Offset de la zone TLV : juste apres le corps fixe. Seuls Signaling et
-/// Management sont definis avec des TLV, mais tout message peut en porter
-/// (IEEE 1588-2008 §14.1 ; White Rabbit en met dans ses Announce).
-const fn tlv_offset(message_type: u8) -> usize {
-    match message_type {
-        PTP_MESSAGE_ANNOUNCE => 64,
-        PTP_MESSAGE_MANAGEMENT => 48,
-        PTP_MESSAGE_PDELAY_REQ
-        | PTP_MESSAGE_PDELAY_RESP
-        | PTP_MESSAGE_DELAY_RESP
-        | PTP_MESSAGE_PDELAY_RESP_FOLLOW_UP => 54,
-        _ => 44,
-    }
-}
-
 impl<'a> TryFrom<&'a [u8]> for PtpV2Message<'a> {
     type Error = PtpPacketParseError;
 
@@ -399,7 +410,11 @@ impl<'a> TryFrom<&'a [u8]> for PtpV2Message<'a> {
         }
         let message_type = extract_message_type(payload[0])?;
         let message_length = u16::from_be_bytes([payload[2], payload[3]]);
-        let length = validate_message_length(message_type, message_length, payload.len())?;
+        // Les TLV commencent juste apres le corps fixe de leur type. Tout
+        // message peut en porter (IEEE 1588-2008 §14.1 ; White Rabbit en met
+        // dans ses Announce), pas seulement Signaling et Management.
+        let (length, tlv_start) =
+            validate_message_length(message_type, message_length, payload.len())?;
         let (message, trailing) = payload.split_at(length);
 
         let mut correction = [0u8; 8];
@@ -425,7 +440,6 @@ impl<'a> TryFrom<&'a [u8]> for PtpV2Message<'a> {
             control_field: message[32],
             log_message_interval: i8::from_be_bytes([message[33]]),
         };
-        let tlv_start = tlv_offset(message_type);
 
         Ok(PtpV2Message {
             header,
@@ -433,8 +447,6 @@ impl<'a> TryFrom<&'a [u8]> for PtpV2Message<'a> {
             tlvs: PtpTlvs {
                 bytes: &message[tlv_start..],
                 base: tlv_start,
-                offset: 0,
-                failed: false,
             },
             trailing,
         })
@@ -494,7 +506,7 @@ impl<'a> TryFrom<&'a [u8]> for PtpV1Message<'a> {
         ensure_len(payload, PTP_V1_HEADER_LENGTH)?;
         let version_ptp = u16::from_be_bytes([payload[0], payload[1]]);
         if version_ptp != 1 {
-            return Err(PtpPacketParseError::UnsupportedVersion(payload[1] & 0x0F));
+            return Err(PtpPacketParseError::InvalidV1VersionPtp(version_ptp));
         }
         let version_network = extract_network_version([payload[2], payload[3]])?;
         let message_type = payload[20];
@@ -563,7 +575,7 @@ mod tests {
         assert_eq!(header.control_field, 1);
         assert_eq!(header.log_message_interval, 127);
         assert!(matches!(message.body, PtpV2Body::DelayReq { .. }));
-        assert_eq!(message.tlvs.count(), 0);
+        assert_eq!(message.tlvs.iter().count(), 0);
         assert!(message.trailing.is_empty());
     }
 
@@ -584,7 +596,7 @@ mod tests {
                 }
             }
         );
-        let tlvs: Vec<_> = message.tlvs.collect();
+        let tlvs: Vec<_> = message.tlvs.iter().collect();
         assert_eq!(
             tlvs,
             [Ok(PtpTlv {
@@ -616,7 +628,7 @@ mod tests {
         else {
             panic!("PTPv2 attendu");
         };
-        let tlvs: Vec<_> = message.tlvs.collect();
+        let tlvs: Vec<_> = message.tlvs.iter().collect();
         assert_eq!(
             tlvs,
             [Err(PtpPacketParseError::TruncatedTlv {
@@ -651,6 +663,19 @@ mod tests {
         assert_eq!(
             PtpPacket::try_from(reserved.as_slice()),
             Err(PtpPacketParseError::ReservedMessageType(0x5))
+        );
+    }
+
+    /// Synthetique : le quartet bas de l'octet 1 annonce PTPv1, mais le
+    /// versionPTP u16 vaut 0x1001. L'erreur donne la valeur lue.
+    #[test]
+    fn v1_reports_the_versionptp_it_read() {
+        let mut payload = [0u8; 124];
+        payload[0] = 0x10;
+        payload[1] = 0x01;
+        assert_eq!(
+            PtpPacket::try_from(&payload[..]),
+            Err(PtpPacketParseError::InvalidV1VersionPtp(0x1001))
         );
     }
 }

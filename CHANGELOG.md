@@ -13,18 +13,23 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   avionique TSN (802.1AS), et cote OT les postes electriques (C37.238).
   - Module `parse::application::protocols::ptp` : `PtpPacket` decode PTPv2
     en entier (en-tete commun, corps des dix types de message, TLV listes a
-    la demande par `PtpTlvs` sans decodage de leur valeur) et reconnait
+    la demande sans decodage de leur valeur : `PtpTlvs` est une vue sans
+    etat, `PtpTlvs::iter` rend un `PtpTlvIter`) et reconnait
     PTPv1 (1588-2002) par son en-tete, le corps restant brut. Erreurs dans
     `errors::application::ptp::PtpPacketParseError`.
   - **UDP 319/320** : nouvelle etiquette applicative `PTP`, gardee par port.
     Le payload doit valoir `messageLength`, ou `messageLength + 2` pour les
     octets de correction de checksum de l'annexe E (UDP/IPv6) ;
-    `PtpPacket::try_from_udp` applique cette regle.
+    `PtpPacket::try_from_udp` applique cette regle. Nouvelle variante
+    `DecodeAsProtocol::Ptp` pour PTP sur un autre port UDP.
   - **Couche 2, EtherType `0x88F7`** (VLAN compris) : nouvelle variante
     `NetworkProtocol::Ptp`, et la couche internet porte le message decode
     dans `InternetDetails::Ptp`, avec `protocol_internet` = `PTP`. Le
     bourrage Ethernet reste dans `PtpV2Message::trailing`. Nouvelle variante
-    `InternetError::PtpError`.
+    `InternetError::PtpError` pour une trame corrompue (tronquee, longueur
+    incoherente) ; une version ou un type de message inconnus ne sont pas une
+    corruption et sortent en `InternetError::UnsupportedProtocol`, comme
+    avant pour tout `0x88F7`.
   - Toutes les nouvelles variantes sont en fin d'enum, sur des enums
     `#[non_exhaustive]`.
   - Parite exacte avec tshark 4.6.6 sur les 3 328 messages du corpus,

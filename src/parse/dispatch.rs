@@ -402,6 +402,7 @@ pub enum DecodeAsProtocol {
     Ams,
     QuicShortHeader,
     OpenVpn,
+    Ptp,
 }
 
 impl DecodeAsProtocol {
@@ -435,6 +436,7 @@ impl DecodeAsProtocol {
                 TransportProtocol::Tcp => ("OpenVPN", Guard::Tcp, ProbeId::OpenVpnTcp),
                 _ => ("OpenVPN", Guard::Udp, ProbeId::OpenVpnUdp),
             },
+            Self::Ptp => ("PTP", Guard::Udp, ProbeId::Ptp),
         }
     }
 }
@@ -804,6 +806,7 @@ mod tests {
             DecodeAsProtocol::Ams,
             DecodeAsProtocol::QuicShortHeader,
             DecodeAsProtocol::OpenVpn,
+            DecodeAsProtocol::Ptp,
         ];
         for protocol in all {
             for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {

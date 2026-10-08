@@ -22,11 +22,12 @@ use std::{
 };
 
 use packet_parser::{
-    PacketFlow,
+    DecodeAsProtocol, PacketFlow, ParseConfig,
     errors::application::ptp::PtpPacketParseError,
     parse,
     parse::application::protocols::ptp::{PortIdentity, PtpPacket, PtpTimestamp, PtpV2Body},
     parse::internet::InternetDetails,
+    parse_with,
 };
 
 mod common;
@@ -65,6 +66,7 @@ fn oracle_row(transport: &str, packet: &PtpPacket<'_>, truncated_tlvs: &mut usiz
             let header = &message.header;
             let tlvs: Vec<String> = message
                 .tlvs
+                .iter()
                 .map(|tlv| match tlv {
                     Ok(tlv) => format!("{:04x}", tlv.tlv_type),
                     Err(PtpPacketParseError::TruncatedTlv {
@@ -288,7 +290,7 @@ fn c37_238_announce_decodes_through_the_vlan_tag() {
     );
     assert_eq!(announce.steps_removed, 2);
     assert_eq!(announce.time_source, 0x20);
-    assert_eq!(message.tlvs.count(), 0);
+    assert_eq!(message.tlvs.iter().count(), 0);
     // Organization extension (0x0003) de 18 octets, hors messageLength.
     assert_eq!(&message.trailing[..4], [0x00, 0x03, 0x00, 0x12]);
 }
@@ -324,4 +326,28 @@ fn nodeb_delay_resp_decodes_its_body() {
             },
         }
     );
+}
+
+/// Trame 114 de la NodeB avec ses deux ports UDP deplaces de 320 a 5320
+/// (seule mutation). Sans declaration, hors 319/320, elle reste "Unknown" ;
+/// declaree par Decode As, elle redevient PTP.
+#[test]
+fn decode_as_routes_ptp_on_a_non_standard_port() {
+    let mut bytes = frame(NODEB_DELAY_RESP_FRAME_114_HEX, 96);
+    // En-tete UDP a l'offset 34 (Ethernet 14 + IPv4 20) : ports source et
+    // destination.
+    bytes[34..38].copy_from_slice(&[0x14, 0xc8, 0x14, 0xc8]);
+    let label = |flow: &PacketFlow<'_>| {
+        flow.application
+            .as_ref()
+            .map(|application| application.application_protocol)
+    };
+
+    let flow = parse(packet_parser::LinkType::ETHERNET, &bytes).expect("trame decodable");
+    assert_eq!(label(&flow), Some("Unknown"));
+
+    let config = ParseConfig::new().decode_as(5320, DecodeAsProtocol::Ptp);
+    let flow =
+        parse_with(packet_parser::LinkType::ETHERNET, &bytes, &config).expect("trame decodable");
+    assert_eq!(label(&flow), Some("PTP"));
 }

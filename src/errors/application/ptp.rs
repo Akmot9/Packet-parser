@@ -29,6 +29,9 @@ pub enum PtpPacketParseError {
         available: usize,
     },
 
+    #[error("PTPv1 versionPTP must be 1, got {0:#06x}")]
+    InvalidV1VersionPtp(u16),
+
     #[error("Unsupported PTPv1 versionNetwork {0}")]
     UnsupportedNetworkVersion(u16),
 

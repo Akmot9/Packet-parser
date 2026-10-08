@@ -87,11 +87,14 @@ pub fn extract_message_type(byte: u8) -> Result<u8, PtpPacketParseError> {
 /// `messageLength` doit couvrir le corps de son type et tenir dans les octets
 /// recus. Il peut etre plus court qu'eux : bourrage Ethernet en couche 2,
 /// octets de l'annexe E sur UDP/IPv6.
+///
+/// Retourne `(longueur du message, longueur de l'en-tete et du corps fixe)` :
+/// la seconde est l'offset ou commencent les TLV.
 pub fn validate_message_length(
     message_type: u8,
     declared: u16,
     available: usize,
-) -> Result<usize, PtpPacketParseError> {
+) -> Result<(usize, usize), PtpPacketParseError> {
     let minimum = minimum_v2_length(message_type)
         .ok_or(PtpPacketParseError::ReservedMessageType(message_type))?;
     let length = usize::from(declared);
@@ -103,7 +106,7 @@ pub fn validate_message_length(
             available,
         });
     }
-    Ok(length)
+    Ok((length, minimum))
 }
 
 /// Sur UDP, un message PTP occupe tout le datagramme, ou le datagramme moins
@@ -217,7 +220,14 @@ mod tests {
 
     #[test]
     fn message_length_bounds() {
-        assert_eq!(validate_message_length(PTP_MESSAGE_SYNC, 44, 46), Ok(44));
+        assert_eq!(
+            validate_message_length(PTP_MESSAGE_SYNC, 44, 46),
+            Ok((44, 44))
+        );
+        assert_eq!(
+            validate_message_length(PTP_MESSAGE_ANNOUNCE, 70, 70),
+            Ok((70, 64))
+        );
         assert!(validate_message_length(PTP_MESSAGE_SYNC, 43, 46).is_err());
         assert!(validate_message_length(PTP_MESSAGE_SYNC, 47, 46).is_err());
         assert!(validate_message_length(PTP_MESSAGE_ANNOUNCE, 54, 64).is_err());
