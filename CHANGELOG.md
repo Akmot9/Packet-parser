@@ -6,6 +6,21 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [11.4.0] - 2026-10-08
+
+Corrige deux faux positifs de detection, reveles par le corpus du lot
+defense (#125). Un consommateur qui exporte les etiquettes applicatives
+verra **moins** de `SRVLOC` et de `DNS` : sur le corpus, 829 PTPv2
+Delay_Req et 37 datagrammes radar, jusque-la mal etiquetes, sortent
+desormais en `Unknown`. Aucune etiquette juste n'est perdue : l'histogramme
+golden ne bouge que sur ces 866 trames.
+
+Mineure et non patch, parce que l'API publique gagne une variante,
+`SrvlocPacketParseError::InvalidLanguageCode`, sur un enum
+`#[non_exhaustive]`. `cargo semver-checks` contre la 11.3.0 : aucune
+rupture. Le paquet garde la meme liste de fichiers que l'archive 11.3.0 ;
+cinq fichiers de `src/` changent.
+
 ### Ajoute
 
 - **Corpus du lot defense** (epopee #125, rapport
