@@ -9,6 +9,10 @@ Contenu vérifié avec tshark 4.6.6 (`-Y ptp`) : 3 330 trames PTP, dont 107 en
 couche 2. Deux d'entre elles sont des ICMP qui citent un datagramme PTP
 (`wireshark_6126_nodeb_startup.pcap`) : il reste 3 328 messages PTP propres.
 
+Ces 3 328 messages sont l'oracle de `tests/ptp_golden.rs`
+(`tests/data/ptp_tshark_oracle.tsv`) : la crate les reconnaît tous, et
+aucun autre, avec les mêmes champs que tshark.
+
 | Fichier | Trames | Équipement / profil | Origine | SHA-256 |
 |---|---|---|---|---|
 | `ptpv2.pcap` | 39 | Hirschmann, PTPv2, UDP (25) et couche 2 (14) | wiki Wireshark | `2160864200325c734990264d4b5e92670e12a98f989db97edce95762b958cd6f` |

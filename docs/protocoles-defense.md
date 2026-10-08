@@ -121,10 +121,10 @@ règle du `ROADMAP` (§4).
 l'avionique TSN (802.1AS) ; côté OT, les postes électriques (profil
 C37.238).
 
-**Détection.** L'EtherType `0x88F7` est déjà nommé dans la table de la
-crate, mais rien ne décode PTP. Deux transports : la couche 2, à brancher
-comme Profinet, et UDP 319/320. Le champ `messageLength` égale le payload
-UDP.
+**Détection.** Deux transports : la couche 2 (EtherType `0x88F7`),
+branchée comme Profinet, et UDP 319/320. Le champ `messageLength` égale le
+payload UDP, à deux octets près en IPv6 (annexe E de la norme). **Livré**
+(#121) : PTPv2 décodé en entier, PTPv1 reconnu par son en-tête.
 
 **Captures versées** : huit équipements ou profils (Hirschmann,
 Symmetricom en IPv6, NodeB Nokia / Alcatel-Lucent, White Rabbit, SEL,

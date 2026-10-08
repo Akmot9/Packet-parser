@@ -230,6 +230,8 @@ serialized):
 - IPv4
 - IPv6
 - Profinet
+- PTP (IEEE 1588) directly over Ethernet, EtherType `0x88F7`, decoded into
+  `InternetDetails::Ptp`
 
 For fragmented IPv4 packets, the crate does not perform IP reassembly. In that
 case `payload_protocol` is set to `None` so the transport layer is not parsed
@@ -290,6 +292,10 @@ Application detection is intentionally best-effort. Parser modules include:
   neither a magic nor an IANA port
 - QUIC
 - Bitcoin
+- PTP (IEEE 1588) on UDP 319/320: PTPv2 decoded in full (common header, the
+  ten message bodies, TLVs listed without decoding their value), PTPv1
+  recognised by its header. Port-guarded: a Delay_Req has exactly the shape of
+  an SLPv1 header
 
 FTP, SMTP and NNTP detection in `PacketFlow` is both parser-validated and
 restricted to their plaintext control ports (TCP 21, 25/587 and 119

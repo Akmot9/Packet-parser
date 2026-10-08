@@ -6,6 +6,33 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **PTP**, Precision Time Protocol (IEEE 1588, #121), premier protocole du
+  lot defense (#125). Il synchronise radars, systemes de combat et
+  avionique TSN (802.1AS), et cote OT les postes electriques (C37.238).
+  - Module `parse::application::protocols::ptp` : `PtpPacket` decode PTPv2
+    en entier (en-tete commun, corps des dix types de message, TLV listes a
+    la demande par `PtpTlvs` sans decodage de leur valeur) et reconnait
+    PTPv1 (1588-2002) par son en-tete, le corps restant brut. Erreurs dans
+    `errors::application::ptp::PtpPacketParseError`.
+  - **UDP 319/320** : nouvelle etiquette applicative `PTP`, gardee par port.
+    Le payload doit valoir `messageLength`, ou `messageLength + 2` pour les
+    octets de correction de checksum de l'annexe E (UDP/IPv6) ;
+    `PtpPacket::try_from_udp` applique cette regle.
+  - **Couche 2, EtherType `0x88F7`** (VLAN compris) : nouvelle variante
+    `NetworkProtocol::Ptp`, et la couche internet porte le message decode
+    dans `InternetDetails::Ptp`, avec `protocol_internet` = `PTP`. Le
+    bourrage Ethernet reste dans `PtpV2Message::trailing`. Nouvelle variante
+    `InternetError::PtpError`.
+  - Toutes les nouvelles variantes sont en fin d'enum, sur des enums
+    `#[non_exhaustive]`.
+  - Parite exacte avec tshark 4.6.6 sur les 3 328 messages du corpus,
+    trame par trame : 3 217 PTPv2 et 4 PTPv1 sur UDP, 107 PTPv2 en couche 2
+    (`tests/ptp_golden.rs`, oracle `tests/data/ptp_tshark_oracle.tsv`).
+    Aucune trame des autres dossiers n'est prise pour du PTP. Cible de fuzz
+    `parse_ptp` ajoutee a la matrice nocturne.
+
 ## [11.4.0] - 2026-10-08
 
 Corrige deux faux positifs de detection, reveles par le corpus du lot

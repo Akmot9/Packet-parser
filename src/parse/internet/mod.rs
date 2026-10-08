@@ -10,6 +10,7 @@ use std::convert::TryFrom;
 use std::net::IpAddr;
 
 use crate::errors::internet::InternetError;
+use crate::parse::application::protocols::ptp::PtpPacket;
 use crate::parse::data_link::ethertype::Ethertype;
 use crate::parse::internet::protocols::profinet;
 use crate::parse::transport::protocols::TransportProtocol;
@@ -34,6 +35,8 @@ pub enum InternetDetails<'a> {
     Ipv4(ipv4::Ipv4Packet<'a>),
     Ipv6(ipv6::Ipv6Packet<'a>),
     Arp(ArpPacket),
+    /// PTP directement sur Ethernet (EtherType `0x88F7`).
+    Ptp(PtpPacket<'a>),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -128,6 +131,7 @@ impl<'a> Internet<'a> {
                 profinet::ProfinetPacket::try_from(payload)?;
                 Ok(Self::profinet())
             }
+            NetworkProtocol::Ptp => Ok(Self::from_ptp(PtpPacket::try_from(payload)?)),
             NetworkProtocol::Other(_) => Err(InternetError::UnsupportedProtocol),
         }
     }
@@ -176,6 +180,21 @@ impl<'a> Internet<'a> {
                 .map(|protocol| Transport::transport_from_u8(&protocol)),
             payload: ipv6_packet.payload,
             details: Some(InternetDetails::Ipv6(ipv6_packet)),
+        }
+    }
+
+    /// PTP en couche 2 n'a ni adresse IP ni transport : le message entier
+    /// est le payload de la trame, et il est garde decode dans `details`.
+    fn from_ptp(ptp_packet: PtpPacket<'a>) -> Self {
+        Internet {
+            source: None,
+            source_type: None,
+            destination: None,
+            destination_type: None,
+            protocol_name: "PTP",
+            payload_protocol: None,
+            payload: &[],
+            details: Some(InternetDetails::Ptp(ptp_packet)),
         }
     }
 

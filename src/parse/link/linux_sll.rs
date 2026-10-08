@@ -115,6 +115,7 @@ mod tests {
             (0x86dd, NetworkProtocol::Ipv6),
             (0x0806, NetworkProtocol::Arp),
             (0x8892, NetworkProtocol::Profinet),
+            (0x88f7, NetworkProtocol::Ptp),
             (0x893a, NetworkProtocol::Other(0x893a)),
             (0x0004, NetworkProtocol::Other(0x0004)),
         ] {

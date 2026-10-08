@@ -75,3 +75,10 @@ path = "fuzz_targets/parse_asterix.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_ptp"
+path = "fuzz_targets/parse_ptp.rs"
+test = false
+doc = false
+bench = false
