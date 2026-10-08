@@ -6,6 +6,26 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **Corpus du lot defense** (epopee #125, rapport
+  `docs/protocoles-defense.md`) : 34 captures reelles pour les golden tests
+  des issues #119 a #124, chacune documentee dans le `SOURCE.md` de son
+  dossier. Aucun decodeur ne change.
+  - `pcaps_exemple/protocols/asterix/` : `wireshark_8579_radardata.pcap`
+    (41 928 datagrammes ASTERIX melant CAT 001, 002, 008, 034, 048, 062, 063
+    et 065), du CAT 021 dans de vrais datagrammes, du CAT 062 avec son RE, du
+    CAT 008 ;
+  - `rtps/` (six implementations DDS), `ptp/` (huit equipements, UDP et
+    couche 2), `stanag5066/` (SIS), `dis/` (versions 4 a 7) et `ipsec/`
+    (IKEv1, IKEv2, ESP, NAT-T).
+
+### Connu
+
+- Deux faux positifs, reveles par ce corpus et figes dans
+  `tests/golden_pcaps.rs` en attendant leur correction : 829 PTP Delay_Req
+  etiquetes SRVLOC (#117) et 37 datagrammes radar etiquetes DNS (#118).
+
 ## [11.3.0] - 2026-09-30
 
 Strictement additive par rapport a la 11.2.0 : un protocole, **ASTERIX**,
