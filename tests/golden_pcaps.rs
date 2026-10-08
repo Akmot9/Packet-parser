@@ -163,13 +163,46 @@ fn application_classification_histogram_is_frozen() {
     //   sonde (tous les data blocks d'une categorie connue, records
     //   decoupes selon l'UAP jusqu'au dernier octet), et aucune trame
     //   ASTERIX n'etait volee par une sonde precedente.
+    //
+    // 2026-10-08 (lot defense, epopee #125) : +34 captures, 57 190 trames —
+    // 6 dans protocols/asterix/, puis rtps/, ptp/, stanag5066/, dis/ et
+    // ipsec/ (voir le SOURCE.md de chaque dossier et
+    // docs/protocoles-defense.md). Aucun decodeur ne change : ces captures
+    // attendent leurs issues (#119 a #124), et l'histogramme fige ce que la
+    // crate en fait aujourd'hui, recoupe avec tshark 4.6.6 :
+    // - "ASTERIX" 303 -> 13 739 : +11 881 datagrammes de
+    //   wireshark_8579_radardata.pcap, exactement ceux qui ne portent que du
+    //   CAT 034/048 (tshark en compte autant), et +1 555 datagrammes CAT 021
+    //   de wireshark_9953_cat021023.pcap ;
+    // - "Unknown" 468 -> 41 410 (+40 942) : 36 316 trames de radardata.pcap,
+    //   dont ses 30 047 datagrammes ASTERIX qui portent une categorie non
+    //   decodee (001, 002, 008, 062, 063, 065 — #119) ; 721 datagrammes
+    //   ASTERIX des autres nouvelles captures (CAT 023/247, 062/065, 008) ;
+    //   et les 3 905 trames a payload des cinq nouveaux dossiers, qu'aucune
+    //   regle ne reconnait encore (RTPS 231, PTP sur UDP 2 392, STANAG 5066
+    //   39, DIS 393, IKE/ESP 850) ;
+    // - "(sans application)" 1 771 -> 3 618 (+1 847) : 1 530 fragments IPv4,
+    //   92 IGMP et 45 trames hors IPv4 (LOOP, DTP, CDP, HP, ARP, ICMPv6) de
+    //   radardata.pcap ; 107 trames PTP en couche 2 (EtherType 0x88F7, nomme
+    //   mais pas decode) ; 8 ESP natifs ; 16 fragments IPv4 de
+    //   RTPS_Discovery.pcapng ; 47 segments TCP sans payload des captures
+    //   STANAG 5066 ; 2 ICMP de la NodeB ;
+    // - "STP" 0 -> 95 et "DHCP" 6 -> 9 : BPDU et echanges DHCP reels de
+    //   radardata.pcap (tshark : 95 et 3) ;
+    // - deux faux positifs, figes ici en attendant leur correction :
+    //   "SRVLOC" 0 -> 830, dont 829 PTP Delay_Req de
+    //   ptp/wireshark_6126_nodeb_startup.pcap lus comme des en-tetes SLPv1
+    //   (#117) — seule la requete SLPv2 de radardata.pcap est reelle ;
+    //   "DNS" 104 -> 141, dont 37 datagrammes du flux radar
+    //   225.10.1.1:20201 de radardata.pcap, en-tetes vides suivis d'octets en
+    //   trop (#118).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 1771),
-        ("ASTERIX", 303),
-        ("DHCP", 6),
+        (NO_APPLICATION, 3618),
+        ("ASTERIX", 13_739),
+        ("DHCP", 9),
         ("DHCPv6", 4),
-        ("DNS", 104),
+        ("DNS", 141),
         ("EtherNet/IP", 4),
         ("FTP", 5),
         ("GIOP", 123),
@@ -182,8 +215,10 @@ fn application_classification_histogram_is_frozen() {
         ("OPC UA", 187),
         ("OpenVPN", 766),
         ("SMTP", 6),
+        ("SRVLOC", 830),
+        ("STP", 95),
         ("TLS", 587),
-        ("Unknown", 468),
+        ("Unknown", 41_410),
         ("mDNS", 4),
     ]
     .into_iter()

@@ -263,6 +263,13 @@ suivi vit sur GitHub, pas dans ce fichier.
 5. **Tier 2 restant** (#102) : IEC 104, BACnet/IP, GOOSE/SV.
 6. **Tier 3 restant** (#103) : SMB2/3, DTLS, WireGuard, SIP.
 
+**Lot defense** (epopee #125, 2026-10-08), a planifier sur un prochain
+sprint : ASTERIX multi-categories (#119), RTPS (#120), PTP (#121), STANAG
+5066 SIS (#122), DIS (#123), IKE/ESP (#124). Le choix et ses ecartes sont
+argumentes dans `docs/protocoles-defense.md`. Les 34 captures sont deja
+versees et comptees par `tests/golden_pcaps.rs` ; en les versant, deux faux
+positifs sont apparus, #117 (SRVLOC) et #118 (DNS).
+
 **GTP-U est livre** (#15 close, 2026-09-20), et avec lui le dernier tunnel
 de l'issue. Il vient du corpus de **Zeek** (BSD 3-clause) et non de nDPI,
 pour une raison etroite et mesuree : sur les cinq captures GTP de nDPI,
