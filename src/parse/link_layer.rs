@@ -26,6 +26,10 @@ pub enum NetworkProtocol {
     Arp,
     Profinet,
     Other(u16),
+    /// PTP (IEEE 1588) directement sur Ethernet, EtherType `0x88F7`.
+    // En fin d'enum et non a cote de Profinet : inseree ailleurs, la variante
+    // decalerait les discriminants des suivantes (rupture SemVer).
+    Ptp,
 }
 
 impl NetworkProtocol {
@@ -35,6 +39,7 @@ impl NetworkProtocol {
             0x86dd => Self::Ipv6,
             0x0806 => Self::Arp,
             0x8892 => Self::Profinet,
+            0x88f7 => Self::Ptp,
             other => Self::Other(other),
         }
     }
@@ -48,6 +53,7 @@ impl fmt::Display for NetworkProtocol {
             Self::Arp => f.write_str("ARP"),
             Self::Profinet => f.write_str("Profinet"),
             Self::Other(value) => write!(f, "0x{value:04X}"),
+            Self::Ptp => f.write_str("PTP"),
         }
     }
 }

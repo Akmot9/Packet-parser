@@ -9,7 +9,9 @@ pub mod protocols;
 use std::convert::TryFrom;
 use std::net::IpAddr;
 
+use crate::errors::application::ptp::PtpPacketParseError;
 use crate::errors::internet::InternetError;
+use crate::parse::application::protocols::ptp::PtpPacket;
 use crate::parse::data_link::ethertype::Ethertype;
 use crate::parse::internet::protocols::profinet;
 use crate::parse::transport::protocols::TransportProtocol;
@@ -34,6 +36,8 @@ pub enum InternetDetails<'a> {
     Ipv4(ipv4::Ipv4Packet<'a>),
     Ipv6(ipv6::Ipv6Packet<'a>),
     Arp(ArpPacket),
+    /// PTP directement sur Ethernet (EtherType `0x88F7`).
+    Ptp(PtpPacket<'a>),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -128,6 +132,17 @@ impl<'a> Internet<'a> {
                 profinet::ProfinetPacket::try_from(payload)?;
                 Ok(Self::profinet())
             }
+            NetworkProtocol::Ptp => match PtpPacket::try_from(payload) {
+                Ok(ptp_packet) => Ok(Self::from_ptp(ptp_packet)),
+                // Version ou type de message que la crate ne connait pas (une
+                // revision future de 1588, un usage propre a un constructeur) :
+                // la trame n'est pas prise en charge, elle n'est pas corrompue.
+                Err(
+                    PtpPacketParseError::UnsupportedVersion(_)
+                    | PtpPacketParseError::ReservedMessageType(_),
+                ) => Err(InternetError::UnsupportedProtocol),
+                Err(error) => Err(error.into()),
+            },
             NetworkProtocol::Other(_) => Err(InternetError::UnsupportedProtocol),
         }
     }
@@ -176,6 +191,21 @@ impl<'a> Internet<'a> {
                 .map(|protocol| Transport::transport_from_u8(&protocol)),
             payload: ipv6_packet.payload,
             details: Some(InternetDetails::Ipv6(ipv6_packet)),
+        }
+    }
+
+    /// PTP en couche 2 n'a ni adresse IP ni transport : le message entier
+    /// est le payload de la trame, et il est garde decode dans `details`.
+    fn from_ptp(ptp_packet: PtpPacket<'a>) -> Self {
+        Internet {
+            source: None,
+            source_type: None,
+            destination: None,
+            destination_type: None,
+            protocol_name: "PTP",
+            payload_protocol: None,
+            payload: &[],
+            details: Some(InternetDetails::Ptp(ptp_packet)),
         }
     }
 
@@ -277,6 +307,44 @@ impl<'a> Hash for Internet<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Delay_Req reel (`ptp/wireshark_6126_nodeb_startup.pcap` trame 113),
+    /// pris tel quel comme payload d'une trame 0x88F7.
+    const PTP_DELAY_REQ: &str =
+        "0102002c000004000000000000000000000000001880f5ffff31353d00010001017f0000000000051839f1a8";
+
+    #[test]
+    fn ptp_on_ethertype_0x88f7_keeps_the_decoded_message() {
+        let payload = hex::decode(PTP_DELAY_REQ).unwrap();
+        let internet = Internet::try_from_network_parts(NetworkProtocol::Ptp, &payload)
+            .expect("Delay_Req decode");
+        assert_eq!(internet.protocol_name, "PTP");
+        assert!(internet.source.is_none() && internet.payload_protocol.is_none());
+        assert!(matches!(internet.details, Some(InternetDetails::Ptp(_))));
+    }
+
+    /// Synthetique : version ou type inconnus ne sont pas une corruption,
+    /// une troncature si.
+    #[test]
+    fn unknown_ptp_version_or_type_is_unsupported_but_truncation_is_corrupt() {
+        let payload = hex::decode(PTP_DELAY_REQ).unwrap();
+        let mut future_version = payload.clone();
+        future_version[1] = 0x03;
+        let mut reserved_type = payload.clone();
+        reserved_type[0] = 0x05;
+        for bytes in [future_version, reserved_type] {
+            assert!(matches!(
+                Internet::try_from_network_parts(NetworkProtocol::Ptp, &bytes),
+                Err(InternetError::UnsupportedProtocol)
+            ));
+        }
+        assert!(matches!(
+            Internet::try_from_network_parts(NetworkProtocol::Ptp, &payload[..20]),
+            Err(InternetError::PtpError(
+                PtpPacketParseError::Truncated { .. }
+            ))
+        ));
+    }
     use crate::parse::transport::protocols::TransportProtocol;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};

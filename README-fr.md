@@ -232,6 +232,8 @@ du payload ne sont pas serialises):
 - IPv4
 - IPv6
 - Profinet
+- PTP (IEEE 1588) directement sur Ethernet, EtherType `0x88F7`, decode dans
+  `InternetDetails::Ptp`
 
 Pour IPv4 fragmente, la crate ne fait pas de reassemblage IP. Dans ce cas,
 `payload_protocol` vaut `None` pour eviter de parser une couche transport
@@ -295,6 +297,10 @@ incluent notamment:
   magic et de port IANA
 - QUIC
 - Bitcoin
+- PTP (IEEE 1588) sur UDP 319/320 : PTPv2 decode en entier (en-tete commun,
+  corps des dix types de message, TLV listes sans decoder leur valeur), PTPv1
+  reconnu par son en-tete. Garde par port : un Delay_Req a exactement la
+  forme d'un en-tete SLPv1
 
 Dans `PacketFlow`, la detection de FTP, SMTP et NNTP exige a la fois un payload
 valide et leur port de controle en clair (TCP 21, 25/587 et 119

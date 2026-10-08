@@ -196,6 +196,12 @@ fn application_classification_histogram_is_frozen() {
     // - "DNS" reste a 104 : les 37 datagrammes du flux radar
     //   225.10.1.1:20201 de radardata.pcap, en-tetes vides suivis d'octets en
     //   trop, sont rejetes par la sonde aveugle stricte (#118).
+    //
+    // Decodeur PTP (#121) : "PTP" 0 -> 3 221, exactement les messages PTP
+    // sur UDP 319/320 de ptp/ que tshark voit (3 217 PTPv2 et 4 PTPv1), qui
+    // quittent "Unknown" (42 276 -> 39 055). Les 107 trames PTP en couche 2
+    // restent "(sans application)" : PTP y est la couche internet (EtherType
+    // 0x88F7), verifiee trame par trame par tests/ptp_golden.rs.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 3618),
@@ -214,11 +220,12 @@ fn application_classification_histogram_is_frozen() {
         ("NNTP", 6),
         ("OPC UA", 187),
         ("OpenVPN", 766),
+        ("PTP", 3221),
         ("SMTP", 6),
         ("SRVLOC", 1),
         ("STP", 95),
         ("TLS", 587),
-        ("Unknown", 42_276),
+        ("Unknown", 39_055),
         ("mDNS", 4),
     ]
     .into_iter()

@@ -36,6 +36,7 @@ jobs:
           - parse_cotp
           - parse_giop
           - parse_asterix
+          - parse_ptp
 
     steps:
       - name: Checkout repository

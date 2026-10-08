@@ -42,6 +42,7 @@ use super::application::protocols::ntp::NtpPacket;
 use super::application::protocols::opcua::OpcuaPacket;
 use super::application::protocols::openvpn::OpenVpnPacket;
 use super::application::protocols::postgresql::is_likely_postgresql_payload;
+use super::application::protocols::ptp::PtpPacket;
 use super::application::protocols::quic::QuicPacket;
 use super::application::protocols::s7comm::S7CommPacket;
 use super::application::protocols::smtp::SmtpMessage;
@@ -128,6 +129,7 @@ enum ProbeId {
     QuicLongHeader,
     Mqtt,
     DnsBlind,
+    Ptp,
 }
 
 fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
@@ -178,6 +180,7 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         // Sur le payload plafonne : un datagramme plus long que PROBE_CAP ne
         // peut pas prouver qu'il est consomme exactement, et reste Unknown.
         ProbeId::DnsBlind => DnsPacket::is_blind_udp_match(payload),
+        ProbeId::Ptp => PtpPacket::try_from_udp(payload).is_ok(),
     }
 }
 
@@ -321,6 +324,11 @@ static RULES: &[Rule] = &[
     // dns_axfr.pcapng) : chaque transport n'a que sa forme.
     port_rule("DNS", Guard::Tcp, is_dns_port, ProbeId::DnsTcp),
     port_rule("DNS", Guard::Udp, is_dns_port, ProbeId::Dns),
+    // PTP (IEEE 1588) : UDP 319 et 320 (annexes D et E). Garde par port : un
+    // Delay_Req a exactement la forme d'un en-tete SLPv1 (#117), et le
+    // seul messageType ne distingue pas PTP d'un payload quelconque. En
+    // couche 2 (EtherType 0x88F7), PTP est decode par la couche internet.
+    port_rule("PTP", Guard::Udp, is_ptp_port, ProbeId::Ptp),
     // --- cascade aveugle, ordre historique de `Application::try_from`,
     // avec les gardes de transport que les RFC imposent : sonder NTP sur du
     // TCP etiquetait "NTP" des Encrypted Alerts TLS (0x15 = LI/VN/mode
@@ -394,6 +402,7 @@ pub enum DecodeAsProtocol {
     Ams,
     QuicShortHeader,
     OpenVpn,
+    Ptp,
 }
 
 impl DecodeAsProtocol {
@@ -427,6 +436,7 @@ impl DecodeAsProtocol {
                 TransportProtocol::Tcp => ("OpenVPN", Guard::Tcp, ProbeId::OpenVpnTcp),
                 _ => ("OpenVPN", Guard::Udp, ProbeId::OpenVpnUdp),
             },
+            Self::Ptp => ("PTP", Guard::Udp, ProbeId::Ptp),
         }
     }
 }
@@ -672,6 +682,11 @@ fn is_opcua_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(4840 | 12001))
 }
 
+/// PTP : 319 (messages d'evenement) et 320 (messages generaux).
+fn is_ptp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(319 | 320))
+}
+
 /// DNS classique : 53, sur UDP comme sur TCP.
 fn is_dns_port(port: Option<u16>) -> bool {
     matches!(port, Some(53))
@@ -791,6 +806,7 @@ mod tests {
             DecodeAsProtocol::Ams,
             DecodeAsProtocol::QuicShortHeader,
             DecodeAsProtocol::OpenVpn,
+            DecodeAsProtocol::Ptp,
         ];
         for protocol in all {
             for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {

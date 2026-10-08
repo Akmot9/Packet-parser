@@ -48,4 +48,8 @@ pub enum InternetError {
     /// The checksum is invalid
     #[error("Invalid checksum")]
     InvalidChecksum,
+
+    /// Error related to PTP parsing on EtherType 0x88F7
+    #[error("PTP error: {0}")]
+    PtpError(#[from] crate::errors::application::ptp::PtpPacketParseError),
 }
