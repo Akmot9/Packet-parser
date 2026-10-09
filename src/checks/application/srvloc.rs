@@ -74,12 +74,13 @@ pub fn validate_utf8<'a>(
     core::str::from_utf8(slice).map_err(|_| SrvlocPacketParseError::InvalidUtf8(field))
 }
 
-/// Length of the fixed SLPv1 header (version through language), in bytes.
-const SRVLOC_V1_HEADER_LENGTH: usize = 8;
+/// Length of the fixed SLPv1 header (version through XID, RFC 2165
+/// section 7), in bytes.
+const SRVLOC_V1_HEADER_LENGTH: usize = 12;
 /// Length of the fixed SLPv2 header (version through lang tag length), in bytes.
 const SRVLOC_V2_HEADER_LENGTH: usize = 14;
 
-/// Validates that the packet holds at least the fixed SLPv1 header (8 bytes).
+/// Validates that the packet holds at least the fixed SLPv1 header (12 bytes).
 pub fn validate_v1_header_length(payload: &[u8]) -> Result<(), SrvlocPacketParseError> {
     ensure_len(payload, SRVLOC_V1_HEADER_LENGTH)
 }
@@ -182,13 +183,11 @@ pub fn extract_language(bytes: &[u8]) -> Result<&str, SrvlocPacketParseError> {
     Ok(language)
 }
 
-/// Extracts the SLPv1 character encoding byte at `offset` and advances the
-/// cursor.
-pub fn extract_encoding(buf: &[u8], offset: &mut usize) -> Result<u8, SrvlocPacketParseError> {
-    ensure_len(buf, *offset + 1)?;
-    let encoding = buf[*offset];
-    *offset += 1;
-    Ok(encoding)
+/// Extracts the SLPv1 character encoding (big-endian `u16`, RFC 2165
+/// section 7) at `offset` and advances the cursor. The value is an IANA
+/// MIBenum: 106 for UTF-8, 3 for US-ASCII.
+pub fn extract_encoding(buf: &[u8], offset: &mut usize) -> Result<u16, SrvlocPacketParseError> {
+    read_u16(buf, offset)
 }
 
 /// Extracts the SLPv1 transaction id (big-endian `u16`) at `offset` and
@@ -373,12 +372,12 @@ mod tests {
 
     #[test]
     fn test_validate_v1_header_length() {
-        assert!(validate_v1_header_length(&[0u8; 8]).is_ok());
+        assert!(validate_v1_header_length(&[0u8; 12]).is_ok());
         assert!(matches!(
-            validate_v1_header_length(&[0u8; 7]),
+            validate_v1_header_length(&[0u8; 11]),
             Err(SrvlocPacketParseError::Truncated {
-                expected_at_least: 8,
-                actual: 7
+                expected_at_least: 12,
+                actual: 11
             })
         ));
     }
@@ -462,19 +461,20 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_encoding_advances_offset() {
-        let buf = [3u8, 0xAA];
+    fn test_extract_encoding_reads_two_bytes() {
+        // UTF-8 (MIBenum 106) sur deux octets, comme sur le fil.
+        let buf = [0x00, 0x6A, 0xAA];
         let mut offset = 0;
-        assert_eq!(extract_encoding(&buf, &mut offset), Ok(3));
-        assert_eq!(offset, 1);
+        assert_eq!(extract_encoding(&buf, &mut offset), Ok(106));
+        assert_eq!(offset, 2);
 
-        // Truncated une fois le curseur en fin de buffer.
+        // Truncated quand il ne reste qu'un octet.
         let mut offset = 2;
         assert!(matches!(
             extract_encoding(&buf, &mut offset),
             Err(SrvlocPacketParseError::Truncated {
-                expected_at_least: 3,
-                actual: 2
+                expected_at_least: 4,
+                actual: 3
             })
         ));
     }

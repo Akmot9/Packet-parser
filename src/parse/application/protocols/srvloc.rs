@@ -74,7 +74,16 @@ pub struct SrvlocHeaderV1<'a> {
     pub dialect: u8,
     pub language: &'a str, // 2 bytes ASCII -> "en"
 
+    /// Premier octet (poids fort) du champ Char Encoding, seul lu avant la
+    /// 11.5.0 : il vaut 0 pour tout MIBenum inferieur a 256, UTF-8 compris.
+    #[deprecated(
+        since = "11.5.0",
+        note = "Char Encoding fait deux octets (RFC 2165) ; utiliser `char_encoding`"
+    )]
     pub encoding: u8,
+    /// Char Encoding (RFC 2165 section 7) : MIBenum IANA sur deux octets,
+    /// 106 pour UTF-8.
+    pub char_encoding: u16,
     pub transaction_id: u16,
     pub error_code: u16,
 
@@ -329,24 +338,24 @@ fn parse_url_entry_v2<'p>(
 
 /// Parse un paquet SLP v1 : header commun puis dispatch par code fonction.
 fn parse_v1_packet(payload: &[u8]) -> Result<SrvlocPacket<'_>, SrvlocPacketParseError> {
-    // Layout v1 (d'apres Wireshark pour DA Advertisement) :
+    // Layout v1 (RFC 2165 section 7) :
     //  0 : Version (1)
     //  1 : Function (1)
     //  2-3 : Packet Length (u16)
     //  4 : Flags (u8)
     //  5 : Dialect (u8)
     //  6-7 : Language (2 bytes, "en")
-    //  8 : Encoding (u8)
-    //  9-10 : Transaction ID (u16)
+    //  8-9 : Char Encoding (u16, MIBenum IANA : 106 = UTF-8)
+    //  10-11 : Transaction ID (u16)
     //
     // Body specifique DA Advert (function 8) :
-    //  11-12 : Error Code (u16)
-    //  13-14 : URL Length (u16)
+    //  12-13 : Error Code (u16)
+    //  14-15 : URL Length (u16)
     //  ... : URL
     //  ... : Scope List Length (u16)
     //  ... : Scope List
 
-    // Pre-check de longueur : le header fixe v1 couvre les octets 0..8.
+    // Pre-check de longueur : le header fixe v1 couvre les octets 0..12.
     validate_v1_header_length(payload)?;
 
     let version = extract_version(payload)?;
@@ -367,7 +376,7 @@ fn parse_v1_packet(payload: &[u8]) -> Result<SrvlocPacket<'_>, SrvlocPacketParse
 
     // Encoding et transaction id restent lus pour tout code fonction : ils
     // appartiennent a la partie commune du header v1, pas au body DA Advert.
-    let encoding = extract_encoding(payload, &mut offset)?;
+    let char_encoding = extract_encoding(payload, &mut offset)?;
     let transaction_id = extract_transaction_id(payload, &mut offset)?;
 
     // Dispatch par code fonction (issue #50) : seul le DAAdvert (function 8)
@@ -388,6 +397,9 @@ fn parse_v1_packet(payload: &[u8]) -> Result<SrvlocPacket<'_>, SrvlocPacketParse
             (0, 0, "", 0, "")
         };
 
+    // `encoding` reste rempli pour les lecteurs d'avant la 11.5.0, avec
+    // l'octet qu'il a toujours porte.
+    #[allow(deprecated)]
     let header_v1 = SrvlocHeaderV1 {
         version,
         function,
@@ -395,7 +407,8 @@ fn parse_v1_packet(payload: &[u8]) -> Result<SrvlocPacket<'_>, SrvlocPacketParse
         flags,
         dialect,
         language,
-        encoding,
+        encoding: char_encoding.to_be_bytes()[0],
+        char_encoding,
         transaction_id,
         error_code,
         url_length,
@@ -481,13 +494,13 @@ mod tests {
         let mut bytes = Vec::new();
         bytes.push(1); // version
         bytes.push(8); // function : DA Advert
-        // packet length : taille totale reelle du message (22 octets), la
+        // packet length : taille totale reelle du message (23 octets), la
         // validation stricte rejette toute incoherence
-        bytes.extend_from_slice(&22u16.to_be_bytes());
+        bytes.extend_from_slice(&23u16.to_be_bytes());
         bytes.push(0x20); // flags
         bytes.push(0); // dialect
         bytes.extend_from_slice(b"en"); // language
-        bytes.push(3); // encoding
+        bytes.extend_from_slice(&106u16.to_be_bytes()); // char encoding : UTF-8
         bytes.extend_from_slice(&0x1234u16.to_be_bytes()); // transaction id
         bytes.extend_from_slice(&0u16.to_be_bytes()); // error code
         bytes.extend_from_slice(&3u16.to_be_bytes()); // url length
@@ -503,11 +516,11 @@ mod tests {
         let mut bytes = Vec::new();
         bytes.push(1); // version
         bytes.push(function);
-        bytes.extend_from_slice(&((11 + body.len()) as u16).to_be_bytes());
+        bytes.extend_from_slice(&((12 + body.len()) as u16).to_be_bytes());
         bytes.push(0x00); // flags
         bytes.push(0); // dialect
         bytes.extend_from_slice(b"en"); // language
-        bytes.push(3); // encoding
+        bytes.extend_from_slice(&106u16.to_be_bytes()); // char encoding : UTF-8
         bytes.extend_from_slice(&0x1234u16.to_be_bytes()); // transaction id
         bytes.extend_from_slice(body);
         bytes
@@ -585,11 +598,11 @@ mod tests {
             SrvlocHeader::V1(header) => {
                 assert_eq!(header.version, 1);
                 assert_eq!(header.function, 8);
-                assert_eq!(header.packet_length, 22);
+                assert_eq!(header.packet_length, 23);
                 assert_eq!(header.flags, 0x20);
                 assert_eq!(header.dialect, 0);
                 assert_eq!(header.language, "en");
-                assert_eq!(header.encoding, 3);
+                assert_eq!(header.char_encoding, 106);
                 assert_eq!(header.transaction_id, 0x1234);
                 assert_eq!(header.error_code, 0);
                 assert_eq!(header.url_length, 3);
@@ -614,7 +627,7 @@ mod tests {
         };
 
         // zero-copy : les &str pointent dans le buffer d'origine
-        assert_eq!(header.url.as_ptr(), bytes[15..].as_ptr());
+        assert_eq!(header.url.as_ptr(), bytes[16..].as_ptr());
         assert_eq!(header.language.as_ptr(), bytes[6..].as_ptr());
     }
 
@@ -640,8 +653,8 @@ mod tests {
         assert!(matches!(
             SrvlocPacket::try_from(bytes.as_slice()),
             Err(SrvlocPacketParseError::InconsistentPacketLength {
-                declared: 22,
-                actual: 24
+                declared: 23,
+                actual: 25
             })
         ));
     }
@@ -731,7 +744,7 @@ mod tests {
     fn test_v1_truncated_url() {
         // url_length annonce 100 octets absents
         let mut bytes = build_v1_packet();
-        let url_len_offset = 13;
+        let url_len_offset = 14;
         bytes[url_len_offset] = 0;
         bytes[url_len_offset + 1] = 100;
         assert!(matches!(
@@ -744,7 +757,7 @@ mod tests {
     fn test_v1_truncated_scope_list() {
         // scope_list_length annonce 200 octets absents
         let mut bytes = build_v1_packet();
-        let scope_len_offset = 18; // apres url "svc"
+        let scope_len_offset = 19; // apres url "svc"
         bytes[scope_len_offset] = 0;
         bytes[scope_len_offset + 1] = 200;
         assert!(matches!(
@@ -756,7 +769,7 @@ mod tests {
     #[test]
     fn test_v1_invalid_utf8_url() {
         let mut bytes = build_v1_packet();
-        bytes[15] = 0xFF; // premier octet de l'url
+        bytes[16] = 0xFF; // premier octet de l'url
         assert!(matches!(
             SrvlocPacket::try_from(bytes.as_slice()),
             Err(SrvlocPacketParseError::InvalidUtf8("url"))
@@ -789,6 +802,40 @@ mod tests {
             SrvlocPacket::try_from(&bytes[..]),
             Err(SrvlocPacketParseError::InvalidLanguageCode([0x04, 0x00]))
         ));
+    }
+
+    /// Char Encoding fait deux octets (RFC 2165 section 7). DAAdvert SLPv1
+    /// synthetique calque sur les trames reelles : UTF-8 = `00 6a`, puis le
+    /// XID. Lu sur un octet, le champ decalait tout le body : la longueur
+    /// d'URL tombait sur `00 00`, celle du scope sur le debut de l'URL, et le
+    /// paquet sortait en Truncated. tshark 4.6.6 decode ce paquet a
+    /// l'identique.
+    #[test]
+    fn test_v1_char_encoding_is_two_bytes() {
+        let mut bytes = vec![0x01, 0x08, 0x00, 0x3c, 0x00, 0x00, b'e', b'n'];
+        bytes.extend_from_slice(&[0x00, 0x6a]); // char encoding : UTF-8
+        bytes.extend_from_slice(&[0x00, 0x07]); // XID
+        bytes.extend_from_slice(&[0x00, 0x00]); // error code
+        push_str(&mut bytes, "service:directory-agent://192.0.2.1");
+        push_str(&mut bytes, "DEFAULT");
+        assert_eq!(bytes.len(), 0x3c);
+
+        let packet = SrvlocPacket::try_from(bytes.as_slice()).expect("DAAdvert v1 valide");
+        let SrvlocHeader::V1(header) = &packet.header else {
+            panic!("attendu header V1");
+        };
+        assert_eq!(header.char_encoding, 106);
+        assert_eq!(header.transaction_id, 7);
+        assert_eq!(header.error_code, 0);
+        assert_eq!(header.url, "service:directory-agent://192.0.2.1");
+        assert_eq!(header.scope_list, "DEFAULT");
+        let SrvlocMessage::Raw(rest) = &packet.payload;
+        assert!(rest.is_empty());
+
+        // Le champ deprecie garde l'octet de poids fort qu'il a toujours lu.
+        #[allow(deprecated)]
+        let encoding = header.encoding;
+        assert_eq!(encoding, 0);
     }
 
     #[test]
@@ -834,7 +881,7 @@ mod tests {
             panic!("attendu header V1");
         };
         assert_eq!(header.function, 1);
-        assert_eq!(header.encoding, 3);
+        assert_eq!(header.char_encoding, 106);
         assert_eq!(header.transaction_id, 0x1234);
         // Champs specifiques DA Advert : valeurs neutres hors fonction 8.
         assert_eq!(header.error_code, 0);
