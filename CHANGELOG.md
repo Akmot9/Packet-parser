@@ -38,6 +38,22 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     Aucune trame des autres dossiers n'est prise pour du PTP. Cible de fuzz
     `parse_ptp` ajoutee a la matrice nocturne.
 
+### Corrige
+
+- **SRVLOC** (#131) : le champ Char Encoding d'un en-tete SLPv1 etait lu
+  sur un octet au lieu de deux (RFC 2165 §7). Tout ce qui le suit etait
+  decale : le XID et, pour un DAAdvert, l'error code, l'URL et la scope
+  list. Les 26 DAAdvert SLPv1 d'une capture reelle sortaient en Unknown ;
+  ils decodent desormais comme tshark 4.6.6, champ par champ. Nouveau
+  champ `SrvlocHeaderV1::char_encoding` (`u16`, MIBenum IANA : 106 pour
+  UTF-8). L'en-tete fixe SLPv1 fait 12 octets : un paquet plus court sort
+  en `Truncated`.
+
+### Deprecie
+
+- `SrvlocHeaderV1::encoding`, qui ne porte que l'octet de poids fort du
+  Char Encoding : lui preferer `char_encoding`.
+
 ## [11.4.0] - 2026-10-08
 
 Corrige deux faux positifs de detection, reveles par le corpus du lot
