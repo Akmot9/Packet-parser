@@ -10,7 +10,8 @@ license = "MIT"
 repository = "https://github.com/Akmot9/Packet-parser"
 categories = ["network-programming", "parsing", "development-tools"]
 readme = "README.md"
-homepage = "https://github.com/Akmot9/Packet-parser"
+homepage = "https://akmot9.github.io/packet-parser-book/"
+documentation = "https://docs.rs/packet_parser"
 keywords = ["network", "packets", "parser", "cybersecurity", "Rust"]
 # Liste d'inclusion plutôt que d'exclusion : fail-closed par construction.
 # Un `exclude` oublie tout nouveau fichier de travail (.DS_Store, notes de

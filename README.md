@@ -4,6 +4,8 @@
 [![codecov](https://codecov.io/gh/Akmot9/Packet-parser/graph/badge.svg?token=5YpEN9abhE)](https://codecov.io/gh/Akmot9/Packet-parser)
 [![Crates.io](https://img.shields.io/crates/v/packet_parser.svg)](https://crates.io/crates/packet_parser)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
+[![docs.rs](https://img.shields.io/docsrs/packet_parser)](https://docs.rs/packet_parser)
+[![Book](https://img.shields.io/badge/book-packet--parser--book-orange)](https://akmot9.github.io/packet-parser-book/)
 
 `packet_parser` is a Rust crate for parsing raw network packets. It starts at
 the data-link layer and progressively decodes internet, transport and
@@ -17,6 +19,13 @@ next layers as `None` when parsing cannot safely continue.
 [Version francaise](README-fr.md)
 
 ![Packet parser overview](images/packet_parser.png)
+
+## Documentation
+
+- **The book**, [akmot9.github.io/packet-parser-book](https://akmot9.github.io/packet-parser-book/):
+  how the crate is designed, layer by layer, with diagrams and tested examples.
+- **The API reference**, [docs.rs/packet_parser](https://docs.rs/packet_parser):
+  every public type and function.
 
 ## Installation
 
@@ -171,11 +180,12 @@ silently manufacture Ethernet fields.
 | --- | --- |
 | Check whether a link decoder exists | `is_supported(LinkType)` |
 | **Parse a packet (canonical)** | `parse(LinkType, &[u8])` |
+| Parse with caller-declared ports ("Decode As") | `parse_with(LinkType, &[u8], &ParseConfig)` |
 | Parse Ethernet, compat shortcut — assumes Ethernet, see above | `PacketFlow::try_from(&[u8])` |
 | Parse only Ethernet/VLAN — assumes Ethernet, see above | `DataLink::try_from(&[u8])` |
-| Parse only L3 | `Internet::try_from(&[u8])` |
-| Parse only L4 | `Transport::try_from(&[u8])` or `Transport::try_from_parts(...)` |
-| Detach the result from the original buffer | `flow.to_owned()` |
+| Parse only L3 | `Internet::try_from_network_parts(NetworkProtocol, &[u8])` |
+| Parse only L4 | `Transport::try_from_parts(Option<TransportProtocol>, &[u8])` |
+| Detach the result from the original buffer | `flow.to_owned_flow()` |
 | Iterate over encapsulated flows | `flow.flatten()` |
 | Measure an explicit LINKTYPE | `parse_timed(...)` with the `parse_timing` feature |
 | Measure Ethernet through the compatibility API | `PacketFlow::try_from_timed(...)` with the `parse_timing` feature |

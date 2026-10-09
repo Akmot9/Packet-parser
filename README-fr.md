@@ -4,6 +4,8 @@
 [![codecov](https://codecov.io/gh/Akmot9/Packet-parser/graph/badge.svg?token=5YpEN9abhE)](https://codecov.io/gh/Akmot9/Packet-parser)
 [![Crates.io](https://img.shields.io/crates/v/packet_parser.svg)](https://crates.io/crates/packet_parser)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
+[![docs.rs](https://img.shields.io/docsrs/packet_parser)](https://docs.rs/packet_parser)
+[![Book](https://img.shields.io/badge/book-packet--parser--book-orange)](https://akmot9.github.io/packet-parser-book/)
 
 `packet_parser` est une crate Rust de parsing de paquets reseau. Elle prend une
 trame brute, commence a la couche liaison, puis remonte progressivement les
@@ -15,6 +17,14 @@ liaison ne font pas echouer tout le parsing: la crate conserve les couches deja
 decodees et laisse les couches suivantes a `None` quand c'est necessaire.
 
 ![Packet parser overview](images/packet_parser.png)
+
+## Documentation
+
+- **Le livre**, [akmot9.github.io/packet-parser-book](https://akmot9.github.io/packet-parser-book/)
+  (en anglais) : la conception de la crate, couche par couche, avec des schemas
+  et des exemples testes.
+- **La reference de l'API**, [docs.rs/packet_parser](https://docs.rs/packet_parser) :
+  chaque type et chaque fonction publics.
 
 ## Installation
 
@@ -173,11 +183,12 @@ puissent jamais fabriquer silencieusement des champs Ethernet.
 | --- | --- |
 | Verifier la presence d'un decodeur | `is_supported(LinkType)` |
 | **Parser un paquet (voie canonique)** | `parse(LinkType, &[u8])` |
+| Parser avec des ports declares par l'appelant (« Decode As ») | `parse_with(LinkType, &[u8], &ParseConfig)` |
 | Parser Ethernet, raccourci de compatibilite — presume Ethernet, voir plus haut | `PacketFlow::try_from(&[u8])` |
 | Parser seulement Ethernet/VLAN — presume Ethernet, voir plus haut | `DataLink::try_from(&[u8])` |
-| Parser seulement L3 | `Internet::try_from(&[u8])` |
-| Parser seulement L4 | `Transport::try_from(&[u8])` ou `Transport::try_from_parts(...)` |
-| Detacher le resultat du buffer d'origine | `flow.to_owned()` |
+| Parser seulement L3 | `Internet::try_from_network_parts(NetworkProtocol, &[u8])` |
+| Parser seulement L4 | `Transport::try_from_parts(Option<TransportProtocol>, &[u8])` |
+| Detacher le resultat du buffer d'origine | `flow.to_owned_flow()` |
 | Recuperer les flux encapsules | `flow.flatten()` |
 | Mesurer un LINKTYPE explicite | `parse_timed(...)` avec la feature `parse_timing` |
 | Mesurer Ethernet via l'API de compatibilite | `PacketFlow::try_from_timed(...)` avec la feature `parse_timing` |
