@@ -1,15 +1,21 @@
 # Roadmap packet_parser
 
-Etat au 2026-10-08 : la **11.4.0 est publiee** (tag `v11.4.0`, publication
-par le workflow, semver-checks vert). Mineure de correction : deux faux
-positifs reveles par le corpus du lot defense, **SRVLOC** (#117, 829 PTPv2
-Delay_Req lus comme des en-tetes SLPv1) et **DNS** (#118, 37 datagrammes
-radar acceptes par la sonde aveugle). Reste a faire : les mesures.
+Etat au 2026-10-09 : la **11.5.0 est publiee** (tag `v11.5.0`, publication
+par le workflow, semver-checks vert). Mineure : **PTP** (#121, premier
+protocole du lot defense), sur UDP 319/320 et en couche 2 (EtherType
+`0x88F7`), en parite exacte avec tshark sur les 3 328 messages du corpus,
+plus quatre corrections : Char Encoding SLPv1 (#131), classification
+`IpType` (#136), `Display` de `VlanTag` (#134) et README (#135). Une
+depreciation, `SrvlocHeaderV1::encoding`, aucune rupture. Restent a faire :
+les mesures, le livre et l'integration Sonar. Reste ouverte : #133
+(Profinet), pour une patch.
 
-En cours (non publie) : **PTP** (#121, premier protocole du lot defense),
-sur UDP 319/320 et en couche 2 (EtherType `0x88F7`), en parite exacte avec
-tshark sur les 3 328 messages du corpus. Additif : ira dans la prochaine
-mineure.
+Etat anterieur (2026-10-08) : la **11.4.0 est publiee** (tag `v11.4.0`,
+publication par le workflow, semver-checks vert). Mineure de correction :
+deux faux positifs reveles par le corpus du lot defense, **SRVLOC** (#117,
+829 PTPv2 Delay_Req lus comme des en-tetes SLPv1) et **DNS** (#118, 37
+datagrammes radar acceptes par la sonde aveugle). Reste a faire : les
+mesures.
 
 Etat anterieur (2026-09-30) : la **11.3.0 est publiee** (tag `v11.3.0`,
 publication par le workflow, semver-checks vert).

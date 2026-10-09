@@ -6,6 +6,25 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [11.5.0] - 2026-10-09
+
+Premier protocole du lot defense (#125) : **PTP** (IEEE 1588), sur UDP
+319/320 et en couche 2 (EtherType `0x88F7`). Un consommateur qui exporte
+les etiquettes verra apparaitre `PTP` : sur le corpus, 3 221 messages UDP
+quittent `Unknown`, seul autre mouvement de l'histogramme golden, et 107
+trames de couche 2, jusque-la `UnsupportedProtocol`, sortent avec
+`protocol_internet` = `PTP`. Deux autres sorties changent : la classe
+`IpType` de trois familles d'adresses IPv6 (#136), et le texte du `Display`
+de `VlanTag`, desormais en decimal (#134).
+
+Mineure et non patch : l'API publique gagne un module, des variantes,
+toutes en fin d'enums `#[non_exhaustive]`, et un champ,
+`SrvlocHeaderV1::char_encoding` ; l'ancien `SrvlocHeaderV1::encoding` est
+deprecie. `cargo semver-checks` contre la 11.4.0 : aucune rupture, la
+depreciation suffit a exiger une mineure. Par rapport a l'archive 11.4.0,
+le paquet gagne trois fichiers (`ptp.rs` sous `checks`, `errors` et
+`parse`) ; quatorze fichiers de `src/` changent.
+
 ### Ajoute
 
 - **PTP**, Precision Time Protocol (IEEE 1588, #121), premier protocole du
