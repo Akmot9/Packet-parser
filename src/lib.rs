@@ -23,6 +23,9 @@
 //! This crate allows processing different layers of a network packet, starting from the data link layer
 //! (Ethernet II) and moving down through the network, transport, and application layers.
 //!
+//! This page is the API reference. How the crate is designed, layer by layer, is
+//! explained in the [Packet Parser book](https://akmot9.github.io/packet-parser-book/).
+//!
 //! ## Features
 //! - **Multi-layer analysis**: link, internet, transport and application layers.
 //! - **Zero-copy**: [`PacketFlow`] borrows the input buffer; no payload is copied.
