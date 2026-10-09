@@ -180,12 +180,12 @@ silently manufacture Ethernet fields.
 | --- | --- |
 | Check whether a link decoder exists | `is_supported(LinkType)` |
 | **Parse a packet (canonical)** | `parse(LinkType, &[u8])` |
-| Parse with caller-declared ports ("Decode As") | `parse_with(LinkType, &[u8], &ParseConfig)` |
+| Parse with caller-declared ports ("Decode As": my FTP runs on 2121) | `parse_with(LinkType, &[u8], &ParseConfig::new().decode_as(port, DecodeAsProtocol::..))` |
 | Parse Ethernet, compat shortcut — assumes Ethernet, see above | `PacketFlow::try_from(&[u8])` |
 | Parse only Ethernet/VLAN — assumes Ethernet, see above | `DataLink::try_from(&[u8])` |
-| Parse only L3 | `Internet::try_from_network_parts(NetworkProtocol, &[u8])` |
-| Parse only L4 | `Transport::try_from_parts(Option<TransportProtocol>, &[u8])` |
-| Detach the result from the original buffer | `flow.to_owned_flow()` |
+| Parse only L3, from the protocol the link layer announced | `Internet::try_from_network_parts(NetworkProtocol, &[u8])` |
+| Parse only L4, from the protocol the IP header announced | `Transport::try_from_parts(Option<TransportProtocol>, &[u8])` |
+| Detach the result from the original buffer | `flow.to_owned_flow()` → `PacketFlowOwned` |
 | Iterate over encapsulated flows | `flow.flatten()` |
 | Measure an explicit LINKTYPE | `parse_timed(...)` with the `parse_timing` feature |
 | Measure Ethernet through the compatibility API | `PacketFlow::try_from_timed(...)` with the `parse_timing` feature |

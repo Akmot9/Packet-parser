@@ -12,7 +12,9 @@ impl Display for VlanTag {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ID: {:02x}, PCP: {:02x}, DEI: {}",
+            // Un ID VLAN s'ecrit en decimal (802.1Q, switchs, Wireshark) :
+            // en hexadecimal sans prefixe, VLAN 100 se lisait « 64 » (#134).
+            "ID: {}, PCP: {}, DEI: {}",
             self.id, self.pcp, self.dei
         )
     }
@@ -32,6 +34,6 @@ mod tests {
             inner_ethertype: Ethertype(0x0800),
         };
 
-        assert_eq!(vlan.to_string(), "ID: 64, PCP: 05, DEI: true");
+        assert_eq!(vlan.to_string(), "ID: 100, PCP: 5, DEI: true");
     }
 }

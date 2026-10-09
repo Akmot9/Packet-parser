@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 // Définition de l'énumération `IpType`
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, Hash, PartialEq, Default)]
 #[non_exhaustive]
@@ -41,22 +41,55 @@ impl IpType {
 
     pub fn from_addr(ip: &IpAddr) -> Self {
         match ip {
-            IpAddr::V4(ipv4_addr) if ipv4_addr.is_broadcast() => Self::Broadcast,
-            IpAddr::V4(ipv4_addr) if ipv4_addr.is_private() => Self::Private,
-            IpAddr::V4(ipv4_addr) if ipv4_addr.is_loopback() => Self::Loopback,
-            IpAddr::V4(ipv4_addr) if is_apipa_ip(ipv4_addr) => Self::Apipa,
-            IpAddr::V4(ipv4_addr) if ipv4_addr.is_multicast() => Self::Multicast,
-            IpAddr::V4(ipv4_addr) if ipv4_addr.is_documentation() => Self::Documentation,
-            IpAddr::V4(ipv4_addr) if ipv4_addr.is_link_local() => Self::LinkLocal,
-            IpAddr::V4(ipv4_addr) if ipv4_addr.is_unspecified() => Self::Unknown,
+            IpAddr::V4(ipv4_addr) => Self::from_ipv4(ipv4_addr),
+            // ::ffff:a.b.c.d (RFC 4291 §2.5.5.2) porte une IPv4 entiere : un
+            // socket dual-stack logue ses clients IPv4 sous cette forme, et
+            // l'adresse se classe comme l'IPv4 qu'elle porte (#136).
+            IpAddr::V6(ipv6_addr) => match ipv6_addr.to_ipv4_mapped() {
+                Some(ipv4_addr) => Self::from_ipv4(&ipv4_addr),
+                None => Self::from_ipv6(ipv6_addr),
+            },
+        }
+    }
 
-            IpAddr::V6(ipv6_addr) if ipv6_addr.is_multicast() => Self::Multicast,
-            IpAddr::V6(ipv6_addr) if ipv6_addr.is_loopback() => Self::Loopback,
-            IpAddr::V6(ipv6_addr) if is_ipv6_unicast_link_local(ipv6_addr) => Self::LinkLocal,
-            IpAddr::V6(ipv6_addr) if is_ula(ipv6_addr) => Self::Ula,
-            IpAddr::V6(ipv6_addr) if ipv6_addr.is_unspecified() => Self::Unknown,
-            IpAddr::V6(ipv6_addr) if ipv6_addr.is_unique_local() => Self::Ula,
-            _ => Self::Public, // Cette ligne devrait être la dernière condition pour IPv6
+    fn from_ipv4(ipv4_addr: &Ipv4Addr) -> Self {
+        if ipv4_addr.is_broadcast() {
+            Self::Broadcast
+        } else if ipv4_addr.is_private() {
+            Self::Private
+        } else if ipv4_addr.is_loopback() {
+            Self::Loopback
+        } else if is_apipa_ip(ipv4_addr) {
+            Self::Apipa
+        } else if ipv4_addr.is_multicast() {
+            Self::Multicast
+        } else if ipv4_addr.is_documentation() {
+            Self::Documentation
+        } else if ipv4_addr.is_link_local() {
+            Self::LinkLocal
+        } else if ipv4_addr.is_unspecified() {
+            Self::Unknown
+        } else {
+            Self::Public
+        }
+    }
+
+    fn from_ipv6(ipv6_addr: &Ipv6Addr) -> Self {
+        if ipv6_addr.is_multicast() {
+            Self::Multicast
+        } else if ipv6_addr.is_loopback() {
+            Self::Loopback
+        } else if ipv6_addr.is_unicast_link_local() {
+            // fe80::/10 (RFC 4291 §2.5.6), pas seulement fe80::/16 (#136).
+            Self::LinkLocal
+        } else if ipv6_addr.is_unique_local() {
+            Self::Ula
+        } else if ipv6_addr.is_unspecified() {
+            Self::Unknown
+        } else if is_ipv6_documentation(ipv6_addr) {
+            Self::Documentation
+        } else {
+            Self::Public
         }
     }
 }
@@ -83,17 +116,17 @@ impl fmt::Display for IpType {
 // Implémenter Default pour IpType
 
 // Fonctions auxiliaires pour les vérifications spécifiques
-fn is_apipa_ip(ip: &std::net::Ipv4Addr) -> bool {
+fn is_apipa_ip(ip: &Ipv4Addr) -> bool {
     ip.octets()[0] == 169 && ip.octets()[1] == 254
 }
 
-fn is_ipv6_unicast_link_local(ip: &std::net::Ipv6Addr) -> bool {
-    ip.segments()[0] == 0xfe80
-}
-
-fn is_ula(ip: &std::net::Ipv6Addr) -> bool {
-    let first_byte = ip.octets()[0];
-    first_byte & 0xfe == 0xfc
+/// Prefixes de documentation IPv6 : 2001:db8::/32 (RFC 3849) et 3fff::/20
+/// (RFC 9637), pendants de 192.0.2.0/24 et consorts cote IPv4.
+/// `Ipv6Addr::is_documentation` n'est pas stable.
+fn is_ipv6_documentation(ip: &Ipv6Addr) -> bool {
+    let segments = ip.segments();
+    (segments[0] == 0x2001 && segments[1] == 0x0db8)
+        || (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0)
 }
 
 #[cfg(test)]
@@ -161,6 +194,32 @@ mod tests {
     #[test]
     fn test_ipv6_unicast_link_local() {
         assert_eq!(IpType::from_ip("fe80::1"), IpType::LinkLocal);
+        // Tout fe80::/10, pas seulement fe80::/16 (#136).
+        assert_eq!(IpType::from_ip("fe81::1"), IpType::LinkLocal);
+        assert_eq!(IpType::from_ip("febf::1"), IpType::LinkLocal);
+        // fec0::/10, site-local deprecie (RFC 3879), n'en fait pas partie.
+        assert_eq!(IpType::from_ip("fec0::1"), IpType::Public);
+    }
+
+    /// ::ffff:a.b.c.d se classe comme l'IPv4 qu'elle porte (#136).
+    #[test]
+    fn test_ipv4_mapped_ipv6_takes_the_ipv4_class() {
+        assert_eq!(IpType::from_ip("::ffff:192.168.1.1"), IpType::Private);
+        assert_eq!(IpType::from_ip("::ffff:127.0.0.1"), IpType::Loopback);
+        assert_eq!(IpType::from_ip("::ffff:224.0.0.251"), IpType::Multicast);
+        assert_eq!(IpType::from_ip("::ffff:255.255.255.255"), IpType::Broadcast);
+        assert_eq!(IpType::from_ip("::ffff:8.8.8.8"), IpType::Public);
+    }
+
+    #[test]
+    fn test_ipv6_documentation() {
+        assert_eq!(
+            IpType::from_ip("2001:0db8:85a3:0000:0000:8a2e:0370:7334"),
+            IpType::Documentation
+        );
+        assert_eq!(IpType::from_ip("3fff:fff::1"), IpType::Documentation);
+        assert_eq!(IpType::from_ip("2001:db9::1"), IpType::Public);
+        assert_eq!(IpType::from_ip("3fff:1000::1"), IpType::Public);
     }
 
     #[test]
@@ -170,10 +229,7 @@ mod tests {
 
     #[test]
     fn test_ipv6_public() {
-        assert_eq!(
-            IpType::from_ip("2001:0db8:85a3:0000:0000:8a2e:0370:7334"),
-            IpType::Public
-        );
+        assert_eq!(IpType::from_ip("2606:4700:4700::1111"), IpType::Public); // Cloudflare DNS
     }
 
     #[test]

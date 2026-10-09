@@ -48,6 +48,27 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   champ `SrvlocHeaderV1::char_encoding` (`u16`, MIBenum IANA : 106 pour
   UTF-8). L'en-tete fixe SLPv1 fait 12 octets : un paquet plus court sort
   en `Truncated`.
+- **`IpType`** (#136), classification visible dans le JSON
+  (`ip_source_type`, `ip_destination_type`) :
+  - le link-local IPv6 couvre tout `fe80::/10` (RFC 4291 §2.5.6) :
+    `fe81::` a `febf::` sortaient `Public` ;
+  - une adresse IPv4-mapped `::ffff:a.b.c.d` (RFC 4291 §2.5.5.2) se classe
+    comme l'IPv4 qu'elle porte : `::ffff:192.168.1.1` sortait `Public`, il
+    sort `Private` ;
+  - les prefixes de documentation IPv6 `2001:db8::/32` (RFC 3849) et
+    `3fff::/20` (RFC 9637) sortent `Documentation`, comme leurs pendants
+    IPv4, et non plus `Public`.
+  Les discriminants de l'enum ne bougent pas.
+- **`Display` de `VlanTag`** (#134) : l'ID VLAN et le PCP s'ecrivent en
+  decimal. En hexadecimal sans prefixe, VLAN 100 s'affichait `ID: 64`. Le
+  texte change aussi dans le `Display` de `DataLink`.
+- **README** (#135) : le tableau des API principales citait
+  `Transport::try_from(&[u8])`, supprime en 11.0.0, et `flow.to_owned()`,
+  qui compile (`PacketFlow` est `Clone`) mais rend un `PacketFlow` qui
+  emprunte toujours le buffer : c'est `flow.to_owned_flow()`. Il recommande
+  desormais `Internet::try_from_network_parts` plutot que
+  `Internet::try_from`, qui sonde a l'aveugle, et cite `parse_with`
+  (« Decode As »).
 
 ### Deprecie
 
