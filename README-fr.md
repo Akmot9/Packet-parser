@@ -183,12 +183,12 @@ puissent jamais fabriquer silencieusement des champs Ethernet.
 | --- | --- |
 | Verifier la presence d'un decodeur | `is_supported(LinkType)` |
 | **Parser un paquet (voie canonique)** | `parse(LinkType, &[u8])` |
-| Parser avec des ports declares par l'appelant (« Decode As ») | `parse_with(LinkType, &[u8], &ParseConfig)` |
+| Parser avec des ports declares par l'appelant ("Decode As" : mon FTP tourne sur 2121) | `parse_with(LinkType, &[u8], &ParseConfig::new().decode_as(port, DecodeAsProtocol::..))` |
 | Parser Ethernet, raccourci de compatibilite — presume Ethernet, voir plus haut | `PacketFlow::try_from(&[u8])` |
 | Parser seulement Ethernet/VLAN — presume Ethernet, voir plus haut | `DataLink::try_from(&[u8])` |
-| Parser seulement L3 | `Internet::try_from_network_parts(NetworkProtocol, &[u8])` |
-| Parser seulement L4 | `Transport::try_from_parts(Option<TransportProtocol>, &[u8])` |
-| Detacher le resultat du buffer d'origine | `flow.to_owned_flow()` |
+| Parser seulement L3, depuis le protocole annonce par la couche liaison | `Internet::try_from_network_parts(NetworkProtocol, &[u8])` |
+| Parser seulement L4, depuis le protocole annonce par l'en-tete IP | `Transport::try_from_parts(Option<TransportProtocol>, &[u8])` |
+| Detacher le resultat du buffer d'origine | `flow.to_owned_flow()` → `PacketFlowOwned` |
 | Recuperer les flux encapsules | `flow.flatten()` |
 | Mesurer un LINKTYPE explicite | `parse_timed(...)` avec la feature `parse_timing` |
 | Mesurer Ethernet via l'API de compatibilite | `PacketFlow::try_from_timed(...)` avec la feature `parse_timing` |
