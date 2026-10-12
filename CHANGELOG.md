@@ -79,6 +79,31 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **IEC 60870-5-104** (epopee #102, Tier 2) : la telecommande du secteur
+  electrique europeen, compagnon de DNP3. `iec104::Iec104Packet` lit les
+  APDU d'un segment TCP — `0x68`, longueur, champ de controle dont le
+  format (`ApciFormat` : I avec N(S) et N(R), S avec N(R), U avec sa
+  fonction nommee par `UnnumberedFunction`) — et, en format I, l'ASDU
+  (`Asdu` : type nomme par son mnemonique IEC 60870-5-101 dans `AsduType`,
+  SQ, nombre d'objets, cause de transmission avec P/N et T, adresses
+  d'origine et commune, objets d'information `InformationObject` avec leur
+  adresse sur trois octets — en sequence, celle du premier plus le rang —
+  et leur element dimensionne par la table de la norme ; un type inconnu
+  laisse ses octets dans `undecoded`). Un APDU coupe par la segmentation
+  est decode sur ce qu'il en reste et marque `truncated`. Dispatch garde
+  par le port 2404 (`DecodeAsProtocol::Iec104` ailleurs) : `0x68` et une
+  longueur sont deux octets, trop peu pour sonder tout segment TCP.
+  Corpus : `pcaps_exemple/protocols/iec104/`, une session complete et un
+  segment en sequence du wiki Wireshark (GPL-2.0), des mesures horodatees
+  du corpus nDPI (LGPL-3.0), et deux captures ITI (CC-BY-4.0 : commandes
+  horodatees, interrogations en sequence) ; la seconde capture nDPI, qui
+  mele une session reelle et des segments fabriques, est ecartee. Parite
+  avec tshark 4.6.6 sans reassemblage sur les 373 segments et 448 APDU
+  (`tests/iec104_golden.rs`, oracle `tools/iec104_oracle.sh`) : formats,
+  fonctions, numeros de sequence, types, causes, adresses et 668 objets, les
+  46 ASDU en sequence compris. Histogramme golden : "IEC 104" 0 -> 374 ;
+  collecteur de corpus 156 -> 161 captures. Cible de
+  fuzz `parse_iec104`.
 - **RDP** (#100, Tier 3) : MS-RDPBCGR sur TCP 3389, qui rentabilise le
   chantier TPKT/COTP de la 10.0.0. `rdp::RdpPacket` lit les TPKT d'un
   segment (le dernier eventuellement coupe par la segmentation, decode sur

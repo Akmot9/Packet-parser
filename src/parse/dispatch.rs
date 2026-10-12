@@ -36,6 +36,7 @@ use super::application::protocols::ethernet_ip::EtherNetIpPacket;
 use super::application::protocols::ftp::FtpMessage;
 use super::application::protocols::giop::GiopPacket;
 use super::application::protocols::http::HttpRequest;
+use super::application::protocols::iec104::Iec104Packet;
 use super::application::protocols::ike::{IkePacket, UdpEncapsulation};
 use super::application::protocols::modbus_tcp::ModbusTcpPacket;
 use super::application::protocols::mqtt::MqttPacket;
@@ -150,6 +151,7 @@ enum ProbeId {
     Dnp3,
     Radius,
     Rdp,
+    Iec104,
     Ike,
     EspNatT,
     NatKeepalive,
@@ -219,6 +221,8 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         // TPKT, COTP X.224 et une connexion ou un PDU MCS lisibles ; sur le
         // payload reel, un TPKT peut deborder du segment.
         ProbeId::Rdp => RdpPacket::try_from(full_payload).is_ok(),
+        // Sur le payload reel : un APDU peut deborder du segment.
+        ProbeId::Iec104 => Iec104Packet::try_from(full_payload).is_ok(),
         // Sur le payload reel : la longueur de l'en-tete IKE couvre tout le
         // message. Nu (UDP 500) ou derriere le marqueur non-ESP (UDP 4500).
         ProbeId::Ike => IkePacket::from_udp(full_payload).is_ok(),
@@ -398,6 +402,10 @@ static RULES: &[Rule] = &[
     // Decode As. Apres une negociation TLS ou CredSSP, les segments
     // suivants sont du TLS et etiquetes TLS (#100).
     port_rule("RDP", Guard::Tcp, is_rdp_tcp_port, ProbeId::Rdp),
+    // IEC 60870-5-104 : TCP 2404. Garde par port : `0x68` et une longueur
+    // sont deux octets, trop peu pour sonder tout segment TCP ; un autre
+    // port se declare par Decode As (#102).
+    port_rule("IEC 104", Guard::Tcp, is_iec104_tcp_port, ProbeId::Iec104),
     // PostgreSQL sur son port : decodage et forme compatible suffisent — un
     // Terminate, un ReadyForQuery ou un mot de passe seuls dans leur
     // segment, la reponse d'un octet a SSLRequest (S ou N) — la ou la sonde
@@ -530,6 +538,8 @@ pub enum DecodeAsProtocol {
     Esp,
     /// RDP : TPKT, COTP X.224 et MCS (TCP).
     Rdp,
+    /// IEC 60870-5-104 : APDU `0x68` sur TCP.
+    Iec104,
 }
 
 impl DecodeAsProtocol {
@@ -569,6 +579,7 @@ impl DecodeAsProtocol {
             Self::Ike => ("IKE", Guard::Udp, ProbeId::Ike),
             Self::Esp => ("ESP", Guard::Udp, ProbeId::EspNatT),
             Self::Rdp => ("RDP", Guard::Tcp, ProbeId::Rdp),
+            Self::Iec104 => ("IEC 104", Guard::Tcp, ProbeId::Iec104),
         }
     }
 }
@@ -761,6 +772,11 @@ fn is_dis_udp_port(port: Option<u16>) -> bool {
 /// PostgreSQL : TCP 5432 (IANA `postgresql`).
 fn is_postgresql_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(5432))
+}
+
+/// IEC 60870-5-104 : TCP 2404 (IANA `iec-104`).
+fn is_iec104_tcp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(2404))
 }
 
 /// RDP : TCP 3389 (IANA `ms-wbt-server`).
@@ -1161,6 +1177,7 @@ mod tests {
             DecodeAsProtocol::Ike,
             DecodeAsProtocol::Esp,
             DecodeAsProtocol::Rdp,
+            DecodeAsProtocol::Iec104,
         ];
         for protocol in all {
             for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {

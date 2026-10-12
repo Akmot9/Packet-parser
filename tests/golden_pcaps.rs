@@ -302,9 +302,17 @@ fn application_classification_histogram_is_frozen() {
     // (+319 : suites de TPKT et de records TLS coupes par la segmentation,
     // segments que tshark laisse en `data`), "(sans application)" 4 595 ->
     // 4 980 (+385 : les ACK).
+    //
+    // 2026-10-12 (epopee #102, corpus IEC 60870-5-104, 5 captures, 651
+    // trames : wiki Wireshark, nDPI, ITI) : "IEC 104" 0 -> 374 (373 segments
+    // a payload sur le port 2404, plus la retransmission de
+    // iti_JavaRMI_and_IEC_Misc.pcap que tshark ne dissèque pas), "Unknown"
+    // 8 251 -> 8 254 (+3 : un segment RMI et deux segments sans APDU complet
+    // de la meme capture), "(sans application)" 5 029 -> 5 254 (+225 : les
+    // ACK).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 4980),
+        (NO_APPLICATION, 5254),
         ("ASTERIX", 44_507),
         ("DHCP", 71),
         ("DIS", 390),
@@ -316,6 +324,7 @@ fn application_classification_histogram_is_frozen() {
         ("FTP", 5),
         ("GIOP", 123),
         ("HTTP", 72),
+        ("IEC 104", 374),
         ("IKE", 535),
         ("IP-in-IP", 5),
         ("LLMNR", 136),
@@ -337,7 +346,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1066),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 8_251),
+        ("Unknown", 8_254),
         ("mDNS", 12),
     ]
     .into_iter()

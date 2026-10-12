@@ -322,6 +322,13 @@ incluent notamment:
   son magic (`RTPS`, ou `RTPX` chez RTI) et le pavage exact de ses
   sous-messages, sur tout port UDP ; les pings RTI de seize octets
   (`NDDSPING`) sont signales aussi
+- IEC 60870-5-104 sur TCP 2404 : les APDU d'un segment (le dernier coupe
+  par la segmentation est decode jusqu'ou il va), formats I/S/U avec
+  numeros de sequence ou fonction STARTDT/STOPDT/TESTFR, et pour chaque
+  ASDU le type nomme par son mnemonique IEC 60870-5-101, la cause de
+  transmission, les adresses d'origine et commune, et les objets
+  d'information (adresse, element dimensionne par la norme, en sequence ou
+  non)
 - RDP (MS-RDPBCGR) sur TCP 3389 : TPKT et COTP X.224, Connection Request
   (jeton de routage ou cookie `mstshash`, demande de negociation) et Confirm
   (reponse ou echec de negociation), puis les PDU MCS de la securite RDP

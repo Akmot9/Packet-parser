@@ -314,6 +314,12 @@ Application detection is intentionally best-effort. Parser modules include:
   stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
   exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
   `NDDSPING` pings are reported too
+- IEC 60870-5-104 on TCP 2404: APDUs of a segment (the last one cut by
+  segmentation is decoded as far as it goes), I/S/U formats with sequence
+  numbers or the STARTDT/STOPDT/TESTFR function, and for each ASDU the
+  type named by its IEC 60870-5-101 mnemonic, cause of transmission,
+  originator and common addresses, and the information objects (address,
+  element sized from the standard, in sequence or not)
 - RDP (MS-RDPBCGR) on TCP 3389: TPKT and COTP X.224 Connection Request
   (routing token or `mstshash` cookie, negotiation request) and Confirm
   (negotiation response or failure), then the MCS PDUs of the standard RDP

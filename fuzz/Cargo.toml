@@ -139,6 +139,13 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "parse_iec104"
+path = "fuzz_targets/parse_iec104.rs"
+test = false
+doc = false
+bench = false
+
 # Oracles de politique du dispatch (FTP/SMTP/NNTP hors port, S7Comm, COTP,
 # Decode As), separes du fuzz anti-panic de parse_packetflow (issue #108).
 [[bin]]
