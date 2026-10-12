@@ -35,7 +35,7 @@ pub enum NtpPacketParseError {
     )]
     TimestampConversionError { seconds: i64, nanos: u32 },
 
-    #[error("NTP timestamps are not in ascending order: Originate ≤ Receive ≤ Transmit violated")]
+    #[error("NTP timestamps are not in order: Receive ≤ Transmit violated on the sender's clock")]
     InconsistentTimestamps,
 
     #[error("Invalid Reference ID: Stratum 0 should not have a Reference ID")]

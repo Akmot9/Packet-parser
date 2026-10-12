@@ -19,7 +19,9 @@ const MINIMUM_NTP_PACKET_LENGTH: usize = 48;
 /// 2. The **Version Number (VN)** in the first byte must be between `0` and `4`.
 /// 3. The **Mode field** (first byte) must be in `[1, 2, 3, 4, 5]` (Client, Server, Broadcast, etc.).
 /// 4. The **Stratum field** must be between `0` and `15` for valid servers.
-/// 5. The **Timestamps** must be logically consistent.
+/// 5. The **Receive** and **Transmit** timestamps, both taken on the sender's
+///    clock, must be in order; the Originate timestamp is the client's clock
+///    and is never compared (#161).
 pub fn validate_ntp_packet_length(payload: &[u8]) -> Result<(), NtpPacketParseError> {
     if payload.len() < MINIMUM_NTP_PACKET_LENGTH {
         return Err(NtpPacketParseError::InvalidPacketLength);
@@ -143,8 +145,12 @@ pub fn extract_reference_id(stratum: u8, payload: &[u8]) -> Result<Refid, NtpPac
                 _ => Err(NtpPacketParseError::InvalidReferenceIdForStratum0),
             }
         }
+        // RFC 5905 §7.3 : quatre octets ASCII justifies a gauche et completes
+        // de zeros, dont la liste, tenue par l'IANA, depasse l'extrait de la
+        // RFC (GOES, GPS, GAL, PPS...) : ntpd emet aussi SHM, NMEA, LOCL...
+        // Tout code imprimable non vide est accepte (#162).
         1 => match reference_code_str(&ref_id_bytes) {
-            Some(code) if CLOCK_SOURCES.contains(&code) => Ok(Refid::ClockSource(ref_id_bytes)),
+            Some(code) if !code.is_empty() => Ok(Refid::ClockSource(ref_id_bytes)),
             _ => Err(NtpPacketParseError::InvalidReferenceIdForStratum1),
         },
         2..=15 => {
@@ -170,12 +176,6 @@ const KISS_CODES: &[&str] = &[
     "RATE", "RMOT", "STEP",
 ];
 
-/// Liste des Clock Sources valides pour Stratum 1
-const CLOCK_SOURCES: &[&str] = &[
-    "GOES", "GPS", "GAL", "PPS", "IRIG", "WWVB", "DCF", "HBG", "MSF", "JJY", "LORC", "TDF", "CHU",
-    "WWV", "WWVH", "NIST", "ACTS", "USNO", "PTB", "DFM",
-];
-
 const NTP_TO_UNIX_EPOCH: i64 = 2_208_988_800;
 
 /// Extracts an NTP timestamp (8 bytes) and returns a `DateTime<Utc>`.
@@ -188,12 +188,16 @@ pub fn extract_timestamp(payload: &[u8]) -> Result<DateTime<Utc>, NtpPacketParse
     // Extraction des 4 derniers octets pour obtenir la fraction de seconde NTP.
     let ntp_fraction = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
 
-    // Conversion des secondes NTP en secondes UNIX (décalage de 1900 à 1970).
-    // Un timestamp entièrement nul est interprété comme 1970-01-01 00:00:00 UTC.
+    // Conversion des secondes NTP en secondes UNIX. Un horodatage entierement
+    // nul est « inconnu » (RFC 5905 §6) et rendu 1970-01-01 00:00:00 UTC.
+    // Sinon le bit de poids fort choisit l'ere (RFC 4330 §3) : a 1, l'ere 0
+    // (1968 a 2036) ; a 0, l'ere 1 (2036 a 2104) — comme tshark (#162).
     let unix_seconds = if ntp_seconds == 0 && ntp_fraction == 0 {
         0
+    } else if ntp_seconds & 0x8000_0000 != 0 {
+        i64::from(ntp_seconds) - NTP_TO_UNIX_EPOCH
     } else {
-        ntp_seconds as i64 - NTP_TO_UNIX_EPOCH
+        i64::from(ntp_seconds) + (1_i64 << 32) - NTP_TO_UNIX_EPOCH
     };
 
     // Conversion de la fraction de seconde NTP en nanosecondes.
@@ -218,13 +222,24 @@ fn validate_timestamp_size(payload: &[u8]) -> Result<(), NtpPacketParseError> {
     Ok(())
 }
 
+/// Un horodatage NTP entierement nul (« unknown », RFC 5905 §6) : la crate
+/// le rend comme l'epoque Unix.
+pub fn is_null_timestamp(timestamp: DateTime<Utc>) -> bool {
+    timestamp.timestamp() == 0 && timestamp.timestamp_subsec_nanos() == 0
+}
+
+/// Receive (T2) et Transmit (T3) sont pris sur l'horloge de l'emetteur :
+/// T2 <= T3. Originate (T1) est l'horodatage du client, copie tel quel, et
+/// Reference la derniere mise a l'heure : ni l'un ni l'autre ne se compare
+/// a T2/T3 — un client en avance de quelques millisecondes (ce que NTP sert
+/// a corriger) rendait `originate > receive` et faisait rejeter de vraies
+/// reponses de serveur (#161). Un horodatage nul vaut « inconnu » et ne se
+/// compare pas non plus.
 pub fn validate_datetime_ordering(
-    reference: DateTime<Utc>,
-    originate: DateTime<Utc>,
     receive: DateTime<Utc>,
     transmit: DateTime<Utc>,
 ) -> Result<(), NtpPacketParseError> {
-    if reference > originate || originate > receive || receive > transmit {
+    if !is_null_timestamp(receive) && !is_null_timestamp(transmit) && receive > transmit {
         return Err(NtpPacketParseError::InconsistentTimestamps);
     }
 
@@ -252,27 +267,33 @@ mod tests {
 
     #[test]
     fn test_valid_ordering() {
-        let reference = Utc.timestamp_opt(1_700_000_000, 0).unwrap();
-        let originate = Utc.timestamp_opt(1_700_000_001, 0).unwrap();
         let receive = Utc.timestamp_opt(1_700_000_002, 0).unwrap();
         let transmit = Utc.timestamp_opt(1_700_000_003, 0).unwrap();
-
-        let result = validate_datetime_ordering(reference, originate, receive, transmit);
-        assert!(result.is_ok());
+        assert!(validate_datetime_ordering(receive, transmit).is_ok());
+        assert!(validate_datetime_ordering(receive, receive).is_ok());
     }
 
     #[test]
     fn test_invalid_ordering() {
-        let reference = Utc.timestamp_opt(1_700_000_000, 0).unwrap();
-        let originate = Utc.timestamp_opt(1_700_000_005, 0).unwrap();
-        let receive = Utc.timestamp_opt(1_700_000_002, 0).unwrap(); // Problème ici (reçoit avant originate)
-        let transmit = Utc.timestamp_opt(1_700_000_003, 0).unwrap();
-
-        let result = validate_datetime_ordering(reference, originate, receive, transmit);
+        // Transmis avant d'etre recu, sur la meme horloge.
+        let receive = Utc.timestamp_opt(1_700_000_003, 0).unwrap();
+        let transmit = Utc.timestamp_opt(1_700_000_002, 999_999_999).unwrap();
         assert!(matches!(
-            result,
+            validate_datetime_ordering(receive, transmit),
             Err(NtpPacketParseError::InconsistentTimestamps)
         ));
+    }
+
+    /// #161 : un horodatage nul est inconnu, pas anterieur a tout.
+    #[test]
+    fn test_null_timestamps_are_not_ordered() {
+        let null = Utc.timestamp_opt(0, 0).unwrap();
+        let later = Utc.timestamp_opt(1_700_000_003, 0).unwrap();
+        assert!(is_null_timestamp(null));
+        assert!(!is_null_timestamp(later));
+        assert!(validate_datetime_ordering(later, null).is_ok());
+        assert!(validate_datetime_ordering(null, later).is_ok());
+        assert!(validate_datetime_ordering(null, null).is_ok());
     }
 
     #[test]
@@ -311,6 +332,27 @@ mod tests {
         let result = extract_reference_id(stratum, payload);
         assert_eq!(result, Ok(Refid::ClockSource(*b"GPS ")));
         assert_eq!(result.unwrap().code(), Some("GPS"));
+    }
+
+    /// #162 : `SHM` (pilote memoire partagee de ntpd) n'est pas dans la
+    /// RFC 5905, et pourtant stratum 1 ; un identifiant nul ou non justifie
+    /// a gauche n'est pas un code.
+    #[test]
+    fn test_stratum_1_accepts_any_printable_code() {
+        assert_eq!(
+            extract_reference_id(1, b"SHM\0"),
+            Ok(Refid::ClockSource(*b"SHM\0"))
+        );
+        assert_eq!(
+            extract_reference_id(1, b"XGPS").unwrap().code(),
+            Some("XGPS")
+        );
+        for bytes in [[0u8; 4], *b"G PS", *b" GPS"] {
+            assert!(matches!(
+                extract_reference_id(1, &bytes),
+                Err(NtpPacketParseError::InvalidReferenceIdForStratum1)
+            ));
+        }
     }
 
     #[test]
@@ -386,6 +428,21 @@ mod tests {
         let payload = [0xC5, 0x02, 0x04, 0xEC, 0x00, 0x00, 0x00, 0x00];
         let result = extract_timestamp(&payload).expect("valid timestamp");
         assert_eq!(result.timestamp(), 0xC50204ECu32 as i64 - 2_208_988_800);
+    }
+
+    /// #162 : bit de poids fort a 0, ere 1 (RFC 4330 §3) — la requete du
+    /// client Java de iec104/iti_JavaRMI_and_IEC_Misc.pcap, 37 s apres le
+    /// 7 fevrier 2036 06:28:16 UTC, comme tshark la montre.
+    #[test]
+    fn test_extract_timestamp_era_1() {
+        let payload = [0x00, 0x00, 0x00, 0x25, 0x00, 0x00, 0x00, 0x00];
+        let result = extract_timestamp(&payload).expect("ere 1");
+        assert_eq!(result, Utc.with_ymd_and_hms(2036, 2, 7, 6, 28, 53).unwrap());
+        // La fin de l'ere 0 reste dans l'ere 0.
+        let payload = [0xFF, 0xFF, 0xFF, 0xFF, 0x80, 0x00, 0x00, 0x00];
+        let result = extract_timestamp(&payload).expect("fin de l'ere 0");
+        assert_eq!(result.timestamp(), 0xFFFF_FFFF_u32 as i64 - 2_208_988_800);
+        assert_eq!(result.timestamp_subsec_nanos(), 500_000_000);
     }
 
     #[test]

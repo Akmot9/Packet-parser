@@ -327,6 +327,15 @@ fn application_classification_histogram_is_frozen() {
     // 731 -> 737, "Unknown" 8 254 -> 8 281 (+27 : 20 datagrammes NTP que la
     // crate n'accepte pas, 3 portmap, 3 segments TCP d'un octet vers le
     // port 102, un segment COTP).
+    //
+    // 2026-10-13 (#161) : le decodeur NTP ne compare plus l'horodatage
+    // originate (horloge du client) a receive (horloge du serveur) : les 20
+    // reponses de serveur de iti_Sample_File_MMS_and_GOOSE.pcap qu'un client
+    // en avance de quelques millisecondes (ou un originate nul, v1) faisait
+    // rejeter sont reconnues, ainsi que l'echange de
+    // iec104/iti_JavaRMI_and_IEC_Misc.pcap (#162 : horodatage de l'ere 1 du
+    // client, serveur de stratum 1 `SHM`) : "NTP" 32 -> 54, "Unknown"
+    // 8 281 -> 8 259.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 5864),
@@ -353,7 +362,7 @@ fn application_classification_histogram_is_frozen() {
         ("ModbusTCP", 382),
         ("UMAS", 181),
         ("NNTP", 6),
-        ("NTP", 32),
+        ("NTP", 54),
         ("OPC UA", 187),
         ("OpenVPN", 766),
         ("PTP", 3221),
@@ -368,7 +377,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1066),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 8_281),
+        ("Unknown", 8_259),
         ("mDNS", 12),
     ]
     .into_iter()
