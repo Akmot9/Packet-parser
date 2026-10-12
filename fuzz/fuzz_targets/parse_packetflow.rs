@@ -42,7 +42,9 @@ const PROBE_CAP: usize = 18 * 1024;
 const STOR_COMMAND: &[u8] = b"STOR fichier.bin\r\n";
 
 // La regle hors port exige une commande complete (ligne terminee par CRLF,
-// UTF-8, arite) et pas seulement un verbe propre a FTP en tete du payload.
+// UTF-8, arite, aucun CR ou LF nu ni octet de controle hors TAB dans tout le
+// payload — issue #109) et pas seulement un verbe propre a FTP en tete du
+// payload.
 fn is_ftp_only_command(payload: &[u8]) -> bool {
     let probed = &payload[..payload.len().min(PROBE_CAP)];
     matches!(

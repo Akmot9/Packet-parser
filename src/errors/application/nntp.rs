@@ -25,4 +25,15 @@ pub enum NntpParseError {
 
     #[error("Invalid NNTP response code: {0}")]
     InvalidResponseCode(String),
+
+    /// A CR or LF outside a CRLF line terminator, in the first line or in the
+    /// data block that follows it (RFC 3977 §3.1.1; issue #109).
+    #[error("Bare CR or LF at offset {offset} in NNTP payload: lines end with CRLF only")]
+    BareLineBreak { offset: usize },
+
+    /// A control character other than TAB and the CRLF terminator in the
+    /// command or response line (RFC 3977 §9.8: `A-CHAR = %x21-7E`), or a NUL
+    /// anywhere in the payload (RFC 3977 §3.1.1; issue #109).
+    #[error("Control character 0x{byte:02X} at offset {offset} in NNTP payload")]
+    ControlCharacter { offset: usize, byte: u8 },
 }

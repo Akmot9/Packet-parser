@@ -3,7 +3,10 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-use crate::errors::application::nntp::NntpParseError;
+use crate::{
+    checks::application::{TextOctetFault, find_data_block_fault, find_text_line_fault},
+    errors::application::nntp::NntpParseError,
+};
 
 /// Standard NNTP commands (RFC 3977 and common extensions) accepted by the
 /// parser. Restricting to known verbs keeps random text payloads from being
@@ -49,6 +52,38 @@ pub fn validate_non_empty(payload: &[u8]) -> Result<(), NntpParseError> {
 /// Validates that the payload is UTF-8 and returns it as a borrowed `&str`.
 pub fn parse_payload_as_utf8(payload: &[u8]) -> Result<&str, NntpParseError> {
     std::str::from_utf8(payload).map_err(|_| NntpParseError::InvalidUtf8)
+}
+
+/// Rejects a bare CR or LF and any control character other than TAB in the
+/// command or response line: arguments are made of `A-CHAR = %x21-7E` and
+/// UTF-8 beyond ASCII, separated by spaces or TABs (RFC 3977 §3.1 and §9.8;
+/// issue #109). Offsets are relative to `line`, which starts the payload.
+pub fn validate_line_characters(line: &[u8]) -> Result<(), NntpParseError> {
+    match find_text_line_fault(line) {
+        None => Ok(()),
+        Some(TextOctetFault::BareLineBreak { offset }) => {
+            Err(NntpParseError::BareLineBreak { offset })
+        }
+        Some(TextOctetFault::ControlCharacter { offset, byte }) => {
+            Err(NntpParseError::ControlCharacter { offset, byte })
+        }
+    }
+}
+
+/// Rejects, over the whole payload, the octets a multi-line data block may
+/// never carry outside its line endings: NUL, CR and LF (RFC 3977 §3.1.1).
+/// Whatever follows the first line — pipelined commands, an overview or an
+/// article — obeys this rule even when it is not UTF-8 text (issue #109).
+pub fn validate_data_block_octets(payload: &[u8]) -> Result<(), NntpParseError> {
+    match find_data_block_fault(payload) {
+        None => Ok(()),
+        Some(TextOctetFault::BareLineBreak { offset }) => {
+            Err(NntpParseError::BareLineBreak { offset })
+        }
+        Some(TextOctetFault::ControlCharacter { offset, byte }) => {
+            Err(NntpParseError::ControlCharacter { offset, byte })
+        }
+    }
 }
 
 /// Splits off the first CRLF-terminated line at the byte level. The remainder
@@ -207,6 +242,53 @@ mod tests {
         assert_eq!(
             parse_payload_as_utf8(&[0xFF, 0xFE]),
             Err(NntpParseError::InvalidUtf8)
+        );
+    }
+
+    #[test]
+    fn test_validate_line_characters() {
+        assert_eq!(validate_line_characters(b"HDR\tSubject\t12-20"), Ok(()));
+        assert_eq!(
+            validate_line_characters(b"ARTICLE 1\n2"),
+            Err(NntpParseError::BareLineBreak { offset: 9 })
+        );
+        assert_eq!(
+            validate_line_characters(b"ARTICLE 1\x00"),
+            Err(NntpParseError::ControlCharacter {
+                offset: 9,
+                byte: 0x00
+            })
+        );
+        assert_eq!(
+            validate_line_characters(b"XOVER 1-5\x7f"),
+            Err(NntpParseError::ControlCharacter {
+                offset: 9,
+                byte: 0x7F
+            })
+        );
+    }
+
+    #[test]
+    fn test_validate_data_block_octets() {
+        assert_eq!(
+            validate_data_block_octets(b"224 data follows\r\n1\tSubject\r\n.\r\n"),
+            Ok(())
+        );
+        // Un article peut porter d'autres octets de controle, et du non-UTF-8.
+        assert_eq!(
+            validate_data_block_octets(b"ARTICLE 1\r\n\x1b[0m\xff\xfe\r\n"),
+            Ok(())
+        );
+        assert_eq!(
+            validate_data_block_octets(b"ARTICLE 1\r\n\x17\x15\x00\x17"),
+            Err(NntpParseError::ControlCharacter {
+                offset: 13,
+                byte: 0x00
+            })
+        );
+        assert_eq!(
+            validate_data_block_octets(b"ARTICLE 1\r\nbody\nmore\r\n"),
+            Err(NntpParseError::BareLineBreak { offset: 15 })
         );
     }
 

@@ -10,7 +10,8 @@ use std::convert::TryFrom;
 use crate::{
     checks::application::nntp::{
         looks_like_response, parse_payload_as_utf8, parse_response_code, require_known_command,
-        split_command, split_first_line, validate_command_syntax, validate_non_empty,
+        split_command, split_first_line, validate_command_syntax, validate_data_block_octets,
+        validate_line_characters, validate_non_empty,
     },
     errors::application::nntp::NntpParseError,
 };
@@ -57,6 +58,8 @@ pub fn parse_nntp_message(payload: &[u8]) -> Result<NntpMessage<'_>, NntpParseEr
     validate_non_empty(payload)?;
 
     let (first_line_bytes, _rest) = split_first_line(payload)?;
+    validate_line_characters(first_line_bytes)?;
+    validate_data_block_octets(payload)?;
     let first_line = parse_payload_as_utf8(first_line_bytes)?;
 
     // Any numeric-looking first line is a response. This preserves a precise
@@ -309,6 +312,52 @@ mod tests {
         assert_eq!(
             NntpMessage::try_from(&payload[..]),
             Err(NntpParseError::InvalidUtf8)
+        );
+    }
+
+    /// Issue #109 : un CR ou un LF nu et tout caractere de controle autre que
+    /// TAB sont refuses dans la ligne de commande ; apres elle, un bloc de
+    /// donnees n'admet ni NUL, ni CR ou LF nu (RFC 3977 §3.1.1). Octets
+    /// synthetiques.
+    #[test]
+    fn test_bare_line_breaks_and_control_characters_are_rejected() {
+        assert_eq!(
+            NntpMessage::try_from(&b"ARTICLE 1\n2\r\n"[..]),
+            Err(NntpParseError::BareLineBreak { offset: 9 })
+        );
+        assert_eq!(
+            NntpMessage::try_from(&b"XOVER 1-5\x00\r\n"[..]),
+            Err(NntpParseError::ControlCharacter {
+                offset: 9,
+                byte: 0x00
+            })
+        );
+        assert_eq!(
+            NntpMessage::try_from(&b"ARTICLE <id@example>\x1b\r\n"[..]),
+            Err(NntpParseError::ControlCharacter {
+                offset: 20,
+                byte: 0x1B
+            })
+        );
+        // Le reste du payload : NUL et sauts de ligne nus seulement.
+        assert_eq!(
+            NntpMessage::try_from(&b"ARTICLE 1\r\n\x17\x15\x00\x17"[..]),
+            Err(NntpParseError::ControlCharacter {
+                offset: 13,
+                byte: 0x00
+            })
+        );
+        assert_eq!(
+            NntpMessage::try_from(&b"224 data follows\r\n1\tSubject\nbody\r\n"[..]),
+            Err(NntpParseError::BareLineBreak { offset: 27 })
+        );
+        // Une tabulation separe les arguments (RFC 3977 §3.1).
+        assert_eq!(
+            NntpMessage::try_from(&b"HDR\tSubject\t12-20\r\n"[..]),
+            Ok(NntpMessage::Command {
+                verb: "HDR",
+                args: Some("Subject\t12-20"),
+            })
         );
     }
 }

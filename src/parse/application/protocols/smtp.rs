@@ -10,7 +10,7 @@ use std::convert::TryFrom;
 use crate::{
     checks::application::smtp::{
         looks_like_reply, parse_payload_as_utf8, parse_reply_code, require_known_command,
-        split_first_line, validate_command_syntax,
+        split_first_line, validate_command_syntax, validate_payload_characters,
     },
     errors::application::smtp::SmtpParseError,
 };
@@ -57,6 +57,7 @@ pub fn parse_smtp_message(payload: &[u8]) -> Result<SmtpMessage<'_>, SmtpParseEr
     }
 
     let payload_str = parse_payload_as_utf8(payload)?;
+    validate_payload_characters(payload_str)?;
     let (first_line, rest) = split_first_line(payload_str)?;
 
     if looks_like_reply(first_line) {
@@ -369,6 +370,42 @@ mod tests {
         assert_eq!(
             SmtpMessage::try_from(&payload[..]),
             Err(SmtpParseError::InvalidUtf8)
+        );
+    }
+
+    /// Issue #109 : un CR ou un LF nu (RFC 5321 §2.3.8) et tout caractere de
+    /// controle autre que TAB sont refuses, dans la commande comme apres
+    /// elle. Octets synthetiques.
+    #[test]
+    fn test_bare_line_breaks_and_control_characters_are_rejected() {
+        assert_eq!(
+            SmtpMessage::try_from(&b"MAIL FROM:<a\nb@c.example>\r\n"[..]),
+            Err(SmtpParseError::BareLineBreak { offset: 12 })
+        );
+        assert_eq!(
+            SmtpMessage::try_from(&b"RCPT TO:<a\rb@c.example>\r\n"[..]),
+            Err(SmtpParseError::BareLineBreak { offset: 10 })
+        );
+        assert_eq!(
+            SmtpMessage::try_from(&b"EHLO host\x00\r\n"[..]),
+            Err(SmtpParseError::ControlCharacter {
+                offset: 9,
+                byte: 0x00
+            })
+        );
+        assert_eq!(
+            SmtpMessage::try_from(&b"MAIL FROM:<a@b.example>\r\n\x17\x15\x00"[..]),
+            Err(SmtpParseError::ControlCharacter {
+                offset: 25,
+                byte: 0x17
+            })
+        );
+        assert_eq!(
+            SmtpMessage::try_from(&b"220 mail.example ESMTP\x1b[0m\r\n"[..]),
+            Err(SmtpParseError::ControlCharacter {
+                offset: 22,
+                byte: 0x1B
+            })
         );
     }
 }

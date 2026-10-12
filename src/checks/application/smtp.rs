@@ -3,7 +3,10 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-use crate::errors::application::smtp::SmtpParseError;
+use crate::{
+    checks::application::{TextOctetFault, find_text_line_fault},
+    errors::application::smtp::SmtpParseError,
+};
 
 /// Standard SMTP commands (RFC 5321 and common extensions) accepted by the
 /// parser. Restricting to known verbs keeps random text payloads from being
@@ -16,6 +19,22 @@ const SMTP_COMMANDS: [&str; 13] = [
 /// Validates that the payload is UTF-8 and returns it as a borrowed `&str`.
 pub fn parse_payload_as_utf8(payload: &[u8]) -> Result<&str, SmtpParseError> {
     std::str::from_utf8(payload).map_err(|_| SmtpParseError::InvalidUtf8)
+}
+
+/// Rejects a bare CR or LF (RFC 5321 §2.3.8) and any control character other
+/// than TAB, in the first line as well as in whatever follows it: commands
+/// and replies are text only (issue #109). `MAIL FROM:<a\nb@c.example>` was
+/// accepted before this check.
+pub fn validate_payload_characters(payload: &str) -> Result<(), SmtpParseError> {
+    match find_text_line_fault(payload.as_bytes()) {
+        None => Ok(()),
+        Some(TextOctetFault::BareLineBreak { offset }) => {
+            Err(SmtpParseError::BareLineBreak { offset })
+        }
+        Some(TextOctetFault::ControlCharacter { offset, byte }) => {
+            Err(SmtpParseError::ControlCharacter { offset, byte })
+        }
+    }
 }
 
 /// Splits off the first CRLF-terminated line, returning the line (without the
@@ -159,6 +178,36 @@ mod tests {
         assert_eq!(
             parse_payload_as_utf8(&[0xFF, 0xFE]),
             Err(SmtpParseError::InvalidUtf8)
+        );
+    }
+
+    #[test]
+    fn test_validate_payload_characters() {
+        assert_eq!(
+            validate_payload_characters("MAIL FROM:<a@b.example>\r\n"),
+            Ok(())
+        );
+        assert_eq!(
+            validate_payload_characters("250-SIZE 52428800\r\n250 HELP\r\n"),
+            Ok(())
+        );
+        assert_eq!(
+            validate_payload_characters("MAIL FROM:<a\nb@c.example>\r\n"),
+            Err(SmtpParseError::BareLineBreak { offset: 12 })
+        );
+        assert_eq!(
+            validate_payload_characters("EHLO host\x1b[0m\r\n"),
+            Err(SmtpParseError::ControlCharacter {
+                offset: 9,
+                byte: 0x1B
+            })
+        );
+        assert_eq!(
+            validate_payload_characters("RCPT TO:<a@b.example>\r\n\x00"),
+            Err(SmtpParseError::ControlCharacter {
+                offset: 23,
+                byte: 0x00
+            })
         );
     }
 
