@@ -250,6 +250,13 @@ fn application_classification_histogram_is_frozen() {
     // IPv4 (tshark en compte 237, dont 6 par reassemblage), en parite trame
     // par trame (tests/rtps_golden.rs). La sonde est aveugle (magic + pavage
     // exact) : rien d'autre ne bouge dans le reste du corpus.
+    //
+    // 2026-10-12 (#122, STANAG 5066 SIS) : "STANAG 5066" 0 -> 34 et "Unknown"
+    // 9 178 -> 9 144 (-34) : les segments TCP 5066 de protocols/stanag5066/
+    // qui commencent un S_PDU, en parite avec tshark sans reassemblage
+    // (tests/stanag5066_golden.rs). Les 5 segments de continuation, sans
+    // preambule, restent "Unknown" — tshark non plus ne les etiquette pas
+    // sans reassembler.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 4192),
@@ -277,7 +284,8 @@ fn application_classification_histogram_is_frozen() {
         ("STP", 95),
         ("TLS", 587),
         ("RTPS", 231),
-        ("Unknown", 9_178),
+        ("STANAG 5066", 34),
+        ("Unknown", 9_144),
         ("mDNS", 12),
     ]
     .into_iter()

@@ -34,6 +34,7 @@ pub mod snmp;
 pub mod srvloc;
 pub mod ssdp;
 pub mod ssh;
+pub mod stanag5066;
 pub mod tls;
 pub mod umas;
 
