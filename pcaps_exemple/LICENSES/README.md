@@ -21,7 +21,7 @@ Aucun de ces fichiers n'entre dans le paquet publié sur crates.io :
 | `CC-BY-4.0.txt` | Creative Commons Attribution 4.0 | <https://creativecommons.org/licenses/by/4.0/legalcode.txt> | `9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411` | ITI/ICS-Security-Tools (Information Trust Institute, University of Illinois) | `ethernet_ip`, `modbus` (`MODBUS-TestDataPart2.pcap`), `profinet` (`iti_*.pcap`) |
 | `BSD-3-Clause-CISA.txt` | BSD 3-Clause | `LICENSE.txt` de cisagov/icsnpp-profinet-io-cm | `73a28a4fb94ee6149eb201a4fa2b8cbd228252f4cfb1df912cc27795c7d016a1` | Battelle Energy Alliance, LLC (2024) | `profinet` (`cisagov_*.pcap`) |
 | `MIT-foxglove.txt` | MIT | `LICENSE` de foxglove/rtps | `da11235665c17d4c1634072dae92b8ba1b38d6fdde2ccf19a6bbede33253f58d` | Foxglove Technologies Inc | `rtps` (`talker-listener-rtps.pcapng`) |
-| `BSD-3-Clause-Zeek.txt` | BSD 3-Clause | `COPYING` de zeek/zeek (copie de `../tunnels/gtp_u/LICENSE-ZEEK.txt`, versé par #97 avant ce dossier) | `1f984adb6b5cd93d5035c2a87c2df5f38922649fbea90c7bd79ff321d17333aa` | Regents of the University of California, LBNL, ICSI | `tunnels/gtp_u`, `postgresql`, `dnp3` |
+| `BSD-3-Clause-Zeek.txt` | BSD 3-Clause | `COPYING` de zeek/zeek (copie de `../tunnels/gtp_u/LICENSE-ZEEK.txt`, versé par #97 avant ce dossier) | `1f984adb6b5cd93d5035c2a87c2df5f38922649fbea90c7bd79ff321d17333aa` | Regents of the University of California, LBNL, ICSI | `tunnels/gtp_u`, `postgresql`, `dnp3`, `radius` |
 
 Les textes GNU et Creative Commons sont les textes canoniques de leurs
 éditeurs, à l'URL indiquée ; ceux de la CISA et de foxglove sont les

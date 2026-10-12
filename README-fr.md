@@ -322,6 +322,12 @@ incluent notamment:
   son magic (`RTPS`, ou `RTPX` chez RTI) et le pavage exact de ses
   sous-messages, sur tout port UDP ; les pings RTI de seize octets
   (`NDDSPING`) sont signales aussi
+- RADIUS (RFC 2865, comptabilite RFC 2866, CoA RFC 5176) : en-tete (code
+  nomme, identifiant, longueur, authentificateur) et liste des attributs
+  (type nomme d'apres le registre IANA, valeur empruntee, accesseurs pour
+  les entiers, adresses IPv4, textes et Vendor-Specific) ; reconnu sur UDP
+  1812/1813/1645/1646/3799 et a l'aveugle sur tout port (code connu,
+  longueur egale au datagramme, attributs qui le pavent)
 - DNP3 (IEEE 1815) : trames de liaison aux CRC-16/DNP verifies, en-tete et
   blocs (longueur, bits de controle et fonction, adresses), en-tete de
   transport, en-tete applicatif (controle, code de fonction, indications

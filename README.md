@@ -314,6 +314,12 @@ Application detection is intentionally best-effort. Parser modules include:
   stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
   exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
   `NDDSPING` pings are reported too
+- RADIUS (RFC 2865, accounting RFC 2866, CoA RFC 5176): header (code named,
+  identifier, length, authenticator) and the attribute list (type named from
+  the IANA registry, value borrowed, accessors for integers, IPv4 addresses,
+  texts and Vendor-Specific); recognised on UDP 1812/1813/1645/1646/3799 and
+  blindly on any port (known code, length equal to the datagram, attributes
+  tiling it)
 - DNP3 (IEEE 1815): link frames with their header and per-block CRC-16/DNP
   verified (length, control bits and function, addresses), transport header,
   application header (control, function code, internal indications) and the
