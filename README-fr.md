@@ -322,6 +322,12 @@ incluent notamment:
   son magic (`RTPS`, ou `RTPX` chez RTI) et le pavage exact de ses
   sous-messages, sur tout port UDP ; les pings RTI de seize octets
   (`NDDSPING`) sont signales aussi
+- BACnet/IP (ASHRAE 135, annexe J) sur UDP 47808 : BVLC (fonction nommee,
+  longueur egale au datagramme, origine d'un Forwarded-NPDU), NPDU (version,
+  controle, adresses reseau de destination et de source, compte de sauts,
+  messages reseau avec identifiant de vendeur) et APDU (type, drapeaux,
+  identifiant d'invocation, segmentation, services confirmes et non
+  confirmes nommes) ; reconnu sur ses ports et a l'aveugle sur tout port UDP
 - IEC 60870-5-104 sur TCP 2404 : les APDU d'un segment (le dernier coupe
   par la segmentation est decode jusqu'ou il va), formats I/S/U avec
   numeros de sequence ou fonction STARTDT/STOPDT/TESTFR, et pour chaque
