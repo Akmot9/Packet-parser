@@ -14,6 +14,10 @@
 - Licence du dépôt source : LGPL-3.0 (licence de nDPI ; le fichier est
   redistribué tel quel, sans modification ni anonymisation — le trafic est
   du loopback/labo : 127.0.1.1 et 10.95.28.46, MAC nulles).
+- Texte de la licence : [`LICENSES/LGPL-3.0.txt`](../../LICENSES/LGPL-3.0.txt),
+  et `GPL-3.0.txt` qu'elle incorpore. Redistribuer ce fichier oblige à
+  conserver la notice de nDPI (© 2011-2026 ntop.org), à joindre ce texte et
+  à signaler toute modification : il n'y en a aucune (#104).
 
 ## Contenu (vérifié avec tshark 4.6.6)
 
@@ -45,7 +49,8 @@ Captures de trafic réel jointes par leurs auteurs à des rapports de bug
 publics du projet Wireshark (<https://gitlab.com/wireshark/wireshark>),
 redistribuées telles quelles, sans modification ni anonymisation — adresses
 RFC 1918 uniquement. Aucune licence explicite n'accompagne ces pièces
-jointes ; elles sont publiques depuis leur dépôt.
+jointes ; elles sont publiques depuis leur dépôt (position du dépôt sur ces pièces jointes :
+`LICENSES/README.md`, #104).
 
 | Fichier | Issue | Fichier d'origine | SHA-256 |
 |---|---|---|---|

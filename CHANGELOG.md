@@ -54,6 +54,14 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   (67 UnknownFrameId, 56 InvalidDcpBlockLength, 5 InvalidNameOfStation,
   1 PacketTooShort), presque toutes sur des trames saines : l'etat de depart
   du correctif de #133.
+- `pcaps_exemple/LICENSES/` (#104) : textes des licences des captures
+  redistribuees (LGPL-3.0 et GPL-3.0 pour nDPI, GPL-2.0 pour Croatia Control
+  et le projet Wireshark, CC-BY-4.0 pour ITI, BSD-3 pour la CISA, MIT pour
+  foxglove), un index qui dit quel texte couvre quel dossier et ce que chaque
+  licence impose, et la position du depot sur les pieces jointes du tracker
+  Wireshark ; chaque `SOURCE.md` renvoie au sien. Provenance du corpus Modbus
+  etablie : `MODBUS-TestDataPart2.pcap` est le fichier ITI du meme nom
+  (CC-BY-4.0).
 
 ## [11.5.0] - 2026-10-09
 

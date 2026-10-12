@@ -25,7 +25,9 @@ PROFINET IO-CM sur UDP 34964, que le dispatch ne nomme pas.
 ## Sources et licences
 
 - **cisagov/icsnpp-profinet-io-cm** — traces de test du parseur Zeek
-  ICSNPP de la CISA (INL), `testing/traces/`. Licence BSD-3-Clause.
+  ICSNPP de la CISA (INL), `testing/traces/`. Licence BSD-3-Clause, notice
+  (Battelle Energy Alliance, 2024) et texte dans
+  [`LICENSES/BSD-3-Clause-CISA.txt`](../../LICENSES/BSD-3-Clause-CISA.txt).
   Commit épinglé `833a78c04c2f623f6afcda6d3dc72cc288cb11d8` (2026-05-14) :
   <https://raw.githubusercontent.com/cisagov/icsnpp-profinet-io-cm/833a78c04c2f623f6afcda6d3dc72cc288cb11d8/testing/traces/profinet_io_cm_mixed_1.pcap>
   et `…/profinet_io_cm.pcap`. Le dépôt ne documente pas l'origine des
@@ -33,7 +35,7 @@ PROFINET IO-CM sur UDP 34964, que le dispatch ne nomme pas.
   n'est pas repris.
 - **ITI/ICS-Security-Tools** — `pcaps/profinet/`, collection « captures
   PROFINET du monde réel » de l'Information Trust Institute (UIUC), licence
-  CC-BY-4.0 (citer ITI). Commit épinglé
+  CC-BY-4.0 (citer ITI ; texte dans `LICENSES/CC-BY-4.0.txt`). Commit épinglé
   `9b826091e7ba3fbdd5997d31e116f29e09cbbb48` (2025-04-15) :
   <https://raw.githubusercontent.com/ITI/ICS-Security-Tools/9b826091e7ba3fbdd5997d31e116f29e09cbbb48/pcaps/profinet/PROFINET-RT-DCP/ChangeIPUsingDCP.pcap>,
   `…/PROFINET-RT-DCP/PROFINET-RT.pcap`, `…/profinet-wireshark-bug.pcap`.
@@ -44,8 +46,9 @@ PROFINET IO-CM sur UDP 34964, que le dispatch ne nomme pas.
   `profinet-io-le.pcap` du corpus nDPI) et `Profinet_Failed.pcap` (aucune
   trame PN-RT).
 - **miguelob/ICS-Hacking** — `Profinet & Profibus/pcaps/`, captures du labo
-  de l'auteur (Miguel), dépôt sous **GPL-3.0** : les fichiers sont
-  redistribués tels quels avec cette mention ; ils ne sont liés à aucun
+  de l'auteur (Miguel), dépôt sous **GPL-3.0** (texte dans
+  `LICENSES/GPL-3.0.txt`) : les fichiers sont redistribués tels quels, sans
+  modification, avec cette mention ; ils ne sont liés à aucun
   binaire. Commit épinglé `e9a3b212395e857df086ed74930f84053c3a2ad0`
   (2022-10-31) :
   <https://raw.githubusercontent.com/miguelob/ICS-Hacking/e9a3b212395e857df086ed74930f84053c3a2ad0/Profinet%20%26%20Profibus/pcaps/pn.pcapng>

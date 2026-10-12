@@ -13,6 +13,7 @@ SPDX `CC-BY-4.0` confirmé par l'API GitHub). L'attribution est obligatoire :
 toute redistribution de ces fichiers doit citer *ITI/ICS-Security-Tools —
 ICS PCAPs, developed as a community asset*
 (<https://github.com/ITI/ICS-Security-Tools>).
+Texte de la licence : [`LICENSES/CC-BY-4.0.txt`](../../LICENSES/CC-BY-4.0.txt) (#104).
 
 **Anonymisation** : fichiers repris à l'octet près, sans modification. Ils ne
 contiennent que des adresses privées (10.1.1.0/24, 192.168.10.0/24) — le

@@ -75,6 +75,19 @@ l'auteur** (Chris Sanders, chris@chrissanders.org). Chaque dossier concerné
 porte un `SOURCE.md` avec cette citation. Toute doc ou test qui réutilise ces
 trames doit conserver la référence.
 
+## Licences
+
+Chaque capture redistribuée l'est sous la licence de son corpus d'origine,
+et le texte de cette licence est dans [`LICENSES/`](LICENSES/README.md) :
+LGPL-3.0 (nDPI), GPL-3.0 (miguelob), GPL-2.0 (Croatia Control, dépôt et wiki
+Wireshark), CC-BY-4.0 (ITI), BSD 3-Clause (CISA, Zeek), MIT (foxglove). Son
+`README.md` dit quel texte couvre quel dossier, ce que chaque licence impose
+(notice, texte joint, mention des modifications, attribution), la position du
+dépôt sur les pièces jointes du tracker Wireshark, et les captures dont la
+provenance reste à documenter. Chaque `SOURCE.md` renvoie au texte qui couvre
+ses fichiers. `pcaps_exemple/` n'entre pas dans le paquet crates.io : ces
+obligations portent sur le dépôt git (#104).
+
 ## Utilisation dans les tests
 
 Les golden tests n'embarquent pas le pcap : ils embarquent le hex de la

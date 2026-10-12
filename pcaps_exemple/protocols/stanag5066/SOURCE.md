@@ -48,10 +48,11 @@ porter plusieurs : un parseur sans état décode le premier S_PDU complet.
 
 ## Licences
 
-- captures de la wiki Wireshark : licence de la wiki (GNU GPL v2+, en pied de
-  page de <https://wiki.wireshark.org>) ;
+- captures de la wiki Wireshark : licence de la wiki (GNU GPL v2+, en pied de page de <https://wiki.wireshark.org> ; texte dans
+  `LICENSES/GPL-2.0.txt`) ;
 - pièce jointe du tracker Wireshark : aucune licence explicite, publique
-  depuis son dépôt.
+  depuis son dépôt (position du dépôt sur ces pièces jointes :
+`LICENSES/README.md`, #104).
 
-Aucun de ces fichiers n'entre dans le paquet publié sur crates.io. Le texte
-des licences n'accompagne pas encore les captures : voir #104.
+Aucun de ces fichiers n'entre dans le paquet publié sur crates.io. Le texte de chaque
+licence est dans `pcaps_exemple/LICENSES/`, avec ce qu'elle impose (#104).

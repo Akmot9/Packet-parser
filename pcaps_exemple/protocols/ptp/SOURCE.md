@@ -55,11 +55,12 @@ Fichiers d'origine des pièces jointes : `1588_on_nodeb3_startup.pcap`
 
 ## Licences
 
-- captures de la wiki Wireshark : licence de la wiki (GNU GPL v2+, en pied de
-  page de <https://wiki.wireshark.org>) ;
-- `ndpi_ptpv2.pcap` : LGPL-3.0, licence du dépôt nDPI ;
+- captures de la wiki Wireshark : licence de la wiki (GNU GPL v2+, en pied de page de <https://wiki.wireshark.org> ; texte dans
+  `LICENSES/GPL-2.0.txt`) ;
+- `ndpi_ptpv2.pcap` : LGPL-3.0, licence du dépôt nDPI (texte : `LICENSES/LGPL-3.0.txt`) ;
 - pièces jointes du tracker Wireshark : aucune licence explicite, publiques
-  depuis leur dépôt.
+  depuis leur dépôt (position du dépôt sur ces pièces jointes :
+`LICENSES/README.md`, #104).
 
-Aucun de ces fichiers n'entre dans le paquet publié sur crates.io. Le texte
-des licences n'accompagne pas encore les captures : voir #104.
+Aucun de ces fichiers n'entre dans le paquet publié sur crates.io. Le texte de chaque
+licence est dans `pcaps_exemple/LICENSES/`, avec ce qu'elle impose (#104).

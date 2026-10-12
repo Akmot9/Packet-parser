@@ -17,3 +17,10 @@
   (probablement plusieurs versions/configurations TLS, une par port).
 - Provenance exacte à compléter par Cyprien : quel outil/serveur écoutait sur
   4430-4433, et quelles versions TLS par port.
+
+## Licences
+
+- `tls12-dsb.pcapng` : GPL-2.0-or-later, licence du dépôt Wireshark (suite de
+  tests), texte dans [`LICENSES/GPL-2.0.txt`](../../LICENSES/GPL-2.0.txt) ;
+  repris tel quel (#104).
+- `dump.pcapng` : capture du mainteneur, sous la licence MIT du dépôt.
