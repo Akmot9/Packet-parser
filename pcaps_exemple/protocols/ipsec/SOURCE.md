@@ -40,6 +40,17 @@ et 323 trames ESP, dont 315 encapsulées dans UDP 4500 (NAT-T).
 1 600 trames ESP et 719 ISAKMP ; il n'est pas parcouru par les tests de
 corpus.
 
+## Oracle tshark
+
+`tests/data/ipsec_tshark_oracle.tsv` est produit par `tools/ipsec_oracle.sh`
+(tshark 4.6.6) : une trame par ligne ; pour chaque message IKE, l'en-tête
+(SPI, version, type d'échange, drapeaux, identifiant, longueur) et la chaîne
+des payloads de premier niveau avec leurs longueurs (Proposal et Transform,
+imbriqués dans un Security Association, écartés) ; pour chaque paquet ESP, le
+SPI et le numéro de séquence, natif ou dans UDP 4500. `tests/ipsec_golden.rs`
+rejoue l'oracle sans Decode As (#124) : chaque message IKE porte 500 ou 4500
+d'un côté, ESP natif est reconnu par le protocole IP.
+
 ## Licences
 
 - captures de la wiki Wireshark : licence de la wiki (GNU GPL v2+, en pied de page de <https://wiki.wireshark.org> ; texte dans

@@ -69,6 +69,27 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **IKE et ESP** (#124, lot defense #125) : le cote « noir » des chiffreurs
+  IP. `ike::IkePacket` lit l'en-tete de vingt-huit octets (SPI initiateur et
+  repondeur, version 1 ou 2, type d'echange nomme par `ExchangeType`,
+  drapeaux avec leurs accesseurs par version, identifiant de message,
+  longueur, qui doit couvrir tout le message) et la chaine des payloads de
+  premier niveau (`IkePayload` : type brut et nomme par `PayloadType`,
+  suivant, bit critique, longueur, corps), sans entrer dans leur contenu ;
+  les octets chiffres restent tels quels dans `encrypted_body` (drapeau E
+  d'IKEv1, payload SK ou SKF d'IKEv2, qui doit etre le dernier).
+  `IkePacket::from_udp` accepte le marqueur non-ESP d'UDP 4500, et
+  `UdpEncapsulation::classify` demultiplexe ce port selon la RFC 3948 : IKE,
+  ESP ou NAT-keepalive. `esp::EspPacket` (couche transport) expose le SPI et
+  le numero de sequence, le reste etant chiffre ; ESP natif (protocole IP
+  50) le porte dans `TransportDetails::Esp`, sans payload applicatif comme
+  ICMP. Dispatch garde par port : "IKE" sur UDP 500 et 4500, "ESP" et
+  "NAT-keepalive" sur UDP 4500 ; `DecodeAsProtocol::Ike` et `::Esp` pour les
+  autres ports. Parite avec tshark 4.6.6 sur les 858 trames du corpus
+  (`tests/ipsec_golden.rs`, oracle `tools/ipsec_oracle.sh`) : 535 messages
+  IKE champ par champ et chaine des payloads, 323 paquets ESP (8 natifs, 315
+  dans UDP 4500) SPI et sequence. Histogramme golden : "IKE" 0 -> 535, "ESP"
+  0 -> 315, "Unknown" 8 754 -> 7 904. Cible de fuzz `parse_ipsec`.
 - **DIS** (#123, lot defense #125) : IEEE 1278.1, le protocole des
   simulateurs militaires. `dis::DisPacket` decoupe les PDU d'un datagramme
   (en-tete de douze octets : version 1 a 7, exercice, type nomme par

@@ -8,7 +8,8 @@ use std::convert::TryFrom;
 pub mod protocols;
 
 use protocols::{
-    TransportProtocol, icmp::IcmpPacket, icmpv6::Icmpv6Packet, tcp::TcpPacket, udp::UdpPacket,
+    TransportProtocol, esp::EspPacket, icmp::IcmpPacket, icmpv6::Icmpv6Packet, tcp::TcpPacket,
+    udp::UdpPacket,
 };
 use serde::Serialize;
 
@@ -26,6 +27,8 @@ pub enum TransportDetails<'a> {
     Udp(UdpPacket<'a>),
     Icmp(IcmpPacket<'a>),
     Icmpv6(Icmpv6Packet<'a>),
+    /// ESP natif (protocole IP 50) : SPI et numero de sequence en clair.
+    Esp(EspPacket<'a>),
 }
 
 /// Represents a transport layer packet (UDP, TCP, etc.)
@@ -127,6 +130,17 @@ impl<'a> Transport<'a> {
                 details: Icmpv6Packet::try_from(payload)
                     .ok()
                     .map(TransportDetails::Icmpv6),
+            }),
+            // ESP (RFC 4303, protocole IP 50) : le SPI et le numero de
+            // sequence sont en clair, le reste est chiffre. `payload` reste
+            // None comme pour ICMP : rien de lisible ne s'empile au-dessus,
+            // et le probing applicatif etiquetterait du chiffre (#124).
+            Some(TransportProtocol::Esp) => Ok(Transport {
+                protocol: TransportProtocol::Esp,
+                source_port: None,
+                destination_port: None,
+                payload: None,
+                details: EspPacket::try_from(payload).ok().map(TransportDetails::Esp),
             }),
             Some(other) => Ok(Transport {
                 protocol: other,

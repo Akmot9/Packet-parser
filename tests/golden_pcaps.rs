@@ -264,6 +264,13 @@ fn application_classification_histogram_is_frozen() {
     // Set Data de wireshark_3492_dis_test2.pcap (UDP 6993) annoncent 48
     // octets pour 160 : "Unknown" sans Decode As, DIS avec
     // (tests/dis_golden.rs, parite tshark sur les 393).
+    //
+    // 2026-10-12 (#124, IKE et ESP) : "IKE" 0 -> 535 (UDP 500 et 4500 de
+    // protocols/ipsec/, nus ou derriere le marqueur non-ESP), "ESP" 0 -> 315
+    // (ESP dans UDP 4500), "Unknown" 8 754 -> 7 904 (-850). Les 8 ESP natifs
+    // (protocole IP 50) restent sans application, comme ICMP : leur SPI est
+    // dans `TransportDetails::Esp` (tests/ipsec_golden.rs, parite tshark sur
+    // les 858).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 4192),
@@ -272,10 +279,12 @@ fn application_classification_histogram_is_frozen() {
         ("DIS", 390),
         ("DHCPv6", 32),
         ("DNS", 104),
+        ("ESP", 315),
         ("EtherNet/IP", 4),
         ("FTP", 5),
         ("GIOP", 123),
         ("HTTP", 71),
+        ("IKE", 535),
         ("IP-in-IP", 5),
         ("LLMNR", 136),
         ("MQTT", 38),
@@ -293,7 +302,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 587),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 8_754),
+        ("Unknown", 7_904),
         ("mDNS", 12),
     ]
     .into_iter()
