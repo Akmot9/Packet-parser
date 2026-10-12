@@ -322,6 +322,13 @@ incluent notamment:
   son magic (`RTPS`, ou `RTPX` chez RTI) et le pavage exact de ses
   sous-messages, sur tout port UDP ; les pings RTI de seize octets
   (`NDDSPING`) sont signales aussi
+- DNP3 (IEEE 1815) : trames de liaison aux CRC-16/DNP verifies, en-tete et
+  blocs (longueur, bits de controle et fonction, adresses), en-tete de
+  transport, en-tete applicatif (controle, code de fonction, indications
+  internes) et chaine des en-tetes d'objets (groupe, variation, qualificatif,
+  plage ou compte, position des donnees dimensionnees par l'annexe A),
+  plusieurs trames par payload. Reconnu a l'aveugle sur TCP et UDP, les CRC
+  sont la signature
 - IKE (ISAKMP/IKEv1 RFC 2408, IKEv2 RFC 7296) sur UDP 500 et 4500 : en-tete
   de 28 octets (SPI, version, type d'echange nomme, drapeaux, identifiant de
   message, longueur), chaine des payloads de premier niveau avec leurs types

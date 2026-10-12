@@ -13,10 +13,10 @@ use serde::Serialize;
 use crate::{
     errors::application::ApplicationError,
     parse::application::protocols::{
-        asterix::AsterixPacket, dhcp::DhcpPacket, dis::DisPacket, giop::GiopPacket,
-        http::HttpRequest, modbus_tcp::ModbusTcpPacket, mqtt::MqttPacket, ntp::NtpPacket,
-        opcua::OpcuaPacket, postgresql::is_likely_postgresql_payload, quic::QuicPacket,
-        rtps::RtpsPacket, srvloc::SrvlocPacket, umas::UmasPacket,
+        asterix::AsterixPacket, dhcp::DhcpPacket, dis::DisPacket, dnp3::Dnp3Packet,
+        giop::GiopPacket, http::HttpRequest, modbus_tcp::ModbusTcpPacket, mqtt::MqttPacket,
+        ntp::NtpPacket, opcua::OpcuaPacket, postgresql::is_likely_postgresql_payload,
+        quic::QuicPacket, rtps::RtpsPacket, srvloc::SrvlocPacket, umas::UmasPacket,
     },
 };
 
@@ -70,6 +70,12 @@ impl TryFrom<&[u8]> for Application {
         if DisPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "DIS",
+            });
+        }
+        // DNP3 (IEEE 1815) : `05 64` et un CRC par en-tete et par bloc (#99).
+        if Dnp3Packet::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "DNP3",
             });
         }
         if BitcoinPacket::try_from(packet).is_ok() {

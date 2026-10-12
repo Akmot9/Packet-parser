@@ -30,6 +30,7 @@ use super::application::protocols::bitcoin::BitcoinPacket;
 use super::application::protocols::dhcp::DhcpPacket;
 use super::application::protocols::dhcpv6::Dhcpv6Packet;
 use super::application::protocols::dis::DisPacket;
+use super::application::protocols::dnp3::Dnp3Packet;
 use super::application::protocols::dns::DnsPacket;
 use super::application::protocols::ethernet_ip::EtherNetIpPacket;
 use super::application::protocols::ftp::FtpMessage;
@@ -144,6 +145,7 @@ enum ProbeId {
     Stanag5066,
     Dis,
     DisLenient,
+    Dnp3,
     Ike,
     EspNatT,
     NatKeepalive,
@@ -205,6 +207,9 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         // longueur declaree peut etre fausse (#123) : lecture tolerante.
         ProbeId::Dis => DisPacket::try_from(full_payload).is_ok(),
         ProbeId::DisLenient => DisPacket::try_from_lenient(full_payload).is_ok(),
+        // Sur le payload reel : les trames de liaison, chacune verifiee par
+        // ses CRC, doivent paver tout le segment ou datagramme.
+        ProbeId::Dnp3 => Dnp3Packet::try_from(full_payload).is_ok(),
         // Sur le payload reel : la longueur de l'en-tete IKE couvre tout le
         // message. Nu (UDP 500) ou derriere le marqueur non-ESP (UDP 4500).
         ProbeId::Ike => IkePacket::from_udp(full_payload).is_ok(),
@@ -430,6 +435,10 @@ static RULES: &[Rule] = &[
     // DIS : en-tete de douze octets (version 1 a 7, type 1 a 72, famille de
     // la norme) et pavage exact du datagramme par ses PDU.
     rule("DIS", Guard::Udp, ProbeId::Dis),
+    // DNP3 (IEEE 1815) : `05 64`, un CRC-16/DNP sur l'en-tete et sur chaque
+    // bloc de seize octets — une signature qui se passe du port 20000, sur
+    // TCP comme sur UDP (#99).
+    rule("DNP3", Guard::Any, ProbeId::Dnp3),
     rule("Bitcoin", Guard::Tcp, ProbeId::Bitcoin),
     rule("OPC UA", Guard::Tcp, ProbeId::Opcua),
     // EtherNet/IP est reellement bi-transport (TCP 44818, UDP 2222).
@@ -1201,6 +1210,7 @@ mod tests {
                 "RTPS",
                 "ASTERIX",
                 "DIS",
+                "DNP3",
                 "Bitcoin",
                 "OPC UA",
                 "EtherNet/IP",

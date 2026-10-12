@@ -280,12 +280,20 @@ fn application_classification_histogram_is_frozen() {
     // http-on-port-5432.pcap, negatif), "Unknown" 7 904 -> 7 930 (+26 : les
     // 18 segments MySQL et 4 HTTP des negatifs, 4 segments TLS retransmis ou
     // coupes), "(sans application)" 4 192 -> 4 392 (+200 : les ACK).
+    //
+    // 2026-10-12 (#99, corpus DNP3 de Zeek, 16 captures, 423 trames) :
+    // "DNP3" 0 -> 218 (les 218 trames de liaison, toutes a l'aveugle, TCP et
+    // UDP, dont les 2 de dnp3_read_p20001.pcap sur le port 20001), "Unknown"
+    // 7 930 -> 7 932 (+2 : deux segments de dnp3.pcap, port 2803, qui ne
+    // sont pas du DNP3), "(sans application)" 4 392 -> 4 595 (+203 : les
+    // ACK).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 4392),
+        (NO_APPLICATION, 4595),
         ("ASTERIX", 44_507),
         ("DHCP", 71),
         ("DIS", 390),
+        ("DNP3", 218),
         ("DHCPv6", 32),
         ("DNS", 104),
         ("ESP", 315),
@@ -312,7 +320,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 613),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 7_930),
+        ("Unknown", 7_932),
         ("mDNS", 12),
     ]
     .into_iter()
