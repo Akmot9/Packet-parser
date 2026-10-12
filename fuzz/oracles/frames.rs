@@ -98,8 +98,8 @@ pub fn ethernet_ipv4_payload(
 /// entrees courtes restent proches d'une graine L2/L3/L4/L7 valide au lieu
 /// de detruire Ethernet en premier et de ne jamais atteindre la politique.
 pub fn xor_overlay(seed: &mut [u8], data: &[u8]) {
-    for mutation in data.chunks_exact(2) {
-        let offset = usize::from(mutation[0]) % seed.len();
-        seed[offset] ^= mutation[1];
+    for [offset, mask] in data.as_chunks::<2>().0 {
+        let offset = usize::from(*offset) % seed.len();
+        seed[offset] ^= mask;
     }
 }
