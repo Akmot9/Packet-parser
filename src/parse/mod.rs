@@ -666,16 +666,20 @@ mod tests {
         .expect("invalid test hex fixture")
     }
 
-    fn sample_ipv4_tcp_postgresql_startup_frame_7() -> Vec<u8> {
+    /// Trame 4 de pcaps_exemple/protocols/postgresql/psql-login-no-sslrequest.pcap
+    /// (corpus Zeek, #98) : StartupMessage de psql, loopback, 76 octets.
+    fn sample_ipv4_tcp_postgresql_startup_frame_4() -> Vec<u8> {
         hex::decode(
-            "00000000000000000000000008004500005aff0b400040063d907f0000017f000001b36a1538c95bf221c946b53e80187fff8b6e00000101080a13420d2c13420d29000000260003000075736572006f727978006461746162617365006d61696c73746f72650000",
+            "000000000000000000000000080045000080504340004006ec327f0000017f0000019194153828255799d505cc9a801802001aee00000101080a527bd71e527bd71e0000004c0003000075736572007a65656b006461746162617365007a65656b006170706c69636174696f6e5f6e616d65007073716c00636c69656e745f656e636f64696e6700555446380000",
         )
         .expect("invalid test hex fixture")
     }
 
-    fn sample_ipv4_tcp_postgresql_backend_frame_19() -> Vec<u8> {
+    /// Trame 24 de la meme capture : la reponse du serveur a la fin de
+    /// l'authentification SCRAM, 465 octets, dix-sept messages.
+    fn sample_ipv4_tcp_postgresql_backend_frame_24() -> Vec<u8> {
         hex::decode(
-            "0000000000000000000000000800450000d5ef3a400040064ce67f0000017f0000011538b36bc949e22ac901b10c80187fffda6900000101080a13420d7613420d2c520000000800000000530000001c636c69656e745f656e636f64696e6700554e49434f4445005300000017446174655374796c650049534f2c204d445900530000001569735f737570657275736572006f66660053000000197365727665725f76657273696f6e00372e342e3600530000001f73657373696f6e5f617574686f72697a6174696f6e006f727978004b0000000c000058e9679266075a0000000549",
+            "000000000000000000000000080045000205a06c400040069a847f0000017f00000115389198db9637c5c59e2ec980180200c41b00000101080a527bdd47527bdd4452000000360000000c763d707a7a585265544861333035305a4348743738444a597a6b48594a714f6f2b4a6b6d596e35675a4250574d3d520000000800000000530000001a6170706c69636174696f6e5f6e616d65007073716c005300000019636c69656e745f656e636f64696e670055544638005300000017446174655374796c650049534f2c204d445900530000002664656661756c745f7472616e73616374696f6e5f726561645f6f6e6c79006f6666005300000017696e5f686f745f7374616e646279006f6666005300000019696e74656765725f6461746574696d6573006f6e00530000001b496e74657276616c5374796c6500706f73746772657300530000001469735f737570657275736572006f6e0053000000197365727665725f656e636f64696e6700555446380053000000327365727665725f76657273696f6e0031342e35202844656269616e2031342e352d312e706764673131302b312900530000001f73657373696f6e5f617574686f72697a6174696f6e007a65656b0053000000237374616e646172645f636f6e666f726d696e675f737472696e6773006f6e00530000001554696d655a6f6e65004574632f555443004b0000000c000001a51208fff15a0000000549",
         )
         .expect("invalid test hex fixture")
     }
@@ -1329,8 +1333,8 @@ mod tests {
     }
 
     #[test]
-    fn packetflow_detects_postgresql_startup_frame_7() {
-        let packet = sample_ipv4_tcp_postgresql_startup_frame_7();
+    fn packetflow_detects_postgresql_startup_frame_4() {
+        let packet = sample_ipv4_tcp_postgresql_startup_frame_4();
 
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
@@ -1347,11 +1351,11 @@ mod tests {
 
         let transport = flow.transport.as_ref().expect("transport layer");
         assert_eq!(transport.protocol, TransportProtocol::Tcp);
-        assert_eq!(transport.source_port, Some(45930));
+        assert_eq!(transport.source_port, Some(37268));
         assert_eq!(transport.destination_port, Some(5432));
 
         let payload = transport.payload.expect("tcp payload");
-        assert_eq!(payload.len(), 38);
+        assert_eq!(payload.len(), 76);
 
         let application = flow.application.as_ref().expect("application layer");
         assert_eq!(application.application_protocol, "PostgreSQL");
@@ -1362,14 +1366,19 @@ mod tests {
             pg.messages[0].message_type,
             PostgreSqlMessageType::StartupMessage
         );
-        assert_eq!(pg.messages[0].length, 38);
+        assert_eq!(pg.messages[0].length, 76);
 
         match &pg.messages[0].body {
             PostgreSqlMessageBody::Startup(startup) => {
                 assert_eq!(startup.protocol_version, 196_608);
                 assert_eq!(
                     startup.parameters,
-                    vec![("user", "oryx"), ("database", "mailstore")]
+                    vec![
+                        ("user", "zeek"),
+                        ("database", "zeek"),
+                        ("application_name", "psql"),
+                        ("client_encoding", "UTF8")
+                    ]
                 );
             }
             other => panic!("expected Startup body, got {other:?}"),
@@ -1377,8 +1386,8 @@ mod tests {
     }
 
     #[test]
-    fn packetflow_detects_postgresql_backend_frame_19() {
-        let packet = sample_ipv4_tcp_postgresql_backend_frame_19();
+    fn packetflow_detects_postgresql_backend_frame_24() {
+        let packet = sample_ipv4_tcp_postgresql_backend_frame_24();
 
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
@@ -1396,46 +1405,68 @@ mod tests {
         let transport = flow.transport.as_ref().expect("transport layer");
         assert_eq!(transport.protocol, TransportProtocol::Tcp);
         assert_eq!(transport.source_port, Some(5432));
-        assert_eq!(transport.destination_port, Some(45931));
+        assert_eq!(transport.destination_port, Some(37272));
 
         let payload = transport.payload.expect("tcp payload");
-        assert_eq!(payload.len(), 161);
+        assert_eq!(payload.len(), 465);
 
         let application = flow.application.as_ref().expect("application layer");
         assert_eq!(application.application_protocol, "PostgreSQL");
 
         let pg = PostgreSqlPacket::try_from(payload).expect("postgresql backend packet");
-        assert_eq!(pg.messages.len(), 8);
+        // AuthenticationSASLFinal, AuthenticationOk, treize ParameterStatus,
+        // BackendKeyData, ReadyForQuery : les dix-sept messages que tshark
+        // compte.
+        assert_eq!(pg.messages.len(), 17);
         assert_eq!(
             pg.messages[0].message_type,
             PostgreSqlMessageType::Authentication
         );
+        assert_eq!(pg.messages[0].length, 54);
         assert_eq!(
             pg.messages[1].message_type,
-            PostgreSqlMessageType::ParameterStatusOrSync
+            PostgreSqlMessageType::Authentication
         );
+        assert_eq!(pg.messages[1].payload, &[0, 0, 0, 0]);
+        for message in &pg.messages[2..15] {
+            assert_eq!(
+                message.message_type,
+                PostgreSqlMessageType::ParameterStatusOrSync
+            );
+        }
+        assert_eq!(pg.messages[2].payload, b"application_name\0psql\0");
         assert_eq!(
-            pg.messages[6].message_type,
+            pg.messages[15].message_type,
             PostgreSqlMessageType::BackendKeyData
         );
         assert_eq!(
-            pg.messages[7].message_type,
+            pg.messages[15].payload,
+            &[0, 0, 1, 0xa5, 0x12, 0x08, 0xff, 0xf1]
+        );
+        assert_eq!(
+            pg.messages[16].message_type,
             PostgreSqlMessageType::ReadyForQuery
         );
-        assert_eq!(pg.messages[7].payload, b"I");
+        assert_eq!(pg.messages[16].payload, b"I");
     }
 
+    /// Un `Sync` seul dans son segment (`S`, longueur 4) : forme compatible
+    /// sans preuve forte. Sur le port 5432, c'est du PostgreSQL (#98, mesure
+    /// sur le corpus Zeek : aucun faux positif sur HTTP et MySQL rejoues sur
+    /// ce port) ; ailleurs, la sonde aveugle ne le retient pas.
     #[test]
-    fn packetflow_does_not_detect_postgresql_from_weak_shape_on_standard_port() {
+    fn packetflow_detects_postgresql_weak_shape_only_on_standard_port() {
         let payload = [b'S', 0x00, 0x00, 0x00, 0x04];
-        let packet = ethernet_ipv4_tcp_packet(51845, 5432, &payload);
-
-        let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
-
+        let on_port = ethernet_ipv4_tcp_packet(51845, 5432, &payload);
+        let flow = PacketFlow::try_from(on_port.as_slice()).unwrap();
         let transport = flow.transport.as_ref().expect("transport layer");
         assert_eq!(transport.protocol, TransportProtocol::Tcp);
         assert_eq!(transport.destination_port, Some(5432));
+        let application = flow.application.as_ref().expect("application layer");
+        assert_eq!(application.application_protocol, "PostgreSQL");
 
+        let elsewhere = ethernet_ipv4_tcp_packet(51845, 5433, &payload);
+        let flow = PacketFlow::try_from(elsewhere.as_slice()).unwrap();
         let application = flow.application.as_ref().expect("application layer");
         assert_ne!(application.application_protocol, "PostgreSQL");
     }
