@@ -47,6 +47,20 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   trame HTTP fabriquee, 72 -> 71), ainsi que `capwap.pcap.out`, sortie
   ndpiReader egaree. Tout est dans `pcaps_exemple/SOURCE.md` et
   `LICENSES/README.md`.
+- **FTP, SMTP, NNTP** (#109) : un CR ou un LF nu, et tout caractere de
+  controle autre que TAB (NUL, ESC, DEL...), etaient acceptes dans
+  l'argument d'une commande comme dans ce qui suit la ligne. Les quatre
+  entrees du fuzz nocturne de #107 (`STOR SPSH-*\x17\x14\x00\n\r\n`,
+  `STOR +2\r\n\x17\x15\x00`...) passaient ainsi pour des commandes FTP
+  completes, donc detectees hors port (#66). Les trois parseurs refusent
+  ces octets sur tout le payload, avec deux erreurs nommees en fin d'enum
+  (`BareLineBreak { offset }`, `ControlCharacter { offset, byte }`) ; NNTP
+  n'interdit dans le bloc de donnees qui suit la ligne que NUL, CR et LF
+  nus (RFC 3977 §3.1.1), ce bloc pouvant ne pas etre du texte. Mesure sur
+  le corpus : aucun des 200 segments FTP, SMTP et NNTP de `pcaps_exemple/`
+  ne porte un tel octet, l'histogramme golden ne bouge pas. References :
+  RFC 959 §5.3.2, RFC 5321 §2.3.8, RFC 3977 §3.1 et §9.8. Les quatre
+  entrees du fuzz sont rejouees par un test du dispatch.
 
 ### Ajoute
 

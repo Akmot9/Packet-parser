@@ -11,6 +11,7 @@ use crate::{
     checks::application::ftp::{
         looks_like_reply, parse_payload_as_utf8, parse_reply_code, require_known_command,
         split_first_line, validate_command_syntax, validate_ftp_payload_not_empty,
+        validate_payload_characters,
     },
     errors::application::ftp::FtpParseError,
 };
@@ -57,6 +58,7 @@ pub fn parse_ftp_message(payload: &[u8]) -> Result<FtpMessage<'_>, FtpParseError
     validate_ftp_payload_not_empty(payload)?;
 
     let payload_str = parse_payload_as_utf8(payload)?;
+    validate_payload_characters(payload_str)?;
     let (first_line, rest) = split_first_line(payload_str)?;
 
     if looks_like_reply(first_line) {
@@ -328,6 +330,84 @@ mod tests {
         assert_eq!(
             FtpMessage::try_from(&payload[..]),
             Err(FtpParseError::InvalidUtf8)
+        );
+    }
+
+    /// Issue #109 : un CR ou un LF nu dans l'argument d'une commande est
+    /// refuse (RFC 959 §5.3.2), avec une erreur nommee.
+    #[test]
+    fn test_bare_cr_or_lf_in_an_argument_is_rejected() {
+        assert_eq!(
+            FtpMessage::try_from(&b"STOR a\nb\r\n"[..]),
+            Err(FtpParseError::BareLineBreak { offset: 6 })
+        );
+        assert_eq!(
+            FtpMessage::try_from(&b"STOR a\rb\r\n"[..]),
+            Err(FtpParseError::BareLineBreak { offset: 6 })
+        );
+        // Une reponse n'y a pas droit non plus.
+        assert_eq!(
+            FtpMessage::try_from(&b"220 Welcome\nto the server\r\n"[..]),
+            Err(FtpParseError::BareLineBreak { offset: 11 })
+        );
+    }
+
+    /// Issue #109 : les quatre entrees du fuzz nocturne qui ont fait echouer
+    /// l'oracle FTP (#107, runs 33303582320, 35430998713, 35500009371 et
+    /// 35705447950), payload TCP tel que la crate le decoupe. Octets
+    /// synthetiques produits par libFuzzer, pas des trames reelles. Chacune
+    /// etait un `Command { verb: "STOR", .. }` ; la quatrieme n'a pas d'octet
+    /// de controle dans sa ligne de commande, seulement apres elle.
+    #[test]
+    fn test_nightly_fuzz_inputs_of_107_are_rejected() {
+        for (payload, expected) in [
+            (
+                &b"STOR SPSH-*\x17\x14\x00\x0a\x0d\x0a\x17\x15\x00\x17\x00\x00"[..],
+                FtpParseError::ControlCharacter {
+                    offset: 11,
+                    byte: 0x17,
+                },
+            ),
+            (
+                &b"STOR PSH-*\x17\x14  \x0d\x0a\x17\x15\x00\x17\x00\x00\x10"[..],
+                FtpParseError::ControlCharacter {
+                    offset: 10,
+                    byte: 0x17,
+                },
+            ),
+            (
+                &b"STOR PSH-*\x17\x14\x00 \x0d\x0a\x17\x15\x00\x17"[..],
+                FtpParseError::ControlCharacter {
+                    offset: 10,
+                    byte: 0x17,
+                },
+            ),
+            (
+                &b"STOR +2\x0d\x0a\x17\x15\x00\x17\x0a\x0d\x0a\x17\x15\x00\x17\x00\x00\x10"[..],
+                FtpParseError::ControlCharacter {
+                    offset: 9,
+                    byte: 0x17,
+                },
+            ),
+        ] {
+            assert_eq!(
+                FtpMessage::try_from(payload),
+                Err(expected),
+                "payload {payload:?}"
+            );
+        }
+    }
+
+    /// Une tabulation reste admise dans un argument (RFC 959 : tout ASCII
+    /// sauf CR et LF) : synthetique, aucune capture du corpus n'en porte.
+    #[test]
+    fn test_tab_in_an_argument_is_still_accepted() {
+        assert_eq!(
+            FtpMessage::try_from(&b"STOR a\tb\r\n"[..]),
+            Ok(FtpMessage::Command {
+                verb: "STOR",
+                args: Some("a\tb"),
+            })
         );
     }
 }

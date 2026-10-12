@@ -3,7 +3,10 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-use crate::errors::application::ftp::FtpParseError;
+use crate::{
+    checks::application::{TextOctetFault, find_text_line_fault},
+    errors::application::ftp::FtpParseError,
+};
 
 /// Standard FTP commands (RFC 959 and common extensions) accepted by the
 /// parser. Restricting to known verbs keeps random text payloads from being
@@ -26,6 +29,25 @@ pub fn validate_ftp_payload_not_empty(payload: &[u8]) -> Result<(), FtpParseErro
 /// Validates that the payload is UTF-8 and returns it as a borrowed `&str`.
 pub fn parse_payload_as_utf8(payload: &[u8]) -> Result<&str, FtpParseError> {
     std::str::from_utf8(payload).map_err(|_| FtpParseError::InvalidUtf8)
+}
+
+/// Rejects a bare CR or LF and any control character other than TAB, in the
+/// first line as well as in whatever follows it: the control connection
+/// carries text only (RFC 959 §5.3.2 excludes CR and LF from every argument).
+///
+/// Issue #109: without this check, `STOR a\nb\r\n` or `STOR +2\r\n\x17\x15\x00`
+/// was a complete command, and the off-port rule of issue #66 labelled such
+/// binary payloads FTP.
+pub fn validate_payload_characters(payload: &str) -> Result<(), FtpParseError> {
+    match find_text_line_fault(payload.as_bytes()) {
+        None => Ok(()),
+        Some(TextOctetFault::BareLineBreak { offset }) => {
+            Err(FtpParseError::BareLineBreak { offset })
+        }
+        Some(TextOctetFault::ControlCharacter { offset, byte }) => {
+            Err(FtpParseError::ControlCharacter { offset, byte })
+        }
+    }
 }
 
 /// Splits off the first CRLF-terminated line, returning the line (without the
@@ -207,6 +229,39 @@ mod tests {
         assert_eq!(
             parse_payload_as_utf8(&[0xFF, 0xFE]),
             Err(FtpParseError::InvalidUtf8)
+        );
+    }
+
+    #[test]
+    fn test_validate_payload_characters() {
+        assert_eq!(validate_payload_characters("STOR fichier.bin\r\n"), Ok(()));
+        assert_eq!(
+            validate_payload_characters("211-Extensions supported:\r\n CLNT\r\n211 End.\r\n"),
+            Ok(())
+        );
+        assert_eq!(validate_payload_characters("STOR a\tb\r\n"), Ok(()));
+        assert_eq!(
+            validate_payload_characters("STOR a\nb\r\n"),
+            Err(FtpParseError::BareLineBreak { offset: 6 })
+        );
+        assert_eq!(
+            validate_payload_characters("STOR a\rb\r\n"),
+            Err(FtpParseError::BareLineBreak { offset: 6 })
+        );
+        assert_eq!(
+            validate_payload_characters("STOR a\x00b\r\n"),
+            Err(FtpParseError::ControlCharacter {
+                offset: 6,
+                byte: 0x00
+            })
+        );
+        // Ce qui suit la ligne de commande compte aussi.
+        assert_eq!(
+            validate_payload_characters("STOR +2\r\n\x17\x15"),
+            Err(FtpParseError::ControlCharacter {
+                offset: 9,
+                byte: 0x17
+            })
         );
     }
 

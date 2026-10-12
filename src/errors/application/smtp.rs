@@ -31,4 +31,15 @@ pub enum SmtpParseError {
 
     #[error("Invalid SMTP multi-line reply: {0}")]
     InvalidMultilineReply(String),
+
+    /// A CR or LF outside a CRLF line terminator, anywhere in the payload:
+    /// RFC 5321 §2.3.8 forbids bare CR and LF on the wire (issue #109).
+    #[error("Bare CR or LF at offset {offset} in SMTP payload: lines end with CRLF only")]
+    BareLineBreak { offset: usize },
+
+    /// A control character other than TAB and the CRLF terminator (NUL, ESC,
+    /// DEL...), anywhere in the payload: commands and replies are text only
+    /// (RFC 5321 §4.1.2 and §4.2; issue #109).
+    #[error("Control character 0x{byte:02X} at offset {offset} in SMTP payload")]
+    ControlCharacter { offset: usize, byte: u8 },
 }

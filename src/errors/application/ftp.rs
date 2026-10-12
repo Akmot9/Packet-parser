@@ -28,4 +28,16 @@ pub enum FtpParseError {
 
     #[error("Multi-line FTP reply is missing its terminator line")]
     MissingReplyTerminator,
+
+    /// A CR or LF outside a CRLF line terminator, anywhere in the payload.
+    /// RFC 959 §5.3.2 excludes both from every argument (`<char>`), and the
+    /// control connection carries Telnet NVT text only (issue #109).
+    #[error("Bare CR or LF at offset {offset} in FTP payload: lines end with CRLF only")]
+    BareLineBreak { offset: usize },
+
+    /// A control character other than TAB and the CRLF terminator (NUL, ESC,
+    /// DEL...), anywhere in the payload: the control connection carries text
+    /// only (issue #109).
+    #[error("Control character 0x{byte:02X} at offset {offset} in FTP payload")]
+    ControlCharacter { offset: usize, byte: u8 },
 }
