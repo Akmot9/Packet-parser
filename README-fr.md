@@ -314,6 +314,14 @@ incluent notamment:
   et de port IANA
 - QUIC
 - Bitcoin
+- RTPS (OMG DDSI-RTPS 2.x, le protocole filaire de DDS) : en-tete,
+  sous-messages decoupes et types (DATA, DATA_FRAG, HEARTBEAT, ACKNACK, GAP,
+  INFO_TS, INFO_DST, INFO_SRC, sous-messages de fragments, DDS Security et
+  vendeur), identifiants d'entite, numeros de sequence et compteurs ; les
+  donnees utilisateur (CDR) et les QoS en ligne restent opaques. Reconnu par
+  son magic (`RTPS`, ou `RTPX` chez RTI) et le pavage exact de ses
+  sous-messages, sur tout port UDP ; les pings RTI de seize octets
+  (`NDDSPING`) sont signales aussi
 - PTP (IEEE 1588) sur UDP 319/320 : PTPv2 decode en entier (en-tete commun,
   corps des dix types de message, TLV listes sans decoder leur valeur), PTPv1
   reconnu par son en-tete. Garde par port : un Delay_Req a exactement la

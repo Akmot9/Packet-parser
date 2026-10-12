@@ -15,8 +15,8 @@ use crate::{
     parse::application::protocols::{
         asterix::AsterixPacket, dhcp::DhcpPacket, giop::GiopPacket, http::HttpRequest,
         modbus_tcp::ModbusTcpPacket, mqtt::MqttPacket, ntp::NtpPacket, opcua::OpcuaPacket,
-        postgresql::is_likely_postgresql_payload, quic::QuicPacket, srvloc::SrvlocPacket,
-        umas::UmasPacket,
+        postgresql::is_likely_postgresql_payload, quic::QuicPacket, rtps::RtpsPacket,
+        srvloc::SrvlocPacket, umas::UmasPacket,
     },
 };
 
@@ -47,6 +47,15 @@ impl TryFrom<&[u8]> for Application {
             });
         }
 
+        // RTPS (DDS) : magic `RTPS` (ou `RTPX`) puis des sous-messages qui
+        // pavent exactement le datagramme (#120).
+        if (packet.starts_with(b"RTPS") || packet.starts_with(b"RTPX"))
+            && RtpsPacket::try_from(packet).is_ok()
+        {
+            return Ok(Application {
+                application_protocol: "RTPS",
+            });
+        }
         // ASTERIX n'a ni magic ni port : sa sonde exige que tous les data
         // blocks soient d'une categorie connue et se decoupent exactement
         // selon leur UAP. Le premier octet (CAT) et la longueur declaree

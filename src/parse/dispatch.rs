@@ -44,6 +44,7 @@ use super::application::protocols::openvpn::OpenVpnPacket;
 use super::application::protocols::postgresql::is_likely_postgresql_payload;
 use super::application::protocols::ptp::PtpPacket;
 use super::application::protocols::quic::QuicPacket;
+use super::application::protocols::rtps::RtpsPacket;
 use super::application::protocols::s7comm::S7CommPacket;
 use super::application::protocols::smtp::SmtpMessage;
 use super::application::protocols::snmp::SnmpPacket;
@@ -130,6 +131,7 @@ enum ProbeId {
     Mqtt,
     DnsBlind,
     Ptp,
+    Rtps,
 }
 
 fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
@@ -181,6 +183,13 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         // peut pas prouver qu'il est consomme exactement, et reste Unknown.
         ProbeId::DnsBlind => DnsPacket::is_blind_udp_match(payload),
         ProbeId::Ptp => PtpPacket::try_from_udp(payload).is_ok(),
+        // Garde a cout constant sur le magic, comme GIOP ; puis le payload REEL :
+        // les sous-messages doivent paver tout le datagramme, et un DATA_FRAG de
+        // 60 Ko depasse PROBE_CAP sans cesser d'etre du RTPS.
+        ProbeId::Rtps => {
+            (full_payload.starts_with(b"RTPS") || full_payload.starts_with(b"RTPX"))
+                && RtpsPacket::try_from(full_payload).is_ok()
+        }
     }
 }
 
@@ -335,6 +344,10 @@ static RULES: &[Rule] = &[
     // plausible — trames 44/329/614 de dump.pcapng). Seuls les protocoles
     // reellement bi-transport restent en Guard::Any. ---
     rule("NTP", Guard::Udp, ProbeId::Ntp),
+    // RTPS (DDS) : magic `RTPS` puis des sous-messages qui pavent exactement
+    // le datagramme. Sonde aveugle sur UDP : Cyclone DDS et Connext Micro
+    // emploient des ports unicast aleatoires (#120).
+    rule("RTPS", Guard::Udp, ProbeId::Rtps),
     // ASTERIX (surveillance aerienne) circule en UDP, le plus souvent en
     // multicast et sans port fixe : sonde structurelle (tous les data
     // blocks d'une categorie connue, records decoupes exactement selon
@@ -1013,6 +1026,7 @@ mod tests {
                 "SMTP",
                 "NNTP",
                 "NTP",
+                "RTPS",
                 "ASTERIX",
                 "Bitcoin",
                 "OPC UA",
