@@ -678,14 +678,20 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // PN-RT sans transport, toutes decodees sans erreur L2 :
     // 113 -> 120 captures, 112 -> 119 fichiers lus, 62 249 -> 64 934 trames,
     // 62 207 -> 64 892 flux. Aucune n'est etiquetee S7Comm ni COTP.
-    assert_eq!(captures.len(), 120);
-    assert_eq!(opened_files, 119);
-    assert_eq!(frame_count, 64_934);
+    // 2026-10-12 (provenance du corpus, suite de #104) : -1 capture,
+    // protocols/http/simple-http-request.pcap, une trame fabriquee (MAC
+    // 00:11:22:33:44:55, epoch 1 710 000 000 exactement) retiree du corpus :
+    // 120 -> 119 captures, 119 -> 118 fichiers lus, 64 934 -> 64 933 trames,
+    // 64 892 -> 64 891 flux. capwap-multi-wtp.pcap, fabrique lui aussi et
+    // retire le meme jour, etait a la racine : ce collecteur ne le voyait pas.
+    assert_eq!(captures.len(), 119);
+    assert_eq!(opened_files, 118);
+    assert_eq!(frame_count, 64_933);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 64_892);
+    assert_eq!(parsed_flows, 64_891);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

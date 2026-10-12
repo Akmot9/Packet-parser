@@ -223,6 +223,14 @@ fn application_classification_histogram_is_frozen() {
     //   dont la crate rend 103 `internet = Profinet` et 129 `corrupted`
     //   (tests/profinet_corpus.rs fige ce partage, point de depart de #133) ;
     //   205 LLDP ; 25 ARP ; 67 ICMPv6 ; 45 IGMP.
+    //
+    // 2026-10-12 (provenance du corpus, suite de #104) : deux fichiers
+    // fabriques retires, contraires a la regle « trames reelles uniquement »
+    // — protocols/http/simple-http-request.pcap (1 trame : MAC
+    // 00:11:22:33:44:55, epoch 1 710 000 000 exactement, User-Agent
+    // « SampleClient/1.0 ») et capwap-multi-wtp.pcap (24 trames rejouees
+    // depuis capwap-only.pcap avec des MAC aa:bb:cc:… et des horodatages
+    // ronds). Seul mouvement : "HTTP" 72 -> 71, la trame fabriquee.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 4192),
@@ -233,7 +241,7 @@ fn application_classification_histogram_is_frozen() {
         ("EtherNet/IP", 4),
         ("FTP", 5),
         ("GIOP", 123),
-        ("HTTP", 72),
+        ("HTTP", 71),
         ("IP-in-IP", 5),
         ("LLMNR", 136),
         ("MQTT", 38),

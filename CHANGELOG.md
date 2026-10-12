@@ -34,6 +34,19 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   (129 `corrupted` avant) et le NameOfStation de chaque message DCP est
   celui de tshark (`tests/profinet_corpus.rs`, oracle
   `tests/data/profinet_tshark_oracle.tsv`).
+- **Corpus** (suite de #104) : provenance des captures de la racine etablie
+  et verifiee a l'octet pres — `4SICS-GeekLounge-151020.pcap` (Netresec,
+  crediter CS3Sthlm), `The-Ultimate-PCAP.pcapng` (Johannes Weber, v20260710)
+  et ses extraits CAPWAP (trames 1555 et 1568 ; la premiere est aussi la
+  trame 12 de l'issue Wireshark 9752), `ftp.pcap` (*Practical Packet
+  Analysis*, Chris Sanders) ; `Modbus.pcap` vient de la collection
+  automayt/ICS-pcap, sans origine premiere nommee. Deux fichiers
+  **fabriques** retires, contraires a la regle « trames reelles uniquement »
+  du corpus : `capwap-multi-wtp.pcap` et
+  `protocols/http/simple-http-request.pcap` (l'histogramme golden perd sa
+  trame HTTP fabriquee, 72 -> 71), ainsi que `capwap.pcap.out`, sortie
+  ndpiReader egaree. Tout est dans `pcaps_exemple/SOURCE.md` et
+  `LICENSES/README.md`.
 
 ### Ajoute
 

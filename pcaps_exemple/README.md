@@ -75,6 +75,13 @@ l'auteur** (Chris Sanders, chris@chrissanders.org). Chaque dossier concerné
 porte un `SOURCE.md` avec cette citation. Toute doc ou test qui réutilise ces
 trames doit conserver la référence.
 
+Trois captures de la racine ont leurs propres conditions de crédit, détaillées
+dans le `SOURCE.md` de la racine : `4SICS-GeekLounge-151020.pcap` (Netresec ;
+**créditer CS3Sthlm** et lier <https://www.netresec.com/?page=PCAP4SICS>),
+`The-Ultimate-PCAP.pcapng` et ses extraits CAPWAP (**Johannes Weber**,
+<https://weberblog.net/the-ultimate-pcap/>) et `ftp.pcap` (**Chris Sanders**,
+fichiers d'accompagnement de *Practical Packet Analysis*, No Starch Press).
+
 ## Licences
 
 Chaque capture redistribuée l'est sous la licence de son corpus d'origine,
