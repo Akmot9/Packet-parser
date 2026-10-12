@@ -699,14 +699,19 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // protocols/radius/ (voir SOURCE.md), 23 trames dont 19 en LINKTYPE_NULL,
     // decodees sans erreur L2 : 149 -> 151 captures, 148 -> 150 fichiers
     // lus, 65 887 -> 65 910 trames, 65 845 -> 65 868 flux.
-    assert_eq!(captures.len(), 151);
-    assert_eq!(opened_files, 150);
-    assert_eq!(frame_count, 65_910);
+    // 2026-10-12 (#100) : +5 captures RDP du corpus Zeek dans
+    // protocols/rdp/ (voir SOURCE.md), 1 246 trames Ethernet/IPv4/TCP
+    // decodees sans erreur L2 : 151 -> 156 captures, 150 -> 155 fichiers
+    // lus, 65 910 -> 67 156 trames, 65 868 -> 67 114 flux. Aucune n'est
+    // etiquetee S7Comm ni COTP : sur le port 3389, COTP est du RDP.
+    assert_eq!(captures.len(), 156);
+    assert_eq!(opened_files, 155);
+    assert_eq!(frame_count, 67_156);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 65_868);
+    assert_eq!(parsed_flows, 67_114);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

@@ -322,6 +322,14 @@ incluent notamment:
   son magic (`RTPS`, ou `RTPX` chez RTI) et le pavage exact de ses
   sous-messages, sur tout port UDP ; les pings RTI de seize octets
   (`NDDSPING`) sont signales aussi
+- RDP (MS-RDPBCGR) sur TCP 3389 : TPKT et COTP X.224, Connection Request
+  (jeton de routage ou cookie `mstshash`, demande de negociation) et Confirm
+  (reponse ou echec de negociation), puis les PDU MCS de la securite RDP
+  standard (Connect-Initial/Response, Erect Domain, Attach User, Channel
+  Join, Send Data avec utilisateur et canal, Disconnect Provider
+  Ultimatum) ; plusieurs TPKT par segment, un TPKT coupe par la
+  segmentation est decode jusqu'ou il va. Apres une negociation TLS ou
+  CredSSP, la connexion est etiquetee TLS, par decision
 - RADIUS (RFC 2865, comptabilite RFC 2866, CoA RFC 5176) : en-tete (code
   nomme, identifiant, longueur, authentificateur) et liste des attributs
   (type nomme d'apres le registre IANA, valeur empruntee, accesseurs pour

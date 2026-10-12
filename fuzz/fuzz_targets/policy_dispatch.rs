@@ -302,7 +302,7 @@ fn fixed_policy_checks() {
 
 /// Tous les protocoles declarables, dans l'ordre de l'enum : le premier
 /// octet de l'entree en choisit un.
-const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 24] = [
+const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 25] = [
     DecodeAsProtocol::Ftp,
     DecodeAsProtocol::Smtp,
     DecodeAsProtocol::Nntp,
@@ -327,6 +327,7 @@ const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 24] = [
     DecodeAsProtocol::Dis,
     DecodeAsProtocol::Ike,
     DecodeAsProtocol::Esp,
+    DecodeAsProtocol::Rdp,
 ];
 
 fuzz_target!(init: fixed_policy_checks(), |data: &[u8]| {

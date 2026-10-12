@@ -28,6 +28,7 @@ pub mod postgresql;
 pub mod ptp;
 pub mod quic;
 pub mod radius;
+pub mod rdp;
 pub mod rtps;
 pub mod s7comm;
 pub mod smtp;
