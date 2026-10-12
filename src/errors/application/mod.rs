@@ -19,6 +19,7 @@ pub mod ethernet_ip;
 pub mod ftp;
 pub mod giop;
 pub mod http;
+pub mod iec104;
 pub mod ike;
 pub mod modbus_tcp;
 pub mod mqtt;

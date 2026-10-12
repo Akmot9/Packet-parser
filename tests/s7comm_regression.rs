@@ -704,14 +704,19 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // decodees sans erreur L2 : 151 -> 156 captures, 150 -> 155 fichiers
     // lus, 65 910 -> 67 156 trames, 65 868 -> 67 114 flux. Aucune n'est
     // etiquetee S7Comm ni COTP : sur le port 3389, COTP est du RDP.
-    assert_eq!(captures.len(), 156);
-    assert_eq!(opened_files, 155);
-    assert_eq!(frame_count, 67_156);
+    // 2026-10-12 (epopee #102) : +5 captures IEC 60870-5-104 dans
+    // protocols/iec104/ (voir SOURCE.md : wiki Wireshark, nDPI, ITI), 651
+    // trames Ethernet/IPv4/TCP decodees sans erreur L2 : 156 -> 161 captures,
+    // 155 -> 160 fichiers lus, 67 156 -> 67 807 trames, 67 114 -> 67 765 flux.
+    // Aucune n'est etiquetee S7Comm ni COTP.
+    assert_eq!(captures.len(), 161);
+    assert_eq!(opened_files, 160);
+    assert_eq!(frame_count, 67_807);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 67_114);
+    assert_eq!(parsed_flows, 67_765);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,
