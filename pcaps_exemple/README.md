@@ -64,6 +64,7 @@ réellement capturées sur un réseau.
 | `stanag5066/` | #122 | ⏳ STANAG 5066 SIS sur TCP 5066 : banc de l'agence C3 de l'OTAN (HF Chat) et SIS portant de l'ACP 142 — wiki et tracker Wireshark, voir `SOURCE.md`. Pas encore décodé |
 | `dis/` | #123 | ⏳ DIS (IEEE 1278.1) réel, versions 4 à 7 : radio simulée (Signal, Transmitter), Underwater Acoustic, gestion de données — dépôt, wiki et tracker Wireshark, voir `SOURCE.md`. Pas encore décodé |
 | `ipsec/` | #124 | ⏳ IKEv1, IKEv2, ESP natif et NAT-T (UDP 4500) — wiki Wireshark et nDPI (LGPL-3.0), voir `SOURCE.md`. Pas encore décodé |
+| `profinet/` | #133 | ⏳ PROFINET réel (EtherType `0x8892`) : DCP Identify et Set (wiki Wireshark, CloudShark, via ITI/ICS-Security-Tools, CC-BY-4.0), trafic cyclique RT_CLASS_1 et `0xC000`, alarmes, PTCP, fragments et PN-IO-CM sur UDP 34964 (CISA icsnpp, BSD-3 ; labo miguelob/ICS-Hacking, GPL-3.0) — voir `SOURCE.md`. 232 trames PN-RT, dont le validateur DCP rejette 129 comme corrompues, presque toutes saines : état de départ figé par `tests/profinet_corpus.rs` |
 | `umas/` | #10 | ✅ UMAS réel (Schneider Electric) : 180 trames Modbus/TCP en code fonction 0x5A, deux sessions, treize codes de requête et les réponses `0xFE`, dont le modèle de l'automate en clair — corpus nDPI (LGPL-3.0), voir `SOURCE.md`. tshark ne décode pas UMAS : l'oracle des golden est double |
 
 ## Crédits

@@ -6,6 +6,18 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **Corpus PROFINET** (#133) : sept captures reelles dans
+  `pcaps_exemple/protocols/profinet/` (2 685 trames, dont 232 PN-RT), trois
+  sources documentees dans `SOURCE.md` : cisagov/icsnpp-profinet-io-cm
+  (BSD-3-Clause), ITI/ICS-Security-Tools (CC-BY-4.0) et miguelob/ICS-Hacking
+  (GPL-3.0). Aucun decodeur ne change. `tests/profinet_corpus.rs` fige ce que
+  la crate en fait aujourd'hui, 103 trames `Profinet` et 129 `corrupted`
+  (67 UnknownFrameId, 56 InvalidDcpBlockLength, 5 InvalidNameOfStation,
+  1 PacketTooShort), presque toutes sur des trames saines : l'etat de depart
+  du correctif de #133.
+
 ## [11.5.0] - 2026-10-09
 
 Premier protocole du lot defense (#125) : **PTP** (IEEE 1588), sur UDP
