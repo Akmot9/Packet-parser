@@ -297,9 +297,13 @@ Application detection is intentionally best-effort. Parser modules include:
 - AMS
 - GIOP
 - SRVLOC
-- ASTERIX (EUROCONTROL surveillance data: CAT 021 ADS-B, CAT 034 and CAT 048
-  monoradar). Recognised by structure alone — every data block of a known
-  category, records split exactly along the UAP — since the protocol has
+- ASTERIX (EUROCONTROL surveillance data, eleven categories: CAT 048 and
+  034 monoradar reports and service messages, CAT 001 and 002 their
+  first-generation counterparts, CAT 008 weather, CAT 021 ADS-B, CAT 023
+  ground station status, CAT 062 system tracks, CAT 063 sensor status,
+  CAT 065 SDPS status, CAT 247 version numbers). Recognised by structure
+  alone — every data block of a known category, records split exactly along
+  the UAP, Random Field Sequencing included — since the protocol has
   neither a magic nor an IANA port
 - QUIC
 - Bitcoin

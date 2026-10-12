@@ -11,8 +11,8 @@
 use super::{
     AsterixRecord,
     fields::{
-        AircraftAddress, AircraftIdentification, DataSourceIdentifier, FlightLevel, Mode3ACode,
-        TimeOfDay, sign_extend_14, track_number,
+        AircraftAddress, AircraftIdentification, DataSourceIdentifier, FlightLevel, Mode1Code,
+        Mode2Code, Mode3ACode, TimeOfDay, sign_extend_14, track_number,
     },
 };
 
@@ -143,6 +143,10 @@ pub struct TargetReport {
     pub height_3d: Option<i16>,
     /// Nombre de registres BDS portes par I048/250.
     pub mode_s_mb_data_count: Option<u8>,
+    /// Code Mode 2 (I048/050), IFF militaire.
+    pub mode_2: Option<Mode2Code>,
+    /// Code Mode 1 (I048/055), IFF militaire.
+    pub mode_1: Option<Mode1Code>,
 }
 
 impl TargetReport {
@@ -173,6 +177,8 @@ impl TargetReport {
             mode_s_mb_data_count: record
                 .item("I048/250")
                 .and_then(|data| data.first().copied()),
+            mode_2: record.item("I048/050").and_then(Mode2Code::from_item),
+            mode_1: record.item("I048/055").and_then(Mode1Code::from_item),
         })
     }
 }
@@ -294,6 +300,8 @@ mod tests {
         assert_eq!(status.sensor, 2);
         assert_eq!(report.cartesian_position, None);
         assert_eq!(report.height_3d, None);
+        assert_eq!(report.mode_2, None);
+        assert_eq!(report.mode_1, None);
     }
 
     #[test]

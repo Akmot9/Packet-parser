@@ -64,4 +64,25 @@ pub enum AsterixError {
     /// Les records n'atteignent pas exactement la fin du data block.
     #[error("ASTERIX data block of category {category} is not exactly filled by its records")]
     BlockNotConsumed { category: u8 },
+
+    /// Le bit FX du dernier extent qu'un item extensible borne definit est
+    /// a un : le record annonce plus que l'UAP ne decrit.
+    #[error("ASTERIX item {item} extends beyond the extents its UAP defines")]
+    ExtentOverflow { item: &'static str },
+
+    /// Un champ Random Field Sequencing annonce zero item : le compteur N
+    /// n'a de sens qu'a partir de un.
+    #[error("ASTERIX RFS field of category {category} announces no item")]
+    EmptyRfs { category: u8 },
+
+    /// Un FRN porte par un champ Random Field Sequencing ne designe aucun
+    /// item de l'UAP, ou designe le RFS lui-meme.
+    #[error("ASTERIX RFS field of category {category} names FRN {frn}, not an item of the UAP")]
+    InvalidRfsFrn { category: u8, frn: u8 },
+
+    /// Un champ Random Field Sequencing porte un item deja annonce par le
+    /// FSPEC, ou deux fois : un record ne porte chaque data item qu'une
+    /// fois.
+    #[error("ASTERIX RFS field of category {category} repeats FRN {frn}")]
+    DuplicateRfsFrn { category: u8, frn: u8 },
 }

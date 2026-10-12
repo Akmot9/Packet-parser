@@ -32,6 +32,7 @@ use common::{FileRead, read_capture};
 
 const CORPUS: &str = "pcaps_exemple/protocols/asterix";
 const ORACLE: &str = "tests/data/asterix_tshark_oracle.tsv";
+const LIMITS: &str = "tests/data/asterix_tshark_limits.tsv";
 
 fn frame(hex_fixture: &str, expected_len: usize) -> Vec<u8> {
     let bytes = hex::decode(hex_fixture).expect("invalid test hex fixture");
@@ -125,6 +126,13 @@ fn cat048_target_report_decodes_against_the_wire() {
     assert_eq!(report.track_number, None);
     assert_eq!(report.polar_velocity, None);
     assert_eq!(report.mode_s_mb_data_count, None);
+    // Codes IFF militaires (#119) : Mode 2 et Mode 1 valides, a zero.
+    let mode_2 = report.mode_2.expect("I048/050");
+    assert!(mode_2.validated && !mode_2.garbled && !mode_2.smoothed);
+    assert_eq!(mode_2.to_string(), "0000");
+    let mode_1 = report.mode_1.expect("I048/055");
+    assert!(mode_1.validated);
+    assert_eq!(mode_1.to_string(), "00");
 }
 
 /// `cat_034_048.pcap` trame 3 : 10.17.58.184:21154 -> 232.2.1.13:22113, deux
@@ -246,8 +254,8 @@ fn cat021_raw_stream_decodes_both_blocks() {
 }
 
 /// Rend les data blocks d'un datagramme dans le format de l'oracle tshark :
-/// `CAT:LEN:items;items|CAT:LEN:items`, les items par leur suffixe
-/// (`010`, `RE`, `SP`).
+/// `CAT:LEN:items/longueur;items/longueur|CAT:LEN:...`, les items par leur
+/// suffixe (`010`, `RE`, `SP`), la longueur du record FSPEC compris.
 fn oracle_shape(packet: &AsterixPacket<'_>) -> String {
     packet
         .blocks
@@ -257,12 +265,19 @@ fn oracle_shape(packet: &AsterixPacket<'_>) -> String {
                 .records
                 .iter()
                 .map(|record| {
-                    record
+                    let items = record
                         .items
                         .iter()
                         .map(|item| item.id.rsplit('/').next().unwrap_or(item.id))
                         .collect::<Vec<_>>()
-                        .join(",")
+                        .join(",");
+                    let length = record.fspec.len()
+                        + record
+                            .items
+                            .iter()
+                            .map(|item| item.data.len())
+                            .sum::<usize>();
+                    format!("{items}/{length}")
                 })
                 .collect::<Vec<_>>()
                 .join(";");
@@ -272,29 +287,126 @@ fn oracle_shape(packet: &AsterixPacket<'_>) -> String {
         .join("|")
 }
 
-/// Parite exacte avec tshark sur les 303 trames du corpus : chaque trame
-/// est etiquetee ASTERIX, et la sequence des data items de chaque record de
-/// chaque data block est celle que tshark decode.
-#[test]
-fn every_frame_matches_the_tshark_oracle() {
-    let base = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let oracle = fs::read_to_string(base.join(ORACLE)).expect("oracle lisible");
+/// La forme que la crate doit produire la ou tshark bute sur un I002/050 de
+/// deux octets. Deux cas : le record parasite qu'il lit dans l'octet restant
+/// d'un bloc CAT 002 (un record qui ne commence pas par 010) disparait et
+/// cet octet revient au record precedent ; ou, quand tshark a declare la
+/// trame malformee sans rien lire de plus, le dernier record du dernier bloc
+/// (celui qui porte le 050) recoit l'octet.
+fn expected_beyond_tshark_limit(shape: &str) -> String {
+    let mut removed = 0;
+    let mut blocks: Vec<String> = shape
+        .split('|')
+        .map(|block| {
+            let Some((category, rest)) = block.split_once(':') else {
+                return block.to_string();
+            };
+            let Some((length, records)) = rest.split_once(':') else {
+                return block.to_string();
+            };
+            if category != "2" {
+                return block.to_string();
+            }
+            let mut kept: Vec<String> = Vec::new();
+            for record in records.split(';') {
+                if record.starts_with("010") {
+                    kept.push(record.to_string());
+                    continue;
+                }
+                removed += 1;
+                let previous = kept.last_mut().expect("un record parasite suit un record");
+                *previous = one_more_octet(previous);
+            }
+            format!("{category}:{length}:{}", kept.join(";"))
+        })
+        .collect();
+    if removed == 0 {
+        let last = blocks.last_mut().expect("au moins un bloc");
+        assert!(
+            last.starts_with("2:"),
+            "tshark bute sur un bloc CAT 002 : {shape}"
+        );
+        let (head, record) = last.rsplit_once(';').unwrap_or_else(|| {
+            let (head, record) = last.rsplit_once(':').expect("un record");
+            (head, record)
+        });
+        let separator = if last.contains(';') { ';' } else { ':' };
+        *last = format!("{head}{separator}{}", one_more_octet(record));
+    }
+    blocks.join("|")
+}
+
+/// `010,000,030,050/8` -> `010,000,030,050/9`.
+fn one_more_octet(record: &str) -> String {
+    let (items, length) = record.split_once('/').expect("longueur de record");
+    assert!(
+        items.ends_with("050"),
+        "l'octet restant est celui de I002/050 : {record}"
+    );
+    let length: usize = length.parse().expect("longueur de record");
+    format!("{items}/{}", length + 1)
+}
+
+/// `1-4,9` -> [1, 2, 3, 4, 9].
+fn expand_frames(spec: &str) -> Vec<usize> {
+    spec.split(',')
+        .flat_map(|part| {
+            let (start, end) = match part.split_once('-') {
+                Some((start, end)) => (start, end),
+                None => (part, part),
+            };
+            let start: usize = start.parse().expect("numero de trame");
+            let end: usize = end.parse().expect("numero de trame");
+            start..=end
+        })
+        .collect()
+}
+
+/// Lit un oracle groupe (`capture \t trames \t forme`) : pour chaque
+/// capture, les trames et leur forme, dans l'ordre des numeros.
+fn read_oracle(path: &Path) -> BTreeMap<String, Vec<(usize, String)>> {
+    let oracle = fs::read_to_string(path).expect("oracle lisible");
     let mut expected: BTreeMap<String, Vec<(usize, String)>> = BTreeMap::new();
     for line in oracle.lines().filter(|line| !line.starts_with('#')) {
         let mut fields = line.split('\t');
-        let (Some(file), Some(number), Some(shape)) = (fields.next(), fields.next(), fields.next())
+        let (Some(file), Some(frames), Some(shape)) = (fields.next(), fields.next(), fields.next())
         else {
             panic!("ligne d'oracle malformee : {line}");
         };
-        expected
-            .entry(file.to_string())
-            .or_default()
-            .push((number.parse().expect("numero de trame"), shape.to_string()));
+        let entry = expected.entry(file.to_string()).or_default();
+        for frame in expand_frames(frames) {
+            entry.push((frame, shape.to_string()));
+        }
     }
+    for frames in expected.values_mut() {
+        frames.sort_unstable();
+    }
+    expected
+}
+
+/// Parite exacte avec tshark sur les 44 411 trames ASTERIX du corpus que
+/// tshark decode en entier : chaque trame est etiquetee ASTERIX, et la
+/// sequence des data items et la longueur de chaque record de chaque data
+/// block sont celles que tshark decode. Les 96 trames sur lesquelles tshark
+/// bute (`asterix_tshark_limits.tsv`) ont leur propre test.
+#[test]
+fn every_frame_matches_the_tshark_oracle() {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let expected = read_oracle(&base.join(ORACLE));
     assert_eq!(
         expected.keys().collect::<Vec<_>>(),
-        ["cat048_multicast.pcap", "cat_034_048.pcap"]
+        [
+            "cat048_multicast.pcap",
+            "cat_034_048.pcap",
+            "cat_062_065.pcap",
+            "wireshark_8579_radardata.pcap",
+            "wireshark_9239_cat008only-2.pcap",
+            "wireshark_9239_cat008only.pcap",
+            "wireshark_9624_cat62_re.pcap",
+            "wireshark_9953_cat021023.pcap",
+        ]
     );
+    let limited = read_oracle(&base.join(LIMITS));
 
     let mut blocks_by_category: BTreeMap<u8, usize> = BTreeMap::new();
     let mut records_by_category: BTreeMap<u8, usize> = BTreeMap::new();
@@ -304,11 +416,17 @@ fn every_frame_matches_the_tshark_oracle() {
         let FileRead::Frames { frames, .. } = read_capture(&path) else {
             panic!("{file} : capture illisible");
         };
-        assert_eq!(
-            frames.len(),
-            oracle_frames.len(),
-            "{file} : tshark voit ASTERIX sur chaque trame"
-        );
+        let asterix_frames = oracle_frames.len() + limited.get(file).map_or(0, Vec::len);
+        // Les captures du lot defense portent aussi d'autres trafics
+        // (fragments IPv4, STP, IGMP, CAT 023/247 a cote de CAT 021...) :
+        // seules les captures monoflux couvrent toutes leurs trames.
+        if !file.starts_with("wireshark_8579") {
+            assert!(
+                frames.len() >= asterix_frames,
+                "{file} : {} trames pour {asterix_frames} dans l'oracle",
+                frames.len()
+            );
+        }
         for (number, shape) in oracle_frames {
             let (link_type, data) = &frames[number - 1];
             let flow =
@@ -334,10 +452,107 @@ fn every_frame_matches_the_tshark_oracle() {
         }
     }
 
-    // Volumetrie de l'oracle : 303 trames, 34 data blocks CAT 034 (un record
-    // chacun) et 289 CAT 048 portant 331 records — jusqu'a trois par bloc
-    // dans cat_034_048.pcap.
-    assert_eq!(frames_checked, 303);
-    assert_eq!(blocks_by_category, BTreeMap::from([(34, 34), (48, 289)]));
-    assert_eq!(records_by_category, BTreeMap::from([(34, 34), (48, 331)]));
+    // Volumetrie de l'oracle, recoupee avec `tshark -z io,stat` et les
+    // comptes de SOURCE.md.
+    assert_eq!(frames_checked, 44_411);
+    assert_eq!(
+        blocks_by_category,
+        BTreeMap::from(BLOCKS_BY_CATEGORY),
+        "data blocks par categorie"
+    );
+    assert_eq!(
+        records_by_category,
+        BTreeMap::from(RECORDS_BY_CATEGORY),
+        "records par categorie"
+    );
+}
+
+/// Data blocks par categorie sur les 44 411 trames de l'oracle, comptes
+/// dans l'oracle lui-meme (`tools/asterix_oracle.py`).
+const BLOCKS_BY_CATEGORY: [(u8, usize); 11] = [
+    (1, 29_520),
+    (2, 19_512),
+    (8, 67),
+    (21, 1_555),
+    (23, 30),
+    (34, 7_913),
+    (48, 7_484),
+    (62, 7_759),
+    (63, 307),
+    (65, 1_526),
+    (247, 3),
+];
+
+/// Records par categorie, idem : jusqu'a 18 blocs par datagramme et
+/// plusieurs records par bloc dans radardata.pcap.
+const RECORDS_BY_CATEGORY: [(u8, usize); 11] = [
+    (1, 65_146),
+    (2, 19_677),
+    (8, 67),
+    (21, 1_555),
+    (23, 30),
+    (34, 7_913),
+    (48, 33_665),
+    (62, 16_434),
+    (63, 331),
+    (65, 1_526),
+    (247, 3),
+];
+
+/// Les 96 trames de `wireshark_8579_radardata.pcap` sur lesquelles tshark
+/// 4.6.6 bute portent toutes un record CAT 002 dont I002/050 (`repetitive
+/// fx`) occupe deux octets : le dissecteur genere de Wireshark borne cet
+/// item au seul extent que la specification liste, lit un octet, puis prend
+/// l'octet restant pour un record parasite (26 trames, `;060/2` lu au-dela
+/// du bloc) ou declare la trame malformee quand plus rien ne suit (70). La
+/// crate suit la specification : chaque trame est etiquetee ASTERIX,
+/// decodee jusqu'au dernier octet, et sa forme est celle de tshark sans le
+/// record parasite, I002/050 comptant pour deux octets.
+#[test]
+fn frames_beyond_the_tshark_i002_050_limit_decode_against_the_specification() {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let limited = read_oracle(&base.join(LIMITS));
+    assert_eq!(
+        limited.keys().collect::<Vec<_>>(),
+        ["wireshark_8579_radardata.pcap"]
+    );
+    let mut checked = 0;
+    let mut two_octet_050 = 0;
+    for (file, oracle_frames) in &limited {
+        let path = base.join(CORPUS).join(file);
+        let FileRead::Frames { frames, .. } = read_capture(&path) else {
+            panic!("{file} : capture illisible");
+        };
+        for (number, shape) in oracle_frames {
+            let (link_type, data) = &frames[number - 1];
+            let flow =
+                parse(*link_type, data).unwrap_or_else(|error| panic!("{file}:{number} : {error}"));
+            assert_eq!(
+                flow.application.as_ref().map(|a| a.application_protocol),
+                Some("ASTERIX"),
+                "{file}:{number}"
+            );
+            let payload = flow
+                .transport
+                .as_ref()
+                .and_then(|transport| transport.payload)
+                .expect("datagramme UDP");
+            let packet = AsterixPacket::try_from(payload)
+                .unwrap_or_else(|error| panic!("{file}:{number} : {error}"));
+            assert_eq!(
+                oracle_shape(&packet),
+                expected_beyond_tshark_limit(shape),
+                "{file}:{number}"
+            );
+            two_octet_050 += packet
+                .blocks
+                .iter()
+                .flat_map(|block| &block.records)
+                .filter(|record| record.item("I002/050").is_some_and(|data| data.len() == 2))
+                .count();
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 96);
+    assert_eq!(two_octet_050, 96, "un I002/050 de deux octets par trame");
 }

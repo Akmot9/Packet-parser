@@ -304,10 +304,14 @@ incluent notamment:
 - AMS
 - GIOP
 - SRVLOC
-- ASTERIX (donnees de surveillance EUROCONTROL : CAT 021 ADS-B, CAT 034 et
-  CAT 048 monoradar). Reconnu par sa seule structure — tous les data blocks
-  d'une categorie connue, records decoupes exactement selon l'UAP — faute de
-  magic et de port IANA
+- ASTERIX (donnees de surveillance EUROCONTROL, onze categories : CAT 048
+  et 034, plots et messages de service monoradar, CAT 001 et 002 leurs
+  equivalents de premiere generation, CAT 008 meteo, CAT 021 ADS-B, CAT 023
+  etat des stations sol, CAT 062 pistes systeme, CAT 063 etat des capteurs,
+  CAT 065 etat du SDPS, CAT 247 numeros de version). Reconnu par sa seule
+  structure — tous les data blocks d'une categorie connue, records decoupes
+  exactement selon l'UAP, Random Field Sequencing compris — faute de magic
+  et de port IANA
 - QUIC
 - Bitcoin
 - PTP (IEEE 1588) sur UDP 319/320 : PTPv2 decode en entier (en-tete commun,
