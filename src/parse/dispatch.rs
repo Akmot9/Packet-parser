@@ -29,6 +29,7 @@ use super::application::protocols::asterix::AsterixPacket;
 use super::application::protocols::bitcoin::BitcoinPacket;
 use super::application::protocols::dhcp::DhcpPacket;
 use super::application::protocols::dhcpv6::Dhcpv6Packet;
+use super::application::protocols::dis::DisPacket;
 use super::application::protocols::dns::DnsPacket;
 use super::application::protocols::ethernet_ip::EtherNetIpPacket;
 use super::application::protocols::ftp::FtpMessage;
@@ -134,6 +135,8 @@ enum ProbeId {
     Ptp,
     Rtps,
     Stanag5066,
+    Dis,
+    DisLenient,
 }
 
 fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
@@ -185,10 +188,15 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         // peut pas prouver qu'il est consomme exactement, et reste Unknown.
         ProbeId::DnsBlind => DnsPacket::is_blind_udp_match(payload),
         ProbeId::Ptp => PtpPacket::try_from_udp(payload).is_ok(),
+        ProbeId::Stanag5066 => SisPdu::try_from(payload).is_ok(),
+        // Sur le payload reel : la sonde aveugle exige que les PDU pavent
+        // exactement le datagramme. Sur le port 3000 ou un port declare, la
+        // longueur declaree peut etre fausse (#123) : lecture tolerante.
+        ProbeId::Dis => DisPacket::try_from(full_payload).is_ok(),
+        ProbeId::DisLenient => DisPacket::try_from_lenient(full_payload).is_ok(),
         // Garde a cout constant sur le magic, comme GIOP ; puis le payload REEL :
         // les sous-messages doivent paver tout le datagramme, et un DATA_FRAG de
         // 60 Ko depasse PROBE_CAP sans cesser d'etre du RTPS.
-        ProbeId::Stanag5066 => SisPdu::try_from(payload).is_ok(),
         ProbeId::Rtps => {
             (full_payload.starts_with(b"RTPS") || full_payload.starts_with(b"RTPX"))
                 && RtpsPacket::try_from(full_payload).is_ok()
@@ -341,6 +349,11 @@ static RULES: &[Rule] = &[
     // seul messageType ne distingue pas PTP d'un payload quelconque. En
     // couche 2 (EtherType 0x88F7), PTP est decode par la couche internet.
     port_rule("PTP", Guard::Udp, is_ptp_port, ProbeId::Ptp),
+    // DIS (IEEE 1278.1) : pas de port IANA, 3000 par usage. Sur ce port, la
+    // lecture tolere une longueur declaree plus courte que le datagramme
+    // (trois PDU reels du corpus) ; ailleurs, la sonde aveugle ci-dessous
+    // exige que les PDU pavent exactement le datagramme (#123).
+    port_rule("DIS", Guard::Udp, is_dis_udp_port, ProbeId::DisLenient),
     // STANAG 5066 SIS : TCP 5066 (port IANA). Garde par port : le preambule
     // `90 EB 00`, un type et une taille sont trois octets fixes et deux
     // contraintes — trop peu pour une sonde aveugle sur tout segment TCP ;
@@ -366,6 +379,9 @@ static RULES: &[Rule] = &[
     // blocks d'une categorie connue, records decoupes exactement selon
     // l'UAP). Avant DNS, dont la forme datagramme est moins contrainte.
     rule("ASTERIX", Guard::Udp, ProbeId::Asterix),
+    // DIS : en-tete de douze octets (version 1 a 7, type 1 a 72, famille de
+    // la norme) et pavage exact du datagramme par ses PDU.
+    rule("DIS", Guard::Udp, ProbeId::Dis),
     rule("Bitcoin", Guard::Tcp, ProbeId::Bitcoin),
     rule("OPC UA", Guard::Tcp, ProbeId::Opcua),
     // EtherNet/IP est reellement bi-transport (TCP 44818, UDP 2222).
@@ -430,6 +446,7 @@ pub enum DecodeAsProtocol {
     OpenVpn,
     Ptp,
     Stanag5066,
+    Dis,
 }
 
 impl DecodeAsProtocol {
@@ -465,6 +482,7 @@ impl DecodeAsProtocol {
             },
             Self::Ptp => ("PTP", Guard::Udp, ProbeId::Ptp),
             Self::Stanag5066 => ("STANAG 5066", Guard::Tcp, ProbeId::Stanag5066),
+            Self::Dis => ("DIS", Guard::Udp, ProbeId::DisLenient),
         }
     }
 }
@@ -647,6 +665,11 @@ fn is_ams_udp_port(port: Option<u16>) -> bool {
 /// QUIC (HTTP/3) : UDP 443.
 fn is_quic_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(443))
+}
+
+/// DIS : UDP 3000, le port d'usage que Wireshark enregistre par defaut.
+fn is_dis_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(3000))
 }
 
 /// STANAG 5066 SIS : TCP 5066 (IANA `stanag-5066`).
@@ -967,6 +990,7 @@ mod tests {
             DecodeAsProtocol::OpenVpn,
             DecodeAsProtocol::Ptp,
             DecodeAsProtocol::Stanag5066,
+            DecodeAsProtocol::Dis,
         ];
         for protocol in all {
             for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {
@@ -1049,6 +1073,7 @@ mod tests {
                 "NTP",
                 "RTPS",
                 "ASTERIX",
+                "DIS",
                 "Bitcoin",
                 "OPC UA",
                 "EtherNet/IP",

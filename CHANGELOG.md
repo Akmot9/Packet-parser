@@ -69,6 +69,26 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **DIS** (#123, lot defense #125) : IEEE 1278.1, le protocole des
+  simulateurs militaires. `dis::DisPacket` decoupe les PDU d'un datagramme
+  (en-tete de douze octets : version 1 a 7, exercice, type nomme par
+  `PduType` pour les 72 types de la norme, famille de la norme ou
+  experimentale, horodatage, longueur, PDU Status en version 7) et decode
+  en valeurs typees les corps Entity State (identifiants, type, vitesse,
+  position geocentrique, orientation, apparence, marquage, parametres
+  variables), Transmitter (radio, etat, frequence, bande, puissance,
+  modulation, chiffrement) et Signal (codage, cadence, echantillons,
+  donnees) ; les autres corps restent en octets. Deux lectures :
+  `try_from`, stricte, exige que les PDU pavent exactement le datagramme —
+  c'est la sonde aveugle, DIS n'ayant pas de port IANA ; `try_from_lenient`,
+  derriere UDP 3000 ou `DecodeAsProtocol::Dis`, tolere une longueur
+  declaree plus courte que le datagramme et garde le reste dans `trailing`
+  (trois Set Data reels annoncent 48 octets pour 160, que tshark disseque
+  sans s'arreter a la longueur). Parite avec tshark 4.6.6 sur les 393
+  trames du corpus (`tests/dis_golden.rs`, oracle `tools/dis_oracle.sh`,
+  ports 6993 et 22999 declares comme tshark les force) ; sans declaration,
+  390 sont etiquetees par la sonde aveugle. Histogramme golden : "DIS" 0 ->
+  390, "Unknown" 9 144 -> 8 754. Cible de fuzz `parse_dis`.
 - **STANAG 5066 SIS** (#122, lot defense #125) : la couche qui relie les
   applications au noeud radio HF (annexe A de l'Ed. 4, brouillon v1.6
   publie par Isode), sur TCP 5066. `stanag5066::SisPdu` decode le premier

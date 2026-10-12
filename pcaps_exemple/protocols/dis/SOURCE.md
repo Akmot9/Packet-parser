@@ -41,6 +41,17 @@ trames portent du DIS, aucune n'est malformée.
   pour un datagramme de 160 octets** : c'est la seule capture du dossier où
   elle ne couvre pas le payload UDP. Fichier d'origine `dis_test2.pcap`.
 
+## Oracle tshark
+
+`tests/data/dis_tshark_oracle.tsv` est produit par `tools/dis_oracle.sh`
+(tshark 4.6.6, décodage forcé sur UDP 3000, 6993 et 22999) : une trame par
+ligne, en-tête du PDU (version, exercice, type, famille, longueur, PDU
+Status) et premier identifiant d'entité du corps. `tests/dis_golden.rs`
+rejoue l'oracle avec les mêmes ports déclarés par Decode As (#123) ; sans
+déclaration, la sonde aveugle étiquette les 390 trames dont les PDU pavent
+exactement le datagramme, et les trois Set Data à longueur fausse restent
+`Unknown`.
+
 ## Écartés
 
 - `DIS_EntityState_1.pcapng`, `DIS_EntityState_2.pcapng`,

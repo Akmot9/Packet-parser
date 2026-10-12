@@ -257,11 +257,19 @@ fn application_classification_histogram_is_frozen() {
     // (tests/stanag5066_golden.rs). Les 5 segments de continuation, sans
     // preambule, restent "Unknown" — tshark non plus ne les etiquette pas
     // sans reassembler.
+    //
+    // 2026-10-12 (#123, DIS) : "DIS" 0 -> 390 et "Unknown" 9 144 -> 8 754
+    // (-390) : les trames de protocols/dis/ dont les PDU pavent exactement
+    // le datagramme, par la sonde aveugle (UDP 3000, 6993 et 22999). Les 3
+    // Set Data de wireshark_3492_dis_test2.pcap (UDP 6993) annoncent 48
+    // octets pour 160 : "Unknown" sans Decode As, DIS avec
+    // (tests/dis_golden.rs, parite tshark sur les 393).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 4192),
         ("ASTERIX", 44_507),
         ("DHCP", 71),
+        ("DIS", 390),
         ("DHCPv6", 32),
         ("DNS", 104),
         ("EtherNet/IP", 4),
@@ -285,7 +293,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 587),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 9_144),
+        ("Unknown", 8_754),
         ("mDNS", 12),
     ]
     .into_iter()
