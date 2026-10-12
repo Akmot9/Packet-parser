@@ -15,7 +15,7 @@ fuzz_target!(|data: &[u8]| {
     match ProfinetPacket::try_from(data) {
         Ok(packet) => {
             assert!(packet.frame_id.is_dcp());
-            assert_eq!(frame.ok(), Some(packet.frame_id));
+            assert_eq!(frame.ok(), Some(packet.frame_id.clone()));
             let body_end = 12 + usize::from(packet.dcp_data_length);
             assert!(body_end <= data.len());
             let body = data[12..body_end].as_ptr_range();

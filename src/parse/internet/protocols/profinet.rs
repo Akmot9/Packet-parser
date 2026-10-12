@@ -40,7 +40,7 @@ use crate::{
 /// debut de la plage ; [`FrameId::from_u16`] classe une valeur, et rend
 /// `None` pour une valeur reservee.
 #[repr(u16)]
-#[derive(Debug, Serialize, Clone, Copy, Eq, PartialEq, Hash, Default)]
+#[derive(Debug, Serialize, Clone, Eq, PartialEq, Hash, Default)]
 #[non_exhaustive]
 pub enum FrameId {
     /// `0xC000`–`0xF7FF` : donnees cycliques RT_CLASS_1 / RT_CLASS_UDP, unicast.
@@ -110,7 +110,7 @@ impl FrameId {
 
     /// Les quatre Frame ID DCP : la trame porte un message que
     /// [`ProfinetPacket`] decode.
-    pub const fn is_dcp(self) -> bool {
+    pub const fn is_dcp(&self) -> bool {
         matches!(
             self,
             FrameId::Hello

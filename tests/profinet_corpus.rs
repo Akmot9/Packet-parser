@@ -160,7 +160,11 @@ fn profinet_frames_match_the_tshark_oracle_and_their_outcome_is_frozen() {
                 (Some(internet), None) => {
                     assert_eq!(internet.protocol_name, "Profinet");
                     assert!(internet.source.is_none() && internet.payload.is_empty());
-                    assert_eq!(validated, Ok(expected_class), "{name}#{frame_number}");
+                    assert_eq!(
+                        validated,
+                        Ok(expected_class.clone()),
+                        "{name}#{frame_number}"
+                    );
                     assert!(
                         !row.malformed,
                         "{name}#{frame_number}: tshark la declare malformee"
