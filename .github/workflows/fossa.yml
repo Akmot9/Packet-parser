@@ -1,0 +1,53 @@
+name: FOSSA
+
+# Analyse des dépendances par le CLI FOSSA (fossas/fossa-action), à la place
+# de l'intégration Quick Import : celle-ci n'analyse aucune dépendance Cargo
+# et signale les textes de licence du corpus (pcaps_exemple/LICENSES/, #104)
+# comme des licences du projet. Le CLI lit .fossa.yml, qui exclut le corpus.
+#
+# Le job ne fait rien tant que le secret FOSSA_API_KEY n'existe pas (clé
+# « push-only » créée dans FOSSA : Account Settings → Integrations → API).
+# Les PR venant d'un fork n'ont pas accès au secret : étapes sautées, job vert.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  fossa:
+    name: FOSSA dependency analysis
+    runs-on: ubuntu-latest
+    env:
+      FOSSA_API_KEY: ${{ secrets.FOSSA_API_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # La stratégie Cargo du CLI appelle `cargo metadata` : édition 2024.
+      - name: Install Rust
+        if: env.FOSSA_API_KEY != ''
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Analyze dependencies with FOSSA
+        if: env.FOSSA_API_KEY != ''
+        uses: fossas/fossa-action@v2
+        with:
+          api-key: ${{ env.FOSSA_API_KEY }}
+
+      # `fossa test` échoue si la politique FOSSA signale une issue. Non
+      # bloquant pour l'instant (continue-on-error) : cargo-deny garde la main
+      # sur les licences ; retirer continue-on-error une fois la politique
+      # calée sur le dépôt.
+      - name: Check FOSSA policy
+        if: env.FOSSA_API_KEY != ''
+        uses: fossas/fossa-action@v2
+        continue-on-error: true
+        with:
+          api-key: ${{ env.FOSSA_API_KEY }}
+          run-tests: true
