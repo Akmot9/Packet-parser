@@ -76,6 +76,17 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   etablie : `MODBUS-TestDataPart2.pcap` est le fichier ITI du meme nom
   (CC-BY-4.0).
 
+### Infrastructure
+
+- **FOSSA par le CLI** : nouveau workflow `.github/workflows/fossa.yml`
+  (`fossas/fossa-action` : `fossa analyze`, puis `fossa test` non bloquant)
+  sur push main, PR et declenchement manuel, actif des que le secret
+  `FOSSA_API_KEY` existe ; `.fossa.yml` exclut `pcaps_exemple/`, `fuzz/` et
+  `tools/verbench/`. L'integration Quick Import n'analysait aucune dependance
+  Cargo et, depuis les textes de licence du corpus (#104), signalait trois
+  issues de licence au projet ; elle ignore `.fossa.yml` (PR #145) et reste a
+  desactiver cote FOSSA une fois le CLI en place.
+
 ## [11.5.0] - 2026-10-09
 
 Premier protocole du lot defense (#125) : **PTP** (IEEE 1588), sur UDP

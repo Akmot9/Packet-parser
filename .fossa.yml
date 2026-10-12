@@ -1,0 +1,23 @@
+# Configuration du CLI FOSSA (fossas/fossa-action, .github/workflows/fossa.yml).
+# Référence : https://github.com/fossas/fossa-cli/blob/master/docs/references/files/fossa-yml.md
+#
+# pcaps_exemple/ : corpus de captures redistribuées sous leurs licences
+# d'origine (textes dans pcaps_exemple/LICENSES/, voir son README.md et
+# l'issue #104). Hors de la crate publiée (liste `include` de Cargo.toml) :
+# ni dépendance, ni licence du code. fuzz/ et tools/verbench/ : projets Cargo
+# hors workspace (nightly et cargo-fuzz, Cargo.toml généré par run.sh).
+#
+# L'intégration Quick Import de FOSSA ignore ce fichier (testé le 2026-10-12,
+# PR #145) : il ne vaut que pour le CLI.
+version: 3
+
+paths:
+  exclude:
+    - ./pcaps_exemple
+    - ./fuzz
+    - ./tools/verbench
+
+vendoredDependencies:
+  licenseScanPathFilters:
+    exclude:
+      - "pcaps_exemple/**"
