@@ -81,9 +81,13 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   verifie), GAP, HEARTBEAT_FRAG, NACK_FRAG, INFO_TS, INFO_DST et INFO_SRC
   ; les donnees utilisateur (CDR), QoS en ligne et listes de locateurs
   restent en octets. Sonde aveugle sur UDP (`rule("RTPS", Guard::Udp)`)
-  derriere une garde a cout constant sur le magic : les sous-messages
-  doivent paver exactement le datagramme, un identifiant reserve ou un
-  corps trop court pour son type refuse le message. Parite avec tshark
+  derriere une garde a cout constant sur le magic (`RTPS`, ou `RTPX`,
+  variante de RTI Connext), sur le datagramme entier (un DATA_FRAG de 60 Ko
+  depasse le plafond de sondage sans cesser d'etre du RTPS) : les
+  sous-messages doivent paver exactement le datagramme, un identifiant
+  reserve ou un corps trop court pour son type refuse le message. Les
+  « pings » RTI de seize octets (`NDDSPING`), que tshark compte comme du
+  RTPS, sortent en `RtpsPacket::Ping`. Parite avec tshark
   4.6.6 sur les 231 trames du corpus (`tests/rtps_golden.rs`, oracle
   `tools/rtps_oracle.sh` : version, vendorId, guidPrefix, suite des
   sous-messages et de leurs longueurs, identifiants d'entite, numeros de

@@ -311,8 +311,9 @@ Application detection is intentionally best-effort. Parser modules include:
   split and typed (DATA, DATA_FRAG, HEARTBEAT, ACKNACK, GAP, INFO_TS,
   INFO_DST, INFO_SRC, fragment submessages, DDS Security and vendor ones),
   entity ids, sequence numbers and counts; user data (CDR) and inline QoS
-  stay opaque. Recognised by its magic and the exact tiling of its
-  submessages, on any UDP port
+  stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
+  exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
+  `NDDSPING` pings are reported too
 - PTP (IEEE 1588) on UDP 319/320: PTPv2 decoded in full (common header, the
   ten message bodies, TLVs listed without decoding their value), PTPv1
   recognised by its header. Port-guarded: a Delay_Req has exactly the shape of

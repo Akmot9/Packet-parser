@@ -55,6 +55,18 @@ Fichiers d'origine des pièces jointes : `captured_messenger_rtps.pcap`
 `Micro-2.4.11.pcapng` (#15868), `PID_DEFAULT_MULTICAST_LOCATOR.pcapng`
 (#17630).
 
+## Oracle tshark
+
+`tests/data/rtps_tshark_oracle.tsv` est produit par `tools/rtps_oracle.sh`
+(tshark 4.6.6, sans réassemblage IP) : pour chacune des 231 trames RTPS,
+version, vendorId, guidPrefix, suite des sous-messages avec leur
+`octetsToNextHeader`, identifiants d'entité et numéros de séquence.
+`tests/rtps_golden.rs` le rejoue trame par trame (#120). Deux formes hors
+spécification y figurent, toutes deux de RTI Connext et comptées par
+tshark : le magic `RTPX` (4 trames de `RTPS_Discovery.pcapng`) et le
+« ping » de seize octets `RTPS`/version/vendorId/`NDDSPING` (7 trames de la
+même capture, 1 de `rtps.pcap`).
+
 ## Écartés
 
 - `rtps_cooked.pcapng` du wiki Wireshark : la page le dit généré à la main ;

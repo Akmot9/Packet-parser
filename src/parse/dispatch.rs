@@ -187,7 +187,8 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         // les sous-messages doivent paver tout le datagramme, et un DATA_FRAG de
         // 60 Ko depasse PROBE_CAP sans cesser d'etre du RTPS.
         ProbeId::Rtps => {
-            full_payload.starts_with(b"RTPS") && RtpsPacket::try_from(full_payload).is_ok()
+            (full_payload.starts_with(b"RTPS") || full_payload.starts_with(b"RTPX"))
+                && RtpsPacket::try_from(full_payload).is_ok()
         }
     }
 }
@@ -1025,6 +1026,7 @@ mod tests {
                 "SMTP",
                 "NNTP",
                 "NTP",
+                "RTPS",
                 "ASTERIX",
                 "Bitcoin",
                 "OPC UA",

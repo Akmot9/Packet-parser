@@ -15,6 +15,17 @@ pub const RTPS_SUBMESSAGE_HEADER_LENGTH: usize = 4;
 
 pub const RTPS_MAGIC: [u8; 4] = *b"RTPS";
 
+/// Variante `RTPX` du magic, emise par RTI Connext sur une partie de son
+/// metatrafic unicast : meme en-tete, memes sous-messages, et tshark la
+/// dissèque comme du RTPS.
+pub const RTPS_MAGIC_EXTENSION: [u8; 4] = *b"RTPX";
+
+/// « Ping » RTI Connext : magic, version, vendorId et le texte `NDDSPING`,
+/// seize octets, sans guidPrefix ni sous-message. tshark le dissèque comme
+/// du RTPS (« Ping String »).
+pub const RTPS_PING_LENGTH: usize = 16;
+pub const RTPS_PING_TEXT: [u8; 8] = *b"NDDSPING";
+
 /// Bit E des flags : 1 pour un sous-message en petit-boutiste (§9.4.5.1.2).
 pub const RTPS_FLAG_ENDIANNESS: u8 = 0x01;
 
@@ -49,8 +60,9 @@ pub fn ensure_len(buf: &[u8], needed: usize) -> Result<(), RtpsParseError> {
     Ok(())
 }
 
-/// Les quatre octets `RTPS` en tete du message.
-pub fn validate_magic(buf: &[u8]) -> Result<(), RtpsParseError> {
+/// Les quatre octets `RTPS` (ou `RTPX`, variante RTI) en tete du message,
+/// rendus tels quels.
+pub fn extract_magic(buf: &[u8]) -> Result<[u8; 4], RtpsParseError> {
     let magic: [u8; 4] =
         buf.get(..4)
             .and_then(|m| m.try_into().ok())
@@ -58,10 +70,10 @@ pub fn validate_magic(buf: &[u8]) -> Result<(), RtpsParseError> {
                 expected: RTPS_HEADER_LENGTH,
                 actual: buf.len(),
             })?;
-    if magic != RTPS_MAGIC {
+    if magic != RTPS_MAGIC && magic != RTPS_MAGIC_EXTENSION {
         return Err(RtpsParseError::InvalidMagic(magic));
     }
-    Ok(())
+    Ok(magic)
 }
 
 /// Version du protocole : seule la 2.x est decodee (la 1.x de RTPS, d'un
@@ -181,13 +193,14 @@ mod tests {
 
     #[test]
     fn test_magic_and_version() {
-        assert_eq!(validate_magic(b"RTPS\x02\x01"), Ok(()));
+        assert_eq!(extract_magic(b"RTPS\x02\x01"), Ok(*b"RTPS"));
+        assert_eq!(extract_magic(b"RTPX\x02\x01"), Ok(*b"RTPX"));
         assert_eq!(
-            validate_magic(b"RTPX\x02\x01"),
-            Err(RtpsParseError::InvalidMagic(*b"RTPX"))
+            extract_magic(b"RTPZ\x02\x01"),
+            Err(RtpsParseError::InvalidMagic(*b"RTPZ"))
         );
         assert!(matches!(
-            validate_magic(b"RT"),
+            extract_magic(b"RT"),
             Err(RtpsParseError::Truncated { .. })
         ));
         assert_eq!(extract_version(2, 5), Ok((2, 5)));

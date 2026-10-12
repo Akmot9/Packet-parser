@@ -14,7 +14,8 @@
 //! pour chaque trame RTPS, version, vendorId, guidPrefix, la suite des
 //! sous-messages avec leur `octetsToNextHeader`, les identifiants d'entite
 //! et les numeros de sequence, figes dans `tests/data/rtps_tshark_oracle.tsv`
-//! et compares ici trame par trame. Les 16 fragments IPv4 de
+//! et compares ici trame par trame — pings RTI (seize octets, `NDDSPING`)
+//! compris, que tshark compte comme du RTPS. Les 16 fragments IPv4 de
 //! `RTPS_Discovery.pcapng` n'y sont pas : un parseur sans etat ne voit
 //! jamais le message qu'ils composent.
 
@@ -22,7 +23,9 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use packet_parser::{
     PacketFlow, parse,
-    parse::application::protocols::rtps::{RtpsPacket, SubmessageDetails, SubmessageKind},
+    parse::application::protocols::rtps::{
+        RtpsPacket, RtpsPing, SubmessageDetails, SubmessageKind,
+    },
 };
 
 mod common;
@@ -92,14 +95,35 @@ fn join<T: ToString>(values: &[T]) -> String {
 /// sous-messages qui en portent, et les numeros de sequence que tshark
 /// expose sous `rtps.sm.seqNumber`.
 fn oracle_row(packet: &RtpsPacket<'_>) -> OracleRow {
+    let (major, minor) = packet.version();
+    let version = format!("{major}.{minor}");
+    let vendor_id = format!("{:#06x}", packet.vendor_id());
+    let Some(message) = packet.message() else {
+        // Ping RTI : ni guidPrefix ni sous-message.
+        return OracleRow {
+            version,
+            vendor_id,
+            guid_prefix: "-".to_string(),
+            submessage_ids: "-".to_string(),
+            octets_to_next_header: "-".to_string(),
+            reader_ids: "-".to_string(),
+            writer_ids: "-".to_string(),
+            sequence_numbers: "-".to_string(),
+        };
+    };
     let mut ids = Vec::new();
     let mut lengths = Vec::new();
     let mut readers = Vec::new();
     let mut writers = Vec::new();
     let mut sequence_numbers: Vec<i64> = Vec::new();
-    for submessage in &packet.submessages {
+    for submessage in &message.submessages {
         ids.push(format!("{:#04x}", submessage.id));
-        lengths.push(submessage.octets_to_next_header);
+        // tshark ne renseigne pas `rtps.sm.octetsToNextHeader` pour un
+        // sous-message vendeur (0x80 et au-dela) : il en liste l'identifiant
+        // et saute le corps.
+        if !matches!(submessage.kind, SubmessageKind::VendorSpecific(_)) {
+            lengths.push(submessage.octets_to_next_header);
+        }
         match submessage.details {
             SubmessageDetails::Data {
                 reader_id,
@@ -167,12 +191,9 @@ fn oracle_row(packet: &RtpsPacket<'_>) -> OracleRow {
         }
     }
     OracleRow {
-        version: format!(
-            "{}.{}",
-            packet.header.version_major, packet.header.version_minor
-        ),
-        vendor_id: format!("{:#06x}", packet.header.vendor_id),
-        guid_prefix: hex(&packet.header.guid_prefix),
+        version,
+        vendor_id,
+        guid_prefix: hex(&message.header.guid_prefix),
         submessage_ids: join(&ids),
         octets_to_next_header: join(&lengths),
         reader_ids: join(
@@ -190,10 +211,9 @@ fn oracle_row(packet: &RtpsPacket<'_>) -> OracleRow {
         sequence_numbers: join(
             &sequence_numbers
                 .iter()
-                .map(|sn| {
-                    // tshark affiche le SequenceNumber_t en non signe sur 64 bits.
-                    (*sn as u64).to_string()
-                })
+                // `-T fields` rend le SequenceNumber_t signe (-4294967296 pour
+                // le `high` -1 d'OpenDDS), la ou `-V` l'affiche non signe.
+                .map(ToString::to_string)
                 .collect::<Vec<_>>(),
         ),
     }
@@ -222,6 +242,7 @@ fn every_frame_matches_the_tshark_oracle() {
 
     let mut frames_checked = 0;
     let mut other_frames = 0;
+    let mut pings = 0;
     let mut by_vendor: BTreeMap<u16, usize> = BTreeMap::new();
     let mut by_kind: BTreeMap<String, usize> = BTreeMap::new();
     for path in &captures {
@@ -239,9 +260,18 @@ fn every_frame_matches_the_tshark_oracle() {
             match (oracle_frames.get(&number), rtps_message(&flow)) {
                 (Some(row), Some(packet)) => {
                     assert_eq!(&oracle_row(&packet), row, "{file}:{number}");
-                    *by_vendor.entry(packet.header.vendor_id).or_default() += 1;
-                    for submessage in &packet.submessages {
-                        *by_kind.entry(format!("{:?}", submessage.kind)).or_default() += 1;
+                    *by_vendor.entry(packet.vendor_id()).or_default() += 1;
+                    match &packet {
+                        RtpsPacket::Message(message) => {
+                            for submessage in &message.submessages {
+                                *by_kind.entry(format!("{:?}", submessage.kind)).or_default() += 1;
+                            }
+                        }
+                        RtpsPacket::Ping(RtpsPing { text, .. }) => {
+                            assert_eq!(text, b"NDDSPING");
+                            pings += 1;
+                        }
+                        _ => unreachable!("message ou ping"),
                     }
                     frames_checked += 1;
                 }
@@ -259,6 +289,8 @@ fn every_frame_matches_the_tshark_oracle() {
         }
     }
     assert_eq!(frames_checked, 231);
+    // Huit pings RTI (sept dans RTPS_Discovery.pcapng, un dans rtps.pcap).
+    assert_eq!(pings, 8);
     assert_eq!(
         other_frames, 16,
         "les fragments IPv4 de RTPS_Discovery.pcapng"
@@ -312,8 +344,9 @@ fn packet_flow_labels_rtps_on_a_random_port_over_linktype_null() {
         (Some(54_020), Some(58_584))
     );
     let packet = rtps_message(&flow).expect("etiquette RTPS");
-    assert_eq!(packet.header.vendor_id, 0x0110);
-    let kinds: Vec<SubmessageKind> = packet.submessages.iter().map(|s| s.kind).collect();
+    let message = packet.message().expect("un message, pas un ping");
+    assert_eq!(message.header.vendor_id, 0x0110);
+    let kinds: Vec<SubmessageKind> = message.submessages.iter().map(|s| s.kind).collect();
     assert_eq!(
         kinds,
         [
@@ -324,7 +357,7 @@ fn packet_flow_labels_rtps_on_a_random_port_over_linktype_null() {
         ]
     );
     assert!(matches!(
-        packet.submessages[3].details,
+        message.submessages[3].details,
         SubmessageDetails::Heartbeat {
             writer_id: 0x0002_00c2,
             first_sequence_number: 1,

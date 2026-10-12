@@ -34,6 +34,8 @@ for capture in "$dir"/*; do
             # Les champs d en-tete sont repetes par sous-message : premier seul.
             split($2, major, ","); split($3, minor, ","); split($4, vendor, ","); split($5, guid, ",")
             for (i = 6; i <= 10; i++) if ($i == "") $i = "-"
+            # Un ping RTI (16 octets, NDDSPING) n a ni guidPrefix ni sous-message.
+            if (guid[1] == "") guid[1] = "-"
             print capture, $1, major[1] "." minor[1], vendor[1], guid[1], $6, $7, $8, $9, $10
         }'
 done

@@ -9,13 +9,16 @@
 //! role.
 //!
 //! Un message tient dans un datagramme UDP : un en-tete de 20 octets (magic
-//! `RTPS`, version, vendorId, guidPrefix) puis des sous-messages qui le
-//! pavent exactement, chacun introduit par son identifiant, ses flags (dont
-//! l'ordre d'octets de ses champs) et `octetsToNextHeader`. Le decodeur
-//! decoupe les sous-messages, identifie leur type et expose, en valeurs
-//! typees, les identifiants d'entite, numeros de sequence, compteurs et
-//! horodatages des types de la specification ; les donnees utilisateur
-//! (CDR), les QoS en ligne et les listes de locateurs restent en octets.
+//! `RTPS`, ou `RTPX` chez RTI, version, vendorId, guidPrefix) puis des
+//! sous-messages qui le pavent exactement, chacun introduit par son
+//! identifiant, ses flags (dont l'ordre d'octets de ses champs) et
+//! `octetsToNextHeader`. Le decodeur decoupe les sous-messages, identifie
+//! leur type et expose, en valeurs typees, les identifiants d'entite,
+//! numeros de sequence, compteurs et horodatages des types de la
+//! specification ; les donnees utilisateur (CDR), les QoS en ligne et les
+//! listes de locateurs restent en octets. RTI Connext emet aussi des
+//! « pings » de seize octets (`RTPS`, version, vendorId, `NDDSPING`), que
+//! tshark compte comme du RTPS : [`RtpsPacket::Ping`].
 //!
 //! Le magic et le pavage exact donnent une garde a cout constant puis une
 //! signature forte : la sonde est aveugle (sans port), ce que les ports
@@ -25,14 +28,14 @@ use std::convert::TryFrom;
 
 use crate::{
     checks::application::rtps::{
-        RTPS_FLAG_ENDIANNESS, RTPS_HEADER_LENGTH, RTPS_SUBMESSAGE_HEADER_LENGTH,
-        SUBMESSAGE_ACKNACK, SUBMESSAGE_DATA, SUBMESSAGE_DATA_FRAG, SUBMESSAGE_GAP,
-        SUBMESSAGE_HEARTBEAT, SUBMESSAGE_HEARTBEAT_FRAG, SUBMESSAGE_INFO_DST,
+        RTPS_FLAG_ENDIANNESS, RTPS_HEADER_LENGTH, RTPS_PING_LENGTH, RTPS_PING_TEXT,
+        RTPS_SUBMESSAGE_HEADER_LENGTH, SUBMESSAGE_ACKNACK, SUBMESSAGE_DATA, SUBMESSAGE_DATA_FRAG,
+        SUBMESSAGE_GAP, SUBMESSAGE_HEARTBEAT, SUBMESSAGE_HEARTBEAT_FRAG, SUBMESSAGE_INFO_DST,
         SUBMESSAGE_INFO_REPLY, SUBMESSAGE_INFO_REPLY_IP4, SUBMESSAGE_INFO_SRC, SUBMESSAGE_INFO_TS,
         SUBMESSAGE_NACK_FRAG, SUBMESSAGE_PAD, SUBMESSAGE_SEC_BODY, SUBMESSAGE_SEC_POSTFIX,
         SUBMESSAGE_SEC_PREFIX, SUBMESSAGE_SRTPS_POSTFIX, SUBMESSAGE_SRTPS_PREFIX, bitmap_length,
-        ensure_len, extract_version, read_sequence_number, read_u16, read_u32,
-        submessage_body_length, validate_body_length, validate_magic, validate_submessage_id,
+        ensure_len, extract_magic, extract_version, read_sequence_number, read_u16, read_u32,
+        submessage_body_length, validate_body_length, validate_submessage_id,
     },
     errors::application::rtps::RtpsParseError,
     parse::application::protocols::bounded_capacity,
@@ -54,6 +57,8 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct RtpsHeader {
+    /// `RTPS`, ou `RTPX` (variante de RTI Connext).
+    pub magic: [u8; 4],
     pub version_major: u8,
     pub version_minor: u8,
     /// Deux octets, `0x0101` pour RTI Connext, `0x0110` pour Cyclone DDS...
@@ -62,7 +67,8 @@ pub struct RtpsHeader {
 }
 
 /// Type d'un sous-message, d'apres son identifiant (§9.4.5.1.1 ; DDS
-/// Security 1.1 §7.3.6.2 pour les `Sec*` ; 0x80 a 0xff pour les vendeurs).
+/// Security 1.1 §7.3.6.2 pour les `Secure*` ; 0x80 a 0xff pour les
+/// vendeurs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum SubmessageKind {
@@ -115,6 +121,7 @@ impl SubmessageKind {
 
 /// Un `Time_t` (§9.3.2) : secondes et fraction de seconde en 2^-32 s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct RtpsTime {
     pub seconds: u32,
     pub fraction: u32,
@@ -224,19 +231,78 @@ pub struct RtpsSubmessage<'a> {
 /// Un message RTPS : l'en-tete et ses sous-messages, dans l'ordre du wire.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct RtpsPacket<'a> {
+pub struct RtpsMessage<'a> {
     pub header: RtpsHeader,
     pub submessages: Vec<RtpsSubmessage<'a>>,
+}
+
+/// « Ping » RTI Connext : seize octets, magic, version, vendorId et le
+/// texte `NDDSPING`, envoyes sur les ports de metatrafic pour sonder un
+/// participant. Hors specification, mais present sur tout reseau RTI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct RtpsPing {
+    pub magic: [u8; 4],
+    pub version_major: u8,
+    pub version_minor: u8,
+    pub vendor_id: u16,
+    /// `NDDSPING`.
+    pub text: [u8; 8],
+}
+
+/// Un datagramme RTPS : un message, ou un ping RTI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RtpsPacket<'a> {
+    Message(RtpsMessage<'a>),
+    Ping(RtpsPing),
+}
+
+impl<'a> RtpsPacket<'a> {
+    pub fn vendor_id(&self) -> u16 {
+        match self {
+            Self::Message(message) => message.header.vendor_id,
+            Self::Ping(ping) => ping.vendor_id,
+        }
+    }
+
+    /// `(major, minor)`.
+    pub fn version(&self) -> (u8, u8) {
+        match self {
+            Self::Message(message) => (message.header.version_major, message.header.version_minor),
+            Self::Ping(ping) => (ping.version_major, ping.version_minor),
+        }
+    }
+
+    /// Le message, `None` pour un ping.
+    pub fn message(&self) -> Option<&RtpsMessage<'a>> {
+        match self {
+            Self::Message(message) => Some(message),
+            Self::Ping(_) => None,
+        }
+    }
 }
 
 impl<'a> TryFrom<&'a [u8]> for RtpsPacket<'a> {
     type Error = RtpsParseError;
 
     fn try_from(payload: &'a [u8]) -> Result<Self, Self::Error> {
+        if payload.len() == RTPS_PING_LENGTH && payload[8..] == RTPS_PING_TEXT {
+            let magic = extract_magic(payload)?;
+            let (version_major, version_minor) = extract_version(payload[4], payload[5])?;
+            return Ok(RtpsPacket::Ping(RtpsPing {
+                magic,
+                version_major,
+                version_minor,
+                vendor_id: u16::from_be_bytes([payload[6], payload[7]]),
+                text: RTPS_PING_TEXT,
+            }));
+        }
         ensure_len(payload, RTPS_HEADER_LENGTH)?;
-        validate_magic(payload)?;
+        let magic = extract_magic(payload)?;
         let (version_major, version_minor) = extract_version(payload[4], payload[5])?;
         let header = RtpsHeader {
+            magic,
             version_major,
             version_minor,
             vendor_id: u16::from_be_bytes([payload[6], payload[7]]),
@@ -257,10 +323,10 @@ impl<'a> TryFrom<&'a [u8]> for RtpsPacket<'a> {
         if submessages.is_empty() {
             return Err(RtpsParseError::NoSubmessage);
         }
-        Ok(RtpsPacket {
+        Ok(RtpsPacket::Message(RtpsMessage {
             header,
             submessages,
-        })
+        }))
     }
 }
 
@@ -456,7 +522,7 @@ fn submessage_details(
             }
         }
         SUBMESSAGE_INFO_REPLY_IP4 => {
-            // unicastLocator (addresse 4, port 4), multicast optionnel.
+            // unicastLocator (adresse 4, port 4), multicast optionnel.
             needs(8)?;
             SubmessageDetails::Opaque
         }
@@ -499,21 +565,39 @@ mod tests {
         "1000000"
     );
 
+    /// Trame 1 de pcaps_exemple/protocols/rtps/rtps.pcap (nDPI, RTI Connext
+    /// en boucle locale 7410) : le ping RTI, seize octets.
+    const RTI_PING: &str = "52545053020101014e44445350494e47";
+
+    /// Trame 2 de pcaps_exemple/protocols/rtps/RTPS_Discovery.pcapng : magic
+    /// `RTPX`, INFO_TS puis DATA de 876 octets — seul l'en-tete est garde
+    /// ici, le DATA est reduit a son minimum (octets synthetiques).
+    const RTPX_HEADER: &str = "52545058020101010a4601a700008c3800000002";
+
+    fn message(hex: &str) -> (Vec<u8>, RtpsMessage<'static>) {
+        let bytes: &'static [u8] = Box::leak(hex::decode(hex).unwrap().into_boxed_slice());
+        match RtpsPacket::try_from(bytes).expect("message RTPS") {
+            RtpsPacket::Message(message) => (bytes.to_vec(), message),
+            other => panic!("ping inattendu : {other:?}"),
+        }
+    }
+
     #[test]
     fn test_decodes_opendds_data_to_the_end_of_the_message() {
-        let bytes = hex::decode(OPENDDS_FRAME_1).unwrap();
-        let packet = RtpsPacket::try_from(bytes.as_slice()).expect("trame OpenDDS");
-        assert_eq!(packet.header.version_major, 2);
-        assert_eq!(packet.header.version_minor, 1);
-        assert_eq!(packet.header.vendor_id, 0x0103);
+        let (bytes, message) = message(OPENDDS_FRAME_1);
+        assert_eq!(message.header.magic, *b"RTPS");
+        assert_eq!(message.header.version_major, 2);
+        assert_eq!(message.header.version_minor, 1);
+        assert_eq!(message.header.vendor_id, 0x0103);
         assert_eq!(
-            packet.header.guid_prefix,
+            message.header.guid_prefix,
             [0x01, 0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01]
         );
-        assert_eq!(packet.submessages.len(), 2);
-        let info_ts = &packet.submessages[0];
+        assert_eq!(message.submessages.len(), 2);
+        let info_ts = &message.submessages[0];
         assert_eq!(info_ts.kind, SubmessageKind::InfoTimestamp);
         assert!(info_ts.little_endian);
+        assert_eq!(info_ts.octets_to_next_header, 8);
         assert_eq!(
             info_ts.details,
             SubmessageDetails::InfoTimestamp {
@@ -523,11 +607,10 @@ mod tests {
                 })
             }
         );
-        let data = &packet.submessages[1];
+        let data = &message.submessages[1];
         assert_eq!(data.kind, SubmessageKind::Data);
         assert_eq!(data.flags, 0x0b);
         assert_eq!(data.octets_to_next_header, 0);
-        assert_eq!(info_ts.octets_to_next_header, 8);
         assert_eq!(data.body.len(), bytes.len() - 20 - 12 - 4);
         assert_eq!(
             data.details,
@@ -540,15 +623,13 @@ mod tests {
                 serialized_key: true,
             }
         );
-        assert!(bytes.as_ptr_range().contains(&data.body.as_ptr()));
     }
 
     #[test]
     fn test_decodes_cyclone_discovery_against_tshark() {
-        let bytes = hex::decode(CYCLONE_FRAME_9).unwrap();
-        let packet = RtpsPacket::try_from(bytes.as_slice()).expect("trame Cyclone");
-        assert_eq!(packet.header.vendor_id, 0x0110);
-        let kinds: Vec<SubmessageKind> = packet.submessages.iter().map(|s| s.kind).collect();
+        let (_, message) = message(CYCLONE_FRAME_9);
+        assert_eq!(message.header.vendor_id, 0x0110);
+        let kinds: Vec<SubmessageKind> = message.submessages.iter().map(|s| s.kind).collect();
         assert_eq!(
             kinds,
             [
@@ -558,10 +639,10 @@ mod tests {
                 SubmessageKind::Heartbeat,
             ]
         );
-        let lengths: Vec<usize> = packet.submessages.iter().map(|s| s.body.len()).collect();
+        let lengths: Vec<usize> = message.submessages.iter().map(|s| s.body.len()).collect();
         assert_eq!(lengths, [12, 8, 48, 28]);
         assert_eq!(
-            packet.submessages[0].details,
+            message.submessages[0].details,
             SubmessageDetails::InfoDestination {
                 guid_prefix: [
                     0x5a, 0xb8, 0x10, 0x01, 0x16, 0x36, 0xc7, 0xd5, 0x18, 0x95, 0xc5, 0x4e
@@ -569,7 +650,7 @@ mod tests {
             }
         );
         assert_eq!(
-            packet.submessages[2].details,
+            message.submessages[2].details,
             SubmessageDetails::Data {
                 reader_id: 0x0002_00c7,
                 writer_id: 0x0002_00c2,
@@ -580,7 +661,7 @@ mod tests {
             }
         );
         assert_eq!(
-            packet.submessages[3].details,
+            message.submessages[3].details,
             SubmessageDetails::Heartbeat {
                 reader_id: 0x0002_00c7,
                 writer_id: 0x0002_00c2,
@@ -593,11 +674,10 @@ mod tests {
 
     #[test]
     fn test_decodes_acknack_bitmaps() {
-        let bytes = hex::decode(CYCLONE_FRAME_8).unwrap();
-        let packet = RtpsPacket::try_from(bytes.as_slice()).expect("trame ACKNACK");
-        assert_eq!(packet.submessages.len(), 4);
+        let (_, message) = message(CYCLONE_FRAME_8);
+        assert_eq!(message.submessages.len(), 4);
         assert_eq!(
-            packet.submessages[1].details,
+            message.submessages[1].details,
             SubmessageDetails::AckNack {
                 reader_id: 0x0000_03c7,
                 writer_id: 0x0000_03c2,
@@ -608,7 +688,7 @@ mod tests {
             }
         );
         assert_eq!(
-            packet.submessages[3].details,
+            message.submessages[3].details,
             SubmessageDetails::AckNack {
                 reader_id: 0x0002_00c7,
                 writer_id: 0x0002_00c2,
@@ -618,7 +698,50 @@ mod tests {
                 final_flag: true,
             }
         );
-        assert_eq!(packet.submessages[3].body.len(), 28);
+        assert_eq!(message.submessages[3].body.len(), 28);
+    }
+
+    #[test]
+    fn test_decodes_the_rti_ping_and_the_rtpx_magic() {
+        let bytes = hex::decode(RTI_PING).unwrap();
+        let packet = RtpsPacket::try_from(bytes.as_slice()).expect("ping RTI");
+        assert_eq!(
+            packet,
+            RtpsPacket::Ping(RtpsPing {
+                magic: *b"RTPS",
+                version_major: 2,
+                version_minor: 1,
+                vendor_id: 0x0101,
+                text: *b"NDDSPING",
+            })
+        );
+        assert_eq!(packet.vendor_id(), 0x0101);
+        assert_eq!(packet.version(), (2, 1));
+        assert!(packet.message().is_none());
+        // Seize octets sans le texte : un en-tete tronque, pas un ping.
+        let mut other = bytes.clone();
+        other[8] = b'X';
+        assert_eq!(
+            RtpsPacket::try_from(other.as_slice()),
+            Err(RtpsParseError::Truncated {
+                expected: 20,
+                actual: 16
+            })
+        );
+
+        // RTPX : l'en-tete reel de la trame 2 de RTPS_Discovery.pcapng puis
+        // un DATA minimal de 20 octets (synthetique).
+        let mut rtpx = hex::decode(RTPX_HEADER).unwrap();
+        rtpx.extend_from_slice(&[0x15, 0x01, 0x14, 0x00]);
+        rtpx.extend_from_slice(&[0; 20]);
+        let RtpsPacket::Message(message) = RtpsPacket::try_from(rtpx.as_slice()).expect("RTPX")
+        else {
+            panic!("message attendu");
+        };
+        assert_eq!(message.header.magic, *b"RTPX");
+        assert_eq!(message.header.vendor_id, 0x0101);
+        assert_eq!(message.submessages.len(), 1);
+        assert_eq!(message.submessages[0].kind, SubmessageKind::Data);
     }
 
     #[test]
@@ -706,8 +829,12 @@ mod tests {
         bytes.extend_from_slice(&[0x09, 0x02, 0x00, 0x00]);
         bytes.extend_from_slice(&[0x01, 0x01, 0x00, 0x00]);
         bytes.extend_from_slice(&[0x80, 0x00, 0x00, 0x03, 0xaa, 0xbb, 0xcc]);
-        let packet = RtpsPacket::try_from(bytes.as_slice()).expect("synthetique");
-        let kinds: Vec<SubmessageKind> = packet.submessages.iter().map(|s| s.kind).collect();
+        let RtpsPacket::Message(message) =
+            RtpsPacket::try_from(bytes.as_slice()).expect("synthetique")
+        else {
+            panic!("message attendu");
+        };
+        let kinds: Vec<SubmessageKind> = message.submessages.iter().map(|s| s.kind).collect();
         assert_eq!(
             kinds,
             [
@@ -717,11 +844,11 @@ mod tests {
             ]
         );
         assert_eq!(
-            packet.submessages[0].details,
+            message.submessages[0].details,
             SubmessageDetails::InfoTimestamp { timestamp: None }
         );
-        assert!(packet.submessages[1].body.is_empty());
-        let vendor = &packet.submessages[2];
+        assert!(message.submessages[1].body.is_empty());
+        let vendor = &message.submessages[2];
         assert!(!vendor.little_endian);
         assert_eq!(vendor.body, &[0xaa, 0xbb, 0xcc]);
         assert_eq!(vendor.details, SubmessageDetails::Opaque);

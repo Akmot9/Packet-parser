@@ -1,8 +1,8 @@
-// Fuzz du decodeur RTPS : en-tete, sous-messages de tous types (dont les
-// bitmaps d'ACKNACK, GAP et NACK_FRAG), octetsToNextHeader nul, flags
-// d'ordre d'octets. Ni panic ni boucle infinie ; quand le decodage reussit,
-// les sous-messages pavent exactement le message, chaque corps emprunte a
-// l'entree, et le type suit l'identifiant.
+// Fuzz du decodeur RTPS : en-tete, ping RTI, sous-messages de tous types
+// (dont les bitmaps d'ACKNACK, GAP et NACK_FRAG), octetsToNextHeader nul,
+// flags d'ordre d'octets. Ni panic ni boucle infinie ; quand le decodage
+// reussit, les sous-messages pavent exactement le message, chaque corps
+// emprunte a l'entree, et le type suit l'identifiant.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
@@ -35,21 +35,35 @@ const CYCLONE_FRAME_8: &[u8] = &[
 ];
 
 fn exercise(data: &[u8]) {
-    let Ok(packet) = RtpsPacket::try_from(data) else {
-        return;
+    let message = match RtpsPacket::try_from(data) {
+        Ok(RtpsPacket::Message(message)) => message,
+        Ok(RtpsPacket::Ping(ping)) => {
+            assert_eq!(data.len(), 16);
+            assert_eq!(&ping.text, b"NDDSPING");
+            assert_eq!(ping.version_major, 2);
+            return;
+        }
+        Ok(_) => unreachable!("message ou ping"),
+        Err(_) => return,
     };
-    assert_eq!(packet.header.version_major, 2);
-    assert!(!packet.submessages.is_empty());
+    assert_eq!(message.header.version_major, 2);
+    assert!(message.header.magic == *b"RTPS" || message.header.magic == *b"RTPX");
+    assert!(!message.submessages.is_empty());
     let mut covered = 20;
-    for submessage in &packet.submessages {
-        assert!(data.as_ptr_range().contains(&submessage.body.as_ptr()) || submessage.body.is_empty());
+    for submessage in &message.submessages {
+        assert!(
+            data.as_ptr_range().contains(&submessage.body.as_ptr()) || submessage.body.is_empty()
+        );
         assert_eq!(submessage.little_endian, submessage.flags & 0x01 != 0);
         match submessage.kind {
             SubmessageKind::VendorSpecific(id) => assert!(id >= 0x80 && id == submessage.id),
             _ => assert!(submessage.id < 0x80),
         }
         if submessage.octets_to_next_header != 0 {
-            assert_eq!(usize::from(submessage.octets_to_next_header), submessage.body.len());
+            assert_eq!(
+                usize::from(submessage.octets_to_next_header),
+                submessage.body.len()
+            );
         }
         covered += 4 + submessage.body.len();
     }
