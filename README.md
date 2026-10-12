@@ -243,6 +243,13 @@ serialized):
   validated; DCP messages are decoded by `ProfinetPacket`, block by block
 - PTP (IEEE 1588) directly over Ethernet, EtherType `0x88F7`, decoded into
   `InternetDetails::Ptp`
+- GOOSE (IEC 61850-8-1) directly over Ethernet, EtherType `0x88B8`, with or
+  without a VLAN tag, decoded into `InternetDetails::Goose`: APPID, length,
+  reserved words (simulation bit), then the goosePdu (control block
+  reference, time allowed to live, data set, goID, UtcTime timestamp, state
+  and sequence numbers, simulation, configuration revision, needs
+  commissioning, number of entries, every `allData` value with its BER tag
+  and bytes); also recognised blindly when the EtherType is unknown
 
 For fragmented IPv4 packets, the crate does not perform IP reassembly. In that
 case `payload_protocol` is set to `None` so the transport layer is not parsed
