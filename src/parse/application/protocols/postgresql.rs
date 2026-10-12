@@ -88,6 +88,14 @@ pub enum PostgreSqlMessageType {
     SslRequest,
     StartupMessage,
     Terminate,
+    // En fin d'enum (#98) : les discriminants des variantes existantes ne
+    // bougent pas.
+    /// Octet 'p' : PasswordMessage, SASLInitialResponse, SASLResponse ou
+    /// GSSResponse, que seul l'etat de l'authentification distingue.
+    PasswordOrSaslResponse,
+    /// Reponse d'un octet a SSLRequest : `S` (TLS accepte) ou `N`. Sans
+    /// en-tete ni longueur, elle n'est decodee que seule dans son segment.
+    SslResponse,
 }
 
 impl PostgreSqlMessageType {
@@ -119,11 +127,13 @@ impl PostgreSqlMessageType {
             PostgreSqlMessageType::ParameterStatusOrSync => "ParameterStatusOrSync",
             PostgreSqlMessageType::Parse => "Parse",
             PostgreSqlMessageType::ParseComplete => "ParseComplete",
+            PostgreSqlMessageType::PasswordOrSaslResponse => "PasswordOrSaslResponse",
             PostgreSqlMessageType::PortalSuspended => "PortalSuspended",
             PostgreSqlMessageType::Query => "Query",
             PostgreSqlMessageType::ReadyForQuery => "ReadyForQuery",
             PostgreSqlMessageType::RowDescription => "RowDescription",
             PostgreSqlMessageType::SslRequest => "SslRequest",
+            PostgreSqlMessageType::SslResponse => "SslResponse",
             PostgreSqlMessageType::StartupMessage => "StartupMessage",
             PostgreSqlMessageType::Terminate => "Terminate",
         }
@@ -152,6 +162,10 @@ pub enum PostgreSqlMessageBody<'a> {
     CancelRequest {
         process_id: u32,
         secret_key: &'a [u8],
+    },
+    /// `S` accepte TLS, `N` le refuse.
+    SslResponse {
+        accepted: bool,
     },
     Empty,
     Raw(&'a [u8]),
@@ -194,6 +208,22 @@ impl<'a> TryFrom<&'a [u8]> for PostgreSqlPacket<'a> {
 
     fn try_from(value: &'a [u8]) -> Result<Self, Self::Error> {
         validate_packet_not_empty(value)?;
+
+        // Reponse d'un octet a SSLRequest (S accepte, N refuse) : sans
+        // en-tete, elle n'est reconnaissable que par le port — la sonde
+        // aveugle ne l'accepte pas, la regle du port 5432 oui (#98).
+        if let [answer @ (b'S' | b'N')] = value {
+            return Ok(PostgreSqlPacket {
+                messages: vec![PostgreSqlMessage {
+                    message_type: PostgreSqlMessageType::SslResponse,
+                    length: 1,
+                    payload: value,
+                    body: PostgreSqlMessageBody::SslResponse {
+                        accepted: *answer == b'S',
+                    },
+                }],
+            });
+        }
 
         // Écart assumé au modèle linéaire : le protocole impose deux formats
         // de trame (messages typés vs startup sans octet de type). On tente
@@ -249,6 +279,22 @@ pub(crate) fn is_likely_postgresql_payload(payload: &[u8]) -> bool {
             .any(message_has_strong_detection_evidence)
 }
 
+/// Sur le port 5432 ou un port declare (#98) : un payload qui se decode et
+/// dont chaque message a une forme compatible suffit — un `Terminate`, un
+/// `ReadyForQuery` ou un mot de passe seuls dans leur segment, ou la reponse
+/// d'un octet a SSLRequest, que la sonde aveugle ne peut pas retenir. Mesure
+/// sur le corpus Zeek : aucun faux positif sur HTTP et MySQL rejoues sur 5432.
+pub(crate) fn is_plausible_postgresql_payload(payload: &[u8]) -> bool {
+    let Ok(packet) = PostgreSqlPacket::try_from(payload) else {
+        return false;
+    };
+    !packet.messages.is_empty()
+        && packet
+            .messages
+            .iter()
+            .all(message_has_detection_compatible_shape)
+}
+
 fn message_has_strong_detection_evidence(message: &PostgreSqlMessage<'_>) -> bool {
     match (&message.message_type, &message.body) {
         (PostgreSqlMessageType::StartupMessage, PostgreSqlMessageBody::Startup(startup)) => {
@@ -286,6 +332,9 @@ fn message_has_strong_detection_evidence(message: &PostgreSqlMessage<'_>) -> boo
         (PostgreSqlMessageType::ParameterStatusOrSync, PostgreSqlMessageBody::Raw(body)) => {
             parameter_status_body_is_likely(body)
         }
+        (PostgreSqlMessageType::PasswordOrSaslResponse, PostgreSqlMessageBody::Raw(body)) => {
+            password_body_has_strong_evidence(body)
+        }
         _ => false,
     }
 }
@@ -320,8 +369,11 @@ fn message_has_detection_compatible_shape(message: &PostgreSqlMessage<'_>) -> bo
         (PostgreSqlMessageType::NoticeResponse, PostgreSqlMessageBody::Raw(body)) => {
             error_or_notice_body_is_likely(body)
         }
+        // Forme compatible : deux C-strings, quel que soit le nom — les
+        // serveurs recents en ajoutent (scram_iterations, search_path) ; la
+        // preuve forte, elle, exige un nom connu.
         (PostgreSqlMessageType::ParameterStatusOrSync, PostgreSqlMessageBody::Raw(body)) => {
-            body.is_empty() || parameter_status_body_is_likely(body)
+            body.is_empty() || parse_two_cstrings_allow_empty_value(body).is_some()
         }
         (PostgreSqlMessageType::Authentication, PostgreSqlMessageBody::Raw(body)) => {
             authentication_body_is_compatible(body)
@@ -335,6 +387,12 @@ fn message_has_detection_compatible_shape(message: &PostgreSqlMessage<'_>) -> bo
         (PostgreSqlMessageType::ReadyForQuery, PostgreSqlMessageBody::Raw(body)) => {
             matches!(body, [b'I' | b'T' | b'E'])
         }
+        (PostgreSqlMessageType::PasswordOrSaslResponse, PostgreSqlMessageBody::Raw(body)) => {
+            password_body_is_compatible(body)
+        }
+        // La reponse d'un octet a SSLRequest : forme compatible sur le port,
+        // jamais une preuve a l'aveugle.
+        (PostgreSqlMessageType::SslResponse, PostgreSqlMessageBody::SslResponse { .. }) => true,
         (_, PostgreSqlMessageBody::Raw(_)) => true,
         _ => false,
     }
@@ -456,13 +514,108 @@ fn first_ascii_token(query: &str) -> Option<&str> {
     Some(token)
 }
 
+/// Preuve forte d'une AuthenticationRequest (#98, corpus Zeek) : les formes
+/// a longueur fixe (Ok, cleartext, Kerberos, SCM, GSS, SSPI : neuf octets
+/// imposes ; MD5 : neuf octets et un sel), la liste de mecanismes SASL, et
+/// les messages SCRAM du serveur (`r=…,s=…,i=…` puis `v=…`).
 fn authentication_body_has_strong_evidence(body: &[u8]) -> bool {
     if body.len() < 4 {
         return false;
     }
 
     let auth_code = u32::from_be_bytes([body[0], body[1], body[2], body[3]]);
-    auth_code == 10 && has_cstring_list(&body[4..])
+    let rest = &body[4..];
+    match auth_code {
+        0 | 2 | 3 | 6 | 7 | 8 => rest.is_empty(),
+        5 => rest.len() == 4,
+        10 => has_cstring_list(rest),
+        11 => scram_server_first_message(rest),
+        12 => scram_server_final_message(rest),
+        _ => false,
+    }
+}
+
+/// SCRAM server-first-message (RFC 5802 §7) : `r=<nonce>,s=<sel>,i=<iterations>`.
+fn scram_server_first_message(body: &[u8]) -> bool {
+    let Ok(text) = str::from_utf8(body) else {
+        return false;
+    };
+    text.starts_with("r=")
+        && text.contains(",s=")
+        && text.rsplit(",i=").next().is_some_and(|iterations| {
+            !iterations.is_empty() && iterations.bytes().all(|b| b.is_ascii_digit())
+        })
+        && is_plain_text(text)
+}
+
+/// SCRAM server-final-message : `v=<signature en base64>`.
+fn scram_server_final_message(body: &[u8]) -> bool {
+    let Ok(text) = str::from_utf8(body) else {
+        return false;
+    };
+    text.strip_prefix("v=")
+        .is_some_and(|signature| !signature.is_empty() && is_base64_text(signature))
+}
+
+fn is_base64_text(value: &str) -> bool {
+    value
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='))
+}
+
+/// Preuve forte d'un message `p` : le hache MD5 de `PasswordMessage`
+/// (`md5` et trente-deux chiffres hexadecimaux), le SASLInitialResponse
+/// SCRAM (nom du mecanisme, longueur, `n,,n=…,r=…`) ou le SASLResponse
+/// SCRAM (`c=…,r=…,p=…`). Un mot de passe en clair n'a pas de forme.
+fn password_body_has_strong_evidence(body: &[u8]) -> bool {
+    md5_password(body) || scram_client_first_message(body) || scram_client_final_message(body)
+}
+
+/// Un mot de passe en clair (texte termine par NUL) ou une forme SASL.
+fn password_body_is_compatible(body: &[u8]) -> bool {
+    parse_single_cstring(body).is_some() || password_body_has_strong_evidence(body)
+}
+
+fn md5_password(body: &[u8]) -> bool {
+    body.len() == 36
+        && body.starts_with(b"md5")
+        && body[3..35].iter().all(u8::is_ascii_hexdigit)
+        && body[35] == 0
+}
+
+/// SASLInitialResponse : mecanisme en C-string, longueur i32 de la reponse
+/// initiale, puis le client-first-message SCRAM (`n,,n=…,r=…`).
+fn scram_client_first_message(body: &[u8]) -> bool {
+    let Some(end) = body.iter().position(|byte| *byte == 0) else {
+        return false;
+    };
+    if !matches!(&body[..end], b"SCRAM-SHA-256" | b"SCRAM-SHA-256-PLUS") {
+        return false;
+    }
+    let rest = &body[end + 1..];
+    if rest.len() < 4 {
+        return false;
+    }
+    let declared = i32::from_be_bytes([rest[0], rest[1], rest[2], rest[3]]);
+    let initial = &rest[4..];
+    if declared < 0 || declared as usize != initial.len() {
+        return false;
+    }
+    let Ok(text) = str::from_utf8(initial) else {
+        return false;
+    };
+    (text.starts_with("n,") || text.starts_with("y,") || text.starts_with("p="))
+        && text.contains("n=")
+        && text.contains(",r=")
+        && is_plain_text(text)
+}
+
+/// SASLResponse : client-final-message SCRAM, `c=<binding>,r=<nonce>,p=<preuve>`.
+fn scram_client_final_message(body: &[u8]) -> bool {
+    let Ok(text) = str::from_utf8(body) else {
+        return false;
+    };
+    text.starts_with("c=") && text.contains(",r=") && text.contains(",p=") && is_plain_text(text)
 }
 
 fn authentication_body_is_compatible(body: &[u8]) -> bool {
@@ -485,12 +638,14 @@ fn backend_key_data_body_is_compatible(body: &[u8]) -> bool {
         && body.len() <= 4 + POSTGRESQL_SECRET_KEY_MAX_LEN
 }
 
+/// Un nom de parametre que tout serveur envoie ; la valeur peut etre vide
+/// (`application_name` d'un client qui ne s'est pas nomme, corpus Zeek).
 fn parameter_status_body_is_likely(body: &[u8]) -> bool {
-    let Some((key, value)) = parse_two_cstrings(body) else {
+    let Some((key, value)) = parse_two_cstrings_allow_empty_value(body) else {
         return false;
     };
 
-    !value.is_empty()
+    (value.is_empty() || is_plain_text(value))
         && matches!(
             key,
             "application_name"
@@ -501,6 +656,8 @@ fn parameter_status_body_is_likely(body: &[u8]) -> bool {
                 | "integer_datetimes"
                 | "IntervalStyle"
                 | "is_superuser"
+                | "scram_iterations"
+                | "search_path"
                 | "server_encoding"
                 | "server_version"
                 | "session_authorization"
@@ -611,13 +768,19 @@ fn parse_single_cstring(body: &[u8]) -> Option<&str> {
     is_plain_text(value).then_some(value)
 }
 
-fn parse_two_cstrings(body: &[u8]) -> Option<(&str, &str)> {
+/// Deux C-strings qui epuisent le corps, la seconde eventuellement vide.
+fn parse_two_cstrings_allow_empty_value(body: &[u8]) -> Option<(&str, &str)> {
     let first_end = body.iter().position(|byte| *byte == 0)?;
     let first = str::from_utf8(&body[..first_end]).ok()?;
     let rest = &body[first_end + 1..];
-    let second = parse_single_cstring(rest)?;
-
-    (is_plain_text(first) && is_plain_text(second)).then_some((first, second))
+    let (&0, value) = rest.split_last()? else {
+        return None;
+    };
+    if value.contains(&0) {
+        return None;
+    }
+    let value = str::from_utf8(value).ok()?;
+    is_plain_text(first).then_some((first, value))
 }
 
 fn str_from_cstring(body: &[u8]) -> Option<&str> {
@@ -1550,8 +1713,15 @@ mod detection_tests {
         assert_eq!(parse_single_cstring(b""), None);
         assert_eq!(parse_single_cstring(b"a\0b\0"), None); // NUL au milieu
 
-        assert_eq!(parse_two_cstrings(b"k\0v\0"), Some(("k", "v")));
-        assert_eq!(parse_two_cstrings(b"k\0"), None);
+        assert_eq!(
+            parse_two_cstrings_allow_empty_value(b"k\0v\0"),
+            Some(("k", "v"))
+        );
+        assert_eq!(
+            parse_two_cstrings_allow_empty_value(b"k\0\0"),
+            Some(("k", ""))
+        );
+        assert_eq!(parse_two_cstrings_allow_empty_value(b"k\0"), None);
 
         assert!(close_body_is_likely(b"Sstmt\0"));
         assert!(close_body_is_likely(b"Pportal\0"));
@@ -1568,5 +1738,106 @@ mod detection_tests {
         assert!(postgresql_secret_key_len_is_valid(4));
         assert!(postgresql_secret_key_len_is_valid(256));
         assert!(!postgresql_secret_key_len_is_valid(257));
+    }
+}
+
+#[cfg(test)]
+mod detection_evidence_tests {
+    use super::*;
+
+    fn typed(kind: u8, body: &[u8]) -> Vec<u8> {
+        let mut message = vec![kind];
+        message.extend_from_slice(&((body.len() + 4) as u32).to_be_bytes());
+        message.extend_from_slice(body);
+        message
+    }
+
+    /// Corpus Zeek (#98) : mot de passe MD5 de greenhouse-app.pcap, SCRAM
+    /// de psql-login.pcap — des segments d'un seul message `p`.
+    #[test]
+    fn password_and_sasl_messages_are_strong_evidence() {
+        let md5 = typed(b'p', b"md5d57e45bd227c38f260f0d7b3b8f0e7c2\0");
+        assert!(is_likely_postgresql_payload(&md5));
+
+        let mut initial = b"SCRAM-SHA-256\0".to_vec();
+        let client_first = b"n,,n=,r=abcdefghijklmnopqrstuv";
+        initial.extend_from_slice(&(client_first.len() as u32).to_be_bytes());
+        initial.extend_from_slice(client_first);
+        assert!(is_likely_postgresql_payload(&typed(b'p', &initial)));
+
+        let client_final = typed(b'p', b"c=biws,r=abcdefghijklmnopqrstuvwxyz0123,p=AbCd+/=");
+        assert!(is_likely_postgresql_payload(&client_final));
+
+        // Un mot de passe en clair : forme compatible, pas une preuve.
+        let clear = typed(b'p', b"hunter2\0");
+        assert!(!is_likely_postgresql_payload(&clear));
+        assert!(is_plausible_postgresql_payload(&clear));
+        // Sans NUL final ni forme SASL, pas meme compatible.
+        assert!(!is_plausible_postgresql_payload(&typed(b'p', b"\x01\x02")));
+    }
+
+    /// AuthenticationOk, cleartext, MD5 et les deux messages SCRAM du
+    /// serveur sont des preuves ; un code inconnu ou un MD5 sans sel, non.
+    #[test]
+    fn authentication_requests_are_strong_evidence() {
+        for code in [0u32, 3] {
+            assert!(is_likely_postgresql_payload(&typed(
+                b'R',
+                &code.to_be_bytes()
+            )));
+        }
+        let mut md5 = 5u32.to_be_bytes().to_vec();
+        md5.extend_from_slice(&[0x9e, 0x66, 0xd5, 0x9b]);
+        assert!(is_likely_postgresql_payload(&typed(b'R', &md5)));
+
+        let mut server_first = 11u32.to_be_bytes().to_vec();
+        server_first.extend_from_slice(b"r=abcdef,s=c2FsdA==,i=4096");
+        assert!(is_likely_postgresql_payload(&typed(b'R', &server_first)));
+
+        let mut server_final = 12u32.to_be_bytes().to_vec();
+        server_final.extend_from_slice(b"v=pzzXReTHa3050ZCHt78DJYzkHYJqOo+JkmYn5gZBPWM=");
+        assert!(is_likely_postgresql_payload(&typed(b'R', &server_final)));
+
+        assert!(!is_likely_postgresql_payload(&typed(
+            b'R',
+            &99u32.to_be_bytes()
+        )));
+        assert!(!is_likely_postgresql_payload(&typed(
+            b'R',
+            &5u32.to_be_bytes()
+        )));
+    }
+
+    /// greenhouse-app.pcap : `application_name` vide ; PostgreSQL 16 :
+    /// `scram_iterations`. Un nom inconnu reste compatible, sans etre une
+    /// preuve.
+    #[test]
+    fn parameter_status_with_empty_value_or_new_name_is_accepted() {
+        assert!(is_likely_postgresql_payload(&typed(
+            b'S',
+            b"application_name\0\0"
+        )));
+        assert!(is_likely_postgresql_payload(&typed(
+            b'S',
+            b"scram_iterations\x004096\0"
+        )));
+        let unknown = typed(b'S', b"whatever\0x\0");
+        assert!(!is_likely_postgresql_payload(&unknown));
+        assert!(is_plausible_postgresql_payload(&unknown));
+    }
+
+    /// La reponse d'un octet a SSLRequest : plausible sur le port, jamais a
+    /// l'aveugle ; `G` (GSSENC) n'est pas reconnu.
+    #[test]
+    fn ssl_response_is_plausible_on_a_port_never_blind() {
+        assert!(is_plausible_postgresql_payload(b"S"));
+        assert!(is_plausible_postgresql_payload(b"N"));
+        assert!(!is_likely_postgresql_payload(b"S"));
+        assert!(!is_plausible_postgresql_payload(b"G"));
+        // Terminate et ReadyForQuery seuls : plausibles, pas des preuves.
+        assert!(is_plausible_postgresql_payload(&typed(b'X', b"")));
+        assert!(!is_likely_postgresql_payload(&typed(b'X', b"")));
+        assert!(is_plausible_postgresql_payload(&typed(b'Z', b"I")));
+        assert!(!is_likely_postgresql_payload(&typed(b'Z', b"I")));
     }
 }

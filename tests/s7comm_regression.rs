@@ -684,14 +684,20 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // 120 -> 119 captures, 119 -> 118 fichiers lus, 64 934 -> 64 933 trames,
     // 64 892 -> 64 891 flux. capwap-multi-wtp.pcap, fabrique lui aussi et
     // retire le meme jour, etait a la racine : ce collecteur ne le voyait pas.
-    assert_eq!(captures.len(), 119);
-    assert_eq!(opened_files, 118);
-    assert_eq!(frame_count, 64_933);
+    // 2026-10-12 (#98) : +14 captures PostgreSQL du corpus Zeek dans
+    // protocols/postgresql/ (voir SOURCE.md), 531 trames Ethernet/IPv4/TCP
+    // decodees sans erreur L2, dont les deux negatifs HTTP et MySQL sur le
+    // port 5432 : 119 -> 133 captures, 118 -> 132 fichiers lus,
+    // 64 933 -> 65 464 trames, 64 891 -> 65 422 flux. Aucune n'est etiquetee
+    // S7Comm ni COTP.
+    assert_eq!(captures.len(), 133);
+    assert_eq!(opened_files, 132);
+    assert_eq!(frame_count, 65_464);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 64_891);
+    assert_eq!(parsed_flows, 65_422);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

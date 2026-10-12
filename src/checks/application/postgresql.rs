@@ -170,6 +170,9 @@ pub fn extract_message_type(value: u8) -> Result<PostgreSqlMessageType, PostgreS
         b'Z' => PostgreSqlMessageType::ReadyForQuery,
         b'T' => PostgreSqlMessageType::RowDescription,
         b'X' => PostgreSqlMessageType::Terminate,
+        // PasswordMessage, SASLInitialResponse, SASLResponse et GSSResponse
+        // partagent l'octet 'p' (#98).
+        b'p' => PostgreSqlMessageType::PasswordOrSaslResponse,
         _ => return Err(PostgreSqlError::InvalidMessageType(value)),
     })
 }

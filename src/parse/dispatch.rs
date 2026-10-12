@@ -43,7 +43,9 @@ use super::application::protocols::nntp::NntpMessage;
 use super::application::protocols::ntp::NtpPacket;
 use super::application::protocols::opcua::OpcuaPacket;
 use super::application::protocols::openvpn::OpenVpnPacket;
-use super::application::protocols::postgresql::is_likely_postgresql_payload;
+use super::application::protocols::postgresql::{
+    is_likely_postgresql_payload, is_plausible_postgresql_payload,
+};
 use super::application::protocols::ptp::PtpPacket;
 use super::application::protocols::quic::QuicPacket;
 use super::application::protocols::rtps::RtpsPacket;
@@ -121,6 +123,9 @@ enum ProbeId {
     Opcua,
     EthernetIp,
     Postgresql,
+    /// Port 5432 ou port declare : decodage et forme compatible suffisent,
+    /// sans la preuve forte qu'exige la sonde aveugle (#98).
+    PostgresqlPort,
     Dns,
     DnsTcp,
     Tls,
@@ -174,6 +179,7 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         ProbeId::Opcua => OpcuaPacket::try_from(payload).is_ok(),
         ProbeId::EthernetIp => EtherNetIpPacket::try_from(payload).is_ok(),
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
+        ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),
         ProbeId::Dns => DnsPacket::try_from(payload).is_ok(),
         ProbeId::DnsTcp => DnsPacket::try_from_tcp(payload).is_ok(),
         ProbeId::Tls => TlsPacket::try_from(payload).is_ok(),
@@ -370,6 +376,17 @@ static RULES: &[Rule] = &[
     // (trois PDU reels du corpus) ; ailleurs, la sonde aveugle ci-dessous
     // exige que les PDU pavent exactement le datagramme (#123).
     port_rule("DIS", Guard::Udp, is_dis_udp_port, ProbeId::DisLenient),
+    // PostgreSQL sur son port : decodage et forme compatible suffisent — un
+    // Terminate, un ReadyForQuery ou un mot de passe seuls dans leur
+    // segment, la reponse d'un octet a SSLRequest (S ou N) — la ou la sonde
+    // aveugle ci-dessous exige une preuve forte. Mesure sur le corpus Zeek :
+    // aucun faux positif sur HTTP et MySQL rejoues sur 5432 (#98).
+    port_rule(
+        "PostgreSQL",
+        Guard::Tcp,
+        is_postgresql_tcp_port,
+        ProbeId::PostgresqlPort,
+    ),
     // IKE (RFC 7296, RFC 2408) : UDP 500, et UDP 4500 derriere le marqueur
     // non-ESP de la RFC 3948. Garde par port : un en-tete de vingt-huit
     // octets a version et longueur plausibles n'est pas une signature
@@ -506,7 +523,7 @@ impl DecodeAsProtocol {
             Self::Snmp => ("SNMP", Guard::Any, ProbeId::Snmp),
             Self::Dhcpv6 => ("DHCPv6", Guard::Udp, ProbeId::Dhcpv6),
             Self::OpcUa => ("OPC UA", Guard::Tcp, ProbeId::Opcua),
-            Self::PostgreSql => ("PostgreSQL", Guard::Tcp, ProbeId::Postgresql),
+            Self::PostgreSql => ("PostgreSQL", Guard::Tcp, ProbeId::PostgresqlPort),
             Self::ModbusTcp => ("ModbusTCP", Guard::Tcp, ProbeId::ModbusTcp),
             Self::EthernetIp => ("EtherNet/IP", Guard::Any, ProbeId::EthernetIp),
             Self::Ams => ("AMS", Guard::Any, ProbeId::Ams),
@@ -707,6 +724,11 @@ fn is_quic_udp_port(port: Option<u16>) -> bool {
 /// DIS : UDP 3000, le port d'usage que Wireshark enregistre par defaut.
 fn is_dis_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(3000))
+}
+
+/// PostgreSQL : TCP 5432 (IANA `postgresql`).
+fn is_postgresql_tcp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(5432))
 }
 
 /// IKE : UDP 500 (IANA `isakmp`) et 4500 (IANA `ipsec-nat-t`).

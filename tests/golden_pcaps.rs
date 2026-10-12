@@ -271,9 +271,18 @@ fn application_classification_histogram_is_frozen() {
     // (protocole IP 50) restent sans application, comme ICMP : leur SPI est
     // dans `TransportDetails::Esp` (tests/ipsec_golden.rs, parite tshark sur
     // les 858).
+    //
+    // 2026-10-12 (#98, corpus PostgreSQL de Zeek, 14 captures, 331 segments a
+    // payload) : "PostgreSQL" 0 -> 278 (276 segments en parite tshark + les
+    // 2 retransmissions de psql-login-no-role.pcap, que tshark ne dissèque
+    // pas), "TLS" 587 -> 613 (+26 : la session TLS apres le `S` de
+    // psql-aws-ssl-preferred/require), "HTTP" 71 -> 72 (+1 : la requete de
+    // http-on-port-5432.pcap, negatif), "Unknown" 7 904 -> 7 930 (+26 : les
+    // 18 segments MySQL et 4 HTTP des negatifs, 4 segments TLS retransmis ou
+    // coupes), "(sans application)" 4 192 -> 4 392 (+200 : les ACK).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 4192),
+        (NO_APPLICATION, 4392),
         ("ASTERIX", 44_507),
         ("DHCP", 71),
         ("DIS", 390),
@@ -283,7 +292,7 @@ fn application_classification_histogram_is_frozen() {
         ("EtherNet/IP", 4),
         ("FTP", 5),
         ("GIOP", 123),
-        ("HTTP", 71),
+        ("HTTP", 72),
         ("IKE", 535),
         ("IP-in-IP", 5),
         ("LLMNR", 136),
@@ -295,14 +304,15 @@ fn application_classification_histogram_is_frozen() {
         ("OPC UA", 187),
         ("OpenVPN", 766),
         ("PTP", 3221),
+        ("PostgreSQL", 278),
         ("SMTP", 6),
         ("SRVLOC", 1),
         ("SSDP", 24),
         ("STP", 95),
-        ("TLS", 587),
+        ("TLS", 613),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 7_904),
+        ("Unknown", 7_930),
         ("mDNS", 12),
     ]
     .into_iter()

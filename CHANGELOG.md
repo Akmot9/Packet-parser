@@ -8,6 +8,16 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Corrige
 
+- **PostgreSQL** (#98) : le decodeur rejetait l'octet de type `p`
+  (PasswordMessage, SASLInitialResponse, SASLResponse) — toute
+  authentification par mot de passe ou SCRAM sortait `InvalidMessageType` ;
+  la detection aveugle refusait les reponses du serveur dont un
+  `ParameterStatus` a une valeur vide (`application_name` d'un client sans
+  nom) ou un nom recent (`scram_iterations`, `search_path`), et ne tenait
+  pour preuve qu'une AuthenticationSASL : AuthenticationOk, cleartext, MD5
+  et les messages SCRAM du serveur (`r=…,s=…,i=…`, `v=…`) comme du client
+  (`SCRAM-SHA-256` + `n,,n=…,r=…`, `c=…,r=…,p=…`, hache `md5…`) le sont
+  desormais. Sur le corpus Zeek, ces segments reels sortaient `Unknown`.
 - **PROFINET** (#133) : le validateur de la couche internet appliquait le
   decodeur DCP a toute trame EtherType `0x8892`, et ne connaissait que cinq
   Frame ID. Toute trame cyclique (RT_CLASS_1, RT_CLASS_3), alarme, PTCP ou
@@ -69,6 +79,28 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **PostgreSQL : corpus reel et golden** (#98) : quatorze captures du corpus
+  de tests de Zeek (BSD 3-clause, texte dans
+  `pcaps_exemple/LICENSES/BSD-3-Clause-Zeek.txt`) dans
+  `pcaps_exemple/protocols/postgresql/` — douze sessions psql reelles
+  (loopback, VM vers AWS RDS, application en conteneurs, poste Windows) et
+  deux negatifs, HTTP et MySQL rejoues sur 5432. `tests/postgresql_golden.rs`
+  + oracle `tools/postgresql_oracle.sh` (tshark 4.6.6 sans reassemblage) :
+  parite sur les 276 segments PostgreSQL (558 messages, types et
+  longueurs), zero faux positif sur les negatifs la ou tshark en compte six,
+  et trames reelles mutees rejetees. L'arbitrage du `ROADMAP` sur les
+  reponses d'un octet est tranche par la mesure : `PostgreSqlMessageType::SslResponse`
+  (le `S` ou `N` que le serveur renvoie a SSLRequest, corps
+  `PostgreSqlMessageBody::SslResponse { accepted }`) n'est decode que seul
+  dans son segment, et reconnu par une regle de port TCP 5432 (ou
+  `DecodeAsProtocol::PostgreSql`) qui se contente d'un decodage a forme
+  compatible — Terminate, ReadyForQuery, mot de passe seuls dans leur
+  segment, reponse SSL — la ou la sonde aveugle exige une preuve forte.
+  `PasswordOrSaslResponse` nomme l'octet `p`. Les deux fixtures de
+  laboratoire sans reference de `src/parse/mod.rs` sont remplacees par les
+  trames 4 et 24 de `psql-login-no-sslrequest.pcap`. Histogramme golden :
+  "PostgreSQL" 0 -> 278 (dont 2 retransmissions que tshark ne dissèque
+  pas), "TLS" 587 -> 613, "HTTP" 71 -> 72, "Unknown" 7 904 -> 7 930.
 - **IKE et ESP** (#124, lot defense #125) : le cote « noir » des chiffreurs
   IP. `ike::IkePacket` lit l'en-tete de vingt-huit octets (SPI initiateur et
   repondeur, version 1 ou 2, type d'echange nomme par `ExchangeType`,
