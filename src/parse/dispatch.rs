@@ -537,16 +537,21 @@ const NNTP_ONLY_VERBS: [&str; 7] = [
 ];
 
 /// Garde a cout constant : le payload doit commencer par un des verbes
-/// (casse ignoree) suivi d'un espace ou d'un CR. Sans elle, chaque payload
-/// TCP paierait le parseur textuel complet — mesure a 554 ns pour NNTP sur
-/// le paquet de reference de verbench, dont la construction d'une String
-/// d'erreur.
+/// (casse ignoree) suivi d'un espace, d'une tabulation ou d'un CR. Sans
+/// elle, chaque payload TCP paierait le parseur textuel complet — mesure a
+/// 554 ns pour NNTP sur le paquet de reference de verbench, dont la
+/// construction d'une String d'erreur.
+///
+/// La tabulation est un separateur NNTP (RFC 3977 §3.1) que le parseur
+/// accepte ; sans elle ici, `ARTICLE\t12345` sortait `Unknown` hors port —
+/// trouve par la cible de fuzz `policy_dispatch` (#108). FTP et SMTP ne
+/// coupent que sur l'espace : leur parseur refuse ensuite le verbe.
 fn starts_with_one_of(payload: &[u8], verbs: &[&str]) -> bool {
     verbs.iter().any(|verb| {
         let verb = verb.as_bytes();
         payload.len() > verb.len()
             && payload[..verb.len()].eq_ignore_ascii_case(verb)
-            && matches!(payload[verb.len()], b' ' | b'\r')
+            && matches!(payload[verb.len()], b' ' | b'\t' | b'\r')
     })
 }
 
@@ -767,6 +772,27 @@ mod tests {
             let transport = tcp_transport(payload);
             let found = classify(&transport, &[]).map(|a| a.application_protocol);
             assert_ne!(found, Some(label), "payload {payload:?}");
+        }
+    }
+
+    /// Issue #108 (trouve par la cible `policy_dispatch`) : la tabulation
+    /// separe aussi un verbe NNTP de ses arguments (RFC 3977 §3.1), et la
+    /// garde a cout constant doit la laisser passer comme l'espace. FTP et
+    /// SMTP ne coupent que sur l'espace : `STOR\tx` reste inconnu.
+    #[test]
+    fn nntp_tab_separator_is_detected_off_port() {
+        for (payload, expected) in [
+            (&b"ARTICLE\t12345\r\n"[..], Some("NNTP")),
+            (&b"XOVER\t1-5\r\n"[..], Some("NNTP")),
+            (&b"ARTICLE 12345\r\n"[..], Some("NNTP")),
+            (&b"STOR\tfichier.bin\r\n"[..], None),
+            (&b"MAIL\tFROM:<a@b.example>\r\n"[..], None),
+        ] {
+            let transport = tcp_transport(payload);
+            let label = classify(&transport, &[])
+                .map(|a| a.application_protocol)
+                .filter(|label| matches!(*label, "FTP" | "SMTP" | "NNTP"));
+            assert_eq!(label, expected, "payload {payload:?}");
         }
     }
 

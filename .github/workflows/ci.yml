@@ -118,13 +118,36 @@ jobs:
       - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@nightly
 
+      # `fuzz -> target` : le chemin est relatif au workspace `fuzz`
+      # (`fuzz -> fuzz/target` mettait en cache fuzz/fuzz/target, #108).
       - name: Cache cargo registry and target
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ". -> target\nfuzz -> fuzz/target"
+          workspaces: ". -> target\nfuzz -> target"
 
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
 
+      # Chaque fichier de fuzz_targets/ a sa cible `[[bin]]` et inversement :
+      # une cible oubliee dans fuzz/Cargo.toml ne compilerait ni ne tournerait
+      # jamais, et la matrice nocturne est tiree de ces `[[bin]]` (#108).
+      - name: Check every fuzz target is declared
+        run: |
+          declared=$(cargo metadata --manifest-path fuzz/Cargo.toml --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "packet_parser-fuzz") | .targets[] | select(.kind | index("bin")) | .src_path' \
+            | xargs -n1 basename | sort)
+          present=$(ls fuzz/fuzz_targets/*.rs | xargs -n1 basename | sort)
+          diff <(echo "$declared") <(echo "$present")
+
       - name: Build fuzz targets
         run: cargo +nightly fuzz build
+
+      # Les oracles fixes du bloc `init` de chaque cible (politique FTP/SMTP/
+      # NNTP hors port, COTP, Decode As dans policy_dispatch) tournent a
+      # chaque PR : une politique modifiee sans son oracle echoue ici, pas la
+      # nuit suivante (#108). `-runs=1` : le bloc init, puis une entree.
+      - name: Run every fuzz target once
+        run: |
+          for target in $(cargo +nightly fuzz list); do
+            cargo +nightly fuzz run "$target" -- -runs=1
+          done

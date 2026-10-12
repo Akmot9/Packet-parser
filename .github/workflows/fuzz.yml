@@ -1,8 +1,9 @@
 name: Fuzz
 
 # Fuzzing planifié : la seule chose qui trouve les panics auxquels personne
-# n'a pensé. Tourne la nuit, ne dit rien quand tout va bien, échoue (donc
-# notifie) uniquement sur crash — avec l'entrée fautive en artefact.
+# n'a pensé. Tourne la nuit, ne dit rien quand tout va bien, échoue sur
+# crash — avec l'entrée fautive en artefact — et laisse alors une trace
+# durable : une issue `fuzz-failure`, ouverte ou complétée (#108).
 on:
   workflow_dispatch:
     inputs:
@@ -18,26 +19,39 @@ permissions:
   contents: read
 
 jobs:
+  # La matrice est tirée des `[[bin]]` de fuzz/Cargo.toml : une cible ajoutée
+  # tourne la nuit même sans retoucher ce fichier (parse_giop a manqué dix
+  # nuits à la matrice écrite à la main, #107 ; #108).
+  targets:
+    name: Fuzz targets declared in fuzz/Cargo.toml
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: List fuzz targets
+        id: list
+        run: |
+          list=$(cargo metadata --manifest-path fuzz/Cargo.toml --no-deps --format-version 1 \
+            | jq -c '[.packages[] | select(.name == "packet_parser-fuzz") | .targets[] | select(.kind | index("bin")) | .name]')
+          echo "targets: $list"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
   fuzz:
     name: fuzz ${{ matrix.target }}
+    needs: targets
     runs-on: ubuntu-latest
     # Ne pas arrêter les autres cibles quand une trouve un crash : on veut
     # savoir en une seule nuit tout ce qui casse, pas seulement le premier.
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - parse_linktype
-          - parse_packetflow
-          - parse_application
-          - parse_dns
-          - parse_quic
-          - parse_s7comm
-          - parse_cotp
-          - parse_giop
-          - parse_asterix
-          - parse_ptp
-          - parse_profinet
+        target: ${{ fromJSON(needs.targets.outputs.list) }}
 
     steps:
       - name: Checkout repository
@@ -46,10 +60,12 @@ jobs:
       - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@nightly
 
+      # `fuzz -> target` : le chemin est relatif au workspace `fuzz`
+      # (`fuzz -> fuzz/target` mettait en cache fuzz/fuzz/target, #108).
       - name: Cache cargo registry and target
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ". -> target\nfuzz -> fuzz/target"
+          workspaces: ". -> target\nfuzz -> target"
 
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
@@ -57,9 +73,11 @@ jobs:
       # Le corpus est conservé d'une nuit sur l'autre : sans lui, chaque run
       # repart de zéro et ne dépasse jamais la surface la plus superficielle.
       # La clé porte le run_id pour toujours réécrire ; restore-keys récupère
-      # le corpus de la veille.
+      # le corpus de la veille. Restauration et sauvegarde sont séparées pour
+      # sauvegarder aussi quand le fuzzer échoue : le corpus d'une nuit rouge
+      # n'est plus perdu (#108).
       - name: Restore corpus
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -72,6 +90,13 @@ jobs:
             -max_total_time=${{ github.event.inputs.duration || '600' }} \
             -print_final_stats=1
 
+      - name: Save corpus
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+
       # `if: failure()` : ne se déclenche que si le fuzzer a trouvé un crash.
       # L'entrée fautive suffit à reproduire :
       #   cargo +nightly fuzz run <cible> <fichier>
@@ -83,3 +108,46 @@ jobs:
           path: fuzz/artifacts/${{ matrix.target }}/
           if-no-files-found: ignore
           retention-days: 90
+
+  # Un échec nocturne ne dépend plus d'une notification : la première nuit
+  # rouge du 30 août 2025 est restée trois semaines sans suite (#107). Une
+  # issue `fuzz-failure` est ouverte, ou complétée si elle l'est déjà, avec
+  # les cibles en échec et le lien du run.
+  report:
+    name: Open or update the fuzz-failure issue
+    needs: fuzz
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      issues: write
+    steps:
+      - name: Report failed targets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          failed=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --paginate \
+            --jq '.jobs[] | select(.conclusion == "failure") | .name' \
+            | sed 's/^fuzz //' | sort | paste -sd ' ' -)
+          today=$(date -u +%Y-%m-%d)
+          body=$(printf '%s\n' \
+            "Le fuzz nocturne du $today a échoué sur : **${failed:-(voir le run)}**." \
+            "" \
+            "Run : $RUN_URL — l'entrée fautive est en artefact (\`fuzz-artifacts-<cible>\`) :" \
+            "" \
+            '```' \
+            "gh run download $GITHUB_RUN_ID -n fuzz-artifacts-<cible> -D fuzz/artifacts/<cible>" \
+            "cargo +nightly fuzz run <cible> fuzz/artifacts/<cible>/<fichier>" \
+            '```' \
+            "" \
+            "Fermer cette issue une fois la cause corrigée ; le workflow en rouvrira une au prochain échec.")
+          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --label fuzz-failure --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --label fuzz-failure \
+              --title "Fuzz nocturne en échec ($today) : ${failed:-cibles à identifier}" \
+              --body "$body"
+          fi

@@ -81,10 +81,20 @@ name = "parse_ptp"
 path = "fuzz_targets/parse_ptp.rs"
 test = false
 doc = false
+bench = false
 
 [[bin]]
 name = "parse_profinet"
 path = "fuzz_targets/parse_profinet.rs"
+test = false
+doc = false
+bench = false
+
+# Oracles de politique du dispatch (FTP/SMTP/NNTP hors port, S7Comm, COTP,
+# Decode As), separes du fuzz anti-panic de parse_packetflow (issue #108).
+[[bin]]
+name = "policy_dispatch"
+path = "fuzz_targets/policy_dispatch.rs"
 test = false
 doc = false
 bench = false

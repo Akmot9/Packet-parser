@@ -61,6 +61,11 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   ne porte un tel octet, l'histogramme golden ne bouge pas. References :
   RFC 959 §5.3.2, RFC 5321 §2.3.8, RFC 3977 §3.1 et §9.8. Les quatre
   entrees du fuzz sont rejouees par un test du dispatch.
+- **NNTP hors port** : la garde a cout constant de la detection par contenu
+  (#66) n'admettait qu'un espace ou un CR apres le verbe, alors que le
+  parseur NNTP accepte aussi une tabulation comme separateur (RFC 3977
+  §3.1) : `ARTICLE\t12345` sortait `Unknown` hors du port 119. Trouve par
+  la nouvelle cible de fuzz `policy_dispatch` (#108) en 28 000 executions.
 
 ### Ajoute
 
@@ -100,6 +105,23 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   Cargo et, depuis les textes de licence du corpus (#104), signalait trois
   issues de licence au projet ; elle ignore `.fossa.yml` (PR #145) et reste a
   desactiver cote FOSSA une fois le CLI en place.
+- **Fuzz** (#108, suites de #107) : les oracles de politique du dispatch
+  (FTP, SMTP et NNTP hors port, S7Comm, COTP, Decode As) quittent la cible
+  anti-panic `parse_packetflow` pour une cible dediee `policy_dispatch` : un
+  oracle perime n'arrete plus la recherche de vrais crashs, et le corpus est
+  sauvegarde meme quand la nuit est rouge (`actions/cache/restore` +
+  `save` en `if: always()`). L'oracle texte (`fuzz/oracles/text_protocols.rs`)
+  est partage par `#[path]` avec un test de parite,
+  `tests/fuzz_policy_parity.rs`, qui confronte a chaque PR ses listes a la
+  table de dispatch — tout verbe des trois protocoles, sous dix-sept formes,
+  sur chaque port de la famille et hors port, TCP et UDP ; SMTP et NNTP ont
+  desormais leur oracle et leurs graines, et `parse_with` (Decode As, #65)
+  est fuzze par les deux cibles. Cote CI : la matrice nocturne est tiree des
+  `[[bin]]` de `fuzz/Cargo.toml` (`cargo metadata` + `fromJSON`), le job
+  `fuzz-targets-build` verifie que chaque fichier de `fuzz_targets/` a sa
+  cible et execute chaque cible une fois (`-runs=1`, donc ses oracles fixes),
+  un echec nocturne ouvre ou complete une issue `fuzz-failure`, et le chemin
+  rust-cache `fuzz -> target` est corrige.
 
 ## [11.5.0] - 2026-10-09
 
