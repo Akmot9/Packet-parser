@@ -79,6 +79,32 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **DNP3** (#99, Tier 2) : IEEE 1815, le protocole SCADA du secteur
+  electrique nord-americain. `dnp3::Dnp3Packet` lit les trames de liaison qui
+  pavent un segment TCP ou un datagramme UDP — `05 64`, longueur, controle
+  (direction, primaire, bits de comptage, fonction nommee par
+  `LinkFunction`), adresses, et le **CRC-16/DNP de l'en-tete comme de chaque
+  bloc de seize octets**, verifies ; les donnees utilisateur sont recopiees
+  sans leurs CRC dans `LinkFrame::user_data` —, l'en-tete de transport
+  (premier, dernier, sequence) et, sur le premier segment d'un fragment,
+  l'en-tete applicatif (controle, fonction nommee par
+  `ApplicationFunction`, IIN des reponses) puis la chaine des en-tetes
+  d'objets (`ObjectHeader` : groupe, variation, qualificatif, prefixe,
+  plage ou compte, position des donnees, dimensionnees par la table de
+  l'annexe A ; un groupe inconnu ou un qualificatif reserve arrete la
+  chaine dans `undecoded`). Sondage **aveugle**, TCP et UDP : les CRC sont
+  la signature, pas le port 20000. Corpus : seize captures du corpus de
+  tests de Zeek (BSD 3-clause) dans `pcaps_exemple/protocols/dnp3/`, dont
+  une lecture sur le port 20001. Parite avec tshark 4.6.6 sans reassemblage
+  sur les 220 segments et datagrammes (`tests/dnp3_golden.rs`, oracle
+  `tools/dnp3_oracle.sh`) : liaison et transport sur les 218 trames,
+  application et 160 en-tetes d'objets sur les 159 fragments d'une trame
+  (sauf les objets des quatre STOP_APPL de dnp3.pcap, que tshark ne
+  dissèque pas pour cette fonction) ;
+  chaque octet altere d'une trame reelle est rejete. Histogramme golden :
+  "DNP3" 0 -> 218 (toutes a l'aveugle, TCP comme UDP), "Unknown" 7 930 -> 7 932
+  (les deux segments de dnp3.pcap qui ne sont pas du DNP3), "(sans
+  application)" 4 392 -> 4 595 (les ACK). Cible de fuzz `parse_dnp3`.
 - **PostgreSQL : corpus reel et golden** (#98) : quatorze captures du corpus
   de tests de Zeek (BSD 3-clause, texte dans
   `pcaps_exemple/LICENSES/BSD-3-Clause-Zeek.txt`) dans

@@ -690,14 +690,19 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // port 5432 : 119 -> 133 captures, 118 -> 132 fichiers lus,
     // 64 933 -> 65 464 trames, 64 891 -> 65 422 flux. Aucune n'est etiquetee
     // S7Comm ni COTP.
-    assert_eq!(captures.len(), 133);
-    assert_eq!(opened_files, 132);
-    assert_eq!(frame_count, 65_464);
+    // 2026-10-12 (#99) : +16 captures DNP3 du corpus Zeek dans
+    // protocols/dnp3/ (voir SOURCE.md), 423 trames Ethernet/IPv4, TCP et UDP,
+    // decodees sans erreur L2 : 133 -> 149 captures, 132 -> 148 fichiers
+    // lus, 65 464 -> 65 887 trames, 65 422 -> 65 845 flux. Aucune n'est
+    // etiquetee S7Comm ni COTP.
+    assert_eq!(captures.len(), 149);
+    assert_eq!(opened_files, 148);
+    assert_eq!(frame_count, 65_887);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 65_422);
+    assert_eq!(parsed_flows, 65_845);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

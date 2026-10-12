@@ -314,6 +314,12 @@ Application detection is intentionally best-effort. Parser modules include:
   stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
   exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
   `NDDSPING` pings are reported too
+- DNP3 (IEEE 1815): link frames with their header and per-block CRC-16/DNP
+  verified (length, control bits and function, addresses), transport header,
+  application header (control, function code, internal indications) and the
+  chain of object headers (group, variation, qualifier, range or count,
+  position of the data sized from annex A), several frames per payload.
+  Recognised blindly on TCP and UDP, the CRCs are the signature
 - IKE (ISAKMP/IKEv1 RFC 2408, IKEv2 RFC 7296) on UDP 500 and 4500: 28-byte
   header (SPIs, version, exchange type named, flags, message ID, length),
   chain of top-level payloads with named types, encrypted bytes kept as such
