@@ -69,6 +69,28 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **RTPS** (#120, lot defense #125) : OMG DDSI-RTPS 2.x, le protocole
+  filaire de DDS (NGVA, GVA, systemes navals, ROS 2), successeur de
+  GIOP/MIOP. `rtps::RtpsPacket` decoupe l'en-tete (version, vendorId,
+  guidPrefix) et les sous-messages, dans leur ordre d'octets propre (flag
+  E), avec `octetsToNextHeader` nul pour un dernier sous-message etendu
+  jusqu'a la fin ; `SubmessageKind` nomme les types de la specification,
+  de DDS Security et de la plage vendeur, `SubmessageDetails` expose les
+  identifiants d'entite, numeros de sequence, compteurs, horodatages et
+  champs de fragmentation de DATA, DATA_FRAG, HEARTBEAT, ACKNACK (bitmap
+  verifie), GAP, HEARTBEAT_FRAG, NACK_FRAG, INFO_TS, INFO_DST et INFO_SRC
+  ; les donnees utilisateur (CDR), QoS en ligne et listes de locateurs
+  restent en octets. Sonde aveugle sur UDP (`rule("RTPS", Guard::Udp)`)
+  derriere une garde a cout constant sur le magic : les sous-messages
+  doivent paver exactement le datagramme, un identifiant reserve ou un
+  corps trop court pour son type refuse le message. Parite avec tshark
+  4.6.6 sur les 231 trames du corpus (`tests/rtps_golden.rs`, oracle
+  `tools/rtps_oracle.sh` : version, vendorId, guidPrefix, suite des
+  sous-messages et de leurs longueurs, identifiants d'entite, numeros de
+  sequence), six implementations ; les 16 fragments IPv4 de
+  `RTPS_Discovery.pcapng` restent hors de portee par construction.
+  Histogramme golden : "RTPS" 0 -> 231, "Unknown" 9 409 -> 9 178. Cible
+  de fuzz `parse_rtps` dans la matrice nocturne.
 - **ASTERIX multi-categories** (#119, lot defense #125) : huit categories
   de plus — **CAT 001** et **002** (plots, pistes et messages de service des
   radars de premiere generation), **CAT 008** (meteo), **CAT 023** (etat

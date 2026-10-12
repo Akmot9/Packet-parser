@@ -307,6 +307,12 @@ Application detection is intentionally best-effort. Parser modules include:
   neither a magic nor an IANA port
 - QUIC
 - Bitcoin
+- RTPS (OMG DDSI-RTPS 2.x, the wire protocol of DDS): header, submessages
+  split and typed (DATA, DATA_FRAG, HEARTBEAT, ACKNACK, GAP, INFO_TS,
+  INFO_DST, INFO_SRC, fragment submessages, DDS Security and vendor ones),
+  entity ids, sequence numbers and counts; user data (CDR) and inline QoS
+  stay opaque. Recognised by its magic and the exact tiling of its
+  submessages, on any UDP port
 - PTP (IEEE 1588) on UDP 319/320: PTPv2 decoded in full (common header, the
   ten message bodies, TLVs listed without decoding their value), PTPv1
   recognised by its header. Port-guarded: a Delay_Req has exactly the shape of

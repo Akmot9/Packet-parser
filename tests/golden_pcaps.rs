@@ -244,6 +244,12 @@ fn application_classification_histogram_is_frozen() {
     //   cat_062_065.pcap.
     // Parite item par item avec tshark sur 44 411 trames
     // (tests/asterix_golden.rs). Rien d'autre ne bouge.
+    //
+    // 2026-10-12 (#120, RTPS) : "RTPS" 0 -> 231 et "Unknown" 9 409 -> 9 178
+    // (-231) : exactement les trames RTPS de protocols/rtps/ hors fragments
+    // IPv4 (tshark en compte 237, dont 6 par reassemblage), en parite trame
+    // par trame (tests/rtps_golden.rs). La sonde est aveugle (magic + pavage
+    // exact) : rien d'autre ne bouge dans le reste du corpus.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 4192),
@@ -270,7 +276,8 @@ fn application_classification_histogram_is_frozen() {
         ("SSDP", 24),
         ("STP", 95),
         ("TLS", 587),
-        ("Unknown", 9_409),
+        ("RTPS", 231),
+        ("Unknown", 9_178),
         ("mDNS", 12),
     ]
     .into_iter()
