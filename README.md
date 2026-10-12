@@ -239,7 +239,8 @@ serialized):
 - ARP
 - IPv4
 - IPv6
-- Profinet
+- Profinet: every RT Frame ID class (cyclic data, alarms, PTCP, fragments) is
+  validated; DCP messages are decoded by `ProfinetPacket`, block by block
 - PTP (IEEE 1588) directly over Ethernet, EtherType `0x88F7`, decoded into
   `InternetDetails::Ptp`
 

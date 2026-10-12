@@ -81,4 +81,10 @@ name = "parse_ptp"
 path = "fuzz_targets/parse_ptp.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "parse_profinet"
+path = "fuzz_targets/parse_profinet.rs"
+test = false
+doc = false
 bench = false

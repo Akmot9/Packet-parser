@@ -37,6 +37,7 @@ jobs:
           - parse_giop
           - parse_asterix
           - parse_ptp
+          - parse_profinet
 
     steps:
       - name: Checkout repository
