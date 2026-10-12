@@ -65,13 +65,15 @@ Fichiers d'origine des pièces jointes : `captured_messenger_rtps.pcap`
 
 ## Licences
 
-- `talker-listener-rtps.pcapng` : licence MIT du dépôt foxglove/rtps ;
-- `RTPS_Discovery.pcapng` : licence de la wiki Wireshark (GNU GPL v2+, en
-  pied de page de <https://wiki.wireshark.org>) ;
-- `rtps.pcap` : LGPL-3.0, licence du dépôt nDPI ;
+- `talker-listener-rtps.pcapng` : licence MIT du dépôt foxglove/rtps (notice et
+  texte dans `LICENSES/MIT-foxglove.txt`) ;
+- `RTPS_Discovery.pcapng` : licence de la wiki Wireshark (GNU GPL v2+, en pied de page de <https://wiki.wireshark.org> ; texte dans
+  `LICENSES/GPL-2.0.txt`) ;
+- `rtps.pcap` : LGPL-3.0, licence du dépôt nDPI (texte : `LICENSES/LGPL-3.0.txt`) ;
 - pièces jointes du tracker Wireshark : aucune licence explicite, publiques
-  depuis leur dépôt.
+  depuis leur dépôt (position du dépôt sur ces pièces jointes :
+`LICENSES/README.md`, #104).
 
 Aucun de ces fichiers n'entre dans le paquet publié sur crates.io (liste
-`include` de `Cargo.toml`). Le texte des licences n'accompagne pas encore les
-captures : voir #104.
+`include` de `Cargo.toml`). Le texte de chaque
+licence est dans `pcaps_exemple/LICENSES/`, avec ce qu'elle impose (#104).

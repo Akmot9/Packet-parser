@@ -12,3 +12,11 @@ La capture complete contenait une authentification et un message MIME. Elle a
 ete tronquee : aucune trame d'identifiant, de mot de passe, d'adresse de
 messagerie ou de corps de message n'est conservee. Aucune autre anonymisation
 n'a ete appliquee aux trames publiques retenues.
+
+## Licence
+
+Samples du wiki Wireshark : GNU GPL v2+ (pied de page de
+<https://wiki.wireshark.org>), texte dans
+[`LICENSES/GPL-2.0.txt`](../../LICENSES/GPL-2.0.txt). Les modifications que la
+licence oblige à signaler sont celles décrites ci-dessus : extraction et
+troncature du 2026-08-03 (#104).

@@ -63,7 +63,8 @@ Fichiers `install/sample_data/cat_034_048.pcap` et
   (`cat_034_048.pcap`) et
   `9979def457ecc7a8b70a6252cc59d52f60f686e6e84c32b0d83fbca6f2273f5a`
   (`cat21_re.ast`).
-- Licence du dépôt source : **GPL-2.0**. Les fichiers sont redistribués tels
+- Licence du dépôt source : **GPL-2.0**, texte dans
+  [`LICENSES/GPL-2.0.txt`](../../LICENSES/GPL-2.0.txt) (#104). Les fichiers sont redistribués tels
   quels, sans modification ni anonymisation (trafic multicast d'un réseau
   `10.17.58.0/24` vers `232.1.0.0/16` et `232.2.0.0/16`, capturé le
   2016-05-05). Un quatrième échantillon du même dossier, `cat048.raw` (48
@@ -122,7 +123,8 @@ Captures jointes par leurs auteurs à des issues publiques du projet
 Wireshark (<https://gitlab.com/wireshark/wireshark>), téléchargées le
 2026-10-08 et redistribuées telles quelles, sans modification ni
 anonymisation. Aucune licence explicite n'accompagne ces pièces jointes ;
-elles sont publiques depuis leur dépôt. Comptes vérifiés avec tshark 4.6.6,
+elles sont publiques depuis leur dépôt (position du dépôt sur ces pièces jointes :
+`LICENSES/README.md`, #104). Comptes vérifiés avec tshark 4.6.6,
 en forçant le décodage ASTERIX sur les flux concernés.
 
 | Fichier | Issue | Fichier d'origine | SHA-256 |

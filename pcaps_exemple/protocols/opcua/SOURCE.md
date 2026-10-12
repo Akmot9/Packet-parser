@@ -10,6 +10,10 @@
   `46eff2793ee3105a7d478fc425a99e4cea9946a16194a2c3d95876300b2cf197`.
 - Licence du dépôt source : LGPL-3.0 (licence de nDPI ; redistribué tel
   quel — le trafic est du loopback, 127.0.0.1 de part et d'autre).
+- Texte de la licence : [`LICENSES/LGPL-3.0.txt`](../../LICENSES/LGPL-3.0.txt),
+  et `GPL-3.0.txt` qu'elle incorpore. Redistribuer ce fichier oblige à
+  conserver la notice de nDPI (© 2011-2026 ntop.org), à joindre ce texte et
+  à signaler toute modification : il n'y en a aucune (#104).
 
 C'est la **première capture OPC UA du dépôt**. Le décodeur était publié
 depuis plusieurs versions sans qu'aucune trame réelle ne l'exerce.

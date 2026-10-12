@@ -14,3 +14,11 @@ Extraction effectuee le 2026-08-03 avec `editcap` :
 Les captures ont ete tronquees aux seules commandes de controle utiles aux
 tests. Les trames `USER`/`PASS` et les transferts de donnees ne sont pas
 conserves. Aucune autre anonymisation n'a ete appliquee au sample public.
+
+## Licence
+
+Samples du wiki Wireshark : GNU GPL v2+ (pied de page de
+<https://wiki.wireshark.org>), texte dans
+[`LICENSES/GPL-2.0.txt`](../../LICENSES/GPL-2.0.txt). Les modifications que la
+licence oblige à signaler sont celles décrites ci-dessus : extraction et
+troncature du 2026-08-03 (#104).

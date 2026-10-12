@@ -28,6 +28,10 @@ suivre la convention du dossier.
   `b38ccaf183673619e7f5d69476293a01da743076a281c96e949f0f29a42d1650`.
 - Licence du dépôt source : LGPL-3.0 (licence de nDPI ; redistribué tel
   quel, trafic de labo sur 192.168.25.0/24).
+- Texte de la licence : [`LICENSES/LGPL-3.0.txt`](../../LICENSES/LGPL-3.0.txt),
+  et `GPL-3.0.txt` qu'elle incorpore. Redistribuer ce fichier oblige à
+  conserver la notice de nDPI (© 2011-2026 ntop.org), à joindre ce texte et
+  à signaler toute modification : il n'y en a aucune (#104).
 
 ### Contenu (vérifié avec tshark 4.6.6)
 
@@ -58,3 +62,11 @@ valide. tshark suit les numéros de séquence et ne redissèque pas un segment
 déjà vu — il en compte 38 en COTP, là où ce parseur, sans état, en étiquette
 63 : `38 + 25 = 63`. Douze de ces retransmissions portent du `0x72`, d'où 24
 originaux et 12 rejeux parmi les 36 trames S7CommPlus.
+
+## Licences
+
+- Captures aux noms du wiki Wireshark : si leur origine wiki se confirme,
+  GNU GPL v2+ (pied de page de <https://wiki.wireshark.org>), texte dans
+  [`LICENSES/GPL-2.0.txt`](../../LICENSES/GPL-2.0.txt) ; si ce sont des
+  captures locales équivalentes, licence MIT du dépôt (#104).
+- `s7comm_plus.pcap` : LGPL-3.0, voir ci-dessus.

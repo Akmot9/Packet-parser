@@ -57,11 +57,13 @@ trames portent du DIS, aucune n'est malformée.
 
 ## Licences
 
-- `dis_voice_sample.pcap` : GPL-2.0-or-later, licence du dépôt Wireshark ;
-- `DIS_signal_and_transmitter.pcapng` : licence de la wiki Wireshark (GNU
-  GPL v2+, en pied de page de <https://wiki.wireshark.org>) ;
+- `dis_voice_sample.pcap` : GPL-2.0-or-later, licence du dépôt Wireshark (texte
+  dans `LICENSES/GPL-2.0.txt`) ;
+- `DIS_signal_and_transmitter.pcapng` : licence de la wiki Wireshark (GNU GPL v2+, en pied de page de <https://wiki.wireshark.org> ; texte dans
+  `LICENSES/GPL-2.0.txt`) ;
 - pièces jointes du tracker Wireshark : aucune licence explicite, publiques
-  depuis leur dépôt.
+  depuis leur dépôt (position du dépôt sur ces pièces jointes :
+`LICENSES/README.md`, #104).
 
-Aucun de ces fichiers n'entre dans le paquet publié sur crates.io. Le texte
-des licences n'accompagne pas encore les captures : voir #104.
+Aucun de ces fichiers n'entre dans le paquet publié sur crates.io. Le texte de chaque
+licence est dans `pcaps_exemple/LICENSES/`, avec ce qu'elle impose (#104).

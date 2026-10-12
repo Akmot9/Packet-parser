@@ -11,6 +11,10 @@
 - Licence du dépôt source : LGPL-3.0 (licence de nDPI ; le fichier est
   redistribué tel quel, sans modification ni anonymisation — le trafic est
   du labo, sur un réseau 192.168.63.0/24).
+- Texte de la licence : [`LICENSES/LGPL-3.0.txt`](../../LICENSES/LGPL-3.0.txt),
+  et `GPL-3.0.txt` qu'elle incorpore. Redistribuer ce fichier oblige à
+  conserver la notice de nDPI (© 2011-2026 ntop.org), à joindre ce texte et
+  à signaler toute modification : il n'y en a aucune (#104).
 
 Cette capture lève le blocage de l'issue #10, que la ROADMAP décrivait
 comme en attente d'une trame que « seul le labo peut produire, aucune trame
