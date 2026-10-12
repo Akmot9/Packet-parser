@@ -293,9 +293,18 @@ fn application_classification_histogram_is_frozen() {
     // aveugle sur radius_localhost.pcap en LINKTYPE_NULL). Les 72 paquets
     // RADIUS de The-Ultimate-PCAP.pcapng, a la racine, ne sont pas comptes
     // ici (tests/radius_golden.rs les lit sur place).
+    //
+    // 2026-10-12 (#100, corpus RDP de Zeek, 5 captures, 1 246 trames) :
+    // "RDP" 0 -> 89 (83 segments de connexion X.224 et de PDU MCS, plus 6
+    // retransmissions de rdp-no-cookie-mstshash.pcap que tshark ne dissèque
+    // pas), "TLS" 613 -> 1 066 (+453 : les sessions apres la negociation
+    // CredSSP de rdp-to-ssl et rdp-no-cookie), "Unknown" 7 932 -> 8 251
+    // (+319 : suites de TPKT et de records TLS coupes par la segmentation,
+    // segments que tshark laisse en `data`), "(sans application)" 4 595 ->
+    // 4 980 (+385 : les ACK).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 4595),
+        (NO_APPLICATION, 4980),
         ("ASTERIX", 44_507),
         ("DHCP", 71),
         ("DIS", 390),
@@ -320,14 +329,15 @@ fn application_classification_histogram_is_frozen() {
         ("PTP", 3221),
         ("PostgreSQL", 278),
         ("RADIUS", 23),
+        ("RDP", 89),
         ("SMTP", 6),
         ("SRVLOC", 1),
         ("SSDP", 24),
         ("STP", 95),
-        ("TLS", 613),
+        ("TLS", 1066),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 7_932),
+        ("Unknown", 8_251),
         ("mDNS", 12),
     ]
     .into_iter()

@@ -50,6 +50,7 @@ use super::application::protocols::postgresql::{
 use super::application::protocols::ptp::PtpPacket;
 use super::application::protocols::quic::QuicPacket;
 use super::application::protocols::radius::RadiusPacket;
+use super::application::protocols::rdp::RdpPacket;
 use super::application::protocols::rtps::RtpsPacket;
 use super::application::protocols::s7comm::S7CommPacket;
 use super::application::protocols::smtp::SmtpMessage;
@@ -148,6 +149,7 @@ enum ProbeId {
     DisLenient,
     Dnp3,
     Radius,
+    Rdp,
     Ike,
     EspNatT,
     NatKeepalive,
@@ -214,6 +216,9 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         ProbeId::Dnp3 => Dnp3Packet::try_from(full_payload).is_ok(),
         // Sur le payload reel : la longueur declaree couvre tout le datagramme.
         ProbeId::Radius => RadiusPacket::try_from(full_payload).is_ok(),
+        // TPKT, COTP X.224 et une connexion ou un PDU MCS lisibles ; sur le
+        // payload reel, un TPKT peut deborder du segment.
+        ProbeId::Rdp => RdpPacket::try_from(full_payload).is_ok(),
         // Sur le payload reel : la longueur de l'en-tete IKE couvre tout le
         // message. Nu (UDP 500) ou derriere le marqueur non-ESP (UDP 4500).
         ProbeId::Ike => IkePacket::from_udp(full_payload).is_ok(),
@@ -388,6 +393,11 @@ static RULES: &[Rule] = &[
     // RADIUS (RFC 2865) sur ses ports : 1812/1813, les anciens 1645/1646,
     // 3799 (RFC 5176). La meme sonde revient a l'aveugle plus bas (#101).
     port_rule("RADIUS", Guard::Udp, is_radius_udp_port, ProbeId::Radius),
+    // RDP (MS-RDPBCGR) : TCP 3389. Garde par port : TPKT, COTP et MCS sont
+    // aussi la pile de T.120 et d'ISO sur TCP, un autre port se declare par
+    // Decode As. Apres une negociation TLS ou CredSSP, les segments
+    // suivants sont du TLS et etiquetes TLS (#100).
+    port_rule("RDP", Guard::Tcp, is_rdp_tcp_port, ProbeId::Rdp),
     // PostgreSQL sur son port : decodage et forme compatible suffisent — un
     // Terminate, un ReadyForQuery ou un mot de passe seuls dans leur
     // segment, la reponse d'un octet a SSLRequest (S ou N) — la ou la sonde
@@ -518,6 +528,8 @@ pub enum DecodeAsProtocol {
     Ike,
     /// ESP encapsule dans UDP (RFC 3948), SPI non nul en tete.
     Esp,
+    /// RDP : TPKT, COTP X.224 et MCS (TCP).
+    Rdp,
 }
 
 impl DecodeAsProtocol {
@@ -556,6 +568,7 @@ impl DecodeAsProtocol {
             Self::Dis => ("DIS", Guard::Udp, ProbeId::DisLenient),
             Self::Ike => ("IKE", Guard::Udp, ProbeId::Ike),
             Self::Esp => ("ESP", Guard::Udp, ProbeId::EspNatT),
+            Self::Rdp => ("RDP", Guard::Tcp, ProbeId::Rdp),
         }
     }
 }
@@ -748,6 +761,11 @@ fn is_dis_udp_port(port: Option<u16>) -> bool {
 /// PostgreSQL : TCP 5432 (IANA `postgresql`).
 fn is_postgresql_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(5432))
+}
+
+/// RDP : TCP 3389 (IANA `ms-wbt-server`).
+fn is_rdp_tcp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(3389))
 }
 
 /// RADIUS : UDP 1812/1813 (IANA), 1645/1646 (historiques), 3799 (RFC 5176).
@@ -1142,6 +1160,7 @@ mod tests {
             DecodeAsProtocol::Dis,
             DecodeAsProtocol::Ike,
             DecodeAsProtocol::Esp,
+            DecodeAsProtocol::Rdp,
         ];
         for protocol in all {
             for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {

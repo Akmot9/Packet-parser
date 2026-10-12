@@ -314,6 +314,14 @@ Application detection is intentionally best-effort. Parser modules include:
   stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
   exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
   `NDDSPING` pings are reported too
+- RDP (MS-RDPBCGR) on TCP 3389: TPKT and COTP X.224 Connection Request
+  (routing token or `mstshash` cookie, negotiation request) and Confirm
+  (negotiation response or failure), then the MCS PDUs of the standard RDP
+  security path (Connect-Initial/Response, Erect Domain, Attach User,
+  Channel Join, Send Data with user and channel, Disconnect Provider
+  Ultimatum); several TPKTs per segment, a TPKT cut by segmentation is
+  decoded as far as it goes. After a TLS or CredSSP negotiation the
+  connection is labelled TLS, by decision
 - RADIUS (RFC 2865, accounting RFC 2866, CoA RFC 5176): header (code named,
   identifier, length, authenticator) and the attribute list (type named from
   the IANA registry, value borrowed, accessors for integers, IPv4 addresses,

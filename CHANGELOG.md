@@ -79,6 +79,33 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **RDP** (#100, Tier 3) : MS-RDPBCGR sur TCP 3389, qui rentabilise le
+  chantier TPKT/COTP de la 10.0.0. `rdp::RdpPacket` lit les TPKT d'un
+  segment (le dernier eventuellement coupe par la segmentation, decode sur
+  ce qu'il en reste et marque `truncated`), leur TPDU COTP (`CotpHeader`),
+  et ce qu'il porte (`RdpPayload`) : le Connection Request du client avec
+  son jeton de routage ou son cookie `Cookie: mstshash=<user>`
+  (`cookie_user()`) et sa demande de negociation (`NegotiationRequest` :
+  drapeaux, protocoles demandes, `tls()`, `credssp()`, `rdstls()`), le
+  Connection Confirm du serveur avec la reponse ou l'echec
+  (`NegotiationResponse`), et les PDU MCS (`McsPdu`, type nomme par
+  `McsPduType` : Connect-Initial et Connect-Response en BER, Erect Domain,
+  Attach User, Channel Join, Send Data avec utilisateur, canal, priorite et
+  donnees, Disconnect Provider Ultimatum en PER). Dispatch garde par le
+  port 3389 (`DecodeAsProtocol::Rdp` ailleurs) : TPKT, COTP et MCS sont
+  aussi la pile de T.120. **Apres une negociation TLS ou CredSSP, les
+  segments suivants sont etiquetes TLS** : c'est la decision de l'issue,
+  testee sur `rdp-to-ssl.pcap`. Corpus : cinq captures du corpus de tests
+  de Zeek (BSD 3-clause) dans `pcaps_exemple/protocols/rdp/`, avec et sans
+  cookie, bascule TLS, session MCS complete ; `rdp-invalid-length.pcap`
+  (octets fabriques) et les `rdpeudp*` (RDP-UDP, hors perimetre) ecartes.
+  Parite avec tshark 4.6.6 sans reassemblage sur les 861 segments
+  (`tests/rdp_golden.rs`, oracle `tools/rdp_oracle.sh`) : 82 segments RDP
+  (jetons, negociations, types MCS), 481 TLS, 278 suites de TPKT coupes ou
+  segments sans couche laisses inconnus comme chez tshark, 20
+  retransmissions ignorees comme tshark les ignore. Histogramme golden :
+  "RDP" 0 -> 89, "TLS" 613 -> 1 066, "Unknown" 7 932 -> 8 251 ; collecteur de
+  corpus 151 -> 156 captures. Cible de fuzz `parse_rdp`.
 - **RADIUS** (#101, dernier de la ligne « au fil de l'eau ») : RFC 2865,
   comptabilite RFC 2866, changement d'autorisation RFC 5176.
   `radius::RadiusPacket` lit l'en-tete (code nomme par `RadiusCode`,
