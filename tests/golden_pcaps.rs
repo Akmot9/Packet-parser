@@ -315,11 +315,24 @@ fn application_classification_histogram_is_frozen() {
     // "BACnet/IP" 0 -> 45 (tous les datagrammes BVLC, port 47808 ou sonde
     // aveugle), "(sans application)" 5 254 -> 5 258 (+4 : les datagrammes
     // UDP vides de iti_bacnet_test.pcap).
+    //
+    // 2026-10-13 (epopee #102, corpus GOOSE, 4 captures ITI, 761 trames) :
+    // les 494 trames GOOSE sont la couche internet (EtherType 0x88B8, comme
+    // PTP en couche 2) et restent "(sans application)" ; le reste est le
+    // trafic IPv4 du poste de iti_Sample_File_MMS_and_GOOSE.pcap :
+    // "(sans application)" 5 258 -> 5 864 (+606 : 494 GOOSE, 95 segments
+    // TCP sans payload, 15 ICMP, 2 trames LLC NetBIOS), "COTP" 0 -> 32 (MMS
+    // sur ISO-TSAP, port 102, que la crate ne decode pas au-dela de COTP),
+    // "NBSS" 0 -> 32, "NTP" 0 -> 32, "SNMP" 0 -> 14, "STP" 95 -> 107, "NBNS"
+    // 731 -> 737, "Unknown" 8 254 -> 8 281 (+27 : 20 datagrammes NTP que la
+    // crate n'accepte pas, 3 portmap, 3 segments TCP d'un octet vers le
+    // port 102, un segment COTP).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 5258),
+        (NO_APPLICATION, 5864),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
+        ("COTP", 32),
         ("DHCP", 71),
         ("DIS", 390),
         ("DNP3", 218),
@@ -335,10 +348,12 @@ fn application_classification_histogram_is_frozen() {
         ("IP-in-IP", 5),
         ("LLMNR", 136),
         ("MQTT", 38),
-        ("NBNS", 731),
+        ("NBNS", 737),
+        ("NBSS", 32),
         ("ModbusTCP", 382),
         ("UMAS", 181),
         ("NNTP", 6),
+        ("NTP", 32),
         ("OPC UA", 187),
         ("OpenVPN", 766),
         ("PTP", 3221),
@@ -346,13 +361,14 @@ fn application_classification_histogram_is_frozen() {
         ("RADIUS", 23),
         ("RDP", 89),
         ("SMTP", 6),
+        ("SNMP", 14),
         ("SRVLOC", 1),
         ("SSDP", 24),
-        ("STP", 95),
+        ("STP", 107),
         ("TLS", 1066),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 8_254),
+        ("Unknown", 8_281),
         ("mDNS", 12),
     ]
     .into_iter()

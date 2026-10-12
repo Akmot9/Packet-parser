@@ -13,6 +13,7 @@ use crate::errors::application::ptp::PtpPacketParseError;
 use crate::errors::internet::InternetError;
 use crate::parse::application::protocols::ptp::PtpPacket;
 use crate::parse::data_link::ethertype::Ethertype;
+use crate::parse::internet::protocols::goose::GoosePacket;
 use crate::parse::internet::protocols::profinet;
 use crate::parse::transport::protocols::TransportProtocol;
 use protocols::arp::ArpPacket;
@@ -38,6 +39,8 @@ pub enum InternetDetails<'a> {
     Arp(ArpPacket),
     /// PTP directement sur Ethernet (EtherType `0x88F7`).
     Ptp(PtpPacket<'a>),
+    /// GOOSE, IEC 61850-8-1, directement sur Ethernet (EtherType `0x88B8`).
+    Goose(GoosePacket<'a>),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -145,6 +148,7 @@ impl<'a> Internet<'a> {
                 ) => Err(InternetError::UnsupportedProtocol),
                 Err(error) => Err(error.into()),
             },
+            NetworkProtocol::Goose => Ok(Self::from_goose(GoosePacket::try_from(payload)?)),
             NetworkProtocol::Other(_) => Err(InternetError::UnsupportedProtocol),
         }
     }
@@ -211,6 +215,21 @@ impl<'a> Internet<'a> {
         }
     }
 
+    /// GOOSE est publie en multicast Ethernet, sans IP ni transport : le
+    /// message decode est garde dans `details`, comme PTP.
+    fn from_goose(goose_packet: GoosePacket<'a>) -> Self {
+        Internet {
+            source: None,
+            source_type: None,
+            destination: None,
+            destination_type: None,
+            protocol_name: "GOOSE",
+            payload_protocol: None,
+            payload: &[],
+            details: Some(InternetDetails::Goose(goose_packet)),
+        }
+    }
+
     fn profinet() -> Self {
         Internet {
             source: None,
@@ -228,8 +247,8 @@ impl<'a> Internet<'a> {
 impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
     type Error = InternetError;
 
-    /// Probes ARP, IPv4, IPv6 then Profinet in order, without knowing the
-    /// EtherType. Prefer [`Internet::try_from_parts`] when the data-link
+    /// Probes ARP, IPv4, IPv6, Profinet then GOOSE in order, without knowing
+    /// the EtherType. Prefer [`Internet::try_from_parts`] when the data-link
     /// layer is available: probing cannot distinguish a corrupt packet from
     /// an unsupported protocol.
     fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
@@ -253,6 +272,12 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
         // deux octets de Frame ID plausibles n'en sont pas une.
         if profinet::ProfinetPacket::try_from(packet).is_ok() {
             return Ok(Self::profinet());
+        }
+
+        // GOOSE se prouve par sa longueur, qui couvre exactement la trame,
+        // et un goosePdu BER complet avec ses champs obligatoires.
+        if let Ok(goose_packet) = GoosePacket::try_from(packet) {
+            return Ok(Self::from_goose(goose_packet));
         }
 
         Err(InternetError::UnsupportedProtocol)
@@ -346,6 +371,41 @@ mod tests {
             Internet::try_from_network_parts(NetworkProtocol::Ptp, &payload[..20]),
             Err(InternetError::PtpError(
                 PtpPacketParseError::Truncated { .. }
+            ))
+        ));
+    }
+
+    /// Trame reelle (`goose/iti_GOOSE_DEMO.pcap` trame 1, apres l'etiquette
+    /// VLAN 10) : dix booleens d'un simulateur.
+    const GOOSE_DEMO: &str = concat!(
+        "2000006c0000000061628003313131810500000027108203323232830333333384084d",
+        "dda51adbe76d008505000000000186050000000001870100880500000000018901008a",
+        "05000000000aab1e830100830100830100830100830100830100830100830100830100",
+        "830100"
+    );
+
+    #[test]
+    fn goose_on_ethertype_0x88b8_keeps_the_decoded_message_and_is_probed_blindly() {
+        let payload = hex::decode(GOOSE_DEMO).unwrap();
+        let internet =
+            Internet::try_from_network_parts(NetworkProtocol::Goose, &payload).expect("GOOSE");
+        assert_eq!(internet.protocol_name, "GOOSE");
+        assert!(internet.source.is_none() && internet.payload_protocol.is_none());
+        let Some(InternetDetails::Goose(packet)) = &internet.details else {
+            panic!("details GOOSE attendus");
+        };
+        assert_eq!(
+            (packet.app_id, packet.pdu.num_dat_set_entries),
+            (0x2000, 10)
+        );
+        // Sans EtherType, la sonde aveugle la reconnait aussi.
+        let probed = Internet::try_from(payload.as_slice()).expect("sonde aveugle");
+        assert_eq!(probed.protocol_name, "GOOSE");
+        // Une trame coupee est corrompue, pas inconnue.
+        assert!(matches!(
+            Internet::try_from_network_parts(NetworkProtocol::Goose, &payload[..100]),
+            Err(InternetError::GooseError(
+                crate::errors::internet::goose::GooseParseError::LengthMismatch { .. }
             ))
         ));
     }

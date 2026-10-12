@@ -6,6 +6,7 @@
 use arp::ArpError;
 use thiserror::Error;
 pub mod arp;
+pub mod goose;
 pub mod ipv4;
 pub mod ipv6;
 pub mod profinet;
@@ -52,4 +53,8 @@ pub enum InternetError {
     /// Error related to PTP parsing on EtherType 0x88F7
     #[error("PTP error: {0}")]
     PtpError(#[from] crate::errors::application::ptp::PtpPacketParseError),
+
+    /// Error related to GOOSE parsing on EtherType 0x88B8
+    #[error("GOOSE error: {0}")]
+    GooseError(#[from] goose::GooseParseError),
 }

@@ -79,6 +79,34 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **GOOSE** (epopee #102, Tier 2) : les evenements d'un poste electrique,
+  IEC 61850-8-1, publies en multicast directement sur Ethernet (EtherType
+  `0x88B8`, souvent sous une etiquette VLAN que la couche liaison retire).
+  Comme PTP, la trame se decode dans la couche internet :
+  `NetworkProtocol::Goose` (fin d'enum), `InternetDetails::Goose`,
+  `InternetError::GooseError`, `Ethertype::static_name` "GOOSE".
+  `goose::GoosePacket` lit l'en-tete (APPID, longueur qui doit couvrir
+  exactement la trame, deux mots reserves avec `simulation_bit`) puis le
+  goosePdu BER (`GoosePdu` : gocbRef, timeAllowedtoLive, datSet, goID,
+  horodatage `UtcTime` avec fraction, qualite et `nanoseconds`, stNum,
+  sqNum, simulation, confRev, ndsCom, numDatSetEntries, `security`), et
+  `allData` element par element (`GooseData` : etiquette BER, type nomme
+  par `DataKind`, octets tels quels, `as_bool`). Longueurs BER courtes et
+  longues, entiers de un a cinq octets ; un champ inconnu est ignore, un
+  champ obligatoire absent, un entier trop long, un booleen ou un
+  horodatage de mauvaise taille et des octets en trop sont rejetes. La
+  sonde aveugle de `Internet::try_from` reconnait aussi GOOSE apres ARP,
+  IPv4, IPv6 et Profinet. Corpus : `pcaps_exemple/protocols/goose/`, quatre
+  captures ITI (CC-BY-4.0) : un relais GE F650, un simulateur sur VLAN 10,
+  trois IED d'un poste sur VLAN 0 puis sans VLAN au milieu de MMS, NTP et
+  TCP. Parite avec tshark 4.6.6 sur les 494 trames (`tests/goose_golden.rs`,
+  oracle `tools/goose_oracle.sh`) : VLAN, en-tete, chaque champ du PDU,
+  nombre et types des elements de allData ; sonde aveugle sur chaque trame,
+  aucun faux positif sur le reste du corpus. Histogramme golden : les
+  trames GOOSE restent "(sans application)" (couche internet, comme PTP en
+  couche 2) ; collecteur de corpus 163 -> 167 captures. Cible de fuzz
+  `parse_goose`. Sampled Values (IEC 61850-9-2) n'est pas decode : aucune
+  capture redistribuable n'a ete trouvee.
 - **BACnet/IP** (epopee #102, Tier 2) : la gestion technique du batiment,
   ASHRAE 135 annexe J. `bacnet::BacnetPacket` lit le BVLC (`0x81`, fonction
   nommee par `BvlcFunction`, longueur qui doit couvrir exactement le

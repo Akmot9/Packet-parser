@@ -247,6 +247,14 @@ du payload ne sont pas serialises):
   `ProfinetPacket`
 - PTP (IEEE 1588) directement sur Ethernet, EtherType `0x88F7`, decode dans
   `InternetDetails::Ptp`
+- GOOSE (IEC 61850-8-1) directement sur Ethernet, EtherType `0x88B8`, avec ou
+  sans etiquette VLAN, decode dans `InternetDetails::Goose` : APPID,
+  longueur, mots reserves (bit de simulation), puis le goosePdu (reference
+  du bloc de controle, duree de vie, jeu de donnees, goID, horodatage
+  UtcTime, numeros d'etat et de sequence, simulation, revision de
+  configuration, mise en service, nombre d'entrees, chaque valeur de
+  `allData` avec son etiquette BER et ses octets) ; reconnu aussi a
+  l'aveugle quand l'EtherType est inconnu
 
 Pour IPv4 fragmente, la crate ne fait pas de reassemblage IP. Dans ce cas,
 `payload_protocol` vaut `None` pour eviter de parser une couche transport

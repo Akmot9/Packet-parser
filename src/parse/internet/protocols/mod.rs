@@ -4,6 +4,7 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 pub mod arp;
+pub mod goose;
 pub mod ipv4;
 pub mod ipv6;
 pub mod profinet;

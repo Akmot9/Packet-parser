@@ -30,6 +30,8 @@ pub enum NetworkProtocol {
     // En fin d'enum et non a cote de Profinet : inseree ailleurs, la variante
     // decalerait les discriminants des suivantes (rupture SemVer).
     Ptp,
+    /// GOOSE (IEC 61850-8-1) directement sur Ethernet, EtherType `0x88B8`.
+    Goose,
 }
 
 impl NetworkProtocol {
@@ -40,6 +42,7 @@ impl NetworkProtocol {
             0x0806 => Self::Arp,
             0x8892 => Self::Profinet,
             0x88f7 => Self::Ptp,
+            0x88b8 => Self::Goose,
             other => Self::Other(other),
         }
     }
@@ -54,6 +57,7 @@ impl fmt::Display for NetworkProtocol {
             Self::Profinet => f.write_str("Profinet"),
             Self::Other(value) => write!(f, "0x{value:04X}"),
             Self::Ptp => f.write_str("PTP"),
+            Self::Goose => f.write_str("GOOSE"),
         }
     }
 }
