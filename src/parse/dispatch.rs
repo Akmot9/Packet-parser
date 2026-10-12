@@ -26,6 +26,7 @@
 use super::application::Application;
 use super::application::protocols::ams::AmsPacket;
 use super::application::protocols::asterix::AsterixPacket;
+use super::application::protocols::bacnet::BacnetPacket;
 use super::application::protocols::bitcoin::BitcoinPacket;
 use super::application::protocols::dhcp::DhcpPacket;
 use super::application::protocols::dhcpv6::Dhcpv6Packet;
@@ -150,6 +151,7 @@ enum ProbeId {
     DisLenient,
     Dnp3,
     Radius,
+    Bacnet,
     Rdp,
     Iec104,
     Ike,
@@ -218,6 +220,8 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         ProbeId::Dnp3 => Dnp3Packet::try_from(full_payload).is_ok(),
         // Sur le payload reel : la longueur declaree couvre tout le datagramme.
         ProbeId::Radius => RadiusPacket::try_from(full_payload).is_ok(),
+        // Sur le payload reel : la longueur BVLC couvre tout le datagramme.
+        ProbeId::Bacnet => BacnetPacket::try_from(full_payload).is_ok(),
         // TPKT, COTP X.224 et une connexion ou un PDU MCS lisibles ; sur le
         // payload reel, un TPKT peut deborder du segment.
         ProbeId::Rdp => RdpPacket::try_from(full_payload).is_ok(),
@@ -397,6 +401,9 @@ static RULES: &[Rule] = &[
     // RADIUS (RFC 2865) sur ses ports : 1812/1813, les anciens 1645/1646,
     // 3799 (RFC 5176). La meme sonde revient a l'aveugle plus bas (#101).
     port_rule("RADIUS", Guard::Udp, is_radius_udp_port, ProbeId::Radius),
+    // BACnet/IP (ASHRAE 135, annexe J) sur ses ports 47808 a 47823 ; la
+    // meme sonde revient a l'aveugle plus bas (#102).
+    port_rule("BACnet/IP", Guard::Udp, is_bacnet_udp_port, ProbeId::Bacnet),
     // RDP (MS-RDPBCGR) : TCP 3389. Garde par port : TPKT, COTP et MCS sont
     // aussi la pile de T.120 et d'ISO sur TCP, un autre port se declare par
     // Decode As. Apres une negociation TLS ou CredSSP, les segments
@@ -467,6 +474,10 @@ static RULES: &[Rule] = &[
     // RADIUS : code connu, longueur egale au datagramme, attributs qui le
     // pavent — assez contraint pour se passer du port (#101).
     rule("RADIUS", Guard::Udp, ProbeId::Radius),
+    // BACnet/IP : `0x81`, une fonction BVLC, une longueur egale au
+    // datagramme, un NPDU de version 1 — assez contraint pour se passer du
+    // port (#102).
+    rule("BACnet/IP", Guard::Udp, ProbeId::Bacnet),
     rule("Bitcoin", Guard::Tcp, ProbeId::Bitcoin),
     rule("OPC UA", Guard::Tcp, ProbeId::Opcua),
     // EtherNet/IP est reellement bi-transport (TCP 44818, UDP 2222).
@@ -782,6 +793,12 @@ fn is_iec104_tcp_port(port: Option<u16>) -> bool {
 /// RDP : TCP 3389 (IANA `ms-wbt-server`).
 fn is_rdp_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(3389))
+}
+
+/// BACnet/IP : UDP 47808 (0xBAC0, IANA `bacnet`) et les quinze ports
+/// suivants que l'annexe J laisse aux reseaux multiples.
+fn is_bacnet_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(47808..=47823))
 }
 
 /// RADIUS : UDP 1812/1813 (IANA), 1645/1646 (historiques), 3799 (RFC 5176).
@@ -1263,6 +1280,7 @@ mod tests {
                 "DIS",
                 "DNP3",
                 "RADIUS",
+                "BACnet/IP",
                 "Bitcoin",
                 "OPC UA",
                 "EtherNet/IP",

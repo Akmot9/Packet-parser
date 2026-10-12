@@ -310,10 +310,16 @@ fn application_classification_histogram_is_frozen() {
     // 8 251 -> 8 254 (+3 : un segment RMI et deux segments sans APDU complet
     // de la meme capture), "(sans application)" 5 029 -> 5 254 (+225 : les
     // ACK).
+    //
+    // 2026-10-12 (epopee #102, corpus BACnet/IP, 2 captures, 49 trames) :
+    // "BACnet/IP" 0 -> 45 (tous les datagrammes BVLC, port 47808 ou sonde
+    // aveugle), "(sans application)" 5 254 -> 5 258 (+4 : les datagrammes
+    // UDP vides de iti_bacnet_test.pcap).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 5254),
+        (NO_APPLICATION, 5258),
         ("ASTERIX", 44_507),
+        ("BACnet/IP", 45),
         ("DHCP", 71),
         ("DIS", 390),
         ("DNP3", 218),

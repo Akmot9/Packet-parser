@@ -79,6 +79,26 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **BACnet/IP** (epopee #102, Tier 2) : la gestion technique du batiment,
+  ASHRAE 135 annexe J. `bacnet::BacnetPacket` lit le BVLC (`0x81`, fonction
+  nommee par `BvlcFunction`, longueur qui doit couvrir exactement le
+  datagramme, origine d'un Forwarded-NPDU), puis pour les fonctions qui
+  en portent un le NPDU (`Npdu` : version 1, controle avec `expecting_reply`
+  et `priority`, adresses reseau de destination et de source
+  `NetworkAddress`, compte de sauts, message reseau avec identifiant de
+  vendeur pour les types proprietaires) et l'APDU (`Apdu` : type nomme par
+  `ApduType`, drapeaux, identifiant d'invocation, segments et taille
+  acceptes, numero de segment et fenetre, service nomme par
+  `ConfirmedService` ou `UnconfirmedService`, motif de rejet ou d'abandon,
+  donnees du service telles quelles). Dispatch : regle de port UDP 47808 a
+  47823, et la meme sonde a l'aveugle sur tout port UDP — la longueur BVLC
+  egale au datagramme et la version 1 sont la signature. Corpus :
+  `pcaps_exemple/protocols/bacnet/`, deux automates (ITI, CC-BY-4.0) et un
+  equipement expose a Internet puis un reseau local (nDPI, LGPL-3.0).
+  Parite avec tshark 4.6.6 sur les 45 datagrammes (`tests/bacnet_golden.rs`,
+  oracle `tools/bacnet_oracle.sh`) : BVLC, NPDU et APDU champ par champ ;
+  port ou sonde aveugle, cinq alterations d'un octet rejetees. Histogramme
+  golden : "BACnet/IP" 0 -> 45 ; collecteur de corpus 161 -> 163 captures. Cible de fuzz `parse_bacnet`.
 - **IEC 60870-5-104** (epopee #102, Tier 2) : la telecommande du secteur
   electrique europeen, compagnon de DNP3. `iec104::Iec104Packet` lit les
   APDU d'un segment TCP — `0x68`, longueur, champ de controle dont le

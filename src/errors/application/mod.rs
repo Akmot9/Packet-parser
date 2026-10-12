@@ -8,6 +8,7 @@ use thiserror::Error;
 
 pub mod ams;
 pub mod asterix;
+pub mod bacnet;
 pub mod bitcoin;
 pub mod copt;
 pub mod dhcp;

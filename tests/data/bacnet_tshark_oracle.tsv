@@ -1,0 +1,49 @@
+# Genere par tools/bacnet_oracle.sh avec TShark (Wireshark) 4.6.6. : un datagramme BACnet/IP par ligne.
+# Colonnes : capture, trame, port source, port destination, longueur du payload, fonction BVLC, longueur
+# BVLC, version NPDU, controle, DNET, DLEN, SNET, SLEN, compte de sauts, type de message reseau, type
+# d'APDU, identifiant d'invocation, service confirme, service non confirme (`-` quand absent).
+iti_bacnet_test.pcap	3	47808	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+iti_bacnet_test.pcap	4	47808	47808	23	0x0a	4	1	0x00	-	-	-	-	-	-	3	1	12	-
+iti_bacnet_test.pcap	5	47808	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+iti_bacnet_test.pcap	6	47808	47808	20	0x0a	4	1	0x00	-	-	-	-	-	-	3	1	12	-
+iti_bacnet_test.pcap	7	47808	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+iti_bacnet_test.pcap	8	47808	47808	27	0x0a	4	1	0x00	-	-	-	-	-	-	3	1	12	-
+iti_bacnet_test.pcap	9	47808	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+iti_bacnet_test.pcap	10	47808	47808	41	0x0a	4	1	0x00	-	-	-	-	-	-	3	1	12	-
+iti_bacnet_test.pcap	11	47808	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+iti_bacnet_test.pcap	12	47808	47808	20	0x0a	4	1	0x00	-	-	-	-	-	-	3	1	12	-
+iti_bacnet_test.pcap	13	47808	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+iti_bacnet_test.pcap	14	47808	47808	33	0x0a	4	1	0x00	-	-	-	-	-	-	3	1	12	-
+iti_bacnet_test.pcap	15	47808	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+iti_bacnet_test.pcap	16	47808	47808	45	0x0a	4	1	0x00	-	-	-	-	-	-	3	1	12	-
+iti_bacnet_test.pcap	17	47808	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+iti_bacnet_test.pcap	18	47808	47808	20	0x0a	4	1	0x00	-	-	-	-	-	-	3	1	12	-
+iti_bacnet_test.pcap	19	47808	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+iti_bacnet_test.pcap	20	47808	47808	20	0x0a	4	1	0x00	-	-	-	-	-	-	3	1	12	-
+iti_bacnet_test.pcap	21	47808	47808	4	0x02	4	-	-	-	-	-	-	-	-	-	-	-	-
+iti_bacnet_test.pcap	22	47808	47808	6	0x00	6	-	-	-	-	-	-	-	-	-	-	-	-
+iti_bacnet_test.pcap	25	47808	47808	6	0x05	6	-	-	-	-	-	-	-	-	-	-	-	-
+iti_bacnet_test.pcap	26	47808	47808	6	0x00	6	-	-	-	-	-	-	-	-	-	-	-	-
+ndpi_bacnet.pcap	1	53234	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	169	12	-
+ndpi_bacnet.pcap	2	56883	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+ndpi_bacnet.pcap	3	36992	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	146	12	-
+ndpi_bacnet.pcap	4	36664	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	220	12	-
+ndpi_bacnet.pcap	5	54587	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+ndpi_bacnet.pcap	6	27041	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+ndpi_bacnet.pcap	7	63852	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+ndpi_bacnet.pcap	8	51922	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+ndpi_bacnet.pcap	9	29782	47808	17	0x0a	4	1	0x04	-	-	-	-	-	-	0	1	12	-
+ndpi_bacnet.pcap	10	47808	47808	12	0x0b	4	1	0x20	65535	0	-	-	255	-	1	-	-	8
+ndpi_bacnet.pcap	11	47808	47808	25	0x0b	4	1	0x20	65535	0	-	-	255	-	1	-	-	0
+ndpi_bacnet.pcap	12	47808	47808	12	0x0b	4	1	0x20	65535	0	-	-	255	-	1	-	-	8
+ndpi_bacnet.pcap	13	47808	47808	25	0x0b	4	1	0x20	65535	0	-	-	255	-	1	-	-	0
+ndpi_bacnet.pcap	14	47808	47808	25	0x0b	4	1	0x20	65535	0	-	-	255	-	1	-	-	0
+ndpi_bacnet.pcap	15	47808	47808	25	0x0b	4	1	0x20	65535	0	-	-	255	-	1	-	-	0
+ndpi_bacnet.pcap	16	47808	47808	12	0x0b	4	1	0x20	65535	0	-	-	255	-	1	-	-	8
+ndpi_bacnet.pcap	17	47808	47808	21	0x0b	4	1	0x00	-	-	-	-	-	-	1	-	-	0
+ndpi_bacnet.pcap	18	47808	47808	13	0x0b	4	1	0x00	-	-	-	-	-	-	5	1	12	-
+ndpi_bacnet.pcap	19	47808	47808	16	0x0b	4	1	0x20	65535	0	-	-	255	-	1	-	-	8
+ndpi_bacnet.pcap	20	47808	47808	16	0x0b	4	1	0x20	65535	0	-	-	255	-	1	-	-	8
+ndpi_bacnet.pcap	21	47808	47808	16	0x0b	4	1	0x20	65535	0	-	-	255	-	1	-	-	8
+ndpi_bacnet.pcap	22	47808	47808	13	0x0b	4	1	0xa0	65535	0	-	-	255	0x01	-	-	-	-
+ndpi_bacnet.pcap	23	47808	47808	14	0x0b	4	1	0xa0	65535	0	-	-	255	0x13	-	-	-	-

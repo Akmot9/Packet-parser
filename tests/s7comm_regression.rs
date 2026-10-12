@@ -709,14 +709,18 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // trames Ethernet/IPv4/TCP decodees sans erreur L2 : 156 -> 161 captures,
     // 155 -> 160 fichiers lus, 67 156 -> 67 807 trames, 67 114 -> 67 765 flux.
     // Aucune n'est etiquetee S7Comm ni COTP.
-    assert_eq!(captures.len(), 161);
-    assert_eq!(opened_files, 160);
-    assert_eq!(frame_count, 67_807);
+    // 2026-10-12 (epopee #102) : +2 captures BACnet/IP dans protocols/bacnet/
+    // (voir SOURCE.md : ITI, nDPI), 49 trames Ethernet/IPv4/UDP decodees sans
+    // erreur L2 : 161 -> 163 captures, 160 -> 162 fichiers lus,
+    // 67 807 -> 67 856 trames, 67 765 -> 67 814 flux.
+    assert_eq!(captures.len(), 163);
+    assert_eq!(opened_files, 162);
+    assert_eq!(frame_count, 67_856);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 67_765);
+    assert_eq!(parsed_flows, 67_814);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

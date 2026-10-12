@@ -314,6 +314,12 @@ Application detection is intentionally best-effort. Parser modules include:
   stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
   exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
   `NDDSPING` pings are reported too
+- BACnet/IP (ASHRAE 135 annex J) on UDP 47808: BVLC (function named,
+  length equal to the datagram, origin of a Forwarded-NPDU), NPDU (version,
+  control, destination and source network addresses, hop count, network
+  messages with vendor id) and APDU (type, flags, invoke id, segmentation,
+  confirmed and unconfirmed services named); recognised on its ports and
+  blindly on any UDP port
 - IEC 60870-5-104 on TCP 2404: APDUs of a segment (the last one cut by
   segmentation is decoded as far as it goes), I/S/U formats with sequence
   numbers or the STARTDT/STOPDT/TESTFR function, and for each ASDU the
