@@ -148,9 +148,11 @@ impl ServiceMessage {
 fn plot_counts(data: &[u8]) -> Vec<PlotCount> {
     data.get(1..)
         .unwrap_or_default()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
-            let word = u16::from_be_bytes([pair[0], pair[1]]);
+            let word = u16::from_be_bytes(*pair);
             PlotCount {
                 antenna_2: word & 0x8000 != 0,
                 identification: ((word >> 10) & 0x1f) as u8,

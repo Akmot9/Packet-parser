@@ -59,7 +59,9 @@ impl VersionReport {
 fn category_versions(data: &[u8]) -> Vec<CategoryVersion> {
     data.get(1..)
         .unwrap_or_default()
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|entry| CategoryVersion {
             category: entry[0],
             main_version: entry[1],
