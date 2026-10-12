@@ -6,8 +6,45 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Corrige
+
+- **PROFINET** (#133) : le validateur de la couche internet appliquait le
+  decodeur DCP a toute trame EtherType `0x8892`, et ne connaissait que cinq
+  Frame ID. Toute trame cyclique (RT_CLASS_1, RT_CLASS_3), alarme, PTCP ou
+  fragment sortait en `corrupted` (`Unknown Frame ID`), et une trame cyclique
+  des plages acceptees etait lue comme du DCP. `FrameId` classe desormais
+  toutes les plages attribuees d'IEC 61158-6-10 (celles du dissecteur
+  `pn_rt` de Wireshark : `Sync`, `RtClass3`, `RtClass1Unicast`,
+  `RtClass1Multicast`, `AlarmHigh`, `AlarmLow`, `Rsi`, `Sxp`, `Hello`,
+  `PtcpAnnounce`, `PtcpFollowUp`, `PtcpDelay`, `Fragment`, en fin d'enum),
+  `profinet::validate_frame` valide une trame par son seul Frame ID, et le
+  decodeur DCP ne s'applique plus qu'aux Frame ID DCP (`FrameId::is_dcp`).
+  Une valeur reservee reste `UnknownFrameId`.
+- **PROFINET DCP** (#141) : le premier bloc etait lu comme le NameOfStation,
+  BlockInfo ou BlockQualifier compris. Un Set request (bloc IP en tete) ou
+  une Identify response (DeviceOptions en tete) sortait en
+  `InvalidNameOfStation`, et le nom des autres reponses commencait par deux
+  octets de BlockInfo. `ProfinetPacket` parcourt maintenant tous les blocs
+  sur `DCPDataLength` (bourrage apres un bloc impair compris), met a part le
+  BlockInfo des reponses Identify et Get et d'une requete Hello et le
+  BlockQualifier d'une requete Set, et prend `name_of_station` dans le bloc
+  option 2 / suboption 2, vide quand le message n'en porte pas. Les champs
+  `option`, `suboption` et `dcp_block_length` restent ceux du premier bloc.
+  Sur le corpus, les 231 trames PN-RT saines sortent `internet = Profinet`
+  (129 `corrupted` avant) et le NameOfStation de chaque message DCP est
+  celui de tshark (`tests/profinet_corpus.rs`, oracle
+  `tests/data/profinet_tshark_oracle.tsv`).
+
 ### Ajoute
 
+- `profinet::DcpBlock` et `ProfinetPacket::blocks` : tous les blocs d'un
+  message DCP, zero-copie, avec leur BlockInfo ou BlockQualifier ;
+  `profinet::validate_frame` ; les constantes `DCP_SERVICE_*`. Nouvelles
+  variantes de `ProfinetPacketError`, en fin d'enum : `FrameTooShort`,
+  `NotDcp`, `DcpDataOverflow`, `DcpBlockOverflow`, `DcpBlockTooShort` ; le
+  minimum de `PacketTooShort` passe de 16 a 12 octets, l'en-tete fixe DCP.
+  `InvalidDcpBlockLength` ne sert plus qu'a un en-tete de bloc tronque.
+- Cible de fuzz `parse_profinet` dans la matrice nocturne.
 - **Corpus PROFINET** (#133) : sept captures reelles dans
   `pcaps_exemple/protocols/profinet/` (2 685 trames, dont 232 PN-RT), trois
   sources documentees dans `SOURCE.md` : cisagov/icsnpp-profinet-io-cm

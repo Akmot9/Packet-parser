@@ -129,7 +129,9 @@ impl<'a> Internet<'a> {
             NetworkProtocol::Ipv4 => Ok(Self::from_ipv4(ipv4::Ipv4Packet::try_from(payload)?)),
             NetworkProtocol::Ipv6 => Ok(Self::from_ipv6(ipv6::Ipv6Packet::try_from(payload)?)),
             NetworkProtocol::Profinet => {
-                profinet::ProfinetPacket::try_from(payload)?;
+                // Toute trame RT est valide par son Frame ID ; seul un Frame
+                // ID DCP doit porter un message DCP lisible (#133).
+                profinet::validate_frame(payload)?;
                 Ok(Self::profinet())
             }
             NetworkProtocol::Ptp => match PtpPacket::try_from(payload) {
@@ -247,6 +249,8 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
             return Ok(Self::from_ipv6(ipv6_packet));
         }
 
+        // Sondage sans EtherType : seul un message DCP complet est une preuve,
+        // deux octets de Frame ID plausibles n'en sont pas une.
         if profinet::ProfinetPacket::try_from(packet).is_ok() {
             return Ok(Self::profinet());
         }
