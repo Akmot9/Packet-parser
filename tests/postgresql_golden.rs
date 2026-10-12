@@ -20,6 +20,10 @@
 //! La reponse d'un octet a SSLRequest (`S` ou `N`) n'a ni en-tete ni
 //! longueur : elle n'est decodee que sur le port 5432 ou un port declare,
 //! jamais par la sonde aveugle — c'est l'arbitrage que le corpus tranche.
+//! Chaque segment PostgreSQL est aussi rejoue avec ses ports deplaces hors
+//! de 5432 : la sonde aveugle en retient 262 sur 276, et les quatorze
+//! qu'elle laisse sont les segments sans preuve forte — reponse SSL,
+//! `Terminate` ou `ReadyForQuery` seuls.
 
 use std::{collections::BTreeMap, fs, path::Path};
 
@@ -136,6 +140,8 @@ fn every_segment_matches_the_tshark_oracle() {
     let mut ssl_responses = 0;
     let mut messages = 0;
     let mut retransmissions = 0;
+    let mut blind = 0;
+    let mut blind_misses: BTreeMap<String, usize> = BTreeMap::new();
     let mut tshark_false_positives = 0;
     let mut crate_false_positives = 0;
     for path in &captures {
@@ -223,6 +229,25 @@ fn every_segment_matches_the_tshark_oracle() {
             }
             messages += packet.messages.len();
             pgsql_segments += 1;
+
+            // Le meme segment hors du port 5432 : la sonde aveugle seule.
+            let mut moved = data.clone();
+            for offset in [34usize, 36] {
+                if u16::from_be_bytes([moved[offset], moved[offset + 1]]) == 5432 {
+                    moved[offset..offset + 2].copy_from_slice(&5433u16.to_be_bytes());
+                }
+            }
+            let flow = parse(*link_type, &moved).expect("segment deplace");
+            if label(&flow) == Some("PostgreSQL") {
+                blind += 1;
+            } else {
+                assert_eq!(
+                    types.len(),
+                    1,
+                    "{file}:{number} : plusieurs messages manques a l'aveugle"
+                );
+                *blind_misses.entry(format!("{:?}", types[0])).or_default() += 1;
+            }
         }
     }
     assert_eq!(segments, 331);
@@ -230,6 +255,17 @@ fn every_segment_matches_the_tshark_oracle() {
     assert_eq!(pgsql_segments, 276);
     assert_eq!(ssl_responses, 8);
     assert_eq!(messages, 558);
+    // La sonde aveugle : tout ce qui porte une preuve forte, et rien de ce
+    // qui n'en porte pas.
+    assert_eq!(blind, 262);
+    assert_eq!(
+        blind_misses,
+        BTreeMap::from([
+            ("SslResponse".to_string(), 8),
+            ("Terminate".to_string(), 5),
+            ("ReadyForQuery".to_string(), 1),
+        ])
+    );
     // La mesure : HTTP (2 segments avec reassemblage coupe) et MySQL (4) sur
     // le port 5432 trompent tshark ; la crate, jamais.
     assert_eq!(tshark_false_positives, 6);

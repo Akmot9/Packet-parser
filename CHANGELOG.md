@@ -87,8 +87,10 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   deux negatifs, HTTP et MySQL rejoues sur 5432. `tests/postgresql_golden.rs`
   + oracle `tools/postgresql_oracle.sh` (tshark 4.6.6 sans reassemblage) :
   parite sur les 276 segments PostgreSQL (558 messages, types et
-  longueurs), zero faux positif sur les negatifs la ou tshark en compte six,
-  et trames reelles mutees rejetees. L'arbitrage du `ROADMAP` sur les
+  longueurs), 262 d'entre eux retenus par la sonde aveugle une fois leurs
+  ports deplaces (les 14 autres sont les reponses SSL, `Terminate` et
+  `ReadyForQuery` seuls, sans preuve forte), zero faux positif sur les
+  negatifs la ou tshark en compte six, et trames reelles mutees rejetees. L'arbitrage du `ROADMAP` sur les
   reponses d'un octet est tranche par la mesure : `PostgreSqlMessageType::SslResponse`
   (le `S` ou `N` que le serveur renvoie a SSLRequest, corps
   `PostgreSqlMessageBody::SslResponse { accepted }`) n'est decode que seul
