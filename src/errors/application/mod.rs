@@ -12,6 +12,7 @@ pub mod bitcoin;
 pub mod copt;
 pub mod dhcp;
 pub mod dhcpv6;
+pub mod dis;
 pub mod dns;
 pub mod ethernet_ip;
 pub mod ftp;

@@ -13,10 +13,10 @@ use serde::Serialize;
 use crate::{
     errors::application::ApplicationError,
     parse::application::protocols::{
-        asterix::AsterixPacket, dhcp::DhcpPacket, giop::GiopPacket, http::HttpRequest,
-        modbus_tcp::ModbusTcpPacket, mqtt::MqttPacket, ntp::NtpPacket, opcua::OpcuaPacket,
-        postgresql::is_likely_postgresql_payload, quic::QuicPacket, rtps::RtpsPacket,
-        srvloc::SrvlocPacket, umas::UmasPacket,
+        asterix::AsterixPacket, dhcp::DhcpPacket, dis::DisPacket, giop::GiopPacket,
+        http::HttpRequest, modbus_tcp::ModbusTcpPacket, mqtt::MqttPacket, ntp::NtpPacket,
+        opcua::OpcuaPacket, postgresql::is_likely_postgresql_payload, quic::QuicPacket,
+        rtps::RtpsPacket, srvloc::SrvlocPacket, umas::UmasPacket,
     },
 };
 
@@ -63,6 +63,13 @@ impl TryFrom<&[u8]> for Application {
         if AsterixPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "ASTERIX",
+            });
+        }
+        // DIS (IEEE 1278.1) : en-tete de douze octets et pavage exact du
+        // datagramme par ses PDU (#123).
+        if DisPacket::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "DIS",
             });
         }
         if BitcoinPacket::try_from(packet).is_ok() {

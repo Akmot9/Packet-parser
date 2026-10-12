@@ -322,6 +322,13 @@ incluent notamment:
   son magic (`RTPS`, ou `RTPX` chez RTI) et le pavage exact de ses
   sous-messages, sur tout port UDP ; les pings RTI de seize octets
   (`NDDSPING`) sont signales aussi
+- DIS (IEEE 1278.1, Distributed Interactive Simulation) : en-tete de PDU
+  (versions 1 a 7, les 72 types de la norme nommes, famille, horodatage,
+  longueur, PDU Status), corps Entity State, Transmitter et Signal types,
+  les autres en octets, plusieurs PDU par datagramme. Reconnu a l'aveugle
+  quand les PDU pavent exactement le datagramme ; sur UDP 3000 (ou un port
+  declare par Decode As), une longueur declaree fausse est toleree et le
+  reste garde en octets de fin
 - STANAG 5066 SIS (Subnetwork Interface Sublayer, pile de donnees des
   liaisons radio HF de l'OTAN) sur TCP 5066 : tous les types de S_PDU
   (bind, liaisons dures, disponibilite du sous-reseau, gestion, donnees et

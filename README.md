@@ -314,6 +314,12 @@ Application detection is intentionally best-effort. Parser modules include:
   stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
   exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
   `NDDSPING` pings are reported too
+- DIS (IEEE 1278.1, Distributed Interactive Simulation): PDU header
+  (versions 1 to 7, the 72 standard PDU types named, family, timestamp,
+  length, PDU Status), Entity State, Transmitter and Signal bodies typed,
+  other bodies as bytes, several PDUs per datagram. Recognised blindly when
+  the PDUs tile the datagram exactly; on UDP 3000 (or a Decode As port) a
+  wrong declared length is tolerated and the rest kept as trailing bytes
 - STANAG 5066 SIS (Subnetwork Interface Sublayer, NATO HF radio data
   stack) on TCP 5066: every S_PDU type (bind, hard links, subnet
   availability, management, unidata and expedited unidata with their
