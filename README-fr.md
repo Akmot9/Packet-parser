@@ -322,6 +322,13 @@ incluent notamment:
   son magic (`RTPS`, ou `RTPX` chez RTI) et le pavage exact de ses
   sous-messages, sur tout port UDP ; les pings RTI de seize octets
   (`NDDSPING`) sont signales aussi
+- STANAG 5066 SIS (Subnetwork Interface Sublayer, pile de donnees des
+  liaisons radio HF de l'OTAN) sur TCP 5066 : tous les types de S_PDU
+  (bind, liaisons dures, disponibilite du sous-reseau, gestion, donnees et
+  donnees expediees avec leurs confirmations et rejets), adresses de noeud,
+  SAP, types de service, TTL, tailles d'U_PDU ; le premier S_PDU du
+  segment, signale quand il deborde sur le suivant, `consumed` pour les
+  suivants. Garde par port, autre port par Decode As
 - PTP (IEEE 1588) sur UDP 319/320 : PTPv2 decode en entier (en-tete commun,
   corps des dix types de message, TLV listes sans decoder leur valeur), PTPv1
   reconnu par son en-tete. Garde par port : un Delay_Req a exactement la

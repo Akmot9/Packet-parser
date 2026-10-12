@@ -69,6 +69,25 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **STANAG 5066 SIS** (#122, lot defense #125) : la couche qui relie les
+  applications au noeud radio HF (annexe A de l'Ed. 4, brouillon v1.6
+  publie par Isode), sur TCP 5066. `stanag5066::SisPdu` decode le premier
+  S_PDU d'un segment — preambule `90 EB`, version, taille, et les vingt-sept
+  types de primitive en valeurs typees (`SisPrimitive` : bind, liaisons
+  dures, disponibilite, gestion, donnees et donnees expediees avec
+  confirmations et rejets ; adresses de noeud, SAP, type de service,
+  retransmissions, TTL, taille et octets de l'U_PDU, blocs en erreur d'une
+  indication non-ARQ, decalage Rockwell Collins comme tshark). Stateless
+  comme GIOP : un S_PDU qui deborde du segment est accepte et marque
+  `truncated`, `consumed` donne le S_PDU suivant quand un segment en porte
+  plusieurs, un segment de continuation sans preambule reste `Unknown`.
+  Regle gardee par le port 5066 (`DecodeAsProtocol::Stanag5066` pour un
+  autre port) : trois octets fixes et deux contraintes ne suffisent pas a
+  une sonde aveugle. Parite avec tshark 4.6.6 sans reassemblage sur les 34
+  segments du corpus (`tests/stanag5066_golden.rs`, oracle
+  `tools/stanag5066_oracle.sh`), cinq S_PDU coupes entre deux segments
+  compris. Histogramme golden : "STANAG 5066" 0 -> 34, "Unknown" 9 178 ->
+  9 144. Cible de fuzz `parse_stanag5066` dans la matrice nocturne.
 - **RTPS** (#120, lot defense #125) : OMG DDSI-RTPS 2.x, le protocole
   filaire de DDS (NGVA, GVA, systemes navals, ROS 2), successeur de
   GIOP/MIOP. `rtps::RtpsPacket` decoupe l'en-tete (version, vendorId,

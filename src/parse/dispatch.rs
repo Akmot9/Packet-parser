@@ -51,6 +51,7 @@ use super::application::protocols::snmp::SnmpPacket;
 use super::application::protocols::srvloc::SrvlocPacket;
 use super::application::protocols::ssdp::SsdpPacket;
 use super::application::protocols::ssh::SshPacket;
+use super::application::protocols::stanag5066::SisPdu;
 use super::application::protocols::tls::TlsPacket;
 use super::application::protocols::umas::UmasPacket;
 use super::cotp_from_tpkt;
@@ -132,6 +133,7 @@ enum ProbeId {
     DnsBlind,
     Ptp,
     Rtps,
+    Stanag5066,
 }
 
 fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
@@ -186,6 +188,7 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         // Garde a cout constant sur le magic, comme GIOP ; puis le payload REEL :
         // les sous-messages doivent paver tout le datagramme, et un DATA_FRAG de
         // 60 Ko depasse PROBE_CAP sans cesser d'etre du RTPS.
+        ProbeId::Stanag5066 => SisPdu::try_from(payload).is_ok(),
         ProbeId::Rtps => {
             (full_payload.starts_with(b"RTPS") || full_payload.starts_with(b"RTPX"))
                 && RtpsPacket::try_from(full_payload).is_ok()
@@ -338,6 +341,16 @@ static RULES: &[Rule] = &[
     // seul messageType ne distingue pas PTP d'un payload quelconque. En
     // couche 2 (EtherType 0x88F7), PTP est decode par la couche internet.
     port_rule("PTP", Guard::Udp, is_ptp_port, ProbeId::Ptp),
+    // STANAG 5066 SIS : TCP 5066 (port IANA). Garde par port : le preambule
+    // `90 EB 00`, un type et une taille sont trois octets fixes et deux
+    // contraintes — trop peu pour une sonde aveugle sur tout segment TCP ;
+    // un autre port se declare par Decode As (#122).
+    port_rule(
+        "STANAG 5066",
+        Guard::Tcp,
+        is_stanag5066_tcp_port,
+        ProbeId::Stanag5066,
+    ),
     // --- cascade aveugle, ordre historique de `Application::try_from`,
     // avec les gardes de transport que les RFC imposent : sonder NTP sur du
     // TCP etiquetait "NTP" des Encrypted Alerts TLS (0x15 = LI/VN/mode
@@ -416,6 +429,7 @@ pub enum DecodeAsProtocol {
     QuicShortHeader,
     OpenVpn,
     Ptp,
+    Stanag5066,
 }
 
 impl DecodeAsProtocol {
@@ -450,6 +464,7 @@ impl DecodeAsProtocol {
                 _ => ("OpenVPN", Guard::Udp, ProbeId::OpenVpnUdp),
             },
             Self::Ptp => ("PTP", Guard::Udp, ProbeId::Ptp),
+            Self::Stanag5066 => ("STANAG 5066", Guard::Tcp, ProbeId::Stanag5066),
         }
     }
 }
@@ -632,6 +647,11 @@ fn is_ams_udp_port(port: Option<u16>) -> bool {
 /// QUIC (HTTP/3) : UDP 443.
 fn is_quic_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(443))
+}
+
+/// STANAG 5066 SIS : TCP 5066 (IANA `stanag-5066`).
+fn is_stanag5066_tcp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(5066))
 }
 
 /// FTP control channel : TCP 21.
@@ -946,6 +966,7 @@ mod tests {
             DecodeAsProtocol::QuicShortHeader,
             DecodeAsProtocol::OpenVpn,
             DecodeAsProtocol::Ptp,
+            DecodeAsProtocol::Stanag5066,
         ];
         for protocol in all {
             for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {

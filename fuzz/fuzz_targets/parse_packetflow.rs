@@ -20,7 +20,7 @@ use packet_parser::{
 
 /// Tous les protocoles declarables par l'appelant (Decode As, issue #65),
 /// dans l'ordre de l'enum : le premier octet de l'entree en choisit un.
-const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 20] = [
+const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 21] = [
     DecodeAsProtocol::Ftp,
     DecodeAsProtocol::Smtp,
     DecodeAsProtocol::Nntp,
@@ -41,6 +41,7 @@ const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 20] = [
     DecodeAsProtocol::QuicShortHeader,
     DecodeAsProtocol::OpenVpn,
     DecodeAsProtocol::Ptp,
+    DecodeAsProtocol::Stanag5066,
 ];
 
 /// Les trois premiers octets de l'entree choisissent une configuration

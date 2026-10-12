@@ -314,6 +314,13 @@ Application detection is intentionally best-effort. Parser modules include:
   stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
   exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
   `NDDSPING` pings are reported too
+- STANAG 5066 SIS (Subnetwork Interface Sublayer, NATO HF radio data
+  stack) on TCP 5066: every S_PDU type (bind, hard links, subnet
+  availability, management, unidata and expedited unidata with their
+  confirmations and rejections), node addresses, SAPs, service types,
+  TTL, U_PDU sizes; the first S_PDU of a segment, flagged when it overflows
+  into the next segment, `consumed` for the following ones. Port-guarded,
+  other ports via Decode As
 - PTP (IEEE 1588) on UDP 319/320: PTPv2 decoded in full (common header, the
   ten message bodies, TLVs listed without decoding their value), PTPv1
   recognised by its header. Port-guarded: a Delay_Req has exactly the shape of

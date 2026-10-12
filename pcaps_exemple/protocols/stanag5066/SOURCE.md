@@ -39,6 +39,18 @@ fabrication.
 Un S_PDU peut être coupé entre deux segments TCP, et un segment peut en
 porter plusieurs : un parseur sans état décode le premier S_PDU complet.
 
+## Oracle tshark
+
+`tests/data/stanag5066_tshark_oracle.tsv` est produit par
+`tools/stanag5066_oracle.sh` (tshark 4.6.6, `tcp.desegment_tcp_streams:FALSE`) :
+la vue d'un parseur sans état, un segment par ligne. Les 34 segments qui
+commencent un S_PDU y sont (types, tailles, adresses, SAP, tailles d'U_PDU,
+modes, TTL, rangs, MTU, motifs), les 5 segments de continuation sans
+préambule n'y sont pas — tshark ne les étiquette pas davantage sans
+réassembler. `tests/stanag5066_golden.rs` rejoue l'oracle (#122) ; les cinq
+S_PDU coupés entre deux segments y sont décodés sur leur premier segment,
+champs fixes compris, et marqués tronqués.
+
 ## Non versés
 
 - `Stanag5066-RAW-ENCAP-Bftp-Exchange-tx.pcap` (wiki) : couche DTS en
