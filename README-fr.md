@@ -322,6 +322,15 @@ incluent notamment:
   son magic (`RTPS`, ou `RTPX` chez RTI) et le pavage exact de ses
   sous-messages, sur tout port UDP ; les pings RTI de seize octets
   (`NDDSPING`) sont signales aussi
+- IKE (ISAKMP/IKEv1 RFC 2408, IKEv2 RFC 7296) sur UDP 500 et 4500 : en-tete
+  de 28 octets (SPI, version, type d'echange nomme, drapeaux, identifiant de
+  message, longueur), chaine des payloads de premier niveau avec leurs types
+  nommes, octets chiffres gardes tels quels (drapeau E d'IKEv1, payload SK
+  d'IKEv2) ; UDP 4500 demultiplexe selon la RFC 3948 (marqueur non-ESP,
+  NAT-keepalive, ESP)
+- ESP (RFC 4303) : SPI et numero de sequence, natif (protocole IP 50, expose
+  en `TransportDetails::Esp`) comme encapsule dans UDP 4500 (`EspPacket`),
+  le reste garde en octets chiffres
 - DIS (IEEE 1278.1, Distributed Interactive Simulation) : en-tete de PDU
   (versions 1 a 7, les 72 types de la norme nommes, famille, horodatage,
   longueur, PDU Status), corps Entity State, Transmitter et Signal types,

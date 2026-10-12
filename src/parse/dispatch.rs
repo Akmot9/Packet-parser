@@ -35,6 +35,7 @@ use super::application::protocols::ethernet_ip::EtherNetIpPacket;
 use super::application::protocols::ftp::FtpMessage;
 use super::application::protocols::giop::GiopPacket;
 use super::application::protocols::http::HttpRequest;
+use super::application::protocols::ike::{IkePacket, UdpEncapsulation};
 use super::application::protocols::modbus_tcp::ModbusTcpPacket;
 use super::application::protocols::mqtt::MqttPacket;
 use super::application::protocols::netbios::{NbnsPacket, NbssPacket};
@@ -58,6 +59,7 @@ use super::application::protocols::umas::UmasPacket;
 use super::cotp_from_tpkt;
 use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
+use super::transport::protocols::esp::EspPacket;
 use crate::checks::application::quic::is_plausible_short_header;
 
 /// Nombre d'octets soumis aux sondes. Au-dela, seul le prefixe est sonde :
@@ -137,6 +139,9 @@ enum ProbeId {
     Stanag5066,
     Dis,
     DisLenient,
+    Ike,
+    EspNatT,
+    NatKeepalive,
 }
 
 fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
@@ -194,6 +199,17 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         // longueur declaree peut etre fausse (#123) : lecture tolerante.
         ProbeId::Dis => DisPacket::try_from(full_payload).is_ok(),
         ProbeId::DisLenient => DisPacket::try_from_lenient(full_payload).is_ok(),
+        // Sur le payload reel : la longueur de l'en-tete IKE couvre tout le
+        // message. Nu (UDP 500) ou derriere le marqueur non-ESP (UDP 4500).
+        ProbeId::Ike => IkePacket::from_udp(full_payload).is_ok(),
+        ProbeId::EspNatT => matches!(
+            UdpEncapsulation::classify(payload),
+            Ok(UdpEncapsulation::Esp(esp)) if EspPacket::try_from(esp).is_ok()
+        ),
+        ProbeId::NatKeepalive => matches!(
+            UdpEncapsulation::classify(payload),
+            Ok(UdpEncapsulation::Keepalive)
+        ),
         // Garde a cout constant sur le magic, comme GIOP ; puis le payload REEL :
         // les sous-messages doivent paver tout le datagramme, et un DATA_FRAG de
         // 60 Ko depasse PROBE_CAP sans cesser d'etre du RTPS.
@@ -354,6 +370,21 @@ static RULES: &[Rule] = &[
     // (trois PDU reels du corpus) ; ailleurs, la sonde aveugle ci-dessous
     // exige que les PDU pavent exactement le datagramme (#123).
     port_rule("DIS", Guard::Udp, is_dis_udp_port, ProbeId::DisLenient),
+    // IKE (RFC 7296, RFC 2408) : UDP 500, et UDP 4500 derriere le marqueur
+    // non-ESP de la RFC 3948. Garde par port : un en-tete de vingt-huit
+    // octets a version et longueur plausibles n'est pas une signature
+    // suffisante pour sonder tout datagramme (#124).
+    port_rule("IKE", Guard::Udp, is_ike_udp_port, ProbeId::Ike),
+    // ESP dans UDP 4500 (RFC 3948 §2.1) : SPI non nul en tete, le reste est
+    // chiffre ; puis le NAT-keepalive d'un octet (§2.3). ESP natif
+    // (protocole IP 50) est decode par la couche transport.
+    port_rule("ESP", Guard::Udp, is_nat_t_udp_port, ProbeId::EspNatT),
+    port_rule(
+        "NAT-keepalive",
+        Guard::Udp,
+        is_nat_t_udp_port,
+        ProbeId::NatKeepalive,
+    ),
     // STANAG 5066 SIS : TCP 5066 (port IANA). Garde par port : le preambule
     // `90 EB 00`, un type et une taille sont trois octets fixes et deux
     // contraintes — trop peu pour une sonde aveugle sur tout segment TCP ;
@@ -447,6 +478,10 @@ pub enum DecodeAsProtocol {
     Ptp,
     Stanag5066,
     Dis,
+    /// IKE nu ou derriere le marqueur non-ESP (UDP).
+    Ike,
+    /// ESP encapsule dans UDP (RFC 3948), SPI non nul en tete.
+    Esp,
 }
 
 impl DecodeAsProtocol {
@@ -483,6 +518,8 @@ impl DecodeAsProtocol {
             Self::Ptp => ("PTP", Guard::Udp, ProbeId::Ptp),
             Self::Stanag5066 => ("STANAG 5066", Guard::Tcp, ProbeId::Stanag5066),
             Self::Dis => ("DIS", Guard::Udp, ProbeId::DisLenient),
+            Self::Ike => ("IKE", Guard::Udp, ProbeId::Ike),
+            Self::Esp => ("ESP", Guard::Udp, ProbeId::EspNatT),
         }
     }
 }
@@ -670,6 +707,16 @@ fn is_quic_udp_port(port: Option<u16>) -> bool {
 /// DIS : UDP 3000, le port d'usage que Wireshark enregistre par defaut.
 fn is_dis_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(3000))
+}
+
+/// IKE : UDP 500 (IANA `isakmp`) et 4500 (IANA `ipsec-nat-t`).
+fn is_ike_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(500 | 4500))
+}
+
+/// ESP encapsule et NAT-keepalive : UDP 4500 seulement (RFC 3948).
+fn is_nat_t_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(4500))
 }
 
 /// STANAG 5066 SIS : TCP 5066 (IANA `stanag-5066`).
@@ -962,6 +1009,62 @@ mod tests {
         );
     }
 
+    /// UDP 4500 (RFC 3948) : marqueur non-ESP puis IKE, ESP a SPI non nul,
+    /// NAT-keepalive d'un octet ; ailleurs, rien sans Decode As (#124).
+    #[test]
+    fn udp_4500_demultiplexes_ike_esp_and_keepalive() {
+        // IKEv2 minimal : en-tete seul, IKE_SA_INIT de l'initiateur.
+        const IKE: [u8; 28] = [
+            0x62, 0xf9, 0x4c, 0x98, 0x87, 0x71, 0x5a, 0x34, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x20,
+            0x22, 0x08, 0, 0, 0, 0, 0, 0, 0, 28,
+        ];
+        const MARKED_IKE: [u8; 32] = {
+            let mut marked = [0u8; 32];
+            let mut i = 0;
+            while i < 28 {
+                marked[i + 4] = IKE[i];
+                i += 1;
+            }
+            marked
+        };
+        const ESP: [u8; 12] = [0xcb, 0xb7, 0xa0, 0xc6, 0, 0, 0, 1, 0x2b, 0x0f, 0x39, 0xc7];
+        const KEEPALIVE: [u8; 1] = [0xff];
+        let transport = |port: u16, payload: &'static [u8]| Transport {
+            protocol: TransportProtocol::Udp,
+            source_port: Some(port),
+            destination_port: Some(port),
+            payload: Some(payload),
+            details: None,
+        };
+        let label = |port: u16, payload: &'static [u8], decode_as: &[(u16, DecodeAsProtocol)]| {
+            classify(&transport(port, payload), decode_as).map(|a| a.application_protocol)
+        };
+        assert_eq!(label(4500, &MARKED_IKE, &[]), Some("IKE"));
+        assert_eq!(label(500, &IKE, &[]), Some("IKE"));
+        assert_eq!(label(4500, &IKE, &[]), Some("IKE"));
+        assert_eq!(label(4500, &ESP, &[]), Some("ESP"));
+        assert_eq!(label(4500, &KEEPALIVE, &[]), Some("NAT-keepalive"));
+        // UDP 500 ne porte ni ESP ni keepalive.
+        assert_eq!(label(500, &ESP, &[]), Some("Unknown"));
+        assert_eq!(label(500, &KEEPALIVE, &[]), Some("Unknown"));
+        // Un autre port : rien, sauf declaration.
+        assert_eq!(label(4501, &MARKED_IKE, &[]), Some("Unknown"));
+        assert_eq!(label(4501, &ESP, &[]), Some("Unknown"));
+        assert_eq!(label(4501, &KEEPALIVE, &[]), Some("Unknown"));
+        assert_eq!(
+            label(4501, &MARKED_IKE, &[(4501, DecodeAsProtocol::Ike)]),
+            Some("IKE")
+        );
+        assert_eq!(
+            label(4501, &ESP, &[(4501, DecodeAsProtocol::Esp)]),
+            Some("ESP")
+        );
+        assert_eq!(
+            label(4501, &ESP, &[(4501, DecodeAsProtocol::Ike)]),
+            Some("Unknown")
+        );
+    }
+
     /// Anti-derive (revue 10.4.0) : chaque protocole Decode-As doit se
     /// resoudre vers une etiquette et une sonde que la table connait — les
     /// deux encodages ne peuvent pas diverger silencieusement.
@@ -991,6 +1094,8 @@ mod tests {
             DecodeAsProtocol::Ptp,
             DecodeAsProtocol::Stanag5066,
             DecodeAsProtocol::Dis,
+            DecodeAsProtocol::Ike,
+            DecodeAsProtocol::Esp,
         ];
         for protocol in all {
             for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {

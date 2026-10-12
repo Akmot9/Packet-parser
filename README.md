@@ -314,6 +314,14 @@ Application detection is intentionally best-effort. Parser modules include:
   stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
   exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
   `NDDSPING` pings are reported too
+- IKE (ISAKMP/IKEv1 RFC 2408, IKEv2 RFC 7296) on UDP 500 and 4500: 28-byte
+  header (SPIs, version, exchange type named, flags, message ID, length),
+  chain of top-level payloads with named types, encrypted bytes kept as such
+  (IKEv1 E flag, IKEv2 SK payload); UDP 4500 demultiplexed per RFC 3948
+  (non-ESP marker, NAT-keepalive, ESP)
+- ESP (RFC 4303): SPI and sequence number, native (IP protocol 50, exposed as
+  `TransportDetails::Esp`) and UDP-encapsulated on 4500 (`EspPacket`), the
+  rest kept as encrypted bytes
 - DIS (IEEE 1278.1, Distributed Interactive Simulation): PDU header
   (versions 1 to 7, the 72 standard PDU types named, family, timestamp,
   length, PDU Status), Entity State, Transmitter and Signal bodies typed,
