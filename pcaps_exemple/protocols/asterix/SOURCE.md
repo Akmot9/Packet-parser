@@ -151,15 +151,29 @@ en forçant le décodage ASTERIX sur les flux concernés.
     `225.10.1.1:20201`, source du faux positif DNS corrigé par #118), 95 BPDU STP,
     92 IGMP, 3 DHCP et une requête SLPv2.
 
-  La crate en étiquette aujourd'hui **11 881** — exactement les datagrammes
-  qui ne portent que du CAT 034/048 ; les 30 047 autres sortent `Unknown`
-  (#119).
+  La crate étiquette ASTERIX les **41 928** datagrammes depuis #119 (11 881
+  avant, ceux qui ne portaient que du CAT 034/048), en parité item par item
+  avec tshark sur 41 832 d'entre eux. Les **96 autres** sont ceux sur
+  lesquels tshark bute : les 70 déclarés malformés et 26 de plus, lus de
+  travers sans alerte. Tous portent un record CAT 002 dont I002/050
+  (Station Configuration Status, `repetitive fx`) occupe deux octets ; le
+  dissecteur généré de Wireshark borne les extents d'un item `repetitive fx`
+  à celui que la spécification liste, lit un octet, puis prend l'octet
+  restant pour un record parasite (`;060/2`, lu au-delà du bloc) ou déclare
+  la trame malformée s'il ne reste rien. Ce n'est pas une question
+  d'édition CAT 001 : le défaut est côté CAT 002, identique sous toutes les
+  éditions. La crate suit la spécification et décode ces 96 trames en
+  entier (`tests/data/asterix_tshark_limits.tsv`).
 - **`wireshark_9953_cat021023.pcap`** — 1 588 datagrammes d'un bloc chacun
   (émetteur vers `239.1.20.1:56610`), le 2014-04-01 : **1 555 CAT 021**
   d'édition 2.x (décodés sans erreur par tshark avec son édition par défaut,
   2.7), 30 CAT 023 et 3 CAT 247. Ce sont les premières trames CAT 021 du
-  corpus dans de vrais datagrammes ; la crate étiquette déjà ASTERIX les
-  1 555 datagrammes CAT 021, la parité item par item reste à établir.
+  corpus dans de vrais datagrammes ; les 1 588 sont en parité item par item
+  avec tshark depuis #119. Les CAT 247 annoncent CAT 021 ed. 0.26 et
+  CAT 023 ed. 1.20 : l'émetteur dit diffuser une édition 0.2x de CAT 021,
+  mais tshark comme la crate découpent ses records sans erreur avec l'UAP
+  2.x, et les items typés (adresse, position) sont cohérents — l'annonce est
+  vraisemblablement périmée.
 - **`wireshark_9624_cat62_re.pcap`** — 668 datagrammes vers
   `239.255.250.226:8600`, le 2013-12-04 : 668 blocs CAT 062, avec leur
   Reserved Expansion Field, dont 254 suivis d'un bloc CAT 065.
@@ -167,10 +181,24 @@ en forçant le décodage ASTERIX sur les flux concernés.
   datagrammes CAT 008 (météo) vers `239.1.20.1:56520`, les 2013-10-07 et
   2013-10-10.
 
+## Oracle tshark
+
+`tests/data/asterix_tshark_oracle.tsv` et `asterix_tshark_limits.tsv` sont
+produits par `tools/asterix_oracle.py` (tshark 4.6.6, `-V`, un `-d` par
+plage de ports : 8611-8612, 20000-23000, 56610, 8600, 56520, 10001, et pour
+`radardata` 6001-6011, 20101-20104, 51022, 30202 et 60202) : la forme de
+chaque trame, data blocks, records, items et longueurs de record, trames
+de même forme regroupées. 44 411 trames dans le premier, les 96 trames
+au-delà de la limite de tshark dans le second.
+
 ## Ce que ce corpus ne contient pas
 
 - aucune capture d'une édition 0.2x de CAT 021 (UAP d'ordre différent, non
   supporté) ;
 - aucune capture de CAT 010, 019, 020 ou 240 ;
-- les catégories 001, 002, 008, 023, 062, 063, 065 et 247 y sont, mais la
-  crate ne les décode pas encore (#119).
+- aucune piste CAT 001 (TYP = 1, second UAP de la catégorie : les 29 520
+  blocs CAT 001 du corpus sont des plots) ni aucun champ Random Field
+  Sequencing (CAT 001, 002, 008) : ces deux chemins ne sont couverts que par
+  des octets synthétiques, identifiés comme tels dans les tests ;
+- les catégories 001, 002, 008, 023, 062, 063, 065 et 247 y sont décodées
+  depuis #119, en parité avec tshark.

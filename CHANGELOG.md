@@ -69,6 +69,53 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **ASTERIX multi-categories** (#119, lot defense #125) : huit categories
+  de plus — **CAT 001** et **002** (plots, pistes et messages de service des
+  radars de premiere generation), **CAT 008** (meteo), **CAT 023** (etat
+  des stations sol CNS/ATM), **CAT 062** (pistes systeme du SDPS), **CAT
+  063** (etat des capteurs), **CAT 065** (etat du service SDPS) et **CAT
+  247** (numeros de version) — soit onze avec 021, 034 et 048. Sur un vrai
+  reseau de surveillance, les categories se melangent dans les datagrammes
+  (jusqu'a 18 blocs) : sur `wireshark_8579_radardata.pcap`, les 30 047
+  datagrammes qui sortaient `Unknown` passent `ASTERIX` ; le corpus est en
+  parite item par item avec tshark 4.6.6 sur 44 411 trames
+  (`tests/asterix_golden.rs`, oracle regroupe genere par
+  `tools/asterix_oracle.py`), et sur les 96 trames ou tshark bute — un
+  I002/050 de deux octets, qu'il ne lit qu'a moitie — la crate suit la
+  specification (`tests/data/asterix_tshark_limits.tsv`).
+  Le moteur UAP apprend trois formes : `ItemFormat::Extended` (extents de
+  tailles connues et bornes, le `extended` de la specification — I048/020,
+  I062/080 a sept extents, I023/101 a premier extent de deux octets...),
+  `ItemFormat::RepetitiveFx` (unites de n octets terminees par FX, non
+  bornees : I062/510) et `ItemFormat::Rfs` (Random Field Sequencing de CAT
+  001, 002 et 008, expose comme item `Ixxx/RFS` et lu a travers par
+  `AsterixRecord::item` et `rfs_items`), avec leurs pendants `Subfield::`
+  ; les items `extended` de CAT 021/034/048 passent de `Variable`
+  (non borne) a `Extended` (borne par l'edition). CAT 001 a deux UAP, plots
+  et pistes, choisis par le bit TYP de I001/020 (`UapSelector`,
+  `Uap::selector`, `AsterixRecord::uap`). `AsterixRecord::subfield` rend un
+  sous-champ d'item compose par son numero. Decodeurs types : `cat001`
+  (plot ou piste : position polaire et cartesienne, Mode 3/A, Mode C, Mode
+  2, temps tronque, vitesse, etat de piste), `cat002` (type, secteur,
+  periode de rotation, compteurs de plots, erreur de collimation, fenetre
+  dynamique), `cat008` (type, qualificatif de vecteur, comptes de vecteurs
+  et de points, contour, etat du traitement), `cat023` (type de rapport,
+  service, etat de la station sol, configuration et etat du service),
+  `cat062` (position WGS-84 et cartesienne, vitesse, acceleration, Mode
+  3/A, identification, adresse et indicatif de I062/380, numero et etat de
+  piste, mode de deplacement, niveaux mesures, altitudes geometrique et
+  barometrique, vitesse verticale, Mode 2, mesure du dernier capteur de
+  I062/340), `cat063` (connexion et NOGO du capteur, biais de temps, de
+  distance et d'azimut), `cat065` (type, lot, configuration du SDPS) et
+  `cat247` (editions annoncees) ; `cat048::TargetReport` gagne `mode_2` et
+  `mode_1` (I048/050 et /055, codes IFF militaires), avec `Mode2Code` et
+  `Mode1Code` dans `fields`. Nouvelles variantes d'`AsterixError`, en fin
+  d'enum : `ExtentOverflow`, `EmptyRfs`, `InvalidRfsFrn`. Tables derivees
+  des definitions lisibles par machine de zoranbosnjak/asterix-specs
+  (BSD-3), editions de tshark 4.6.6 (CAT 001 1.4, 002 1.2, 008 1.3, 021
+  2.7, 023 1.3, 034 1.29, 048 1.32, 062 1.21, 063 1.7, 065 1.6, 247 1.3).
+  Histogramme golden : "ASTERIX" 13 739 -> 44 507, "Unknown" 40 177 ->
+  9 409.
 - `profinet::DcpBlock` et `ProfinetPacket::blocks` : tous les blocs d'un
   message DCP, zero-copie, avec leur BlockInfo ou BlockQualifier ;
   `profinet::validate_frame` ; les constantes `DCP_SERVICE_*`. Nouvelles

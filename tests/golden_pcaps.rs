@@ -231,10 +231,23 @@ fn application_classification_histogram_is_frozen() {
     // « SampleClient/1.0 ») et capwap-multi-wtp.pcap (24 trames rejouees
     // depuis capwap-only.pcap avec des MAC aa:bb:cc:… et des horodatages
     // ronds). Seul mouvement : "HTTP" 72 -> 71, la trame fabriquee.
+    //
+    // 2026-10-12 (#119, ASTERIX multi-categories) : le decodeur gagne huit
+    // categories (001, 002, 008, 023, 062, 063, 065, 247), les deux UAP de
+    // CAT 001 et le Random Field Sequencing. "ASTERIX" 13 739 -> 44 507
+    // (+30 768) et "Unknown" 40 177 -> 9 409 (-30 768), exactement :
+    // - les 30 047 datagrammes de radardata.pcap qui portent une categorie
+    //   jusque-la non decodee, dont les 96 sur lesquels tshark bute (I002/050
+    //   de deux octets, voir SOURCE.md et asterix_tshark_limits.tsv) ;
+    // - les 721 datagrammes des autres captures : 668 de cat62_re.pcap, 33
+    //   CAT 023/247 de cat021023.pcap, 19 de cat008only(-2).pcap, 1 de
+    //   cat_062_065.pcap.
+    // Parite item par item avec tshark sur 44 411 trames
+    // (tests/asterix_golden.rs). Rien d'autre ne bouge.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 4192),
-        ("ASTERIX", 13_739),
+        ("ASTERIX", 44_507),
         ("DHCP", 71),
         ("DHCPv6", 32),
         ("DNS", 104),
@@ -257,7 +270,7 @@ fn application_classification_histogram_is_frozen() {
         ("SSDP", 24),
         ("STP", 95),
         ("TLS", 587),
-        ("Unknown", 40_177),
+        ("Unknown", 9_409),
         ("mDNS", 12),
     ]
     .into_iter()

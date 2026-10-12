@@ -94,6 +94,72 @@ impl fmt::Display for Mode3ACode {
     }
 }
 
+/// Code Mode 2 en representation octale (I048/050, I001/050) : meme codage
+/// que le Mode 3/A, douze bits precedes des indicateurs V, G et L. Code
+/// IFF militaire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct Mode2Code {
+    /// V = 0 : code valide.
+    pub validated: bool,
+    /// G = 1 : code brouille (garbled).
+    pub garbled: bool,
+    /// L = 1 : code lisse par le pisteur, pas lu dans la reponse.
+    pub smoothed: bool,
+    /// Les douze bits, tels quels.
+    pub code: u16,
+}
+
+impl Mode2Code {
+    pub(crate) fn from_item(data: &[u8]) -> Option<Self> {
+        let code = Mode3ACode::from_item(data)?;
+        Some(Self {
+            validated: code.validated,
+            garbled: code.garbled,
+            smoothed: code.smoothed,
+            code: code.code,
+        })
+    }
+}
+
+impl fmt::Display for Mode2Code {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:04o}", self.code)
+    }
+}
+
+/// Code Mode 1 en representation octale (I048/055) : cinq bits A4 A2 A1
+/// B2 B1, precedes des indicateurs V, G et L. Code IFF militaire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct Mode1Code {
+    pub validated: bool,
+    pub garbled: bool,
+    pub smoothed: bool,
+    /// Les cinq bits, tels quels : `0o31` pour le code 31.
+    pub code: u8,
+}
+
+impl Mode1Code {
+    pub(crate) fn from_item(data: &[u8]) -> Option<Self> {
+        match data {
+            [octet] => Some(Self {
+                validated: octet & 0x80 == 0,
+                garbled: octet & 0x40 != 0,
+                smoothed: octet & 0x20 != 0,
+                code: octet & 0x1f,
+            }),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for Mode1Code {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:02o}", self.code)
+    }
+}
+
 /// Niveau de vol en representation binaire (I048/090, I021/145) : LSB 1/4
 /// FL sur 14 bits signes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -236,6 +302,29 @@ mod tests {
         let flagged = Mode3ACode::from_item(&[0xef, 0xff]).unwrap();
         assert!(!flagged.validated && flagged.garbled && flagged.smoothed);
         assert_eq!(flagged.to_string(), "7777");
+    }
+
+    #[test]
+    fn test_mode_2_and_mode_1_codes() {
+        // I048/050 de la trame 1 de cat048_multicast.pcap : code 0000, valide.
+        let mode_2 = Mode2Code::from_item(&[0x00, 0x00]).unwrap();
+        assert!(mode_2.validated && !mode_2.garbled && !mode_2.smoothed);
+        assert_eq!(mode_2.to_string(), "0000");
+        // I001/050 de la trame 772 de radardata.pcap : non valide.
+        let mode_2 = Mode2Code::from_item(&[0x80, 0x00]).unwrap();
+        assert!(!mode_2.validated);
+        assert_eq!(Mode2Code::from_item(&[0x00]), None);
+
+        let mode_1 = Mode1Code::from_item(&[0x00]).unwrap();
+        assert!(mode_1.validated);
+        assert_eq!(mode_1.code, 0);
+        assert_eq!(mode_1.to_string(), "00");
+        // Synthetique : V, G, L poses, code 31.
+        let flagged = Mode1Code::from_item(&[0xf9]).unwrap();
+        assert!(!flagged.validated && flagged.garbled && flagged.smoothed);
+        assert_eq!(flagged.code, 0o31);
+        assert_eq!(flagged.to_string(), "31");
+        assert_eq!(Mode1Code::from_item(&[]), None);
     }
 
     #[test]
