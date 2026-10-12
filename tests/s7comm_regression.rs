@@ -672,14 +672,20 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // pcap-file et decodees sans erreur L2, dont deux en LINKTYPE_NULL
     // (rtps/) : 79 -> 113 captures, 78 -> 112 fichiers lus,
     // 5 059 -> 62 249 trames, 5 017 -> 62 207 flux.
-    assert_eq!(captures.len(), 113);
-    assert_eq!(opened_files, 112);
-    assert_eq!(frame_count, 62_249);
+    // 2026-10-12 (issue #133) : +7 captures PROFINET dans protocols/profinet/
+    // (deux traces CISA icsnpp, trois ITI/ICS-Security-Tools, deux du labo
+    // miguelob/ICS-Hacking — voir SOURCE.md), 2 685 trames Ethernet, dont 232
+    // PN-RT sans transport, toutes decodees sans erreur L2 :
+    // 113 -> 120 captures, 112 -> 119 fichiers lus, 62 249 -> 64 934 trames,
+    // 62 207 -> 64 892 flux. Aucune n'est etiquetee S7Comm ni COTP.
+    assert_eq!(captures.len(), 120);
+    assert_eq!(opened_files, 119);
+    assert_eq!(frame_count, 64_934);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 62_207);
+    assert_eq!(parsed_flows, 64_892);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

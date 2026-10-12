@@ -202,19 +202,42 @@ fn application_classification_histogram_is_frozen() {
     // quittent "Unknown" (42 276 -> 39 055). Les 107 trames PTP en couche 2
     // restent "(sans application)" : PTP y est la couche internet (EtherType
     // 0x88F7), verifiee trame par trame par tests/ptp_golden.rs.
+    //
+    // 2026-10-12 (issue #133, PROFINET) : +7 captures dans
+    // protocols/profinet/, 2 685 trames dont 232 PN-RT (voir SOURCE.md) : deux
+    // traces de cisagov/icsnpp-profinet-io-cm (BSD-3), trois d'ITI/ICS-
+    // Security-Tools (CC-BY-4.0, dont la piece jointe du wiki Wireshark
+    // PROFINET/DCP) et deux du labo de miguelob/ICS-Hacking (GPL-3.0). Aucun
+    // decodeur ne change ; recoupe avec tshark 4.6.6 :
+    // - "NBNS" 0 -> 731, "LLMNR" 0 -> 136, "SSDP" 0 -> 24, "DHCP" 9 -> 71,
+    //   "DHCPv6" 4 -> 32 : le bruit Windows de mixed_1 (tshark : nbns 731,
+    //   llmnr 136, ssdp 24, dhcp 62, dhcpv6 28) ;
+    // - "mDNS" 4 -> 12 : les 8 datagrammes mDNS (4 IPv4, 4 IPv6) de
+    //   miguelob_pn.pcapng ;
+    // - "Unknown" 39 055 -> 40 177 (+1 122) : 1 000 datagrammes DCE/RPC du
+    //   PROFINET IO-CM sur UDP 34964 (950 + 38 + 12), qu'aucune regle ne
+    //   nomme ; 88 annonces Dropbox LAN sync (db-lsp-disc, UDP 17500), 32
+    //   datagrammes UDP 1947 et 2 NetBIOS Datagram (UDP 138) de mixed_1 ;
+    // - "(sans application)" 3 618 -> 4 192 (+574) : les 232 trames PN-RT
+    //   (EtherType 0x8892 : 164 + 10 + 4 + 14 + 4 + 18 + 18), sans transport,
+    //   dont la crate rend 103 `internet = Profinet` et 129 `corrupted`
+    //   (tests/profinet_corpus.rs fige ce partage, point de depart de #133) ;
+    //   205 LLDP ; 25 ARP ; 67 ICMPv6 ; 45 IGMP.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 3618),
+        (NO_APPLICATION, 4192),
         ("ASTERIX", 13_739),
-        ("DHCP", 9),
-        ("DHCPv6", 4),
+        ("DHCP", 71),
+        ("DHCPv6", 32),
         ("DNS", 104),
         ("EtherNet/IP", 4),
         ("FTP", 5),
         ("GIOP", 123),
         ("HTTP", 72),
         ("IP-in-IP", 5),
+        ("LLMNR", 136),
         ("MQTT", 38),
+        ("NBNS", 731),
         ("ModbusTCP", 382),
         ("UMAS", 181),
         ("NNTP", 6),
@@ -223,10 +246,11 @@ fn application_classification_histogram_is_frozen() {
         ("PTP", 3221),
         ("SMTP", 6),
         ("SRVLOC", 1),
+        ("SSDP", 24),
         ("STP", 95),
         ("TLS", 587),
-        ("Unknown", 39_055),
-        ("mDNS", 4),
+        ("Unknown", 40_177),
+        ("mDNS", 12),
     ]
     .into_iter()
     .map(|(label, count)| (label.to_string(), count))
