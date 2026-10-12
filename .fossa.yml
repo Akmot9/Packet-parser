@@ -1,0 +1,19 @@
+# Configuration FOSSA (https://github.com/fossas/fossa-cli/blob/master/docs/references/files/fossa-yml.md).
+#
+# Le corpus de captures pcaps_exemple/ est exclu de l'analyse : il redistribue
+# des captures de test sous leurs licences d'origine (LGPL-3.0, GPL-3.0,
+# GPL-2.0, CC-BY-4.0, BSD-3-Clause, MIT — textes dans pcaps_exemple/LICENSES/,
+# voir son README.md et l'issue #104), et ces fichiers ne font pas partie de
+# la crate publiee (liste `include` de Cargo.toml) : ce ne sont ni des
+# dependances ni des licences du code. Sans cette exclusion, FOSSA attribue
+# ces licences au projet et les signale contre la politique de distribution.
+version: 3
+
+paths:
+  exclude:
+    - ./pcaps_exemple
+
+vendoredDependencies:
+  licenseScanPathFilters:
+    exclude:
+      - "pcaps_exemple/**"
