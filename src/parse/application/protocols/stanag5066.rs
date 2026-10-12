@@ -758,7 +758,7 @@ mod tests {
         // Le segment de continuation (trame 30), sans preambule.
         assert_eq!(
             SisPdu::try_from(&b"<0> Hello there.\n"[..]),
-            Err(Stanag5066ParseError::InvalidPreamble([b'<', b'0']))
+            Err(Stanag5066ParseError::InvalidPreamble(*b"<0"))
         );
     }
 
