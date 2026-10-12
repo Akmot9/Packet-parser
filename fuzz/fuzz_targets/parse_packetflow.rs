@@ -1,273 +1,98 @@
-// Fuzz du point d'entrée principal : aucun octet hostile ne doit provoquer
-// de panic, seulement Ok(_) ou Err(_).
+// Fuzz du point d'entree principal : aucun octet hostile ne doit provoquer
+// de panic, seulement Ok(_) ou Err(_). Rien d'autre n'est verifie ici : les
+// invariants de politique (FTP, SMTP et NNTP hors port, S7Comm, COTP, Decode
+// As) vivent dans `policy_dispatch` (issue #108). Un oracle perime n'arrete
+// plus cette cible, et son corpus de la nuit n'est plus perdu avec lui.
 #![no_main]
 
+#[path = "../oracles/frames.rs"]
+mod frames;
+
+use frames::{
+    ARTICLE_COMMAND, COTP_CONNECTION_REQUEST, EHLO_COMMAND, EPHEMERAL_PORT, READ_VAR_REQUEST,
+    STOR_COMMAND, ethernet_ipv4_payload, xor_overlay,
+};
 use libfuzzer_sys::fuzz_target;
 use packet_parser::{
-    PacketFlow,
-    parse::{application::protocols::ftp::FtpMessage, transport::protocols::TransportProtocol},
+    DecodeAsProtocol, LinkType, PacketFlow, ParseConfig,
+    parse::transport::protocols::TransportProtocol, parse_with,
 };
 
-const READ_VAR_REQUEST: [u8; 31] = [
-    0x03, 0x00, 0x00, 0x1f, 0x02, 0xf0, 0x80, 0x32, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0e, 0x00,
-    0x00, 0x04, 0x01, 0x12, 0x0a, 0x10, 0x02, 0x00, 0x40, 0x00, 0x01, 0x84, 0x00, 0x00, 0x00,
+/// Tous les protocoles declarables par l'appelant (Decode As, issue #65),
+/// dans l'ordre de l'enum : le premier octet de l'entree en choisit un.
+const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 20] = [
+    DecodeAsProtocol::Ftp,
+    DecodeAsProtocol::Smtp,
+    DecodeAsProtocol::Nntp,
+    DecodeAsProtocol::Cotp,
+    DecodeAsProtocol::Dns,
+    DecodeAsProtocol::Mdns,
+    DecodeAsProtocol::Llmnr,
+    DecodeAsProtocol::Ssdp,
+    DecodeAsProtocol::Nbns,
+    DecodeAsProtocol::Nbss,
+    DecodeAsProtocol::Snmp,
+    DecodeAsProtocol::Dhcpv6,
+    DecodeAsProtocol::OpcUa,
+    DecodeAsProtocol::PostgreSql,
+    DecodeAsProtocol::ModbusTcp,
+    DecodeAsProtocol::EthernetIp,
+    DecodeAsProtocol::Ams,
+    DecodeAsProtocol::QuicShortHeader,
+    DecodeAsProtocol::OpenVpn,
+    DecodeAsProtocol::Ptp,
 ];
 
-// TPKT + COTP CR reel : frame 7 de
-// pcaps_exemple/protocols/s7comm/s7comm_varservice_libnodavedemo.pcap.
-const COTP_CONNECTION_REQUEST: [u8; 22] = [
-    0x03, 0x00, 0x00, 0x16, 0x11, 0xe0, 0x00, 0x00, 0x00, 0x01, 0x00, 0xc1, 0x02, 0x01, 0x00, 0xc2,
-    0x02, 0x01, 0x02, 0xc0, 0x01, 0x09,
-];
-
-// Verbes que seul FTP definit : miroir de `FTP_ONLY_VERBS`
-// (src/parse/dispatch.rs, issue #66). Recopie a dessein plutot qu'importee :
-// un oracle qui lirait la liste du parseur ne pourrait pas la prendre en
-// defaut. Les deux listes evoluent ensemble.
-const FTP_ONLY_VERBS: [&str; 11] = [
-    "RETR", "STOR", "PASV", "APPE", "RNFR", "RNTO", "MKD", "CDUP", "EPSV", "EPRT", "NLST",
-];
-
-// Ports standards de SMTP et NNTP : un verbe propre a FTP y est du contenu en
-// transit (corps DATA, article), jamais une commande FTP.
-const SMTP_NNTP_PORTS: [u16; 3] = [25, 587, 119];
-
-// Miroir de `PROBE_CAP` (src/parse/dispatch.rs) : la sonde ne lit que ce
-// prefixe du payload, l'oracle juge donc les memes octets qu'elle.
-const PROBE_CAP: usize = 18 * 1024;
-
-// Graine structuree de l'oracle FTP, comme READ_VAR_REQUEST pour S7Comm : sans
-// elle, le fuzzer n'atteignait le chemin FTP hors port que par hasard, quatre
-// nuits sur trente-quatre depuis la 10.3.0.
-const STOR_COMMAND: &[u8] = b"STOR fichier.bin\r\n";
-
-// La regle hors port exige une commande complete (ligne terminee par CRLF,
-// UTF-8, arite, aucun CR ou LF nu ni octet de controle hors TAB dans tout le
-// payload — issue #109) et pas seulement un verbe propre a FTP en tete du
-// payload.
-fn is_ftp_only_command(payload: &[u8]) -> bool {
-    let probed = &payload[..payload.len().min(PROBE_CAP)];
-    matches!(
-        FtpMessage::try_from(probed),
-        Ok(FtpMessage::Command { verb, .. })
-            if FTP_ONLY_VERBS.iter().any(|only| only.eq_ignore_ascii_case(verb))
-    )
-}
-
-fn ethernet_ipv4_payload(
-    transport_protocol: TransportProtocol,
-    destination_port: u16,
-    payload: &[u8],
-) -> Vec<u8> {
-    let (ip_protocol, transport_header_length) = match transport_protocol {
-        TransportProtocol::Tcp => (6, 20),
-        TransportProtocol::Udp => (17, 8),
-        _ => unreachable!("S7 seed transport must be TCP or UDP"),
-    };
-    let ip_total_length = 20 + transport_header_length + payload.len();
-    let mut frame = vec![
-        0, 1, 2, 3, 4, 5, // destination MAC
-        6, 7, 8, 9, 10, 11, // source MAC
-        0x08, 0x00, // IPv4 EtherType
-        0x45, 0x00, // IPv4 version/IHL, DSCP/ECN
-    ];
-    frame.extend_from_slice(&(ip_total_length as u16).to_be_bytes());
-    frame.extend_from_slice(&[
-        0x00,
-        0x01, // identification
-        0x40,
-        0x00, // don't fragment
-        64,
-        ip_protocol,
-        0,
-        0, // checksum (not validated)
-        192,
-        0,
-        2,
-        1, // TEST-NET-1
-        198,
-        51,
-        100,
-        2, // TEST-NET-2
+/// Les trois premiers octets de l'entree choisissent une configuration
+/// Decode As (un protocole, un port) ; `parse_with` n'etait fuzze par
+/// aucune cible avant #108.
+fn decode_as_config(data: &[u8]) -> ParseConfig {
+    let protocol = DECODE_AS_PROTOCOLS
+        [usize::from(data.first().copied().unwrap_or(0)) % DECODE_AS_PROTOCOLS.len()];
+    let port = u16::from_be_bytes([
+        data.get(1).copied().unwrap_or(0),
+        data.get(2).copied().unwrap_or(0),
     ]);
-    frame.extend_from_slice(&40_000_u16.to_be_bytes());
-    frame.extend_from_slice(&destination_port.to_be_bytes());
-
-    match transport_protocol {
-        TransportProtocol::Tcp => frame.extend_from_slice(&[
-            0, 0, 0, 1, // sequence number
-            0, 0, 0, 1, // acknowledgement number
-            0x50, 0x18, // data offset, PSH+ACK
-            0x20, 0x00, // window
-            0, 0, // checksum
-            0, 0, // urgent pointer
-        ]),
-        TransportProtocol::Udp => {
-            let udp_length = (8 + payload.len()) as u16;
-            frame.extend_from_slice(&udp_length.to_be_bytes());
-            frame.extend_from_slice(&[0, 0]); // checksum
-        }
-        _ => unreachable!(),
-    }
-    frame.extend_from_slice(payload);
-    frame
+    ParseConfig::new().decode_as(port, protocol)
 }
 
-fn application_protocol(frame: &[u8]) -> Option<&'static str> {
-    PacketFlow::try_from(frame)
-        .expect("la graine Ethernet structuree doit rester analysable")
-        .application
-        .map(|application| application.application_protocol)
-}
-
-fn xor_overlay(seed: &mut [u8], data: &[u8]) {
-    // Two fuzz bytes choose an arbitrary frame offset and an XOR mutation.
-    // This keeps short inputs close to the valid L2/L3/L4/L7 seed instead of
-    // destroying Ethernet first and never reaching the S7 transport policy.
-    for mutation in data.chunks_exact(2) {
-        let offset = usize::from(mutation[0]) % seed.len();
-        seed[offset] ^= mutation[1];
-    }
-}
-
-fn exercise(data: &[u8]) {
+fn exercise(data: &[u8], config: &ParseConfig) {
     if let Ok(flow) = PacketFlow::try_from(data) {
-        // En configuration par defaut, FTP est garde par TCP/21 avec une seule
-        // exception (issue #66) : hors de ce port, une commande complete dont
-        // le verbe n'appartient qu'a FTP, jamais sur un port SMTP ou NNTP. Le
-        // Decode As (#65) n'est pas exerce ici. Le fuzzer protege cette
-        // politique, pas seulement l'absence de panic.
-        for parsed_flow in flow.flatten() {
-            let application_protocol = parsed_flow
-                .application
-                .as_ref()
-                .map(|application| application.application_protocol);
-
-            match application_protocol {
-                Some("FTP") => {
-                    let transport = parsed_flow
-                        .transport
-                        .as_ref()
-                        .expect("FTP doit toujours posseder une couche transport");
-                    assert_eq!(
-                        transport.protocol,
-                        TransportProtocol::Tcp,
-                        "FTP ne doit jamais etre detecte hors de TCP"
-                    );
-                    let ports = [transport.source_port, transport.destination_port];
-                    if !ports.contains(&Some(21)) {
-                        assert!(
-                            !ports
-                                .iter()
-                                .flatten()
-                                .any(|port| SMTP_NNTP_PORTS.contains(port)),
-                            "FTP ne doit jamais etre detecte sur un port SMTP ou NNTP"
-                        );
-                        assert!(
-                            transport.payload.is_some_and(is_ftp_only_command),
-                            "hors de TCP/21, FTP exige une commande complete propre a FTP"
-                        );
-                    }
-                }
-                Some("S7Comm") => {
-                    let transport = parsed_flow
-                        .transport
-                        .as_ref()
-                        .expect("S7Comm doit toujours posseder une couche transport");
-                    assert_eq!(
-                        transport.protocol,
-                        TransportProtocol::Tcp,
-                        "S7Comm ne doit jamais etre detecte hors de TCP"
-                    );
-                }
-                Some("COTP") => {
-                    let transport = parsed_flow
-                        .transport
-                        .as_ref()
-                        .expect("COTP doit toujours posseder une couche transport");
-                    assert_eq!(transport.protocol, TransportProtocol::Tcp);
-                    assert!(
-                        transport.source_port == Some(102)
-                            || transport.destination_port == Some(102),
-                        "COTP doit rester garde par TCP/102"
-                    );
-                }
-                _ => {}
-            }
-        }
-
         // Exerce aussi les chemins de conversion et d'aplatissement.
         // `to_owned_flow`, pas `to_owned` : depuis a488065, ce dernier n'est
         // plus que le `Clone` de `ToOwned`.
         let _ = flow.to_owned_flow();
         let _ = flow.flatten();
     }
-}
-
-// Oracles fixes de politique : ils ne dependent pas de l'entree, `init` les
-// execute une fois au demarrage au lieu de les rejouer a chaque iteration.
-fn fixed_policy_checks() {
-    // COTP n'est annonce que pour une enveloppe TPKT valide sur TCP/102. Les
-    // memes octets applicatifs sur UDP ou hors du port ISO-TSAP sont des
-    // oracles negatifs explicites contre les faux positifs.
-    let cotp_tcp_102 = ethernet_ipv4_payload(TransportProtocol::Tcp, 102, &COTP_CONNECTION_REQUEST);
-    assert_eq!(application_protocol(&cotp_tcp_102), Some("COTP"));
-
-    let cotp_tcp_off_port =
-        ethernet_ipv4_payload(TransportProtocol::Tcp, 10_102, &COTP_CONNECTION_REQUEST);
-    assert_ne!(application_protocol(&cotp_tcp_off_port), Some("COTP"));
-
-    let cotp_udp_102 = ethernet_ipv4_payload(TransportProtocol::Udp, 102, &COTP_CONNECTION_REQUEST);
-    assert_ne!(application_protocol(&cotp_udp_102), Some("COTP"));
-
-    // FTP hors port (issue #66) : une commande complete propre a FTP est
-    // detectee, jamais sur un port SMTP ou NNTP ; un verbe partage ou une
-    // commande incomplete ne le sont pas.
-    let ftp_off_port = ethernet_ipv4_payload(TransportProtocol::Tcp, 5_000, STOR_COMMAND);
-    assert_eq!(application_protocol(&ftp_off_port), Some("FTP"));
-
-    for port in SMTP_NNTP_PORTS {
-        let vetoed = ethernet_ipv4_payload(TransportProtocol::Tcp, port, STOR_COMMAND);
-        assert_ne!(application_protocol(&vetoed), Some("FTP"), "TCP/{port}");
-    }
-
-    for payload in [&b"LIST\r\n"[..], &b"STOR\r\n"[..]] {
-        let frame = ethernet_ipv4_payload(TransportProtocol::Tcp, 5_000, payload);
-        let payload = payload.escape_ascii();
-        assert_ne!(application_protocol(&frame), Some("FTP"), "{payload}");
+    if let Ok(flow) = parse_with(LinkType::ETHERNET, data, config) {
+        let _ = flow.flatten();
     }
 }
 
-fuzz_target!(init: fixed_policy_checks(), |data: &[u8]| {
-    exercise(data);
+fuzz_target!(|data: &[u8]| {
+    let config = decode_as_config(data);
+    exercise(data, &config);
 
-    // A genuine Ethernet/IPv4/TCP/S7 frame reaches the positive invariant;
-    // the same application payload over UDP exercises the rejection path.
-    for protocol in [TransportProtocol::Tcp, TransportProtocol::Udp] {
-        let mut seeded = ethernet_ipv4_payload(protocol, 102, &READ_VAR_REQUEST);
+    // Les graines gardent le fuzzer pres de chemins L2/L3/L4/L7 profonds :
+    // S7Comm et COTP sur leur port et hors port, TCP et UDP ; une commande
+    // propre a chacun des trois protocoles texte hors port, sur un port de
+    // la famille, et sur UDP.
+    let seeds: [(TransportProtocol, u16, &[u8]); 11] = [
+        (TransportProtocol::Tcp, 102, &READ_VAR_REQUEST),
+        (TransportProtocol::Udp, 102, &READ_VAR_REQUEST),
+        (TransportProtocol::Tcp, 102, &COTP_CONNECTION_REQUEST),
+        (TransportProtocol::Tcp, 10_102, &COTP_CONNECTION_REQUEST),
+        (TransportProtocol::Udp, 102, &COTP_CONNECTION_REQUEST),
+        (TransportProtocol::Tcp, 5_000, STOR_COMMAND),
+        (TransportProtocol::Tcp, 25, STOR_COMMAND),
+        (TransportProtocol::Udp, 5_000, STOR_COMMAND),
+        (TransportProtocol::Tcp, 5_000, EHLO_COMMAND),
+        (TransportProtocol::Tcp, 119, EHLO_COMMAND),
+        (TransportProtocol::Tcp, 5_000, ARTICLE_COMMAND),
+    ];
+    for (protocol, destination_port, payload) in seeds {
+        let mut seeded = ethernet_ipv4_payload(protocol, EPHEMERAL_PORT, destination_port, payload);
         xor_overlay(seeded.as_mut_slice(), data);
-        exercise(seeded.as_slice());
-    }
-
-    for (protocol, destination_port) in [
-        (TransportProtocol::Tcp, 102),
-        (TransportProtocol::Tcp, 10_102),
-        (TransportProtocol::Udp, 102),
-    ] {
-        let mut seeded =
-            ethernet_ipv4_payload(protocol, destination_port, &COTP_CONNECTION_REQUEST);
-        xor_overlay(seeded.as_mut_slice(), data);
-        exercise(seeded.as_slice());
-    }
-
-    // FTP : la meme commande hors port, sur un port SMTP, et sur UDP.
-    for (protocol, destination_port) in [
-        (TransportProtocol::Tcp, 5_000),
-        (TransportProtocol::Tcp, 25),
-        (TransportProtocol::Udp, 5_000),
-    ] {
-        let mut seeded = ethernet_ipv4_payload(protocol, destination_port, STOR_COMMAND);
-        xor_overlay(seeded.as_mut_slice(), data);
-        exercise(seeded.as_slice());
+        exercise(seeded.as_slice(), &config);
     }
 });
