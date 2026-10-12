@@ -62,12 +62,24 @@ licences obligent à reproduire.
 - **Captures de Chris Sanders** (`arp`, `dhcp`, `dns`, `icmp`, `ieee80211`,
   `ip`, `tcp`) : « free to use », à condition de citer l'auteur — voir les
   crédits du [README du corpus](../README.md).
+- **4SICS** (`4SICS-GeekLounge-151020.pcap`) : capture Netresec du labo ICS de
+  4SICS 2015, sans licence formelle ; la page demande de **créditer
+  CS3Sthlm** et de lier <https://www.netresec.com/?page=PCAP4SICS>.
+- **The Ultimate PCAP** (`The-Ultimate-PCAP.pcapng`, et ses extraits
+  `capwap-only.pcap`, `capwap-only.pcapng`, `capwap-association-valid.pcapng`) :
+  Johannes Weber, <https://weberblog.net/the-ultimate-pcap/>, aucune licence
+  énoncée, publié pour téléchargement libre ; cité.
+- **Practical Packet Analysis** (`ftp.pcap`) : Chris Sanders, fichiers
+  d'accompagnement du livre (No Starch Press) ; « free to use », citer
+  l'origine.
+- **`protocols/modbus/Modbus.pcap`** : copie de la collection
+  automayt/ICS-pcap, sans licence et sans origine nommée ; aucune licence
+  attribuable tant que l'origine première n'est pas établie.
 - **Captures du mainteneur** (`asterix/cat048_multicast.pcap`, `mqtt`,
   `tls/dump.pcapng`, le labo omniORB de `giop`, `vlan`, `tunnels/vxlan`,
   `tunnels/geneve`, `sll.pcap` et `capture_sll2.pcap` à la racine) : sous la
   licence MIT du dépôt.
-- **Provenance à documenter** : `protocols/http/simple-http-request.pcap`,
-  `protocols/modbus/Modbus.pcap`, et à la racine `4SICS-GeekLounge-151020.pcap`,
-  `The-Ultimate-PCAP.pcapng`, `ftp.pcap`, les `capwap-*` et
-  `vlan0--packet-capture CAPWAP…cap`. Tant que leur origine n'est pas
-  établie, aucune licence ne peut leur être attribuée.
+- **Provenance à confirmer** : `vlan0--packet-capture CAPWAP…cap` (capture
+  tierce de 2016, voir le `SOURCE.md` de la racine) ; l'origine première de
+  `Modbus.pcap` ci-dessus. Les fichiers fabriqués `capwap-multi-wtp.pcap` et
+  `protocols/http/simple-http-request.pcap` ont été retirés le 2026-10-12.
