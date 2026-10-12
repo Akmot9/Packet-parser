@@ -81,7 +81,9 @@
 /// - **`InvalidVersion`** → The NTP version is out of range.
 /// - **`InvalidMode`** → The mode is not recognized.
 /// - **`InvalidStratum`** → The stratum field contains an invalid value.
-/// - **`InvalidTimestamps`** → The timestamps are inconsistent.
+/// - **`InconsistentTimestamps`** → The receive timestamp is later than the
+///   transmit timestamp, both taken on the sender's clock. The originate
+///   timestamp is the client's clock and is never compared.
 ///
 /// These errors help diagnose malformed or unexpected packets.
 use std::fmt;
@@ -202,12 +204,8 @@ impl TryFrom<&[u8]> for NtpPacket {
         let receive_timestamp = extract_timestamp(&payload[32..40])?;
         let transmit_timestamp = extract_timestamp(&payload[40..48])?;
 
-        validate_datetime_ordering(
-            reference_timestamp,
-            originate_timestamp,
-            receive_timestamp,
-            transmit_timestamp,
-        )?;
+        // Seuls Receive et Transmit partagent une horloge (#161).
+        validate_datetime_ordering(receive_timestamp, transmit_timestamp)?;
 
         Ok(NtpPacket {
             flags,
@@ -249,6 +247,74 @@ mod tests {
         assert_eq!(result.root_dispersion, 66192);
         assert_eq!(result.reference_id, Refid::KissCode([0, 0, 0, 0]));
         assert_eq!(result.reference_id.to_string(), "NULL");
+    }
+
+    /// iti_Sample_File_MMS_and_GOOSE.pcap trame 2 : reponse d'un serveur v4
+    /// (stratum 6, horloge locale 127.127.1.0) a un client dont l'horloge est
+    /// en avance de 2,2 ms — originate (T1, horloge du client) depasse receive
+    /// (T2, horloge du serveur). La crate la rejetait (#161).
+    const SERVER_REPLY_CLIENT_AHEAD: &str = concat!(
+        "240600ec00000000000002e37f7f0100cc2b0c374b1a1279cc2b0c4efb1abd7d",
+        "cc2b0c4efa8a1caccc2b0c4efa8b00e5"
+    );
+
+    /// Meme capture, trame 54 : reponse d'un serveur v1 avec un originate nul.
+    const V1_SERVER_REPLY_NULL_ORIGINATE: &str = concat!(
+        "0c0600ec00000000000002e67f7f0100cc2b0c374b1a12790000000000000000",
+        "cc2b0c51beb3ebd3cc2b0c51beb4a3bc"
+    );
+
+    /// Meme capture, trame 53 : requete d'un client v1, tout a zero.
+    const V1_CLIENT_REQUEST_ALL_NULL: &str = concat!(
+        "0b00000000000000000000000000000000000000000000000000000000000000",
+        "00000000000000000000000000000000"
+    );
+
+    #[test]
+    fn test_real_server_replies_are_accepted_whatever_the_client_clock() {
+        let reply = hex::decode(SERVER_REPLY_CLIENT_AHEAD).unwrap();
+        let packet = NtpPacket::try_from(reply.as_slice()).expect("reponse reelle (#161)");
+        assert_eq!(packet.flags, (0, 4, 4));
+        assert_eq!((packet.stratum, packet.poll, packet.precision), (6, 0, -20));
+        assert_eq!((packet.root_delay, packet.root_dispersion), (0, 739));
+        assert_eq!(
+            packet.reference_id,
+            Refid::Ipv4(Ipv4Addr::new(127, 127, 1, 0))
+        );
+        assert!(packet.originate_timestamp > packet.receive_timestamp);
+        assert!(packet.receive_timestamp <= packet.transmit_timestamp);
+        assert!(packet.reference_timestamp < packet.receive_timestamp);
+        assert_eq!(
+            packet
+                .transmit_timestamp
+                .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
+            "2008-07-18T12:34:22.978683524Z"
+        );
+
+        let v1_reply = hex::decode(V1_SERVER_REPLY_NULL_ORIGINATE).unwrap();
+        let packet = NtpPacket::try_from(v1_reply.as_slice()).expect("reponse v1 reelle");
+        assert_eq!(packet.flags, (0, 1, 4));
+        assert!(is_null_timestamp(packet.originate_timestamp));
+        assert!(!is_null_timestamp(packet.reference_timestamp));
+
+        let v1_request = hex::decode(V1_CLIENT_REQUEST_ALL_NULL).unwrap();
+        let packet = NtpPacket::try_from(v1_request.as_slice()).expect("requete v1 reelle");
+        assert_eq!(packet.flags, (0, 1, 3));
+        assert!(is_null_timestamp(packet.transmit_timestamp));
+    }
+
+    /// Receive et Transmit sont pris sur la meme horloge : inverses, la
+    /// reponse est bien incoherente.
+    #[test]
+    fn test_receive_after_transmit_is_still_rejected() {
+        let mut swapped = hex::decode(SERVER_REPLY_CLIENT_AHEAD).unwrap();
+        let (receive, transmit) = (swapped[32..40].to_vec(), swapped[40..48].to_vec());
+        swapped[32..40].copy_from_slice(&transmit);
+        swapped[40..48].copy_from_slice(&receive);
+        assert!(matches!(
+            NtpPacket::try_from(swapped.as_slice()),
+            Err(NtpPacketParseError::InconsistentTimestamps)
+        ));
     }
 
     #[test]

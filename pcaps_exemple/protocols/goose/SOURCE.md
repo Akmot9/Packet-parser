@@ -40,6 +40,13 @@ gocbRef, timeAllowedtoLive, datSet, goID, stNum, sqNum, simulation,
 confRev, ndsCom, numDatSetEntries, nombre et codes des éléments de allData.
 `tests/goose_golden.rs` rejoue l'oracle (#102) : parité sur les 494 trames.
 
+Le trafic IPv4 du poste dans `iti_Sample_File_MMS_and_GOOSE.pcap` sert aussi
+d'oracle **NTP** : `tests/data/ntp_tshark_oracle.tsv` est produit par
+`tools/ntp_oracle.sh` (tshark 4.6.6), un datagramme NTP par ligne (52 ici :
+requêtes et réponses, v4 et v1, plus l'échange de
+`protocols/iec104/iti_JavaRMI_and_IEC_Misc.pcap`), rejoué par
+`tests/ntp_golden.rs` (#161, #162).
+
 ## Licence
 
 CC-BY-4.0, licence du dépôt ITI/ICS-Security-Tools (texte :

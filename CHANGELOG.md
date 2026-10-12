@@ -8,6 +8,32 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Corrige
 
+- **NTP** (#161) : le decodeur exigeait `reference <= originate <= receive
+  <= transmit`, alors qu'originate (T1) est l'horodatage du client copie tel
+  quel et que reference, receive et transmit sont ceux du serveur. Des que
+  l'horloge du client etait en avance de quelques millisecondes — ce que
+  NTP sert a corriger —, ou qu'une premiere requete laissait originate nul,
+  la reponse du serveur sortait `InconsistentTimestamps`, donc `Unknown` :
+  20 des 26 reponses reelles du poste IEC 61850 de
+  `pcaps_exemple/protocols/goose/iti_Sample_File_MMS_and_GOOSE.pcap`.
+  `validate_datetime_ordering` ne compare plus que receive et transmit,
+  pris sur la meme horloge, et ignore un horodatage nul (RFC 5905 §6,
+  « unknown ») ; `is_null_timestamp` est expose pour le dire. Golden
+  `tests/ntp_golden.rs` (oracle `tools/ntp_oracle.sh`, tshark 4.6.6) :
+  parite sur les 54 datagrammes NTP du corpus (52 du poste, plus l'echange
+  de `iec104/iti_JavaRMI_and_IEC_Misc.pcap`, #162), en-tete, identifiant de
+  reference et les quatre horodatages a la nanoseconde ; histogramme
+  golden "NTP" 32 -> 54.
+- **NTP** (#162) : les horodatages etaient toujours comptes depuis 1900,
+  alors que la RFC 4330 §3 tranche l'ere par le bit de poids fort (a 0 :
+  2036 a 2104) — la requete d'un client Java du corpus sortait
+  `1900-01-01T00:00:37Z` la ou tshark lit `2036-02-07T06:28:53Z` ; et au
+  stratum 1 l'identifiant de reference devait figurer dans l'extrait de
+  codes de la RFC 5905 (GOES, GPS, PPS...), ce qui rejetait la reponse d'un
+  serveur `SHM` (pilote memoire partagee de ntpd). `extract_timestamp`
+  applique l'ere, `extract_reference_id` accepte au stratum 1 tout code de
+  quatre octets ASCII imprimables, justifie a gauche et complete de zeros
+  (RFC 5905 §7.3 : la liste est tenue par l'IANA, un `X` initial est libre).
 - **PostgreSQL** (#98) : le decodeur rejetait l'octet de type `p`
   (PasswordMessage, SASLInitialResponse, SASLResponse) — toute
   authentification par mot de passe ou SCRAM sortait `InvalidMessageType` ;
