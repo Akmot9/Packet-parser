@@ -287,6 +287,12 @@ fn application_classification_histogram_is_frozen() {
     // 7 930 -> 7 932 (+2 : deux segments de dnp3.pcap, port 2803, qui ne
     // sont pas du DNP3), "(sans application)" 4 392 -> 4 595 (+203 : les
     // ACK).
+    //
+    // 2026-10-12 (#101, corpus RADIUS de Zeek, 2 captures, 23 trames) :
+    // "RADIUS" 0 -> 23, toutes etiquetees (ports 1812 et 1645, et la sonde
+    // aveugle sur radius_localhost.pcap en LINKTYPE_NULL). Les 72 paquets
+    // RADIUS de The-Ultimate-PCAP.pcapng, a la racine, ne sont pas comptes
+    // ici (tests/radius_golden.rs les lit sur place).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 4595),
@@ -313,6 +319,7 @@ fn application_classification_histogram_is_frozen() {
         ("OpenVPN", 766),
         ("PTP", 3221),
         ("PostgreSQL", 278),
+        ("RADIUS", 23),
         ("SMTP", 6),
         ("SRVLOC", 1),
         ("SSDP", 24),

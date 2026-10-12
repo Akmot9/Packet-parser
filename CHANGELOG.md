@@ -79,6 +79,25 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **RADIUS** (#101, dernier de la ligne « au fil de l'eau ») : RFC 2865,
+  comptabilite RFC 2866, changement d'autorisation RFC 5176.
+  `radius::RadiusPacket` lit l'en-tete (code nomme par `RadiusCode`,
+  identifiant, longueur qui doit couvrir exactement le datagramme,
+  authentificateur) et la liste des attributs (`RadiusAttribute` : type
+  nomme par `AttributeType` d'apres le registre IANA, longueur, valeur
+  empruntee ; accesseurs `as_u32`, `as_ipv4`, `as_text`, `vendor` pour les
+  Vendor-Specific ; `attribute(kind)` pour le premier d'un type). Dispatch :
+  regle de port UDP 1812/1813/1645/1646/3799, et la meme sonde a l'aveugle
+  sur tout port UDP — code connu, longueur egale au datagramme, attributs
+  qui le pavent. Corpus : les deux captures du corpus de tests de Zeek (BSD
+  3-clause) dans `pcaps_exemple/protocols/radius/`, plus les 72 paquets de
+  `The-Ultimate-PCAP.pcapng` lus sur place. Parite avec tshark 4.6.6 sur les
+  95 paquets (`tests/radius_golden.rs`, oracle `tools/radius_oracle.sh`) :
+  en-tete, authentificateur, types et longueurs des attributs, vendeurs ;
+  aucune des 51 256 autres trames de l'Ultimate PCAP n'est etiquetee RADIUS
+  a l'aveugle. Histogramme golden : "RADIUS" 0 -> 23 ; collecteur
+  de corpus 149 -> 151 captures. Cible de fuzz
+  `parse_radius`.
 - **DNP3** (#99, Tier 2) : IEEE 1815, le protocole SCADA du secteur
   electrique nord-americain. `dnp3::Dnp3Packet` lit les trames de liaison qui
   pavent un segment TCP ou un datagramme UDP — `05 64`, longueur, controle

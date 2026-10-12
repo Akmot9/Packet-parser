@@ -27,6 +27,7 @@ pub mod openvpn;
 pub mod postgresql;
 pub mod ptp;
 pub mod quic;
+pub mod radius;
 pub mod rtps;
 pub mod s7comm;
 pub mod smtp;

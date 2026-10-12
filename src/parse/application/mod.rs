@@ -16,7 +16,8 @@ use crate::{
         asterix::AsterixPacket, dhcp::DhcpPacket, dis::DisPacket, dnp3::Dnp3Packet,
         giop::GiopPacket, http::HttpRequest, modbus_tcp::ModbusTcpPacket, mqtt::MqttPacket,
         ntp::NtpPacket, opcua::OpcuaPacket, postgresql::is_likely_postgresql_payload,
-        quic::QuicPacket, rtps::RtpsPacket, srvloc::SrvlocPacket, umas::UmasPacket,
+        quic::QuicPacket, radius::RadiusPacket, rtps::RtpsPacket, srvloc::SrvlocPacket,
+        umas::UmasPacket,
     },
 };
 
@@ -76,6 +77,12 @@ impl TryFrom<&[u8]> for Application {
         if Dnp3Packet::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "DNP3",
+            });
+        }
+        // RADIUS (RFC 2865) : code, longueur du datagramme, attributs (#101).
+        if RadiusPacket::try_from(packet).is_ok() {
+            return Ok(Application {
+                application_protocol: "RADIUS",
             });
         }
         if BitcoinPacket::try_from(packet).is_ok() {

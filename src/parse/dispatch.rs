@@ -49,6 +49,7 @@ use super::application::protocols::postgresql::{
 };
 use super::application::protocols::ptp::PtpPacket;
 use super::application::protocols::quic::QuicPacket;
+use super::application::protocols::radius::RadiusPacket;
 use super::application::protocols::rtps::RtpsPacket;
 use super::application::protocols::s7comm::S7CommPacket;
 use super::application::protocols::smtp::SmtpMessage;
@@ -146,6 +147,7 @@ enum ProbeId {
     Dis,
     DisLenient,
     Dnp3,
+    Radius,
     Ike,
     EspNatT,
     NatKeepalive,
@@ -210,6 +212,8 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         // Sur le payload reel : les trames de liaison, chacune verifiee par
         // ses CRC, doivent paver tout le segment ou datagramme.
         ProbeId::Dnp3 => Dnp3Packet::try_from(full_payload).is_ok(),
+        // Sur le payload reel : la longueur declaree couvre tout le datagramme.
+        ProbeId::Radius => RadiusPacket::try_from(full_payload).is_ok(),
         // Sur le payload reel : la longueur de l'en-tete IKE couvre tout le
         // message. Nu (UDP 500) ou derriere le marqueur non-ESP (UDP 4500).
         ProbeId::Ike => IkePacket::from_udp(full_payload).is_ok(),
@@ -381,6 +385,9 @@ static RULES: &[Rule] = &[
     // (trois PDU reels du corpus) ; ailleurs, la sonde aveugle ci-dessous
     // exige que les PDU pavent exactement le datagramme (#123).
     port_rule("DIS", Guard::Udp, is_dis_udp_port, ProbeId::DisLenient),
+    // RADIUS (RFC 2865) sur ses ports : 1812/1813, les anciens 1645/1646,
+    // 3799 (RFC 5176). La meme sonde revient a l'aveugle plus bas (#101).
+    port_rule("RADIUS", Guard::Udp, is_radius_udp_port, ProbeId::Radius),
     // PostgreSQL sur son port : decodage et forme compatible suffisent — un
     // Terminate, un ReadyForQuery ou un mot de passe seuls dans leur
     // segment, la reponse d'un octet a SSLRequest (S ou N) — la ou la sonde
@@ -439,6 +446,9 @@ static RULES: &[Rule] = &[
     // bloc de seize octets — une signature qui se passe du port 20000, sur
     // TCP comme sur UDP (#99).
     rule("DNP3", Guard::Any, ProbeId::Dnp3),
+    // RADIUS : code connu, longueur egale au datagramme, attributs qui le
+    // pavent — assez contraint pour se passer du port (#101).
+    rule("RADIUS", Guard::Udp, ProbeId::Radius),
     rule("Bitcoin", Guard::Tcp, ProbeId::Bitcoin),
     rule("OPC UA", Guard::Tcp, ProbeId::Opcua),
     // EtherNet/IP est reellement bi-transport (TCP 44818, UDP 2222).
@@ -738,6 +748,11 @@ fn is_dis_udp_port(port: Option<u16>) -> bool {
 /// PostgreSQL : TCP 5432 (IANA `postgresql`).
 fn is_postgresql_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(5432))
+}
+
+/// RADIUS : UDP 1812/1813 (IANA), 1645/1646 (historiques), 3799 (RFC 5176).
+fn is_radius_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(1812 | 1813 | 1645 | 1646 | 3799))
 }
 
 /// IKE : UDP 500 (IANA `isakmp`) et 4500 (IANA `ipsec-nat-t`).
@@ -1211,6 +1226,7 @@ mod tests {
                 "ASTERIX",
                 "DIS",
                 "DNP3",
+                "RADIUS",
                 "Bitcoin",
                 "OPC UA",
                 "EtherNet/IP",
