@@ -301,7 +301,7 @@ fn every_ntp_datagram_matches_the_tshark_oracle() {
         assert_eq!(seen, rows.len(), "{name} : des lignes d'oracle sans trame");
     }
 
-    assert_eq!(datagrams, 1_300);
+    assert_eq!(datagrams, 1_308);
     // Les deux ecarts nommes : messages de controle (ntpq) et erreurs ICMP
     // qui citent un datagramme NTP.
     assert_eq!(control_messages, 104);
@@ -314,14 +314,14 @@ fn every_ntp_datagram_matches_the_tshark_oracle() {
             ((3, 3), 29),
             ((3, 4), 31),
             ((4, 1), 38),
-            ((4, 3), 605),
-            ((4, 4), 593),
+            ((4, 3), 609),
+            ((4, 4), 597),
         ])
     );
-    // Dans 62 reponses de serveur, l'horloge du client (originate) est en
+    // Dans 63 reponses de serveur, l'horloge du client (originate) est en
     // avance sur celle du serveur (receive) : exactement ce que le decodeur
     // rejetait (#161).
-    assert_eq!(client_ahead, 62);
+    assert_eq!(client_ahead, 63);
     // Apres l'en-tete : crypto-NAK (4 octets), MAC MD5 (20), SHA-1 (24),
     // SHA-256 (36) ou SHA-512 (68, wireshark_16640_NTP-with-mac.pcap),
     // Extended Authenticator de MS-SNTP (72), champs d'extension NTS (180 et
@@ -329,9 +329,9 @@ fn every_ntp_datagram_matches_the_tshark_oracle() {
     assert_eq!(
         with_trailer,
         BTreeMap::from([
-            (52, 40),
-            (68, 42),
-            (72, 13),
+            (52, 41),
+            (68, 44),
+            (72, 16),
             (84, 1),
             (116, 3),
             (120, 6),
@@ -343,7 +343,7 @@ fn every_ntp_datagram_matches_the_tshark_oracle() {
     // adresse multicast, et 62 datagrammes au stratum 0 qui portent un
     // identifiant (kiss codes, et requetes de clients non synchronises).
     assert_eq!(multicast_like_reference, 23);
-    assert_eq!(stratum_0_reference, 70);
+    assert_eq!(stratum_0_reference, 72);
 }
 
 /// Les faux positifs de l'ancienne sonde aveugle dans `protocols/ntp/`
@@ -376,7 +376,7 @@ const LENIENT_LOOKALIKES: &[(&str, &[usize])] = &[
     ("asterix/wireshark_9953_cat021023.pcap", &[2, 3, 4]),
     ("ntp/ndpi_crynet.pcap", &[119]),
     ("ntp/ndpi_kcp.pcap", &[3, 24]),
-    ("ntp/ndpi_quic_interop_V.pcapng", &[27]),
+    ("ntp/ndpi_quic_interop_V.pcapng", &[27, 78]),
 ];
 
 #[test]
@@ -389,6 +389,14 @@ fn former_false_positives_are_no_longer_ntp() {
             let (link_type, data) = &frames[number - 1];
             let flow = parse(*link_type, data).expect("trame decodable");
             assert!(ntp_level(&flow).is_none(), "{name}:{number} : encore NTP");
+            // L'etiquette qu'ils gardent : ASTERIX pour les datagrammes de
+            // surveillance, Unknown pour les autres.
+            let expected = if name.starts_with("asterix/") {
+                "ASTERIX"
+            } else {
+                "Unknown"
+            };
+            assert_eq!(label(&flow), Some(expected), "{name}:{number}");
             let transport = flow.transport.as_ref().expect("UDP");
             assert!(transport.source_port != Some(123) && transport.destination_port != Some(123));
             let payload = transport.payload.expect("payload UDP");
@@ -399,12 +407,13 @@ fn former_false_positives_are_no_longer_ntp() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 38);
+    assert_eq!(checked, 39);
 }
 
 /// Les datagrammes NTP reels, deplaces hors du port 123 (UDP 40000 ->
-/// 40001) : la sonde aveugle les reconnait tous — requetes NTS et MS-SNTP,
-/// precision tue de chrony, clients non synchronises au stratum 0 compris.
+/// 40001) : la sonde aveugle les reconnait — requetes NTS et MS-SNTP,
+/// precision tue de chrony, clients non synchronises au stratum 0 compris —,
+/// sauf une requete de chrony dont Receive suit Transmit.
 #[test]
 fn real_datagrams_are_ntp_off_port_too() {
     let base = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -433,6 +442,9 @@ fn real_datagrams_are_ntp_off_port_too() {
             replayed += 1;
         }
     }
-    assert_eq!(replayed, 1_300);
-    assert_eq!(refused, Vec::<String>::new());
+    assert_eq!(replayed, 1_308);
+    // Une requete de chrony aux horodatages Receive et Transmit aleatoires
+    // (precision 32), Receive apres Transmit : seule la sonde aveugle
+    // compare les deux, et la refuse.
+    assert_eq!(refused, ["ntp/tcpdump_ntp.pcap:3"]);
 }

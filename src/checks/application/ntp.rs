@@ -283,8 +283,8 @@ const MAX_V4_MAC_LENGTH: usize = 24;
 
 /// Un crypto-NAK : l'identifiant de cle nul, seul, que ntpd renvoie quand
 /// l'authentification d'une requete echoue — dans la version de la
-/// requete.
-const CRYPTO_NAK_LENGTH: usize = 4;
+/// requete (`authencrypt(0)`, quatre octets nuls).
+const CRYPTO_NAK: [u8; 4] = [0; 4];
 
 /// MAC seuls a condensat SHA-256, SHA-384 et SHA-512 (identifiant de cle et
 /// 32, 48 ou 64 octets), que ntpd envoie en NTPv4 sans les tronquer.
@@ -325,13 +325,13 @@ pub fn is_plausible_stratum_0_reference(reference_id: &Refid) -> bool {
 
 /// Ce qui suit l'en-tete de 48 octets a la forme que fixe la RFC (#164) :
 /// rien ; ou en NTPv4 des champs d'extension (longueur d'au moins seize
-/// octets, multiple de quatre) suivis d'un MAC eventuel de 4 (crypto-NAK),
-/// 20 (MD5, AES-CMAC) ou 24 octets (SHA-1) — un reste de plus de 24 octets
-/// est un champ d'extension, si bien que le dernier champ d'un paquet sans
-/// MAC fait au moins 28 octets (RFC 5905 §7.5.1.4, ajoute par RFC 7822
-/// §3) —, ou un MAC seul a condensat SHA-256, SHA-384 ou SHA-512 ; avant
-/// NTPv4, un crypto-NAK, ou un MAC : identifiant de cle et condensat DES,
-/// MD5, SHA-1 ou plus long, jusqu'aux 72 octets de l'Extended
+/// octets, multiple de quatre) suivis d'un MAC eventuel : quatre octets nuls
+/// (crypto-NAK), 20 (MD5, AES-CMAC) ou 24 octets (SHA-1) — un reste de plus
+/// de 24 octets est un champ d'extension, si bien que le dernier champ d'un
+/// paquet sans MAC fait au moins 28 octets (RFC 5905 §7.5.1.4, ajoute par
+/// RFC 7822 §3) —, ou un MAC seul a condensat SHA-256, SHA-384 ou SHA-512 ;
+/// avant NTPv4, un crypto-NAK, ou un MAC : identifiant de cle et condensat
+/// DES, MD5, SHA-1 ou plus long, jusqu'aux 72 octets de l'Extended
 /// Authenticator de Microsoft.
 pub fn is_valid_trailer(version: u8, trailer: &[u8]) -> bool {
     if trailer.is_empty() {
@@ -341,8 +341,7 @@ pub fn is_valid_trailer(version: u8, trailer: &[u8]) -> bool {
         return false;
     }
     if version < 4 {
-        return trailer.len() == CRYPTO_NAK_LENGTH
-            || (12..=MAX_LEGACY_MAC_LENGTH).contains(&trailer.len());
+        return trailer == CRYPTO_NAK || (12..=MAX_LEGACY_MAC_LENGTH).contains(&trailer.len());
     }
     // Un MAC seul dont le condensat est un SHA-256, SHA-384 ou SHA-512 :
     // ntpd ne le tronque pas (#16640 du tracker Wireshark).
@@ -357,7 +356,7 @@ pub fn is_valid_trailer(version: u8, trailer: &[u8]) -> bool {
         }
         rest = &rest[length..];
     }
-    matches!(rest.len(), 0 | CRYPTO_NAK_LENGTH | 20 | MAX_V4_MAC_LENGTH)
+    rest.is_empty() || rest == CRYPTO_NAK || matches!(rest.len(), 20 | MAX_V4_MAC_LENGTH)
 }
 
 #[cfg(test)]
@@ -641,7 +640,8 @@ mod tests {
             assert!(is_valid_trailer(version, &[]));
         }
         // NTPv4 : MAC seul (crypto-NAK, MD5, SHA-1).
-        for length in [4, 20, 24] {
+        assert!(is_valid_trailer(4, &[0; 4]));
+        for length in [20, 24] {
             assert!(is_valid_trailer(4, &vec![0xAB; length]));
         }
         // NTPv4 : le plus court champ d'extension sans MAC (28 octets,
@@ -700,6 +700,11 @@ mod tests {
         let trailer = [field.clone(), field].concat();
         assert_eq!(trailer.len(), 60);
         assert!(!is_valid_trailer(4, &trailer));
+        // Un crypto-NAK est un identifiant de cle nul : quatre autres octets
+        // ne sont ni un NAK ni un MAC.
+        for version in [3, 4] {
+            assert!(!is_valid_trailer(version, &[0xAB; 4]));
+        }
         // Avant NTPv4 : pas de champ d'extension, un MAC d'au plus 72 octets.
         for length in [8, 76, 1204] {
             assert!(!is_valid_trailer(3, &vec![0; length]));
