@@ -22,11 +22,12 @@ Aucun de ces fichiers n'entre dans le paquet publié sur crates.io :
 | `BSD-3-Clause-CISA.txt` | BSD 3-Clause | `LICENSE.txt` de cisagov/icsnpp-profinet-io-cm | `73a28a4fb94ee6149eb201a4fa2b8cbd228252f4cfb1df912cc27795c7d016a1` | Battelle Energy Alliance, LLC (2024) | `profinet` (`cisagov_*.pcap`) |
 | `MIT-foxglove.txt` | MIT | `LICENSE` de foxglove/rtps | `da11235665c17d4c1634072dae92b8ba1b38d6fdde2ccf19a6bbede33253f58d` | Foxglove Technologies Inc | `rtps` (`talker-listener-rtps.pcapng`) |
 | `BSD-3-Clause-Zeek.txt` | BSD 3-Clause | `COPYING` de zeek/zeek (copie de `../tunnels/gtp_u/LICENSE-ZEEK.txt`, versé par #97 avant ce dossier) | `1f984adb6b5cd93d5035c2a87c2df5f38922649fbea90c7bd79ff321d17333aa` | Regents of the University of California, LBNL, ICSI | `tunnels/gtp_u`, `postgresql`, `dnp3`, `radius`, `rdp` |
+| `BSD-3-Clause-tcpdump.txt` | BSD 3-Clause | `LICENSE` de the-tcpdump-group/tcpdump (commit `57768afc`) | `8a54594d257e14a5260ac770f1633516cb51e3fc28c40136ce2697014eda7afd` | The Tcpdump Group | `ntp` (`tcpdump_ntp.pcap`) |
 
 Les textes GNU et Creative Commons sont les textes canoniques de leurs
-éditeurs, à l'URL indiquée ; ceux de la CISA et de foxglove sont les
-fichiers des dépôts, parce qu'ils portent la notice de copyright que ces
-licences obligent à reproduire.
+éditeurs, à l'URL indiquée ; ceux de la CISA, de foxglove et de tcpdump
+sont les fichiers des dépôts, parce qu'ils portent la notice ou les
+conditions que ces licences obligent à reproduire.
 
 ## Ce que chaque licence impose ici
 
@@ -45,7 +46,7 @@ licences obligent à reproduire.
   — ICS PCAPs, developed as a community asset*
   (<https://github.com/ITI/ICS-Security-Tools>), et indiquer les
   modifications : aucune.
-- **BSD 3-Clause** (CISA, Zeek) et **MIT** (foxglove) : reproduire la notice
+- **BSD 3-Clause** (CISA, Zeek, tcpdump) et **MIT** (foxglove) : reproduire la notice
   de copyright, la liste des conditions et le disclaimer, ce que le fichier
   copié fait.
 

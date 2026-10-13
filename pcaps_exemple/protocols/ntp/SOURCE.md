@@ -1,10 +1,11 @@
 # Provenance
 
-Neuf captures versées le 2026-10-13 pour les issues #164 et #165 : huit du
+Dix captures versées le 2026-10-13 pour les issues #164 et #165 : huit du
 corpus de tests de **nDPI** — deux vrais datagrammes NTP, et six captures
 dont l'ancienne sonde NTP aveugle de la crate prenait 31 datagrammes pour du
-NTP — et une pièce jointe du tracker Wireshark, des NTP à MAC SHA-1,
-SHA-256 et SHA-512. Le décodeur assoupli par #165 accepte d'autres
+NTP —, une pièce jointe du tracker Wireshark, des NTP à MAC SHA-1, SHA-256
+et SHA-512, et la capture de test NTP de tcpdump, des requêtes de chrony aux
+horodatages aléatoires. Le décodeur assoupli par #165 accepte d'autres
 datagrammes de ces captures (KCP, QUIC, CryNet) : la sonde aveugle les
 refuse. Aucune n'est modifiée : ni anonymisée, ni tronquée. Les captures
 nDPI viennent de `tests/cfgs/default/pcap/` du dépôt `ntop/nDPI`, commit
@@ -23,6 +24,7 @@ plus anciennes dans ce dossier).
 | `ndpi_line.pcap` | 290 | appel LINE (UDP, RTCP) et TLS vers `147.92.165.194`, 2022 ; **1 faux positif** | `7714507f816b` | `2720b7cc` | `d319d2f719db4657aced52eda2063dc6bd35114dc138799fcb8db543d38fc945` |
 | `ndpi_openvpn_obfuscated.pcapng` | 177 | OpenVPN obfusqué (UDP 1214, TCP 443 et 465), 2024 ; **1 faux positif** | `0ddbda1f829a` (2024-09-16, #2547) | `439c2091` | `2706a55f369f452611261c196242ff13928e8494c68a04af2fb9b543a60e5d26` |
 | `wireshark_16640_NTP-with-mac.pcap` | 13 | ntpd entre deux machines VMware (`192.168.3.5` et `.1`, `123 -> 123`), 2020-06-03 : requêtes et réponses NTPv4 à MAC SHA-1 (identifiant de clé 12), une requête à MAC SHA-256, deux à MAC SHA-512, une réponse NTPv3 à MAC SHA-512 | tracker Wireshark, issue #16640 (« Incorrect parsing of NTP datagrams with SHA512 based message authentication code (MAC) », 2020), pièce jointe `NTP-with-mac.pcap` (« pcap with sha1,sha256,sha512 ») | — | `69884cedccecade4774f0b28fd42e2a72297b39d93fd6d9e1ae0dd736f723957` |
+| `tcpdump_ntp.pcap` | 8 | chrony et ntpd entre deux machines d'essai (`192.168.100.2` et `.1`), 2017-06-19 : requêtes de chrony (précision 32, Receive et Transmit aléatoires, MAC SHA-1 à identifiant de clé 8), un Kiss-o'-Death `STEP` suivi d'un crypto-NAK, une requête à la ntpdate, des réponses de stratum 2, un échange symétrique `123 -> 123` à MAC MD5 | dépôt tcpdump, `tests/ntp.pcap`, commit `57768afc4cffbaa17faad7808f106bc325ada417` (blob `2fd5937e`, versé par Miroslav Lichvar, auteur de chrony, `fdd0cf43a6fa`, 2017-06-19) | `2fd5937e` | `a858f6d32e82516b67fa98edb9304ca7872493e0bede8decc5637b7e6fc882d3` |
 
 Les numéros des 31 faux positifs sont dans `FORMER_FALSE_POSITIVES` de
 `tests/ntp_golden.rs`, ceux de datagrammes que le décodeur assoupli accepte
@@ -63,6 +65,13 @@ est écarté (ci-dessous).
   décodage des MAC SHA-512 par Wireshark. Les MAC sont ceux que calcule
   ntpd, non tronqués.
 
+- `tcpdump_ntp.pcap` : **laboratoire** — trafic de vrais chrony et ntpd
+  entre deux machines d'essai (TTL 64, une même adresse MAC sur les deux
+  sens, celle de l'interface de capture), versé par l'auteur de chrony pour
+  le décodeur NTP de tcpdump. Sa trame 3, une requête de chrony dont
+  Receive suit Transmit, est la seule que la sonde aveugle refuse hors du
+  port 123.
+
 `msgpack.pcap`, qui porte aussi un faux positif, est **écarté** : ses
 datagrammes `31337 -> 1337` sur `127.0.0.1` ont un TTL qui change d'un
 datagramme à l'autre (120 à 190) et deux trames partagent horodatage et
@@ -85,6 +94,8 @@ datagrammes déplacés hors du port 123 sont reconnus par la sonde aveugle
 - `ndpi_*` : LGPL-3.0, licence du dépôt nDPI (© ntop.org ; texte :
   `pcaps_exemple/LICENSES/LGPL-3.0.txt`, qui incorpore
   `pcaps_exemple/LICENSES/GPL-3.0.txt`) ;
+- `tcpdump_ntp.pcap` : BSD (trois clauses), licence du dépôt tcpdump (texte :
+  `pcaps_exemple/LICENSES/BSD-3-Clause-tcpdump.txt`) ;
 - `wireshark_16640_NTP-with-mac.pcap` : pièce jointe d'un rapport de bug
   public, sans licence explicite ; redistribuée telle quelle comme donnée de
   test publique, avec l'issue d'origine, le nom du fichier joint et son
