@@ -15,9 +15,10 @@
 //!   un client Java qui emet un horodatage de l'ere 1 (2036) et un serveur
 //!   de stratum 1 dont l'identifiant de reference, `SHM`, n'est pas dans la
 //!   liste de la RFC 5905 (#162) ;
-//! - les captures nDPI de `pcaps_exemple/protocols/ntp/` (voir son
-//!   `SOURCE.md`) : deux vrais NTP, et des datagrammes QUIC, KCP, PFCP... que
-//!   l'ancienne sonde aveugle prenait pour du NTP (#164) ;
+//! - les captures de `pcaps_exemple/protocols/ntp/` (voir son `SOURCE.md`) :
+//!   deux vrais NTP et des datagrammes QUIC, KCP, PFCP... que l'ancienne
+//!   sonde aveugle prenait pour du NTP (nDPI, #164), et des NTP a MAC SHA-1,
+//!   SHA-256 et SHA-512 (tracker Wireshark) ;
 //! - lues en place, `pcaps_exemple/The-Ultimate-PCAP.pcapng` — requetes NTS,
 //!   MS-SNTP authentifie, mode symetrique, serveurs a amont IPv6 dont
 //!   l'identifiant de reference se lit comme une adresse multicast, clients
@@ -27,7 +28,8 @@
 //! ports, LI, version, mode, stratum, poll, precision, root delay, root
 //! dispersion, identifiant de reference et les quatre horodatages a la
 //! nanoseconde, figes dans `tests/data/ntp_tshark_oracle.tsv` et compares ici
-//! datagramme par datagramme. Deux ecarts sont nommes, pas masques : les
+//! datagramme par datagramme ; aucune autre trame de `pcaps_exemple/` ne
+//! sort NTP. Deux ecarts sont nommes, pas masques : les
 //! messages de controle du mode 6 (ntpq), dont le format n'est pas celui que
 //! [`NtpPacket`] modelise, et les erreurs ICMP qui citent un datagramme NTP —
 //! la crate etiquette la trame ICMP, pas le datagramme cite.
@@ -46,7 +48,7 @@ mod common;
 use common::{FileRead, collect_capture_files, read_capture};
 
 const CORPUS: &str = "pcaps_exemple/protocols";
-const NTP_FOLDER: &str = "pcaps_exemple/protocols/ntp";
+const EXAMPLES: &str = "pcaps_exemple";
 const ORACLE: &str = "tests/data/ntp_tshark_oracle.tsv";
 
 /// Une ligne d'oracle : le porteur (`udp` ou `icmp`), le mode, et les
@@ -80,18 +82,27 @@ fn read_oracle(path: &Path) -> BTreeMap<String, BTreeMap<usize, Row>> {
     expected
 }
 
-/// Les captures du golden : celles de l'oracle, et tout `protocols/ntp/`,
-/// dont les captures sans aucun NTP.
+/// Les captures du golden : celles de l'oracle, et tout le corpus de
+/// `pcaps_exemple/` — aucune autre trame ne doit sortir NTP.
 fn captures(
     base: &Path,
     oracle: &BTreeMap<String, BTreeMap<usize, Row>>,
 ) -> Vec<(String, PathBuf)> {
     let mut names: BTreeSet<String> = oracle.keys().cloned().collect();
-    let mut folder = Vec::new();
-    collect_capture_files(&base.join(NTP_FOLDER), &mut folder);
-    for path in folder {
-        let file = path.file_name().unwrap().to_string_lossy().to_string();
-        names.insert(format!("ntp/{file}"));
+    let corpus = base.join(CORPUS);
+    let mut all = Vec::new();
+    collect_capture_files(&base.join(EXAMPLES), &mut all);
+    for path in all {
+        let name = match path.strip_prefix(&corpus) {
+            Ok(relative) => relative.to_string_lossy().to_string(),
+            Err(_) => format!(
+                "../{}",
+                path.strip_prefix(base.join(EXAMPLES))
+                    .expect("capture du corpus")
+                    .to_string_lossy()
+            ),
+        };
+        names.insert(name);
     }
     names
         .into_iter()
@@ -183,7 +194,7 @@ fn oracle_columns(
         version.to_string(),
         mode.to_string(),
         packet.stratum.to_string(),
-        packet.poll.to_string(),
+        packet.poll_exponent().to_string(),
         packet.precision.to_string(),
         packet.root_delay.to_string(),
         packet.root_dispersion.to_string(),
@@ -217,7 +228,18 @@ fn every_ntp_datagram_matches_the_tshark_oracle() {
         let empty = BTreeMap::new();
         let rows = oracle.get(&name).unwrap_or(&empty);
         let mut seen = 0;
-        for (index, (link_type, data)) in frames_of(&name, &path).iter().enumerate() {
+        // Hors de l'oracle, une capture que pcap-file ne lit pas (NetXRay) ou
+        // pas jusqu'au bout (enregistrement malforme) compte pour ce qu'elle
+        // donne ; celles de l'oracle doivent se lire en entier.
+        let frames = if rows.is_empty() {
+            match read_capture(&path) {
+                FileRead::Frames { frames, .. } => frames,
+                FileRead::Unsupported => continue,
+            }
+        } else {
+            frames_of(&name, &path)
+        };
+        for (index, (link_type, data)) in frames.iter().enumerate() {
             let number = index + 1;
             let flow = parse(*link_type, data);
             let level = flow.as_ref().ok().and_then(ntp_level);
@@ -262,7 +284,7 @@ fn every_ntp_datagram_matches_the_tshark_oracle() {
             *by_version_and_mode
                 .entry((packet.flags.1, packet.flags.2))
                 .or_default() += 1;
-            if packet.originate_timestamp > packet.receive_timestamp {
+            if packet.flags.2 == 4 && packet.originate_timestamp > packet.receive_timestamp {
                 client_ahead += 1;
             }
             if payload.len() > 48 {
@@ -279,7 +301,7 @@ fn every_ntp_datagram_matches_the_tshark_oracle() {
         assert_eq!(seen, rows.len(), "{name} : des lignes d'oracle sans trame");
     }
 
-    assert_eq!(datagrams, 1_287);
+    assert_eq!(datagrams, 1_300);
     // Les deux ecarts nommes : messages de controle (ntpq) et erreurs ICMP
     // qui citent un datagramme NTP.
     assert_eq!(control_messages, 104);
@@ -290,41 +312,49 @@ fn every_ntp_datagram_matches_the_tshark_oracle() {
             ((1, 3), 2),
             ((1, 4), 2),
             ((3, 3), 29),
-            ((3, 4), 30),
+            ((3, 4), 31),
             ((4, 1), 38),
-            ((4, 3), 597),
-            ((4, 4), 589),
+            ((4, 3), 605),
+            ((4, 4), 593),
         ])
     );
-    // Dans 128 reponses, l'horloge du client (originate) est en avance sur
-    // celle du serveur (receive) : exactement ce que le decodeur rejetait
-    // (#161).
-    assert_eq!(client_ahead, 128);
-    // Apres l'en-tete : crypto-NAK (4 octets), MAC MD5 (20) ou SHA-1 (24),
+    // Dans 62 reponses de serveur, l'horloge du client (originate) est en
+    // avance sur celle du serveur (receive) : exactement ce que le decodeur
+    // rejetait (#161).
+    assert_eq!(client_ahead, 62);
+    // Apres l'en-tete : crypto-NAK (4 octets), MAC MD5 (20), SHA-1 (24),
+    // SHA-256 (36) ou SHA-512 (68, wireshark_16640_NTP-with-mac.pcap),
     // Extended Authenticator de MS-SNTP (72), champs d'extension NTS (180 et
     // 492 octets).
     assert_eq!(
         with_trailer,
-        BTreeMap::from([(52, 40), (68, 42), (72, 4), (120, 6), (228, 58), (540, 2)])
+        BTreeMap::from([
+            (52, 40),
+            (68, 42),
+            (72, 13),
+            (84, 1),
+            (116, 3),
+            (120, 6),
+            (228, 58),
+            (540, 2)
+        ])
     );
     // #165 : 23 reponses dont l'amont IPv6 a un hachage qui se lit comme une
     // adresse multicast, et 62 datagrammes au stratum 0 qui portent un
     // identifiant (kiss codes, et requetes de clients non synchronises).
     assert_eq!(multicast_like_reference, 23);
-    assert_eq!(stratum_0_reference, 62);
+    assert_eq!(stratum_0_reference, 70);
 }
 
 /// Les faux positifs de l'ancienne sonde aveugle dans `protocols/ntp/`
 /// (#164) : le decodeur tolerant du port 123 les accepte, la sonde aveugle
-/// non. La trame 24 de `ndpi_kcp.pcap` (`01 00 00 00` au stratum 0) ne
-/// passait pas l'ancien decodeur, mais le passe depuis #165 : c'est son
-/// root delay, 20 992 s, que la sonde aveugle refuse.
+/// non.
 const FORMER_FALSE_POSITIVES: &[(&str, &[usize])] = &[
     (
         "ntp/ndpi_crynet.pcap",
         &[120, 121, 124, 133, 139, 162, 163, 167, 177, 194, 200],
     ),
-    ("ntp/ndpi_kcp.pcap", &[1, 18, 24]),
+    ("ntp/ndpi_kcp.pcap", &[1, 18]),
     ("ntp/ndpi_line.pcap", &[41]),
     ("ntp/ndpi_openvpn_obfuscated.pcapng", &[78]),
     ("ntp/ndpi_pfcp.pcapng", &[11]),
@@ -336,11 +366,24 @@ const FORMER_FALSE_POSITIVES: &[(&str, &[usize])] = &[
     ),
 ];
 
+/// Des datagrammes que l'ancien decodeur refusait et que le decodeur
+/// assoupli par #165 accepte — identifiant de stratum 0 quelconque, Receive
+/// apres Transmit — : la sonde aveugle les refuse. Segments KCP (`01 00 00
+/// 00` au stratum 0, root delay de plus de 20 000 s), QUIC, CryNet, et les
+/// datagrammes ASTERIX CAT 021 de `wireshark_9953_cat021023.pcap`, dont 1 555
+/// ont la forme d'un en-tete NTP.
+const LENIENT_LOOKALIKES: &[(&str, &[usize])] = &[
+    ("asterix/wireshark_9953_cat021023.pcap", &[2, 3, 4]),
+    ("ntp/ndpi_crynet.pcap", &[119]),
+    ("ntp/ndpi_kcp.pcap", &[3, 24]),
+    ("ntp/ndpi_quic_interop_V.pcapng", &[27]),
+];
+
 #[test]
 fn former_false_positives_are_no_longer_ntp() {
     let base = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut checked = 0;
-    for (name, numbers) in FORMER_FALSE_POSITIVES {
+    for (name, numbers) in FORMER_FALSE_POSITIVES.iter().chain(LENIENT_LOOKALIKES) {
         let frames = frames_of(name, &base.join(CORPUS).join(name));
         for &number in *numbers {
             let (link_type, data) = &frames[number - 1];
@@ -356,7 +399,7 @@ fn former_false_positives_are_no_longer_ntp() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 32);
+    assert_eq!(checked, 38);
 }
 
 /// Les datagrammes NTP reels, deplaces hors du port 123 (UDP 40000 ->
@@ -390,6 +433,6 @@ fn real_datagrams_are_ntp_off_port_too() {
             replayed += 1;
         }
     }
-    assert_eq!(replayed, 1_287);
+    assert_eq!(replayed, 1_300);
     assert_eq!(refused, Vec::<String>::new());
 }

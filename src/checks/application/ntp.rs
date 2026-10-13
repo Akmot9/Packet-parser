@@ -22,14 +22,15 @@ pub const MINIMUM_NTP_PACKET_LENGTH: usize = 48;
 /// 5. The **Poll field**, signed, must be at least `-7` (chrony, #165).
 /// 6. At stratum 1, the **Reference ID** must be a printable ASCII code
 ///    (#162); at stratum 0 and from 2 to 15, any four bytes (#165).
-/// 7. The **Receive** and **Transmit** timestamps, both taken on the sender's
-///    clock, must be in order; the Originate timestamp is the client's clock
-///    and is never compared (#161).
 ///
 /// Off port 123, the blind probe also checks the poll, the precision, the
-/// root delay and the bytes after the header: [`is_plausible_poll`],
-/// [`is_plausible_precision`], [`is_plausible_root_delay`],
-/// [`is_valid_trailer`] (#164).
+/// root delay, the bytes after the header, the order of the Receive and
+/// Transmit timestamps (both on the sender's clock; Originate is the
+/// client's and never compared, #161) and the stratum 0 reference id:
+/// [`is_plausible_poll`], [`is_plausible_precision`],
+/// [`is_plausible_root_delay`], [`is_valid_trailer`],
+/// [`validate_datetime_ordering`], [`is_plausible_stratum_0_reference`]
+/// (#164).
 pub fn validate_ntp_packet_length(payload: &[u8]) -> Result<(), NtpPacketParseError> {
     if payload.len() < MINIMUM_NTP_PACKET_LENGTH {
         return Err(NtpPacketParseError::InvalidPacketLength);
@@ -253,30 +254,41 @@ const BLIND_POLL: std::ops::RangeInclusive<i8> = MIN_POLL..=24;
 const BLIND_PRECISION: std::ops::RangeInclusive<i8> = -32..=0;
 
 /// Precision des requetes de client de chrony, qui la fixe a 32 (2^32 s,
-/// plus qu'une ere NTP) depuis 2015 (commit `8225bf01`) — 33 requetes NTS et
-/// NTPv4 de The-Ultimate-PCAP.pcapng, trames 19532 et suivantes.
+/// une ere NTP entiere) depuis 2015 (commit `8225bf01`) — 33 requetes NTS et
+/// NTPv4 de The-Ultimate-PCAP.pcapng, trames 11789, 11798 et 19532 a 19654.
 const UNDISCLOSED_PRECISION: i8 = 32;
 
 /// Root delay (format court, 16.16 s) au-dela duquel la sonde aveugle
 /// refuse un paquet (#164) : 16 s, `MAXDISP` de la RFC 5905 — une source
 /// dont la distance a la racine depasse `MAXDIST` (1 s ; 1,5 s chez ntpd)
 /// est deja inutilisable. Le plus grand root delay reel des corpus vaut 1 s
-/// (clients W32Time) ; un en-tete QUIC v1 en porte au moins 256 s, un
-/// segment KCP plus de 1 300.
+/// (requetes a la ntpdate : precision -6, root delay et dispersion de 1 s) ;
+/// un en-tete QUIC v1 en porte au moins 256 s, un segment KCP plus de
+/// 20 000.
 /// La root dispersion, elle, n'est pas bornee : un serveur ntpd de stratum 1
 /// en annonce 107,8 s (`iec104/iti_JavaRMI_and_IEC_Misc.pcap`, trame 2).
 const MAX_ROOT_DELAY: u32 = 16 << 16;
 
 /// Plus long MAC avant NTPv4 : l'Extended Authenticator de Microsoft
-/// ([MS-SNTP] §2.2.2), identifiant de cle, quatre octets de drapeaux et
+/// ([MS-SNTP] §2.2.3 et §2.2.4), identifiant de cle, quatre octets de drapeaux et
 /// condensat de 64 octets — W32Time, trames 40777 et 40778 de
 /// The-Ultimate-PCAP.pcapng.
 const MAX_LEGACY_MAC_LENGTH: usize = 72;
 
-/// Plus long MAC d'un paquet NTPv4 : identifiant de cle et condensat SHA-1
-/// (RFC 7822 §7.5). Au-dela, les octets qui suivent l'en-tete sont des
-/// champs d'extension.
+/// Plus long MAC d'un paquet NTPv4 qui suit des champs d'extension :
+/// identifiant de cle et condensat SHA-1 (RFC 5905 §7.5.1.3, ajoute par
+/// RFC 7822 §3). Au-dela, les octets qui suivent l'en-tete sont un champ
+/// d'extension.
 const MAX_V4_MAC_LENGTH: usize = 24;
+
+/// Un crypto-NAK : l'identifiant de cle nul, seul, que ntpd renvoie quand
+/// l'authentification d'une requete echoue — dans la version de la
+/// requete.
+const CRYPTO_NAK_LENGTH: usize = 4;
+
+/// MAC seuls a condensat SHA-256, SHA-384 et SHA-512 (identifiant de cle et
+/// 32, 48 ou 64 octets), que ntpd envoie en NTPv4 sans les tronquer.
+const LONG_V4_MAC_LENGTHS: [usize; 3] = [36, 52, 68];
 
 /// Plus court champ d'extension NTPv4 (RFC 7822 §3) : type, longueur et
 /// douze octets de valeur.
@@ -297,12 +309,30 @@ pub fn is_plausible_root_delay(root_delay: u32) -> bool {
     root_delay < MAX_ROOT_DELAY
 }
 
+/// L'identifiant de reference d'un vrai paquet de stratum 0, pour la sonde
+/// aveugle : nul (requete de client), un kiss code ou un autre code ASCII,
+/// ou `127.0.0.1`, que ntpd non synchronise laisse dans ses requetes. Le
+/// decodeur accepte tout octet (#165) ; sans cette garde, une requete DNS
+/// de 48 octets avec EDNS hors du port 53 — identifiant de poids faible nul,
+/// drapeaux RD et AD lus comme un poll de 1 et la precision 32 de chrony —
+/// sortait NTP, son premier label tenant lieu d'identifiant.
+pub fn is_plausible_stratum_0_reference(reference_id: &Refid) -> bool {
+    match reference_id {
+        Refid::KissCode(bytes) => *bytes == [127, 0, 0, 1] || reference_code_str(bytes).is_some(),
+        _ => false,
+    }
+}
+
 /// Ce qui suit l'en-tete de 48 octets a la forme que fixe la RFC (#164) :
-/// rien, ou en NTPv4 des champs d'extension (longueur d'au moins seize
-/// octets, multiple de quatre, RFC 7822 §3) suivis d'un MAC eventuel de 4
-/// (crypto-NAK), 20 (MD5, AES-CMAC) ou 24 octets (SHA-1) ; avant NTPv4, un
-/// MAC seul : identifiant de cle et condensat DES, MD5, SHA-1 ou plus long,
-/// jusqu'aux 72 octets de l'Extended Authenticator de Microsoft.
+/// rien ; ou en NTPv4 des champs d'extension (longueur d'au moins seize
+/// octets, multiple de quatre) suivis d'un MAC eventuel de 4 (crypto-NAK),
+/// 20 (MD5, AES-CMAC) ou 24 octets (SHA-1) — un reste de plus de 24 octets
+/// est un champ d'extension, si bien que le dernier champ d'un paquet sans
+/// MAC fait au moins 28 octets (RFC 5905 §7.5.1.4, ajoute par RFC 7822
+/// §3) —, ou un MAC seul a condensat SHA-256, SHA-384 ou SHA-512 ; avant
+/// NTPv4, un crypto-NAK, ou un MAC : identifiant de cle et condensat DES,
+/// MD5, SHA-1 ou plus long, jusqu'aux 72 octets de l'Extended
+/// Authenticator de Microsoft.
 pub fn is_valid_trailer(version: u8, trailer: &[u8]) -> bool {
     if trailer.is_empty() {
         return true;
@@ -311,7 +341,13 @@ pub fn is_valid_trailer(version: u8, trailer: &[u8]) -> bool {
         return false;
     }
     if version < 4 {
-        return (12..=MAX_LEGACY_MAC_LENGTH).contains(&trailer.len());
+        return trailer.len() == CRYPTO_NAK_LENGTH
+            || (12..=MAX_LEGACY_MAC_LENGTH).contains(&trailer.len());
+    }
+    // Un MAC seul dont le condensat est un SHA-256, SHA-384 ou SHA-512 :
+    // ntpd ne le tronque pas (#16640 du tracker Wireshark).
+    if LONG_V4_MAC_LENGTHS.contains(&trailer.len()) {
+        return true;
     }
     let mut rest = trailer;
     while rest.len() > MAX_V4_MAC_LENGTH {
@@ -321,7 +357,7 @@ pub fn is_valid_trailer(version: u8, trailer: &[u8]) -> bool {
         }
         rest = &rest[length..];
     }
-    matches!(rest.len(), 0 | 4 | 20 | 24)
+    matches!(rest.len(), 0 | CRYPTO_NAK_LENGTH | 20 | MAX_V4_MAC_LENGTH)
 }
 
 #[cfg(test)]
@@ -562,7 +598,7 @@ mod tests {
 
     #[test]
     fn test_plausible_root_delay_bounds() {
-        // Nul (client), 1 s (W32Time), juste sous 16 s.
+        // Nul (client), 1 s (requete a la ntpdate), juste sous 16 s.
         for root_delay in [0u32, 0x0000_0450, 0x0001_0000, 0x000f_ffff] {
             assert!(is_plausible_root_delay(root_delay), "{root_delay:#010x}");
         }
@@ -608,6 +644,15 @@ mod tests {
         for length in [4, 20, 24] {
             assert!(is_valid_trailer(4, &vec![0xAB; length]));
         }
+        // NTPv4 : le plus court champ d'extension sans MAC (28 octets,
+        // RFC 5905 §7.5.1.4), un champ de 24 octets suivi d'un crypto-NAK.
+        let mut trailer = vec![0x01, 0x04, 0x00, 0x1c];
+        trailer.extend_from_slice(&[0; 24]);
+        assert!(is_valid_trailer(4, &trailer));
+        let mut trailer = vec![0x01, 0x04, 0x00, 0x18];
+        trailer.extend_from_slice(&[0; 20]);
+        trailer.extend_from_slice(&[0; 4]);
+        assert!(is_valid_trailer(4, &trailer));
         // NTPv4 : un champ d'extension de 16 octets puis un MAC de 20.
         let mut trailer = vec![0x01, 0x04, 0x00, 0x10];
         trailer.extend_from_slice(&[0; 12]);
@@ -619,9 +664,13 @@ mod tests {
         trailer.extend_from_slice(&[0x02, 0x04, 0x00, 0x68]);
         trailer.extend_from_slice(&[0; 100]);
         assert!(is_valid_trailer(4, &trailer));
-        // Avant NTPv4 : identifiant de cle et condensat DES, MD5, SHA-1, et
-        // l'Extended Authenticator de [MS-SNTP].
-        for length in [12, 20, 24, 68, 72] {
+        // NTPv4 : MAC seul a condensat SHA-256, SHA-384, SHA-512.
+        for length in [36, 52, 68] {
+            assert!(is_valid_trailer(4, &vec![0x0c; length]));
+        }
+        // Avant NTPv4 : crypto-NAK, identifiant de cle et condensat DES, MD5,
+        // SHA-1, et l'Extended Authenticator de [MS-SNTP].
+        for length in [4, 12, 20, 24, 68, 72] {
             assert!(is_valid_trailer(3, &vec![0; length]));
         }
     }
@@ -629,24 +678,65 @@ mod tests {
     /// Synthetique : formes rejetees.
     #[test]
     fn test_trailer_rejects_unstructured_bytes() {
-        // Longueur non multiple de quatre (33 octets : ndpi_gnutella.pcap
-        // trame 1458).
+        // Longueur non multiple de quatre (33 octets : gnutella.pcap du
+        // corpus nDPI, non versee, trame 1458).
         assert!(!is_valid_trailer(3, &[0; 33]));
         assert!(!is_valid_trailer(4, &[0; 85]));
         // NTPv4 : MAC de 8, 12 ou 16 octets.
         for length in [8, 12, 16] {
             assert!(!is_valid_trailer(4, &vec![0; length]));
         }
-        // NTPv4 : champ d'extension trop court, mal aligne ou qui deborde.
-        for declared in [0u16, 12, 18, 200] {
+        // NTPv4 : champ d'extension trop court ou qui deborde.
+        for declared in [0u16, 12, 200] {
             let mut trailer = vec![0x01, 0x04];
             trailer.extend_from_slice(&declared.to_be_bytes());
             trailer.extend_from_slice(&[0; 28]);
             assert!(!is_valid_trailer(4, &trailer), "longueur {declared}");
         }
+        // NTPv4 : deux champs de 30 octets, qui pavent la fin mais ne sont
+        // pas alignes sur quatre.
+        let mut field = vec![0x01, 0x04, 0x00, 0x1e];
+        field.extend_from_slice(&[0; 26]);
+        let trailer = [field.clone(), field].concat();
+        assert_eq!(trailer.len(), 60);
+        assert!(!is_valid_trailer(4, &trailer));
         // Avant NTPv4 : pas de champ d'extension, un MAC d'au plus 72 octets.
-        for length in [4, 8, 76, 1204] {
+        for length in [8, 76, 1204] {
             assert!(!is_valid_trailer(3, &vec![0; length]));
         }
+        // NTPv4 : un champ d'extension de 16 octets ne peut pas finir un
+        // paquet sans MAC (RFC 5905 §7.5.1.4) ; 40 octets ne sont ni un MAC
+        // ni un champ d'extension suivi d'un MAC.
+        let mut trailer = vec![0x01, 0x04, 0x00, 0x10];
+        trailer.extend_from_slice(&[0; 12]);
+        assert!(!is_valid_trailer(4, &trailer));
+        assert!(!is_valid_trailer(4, &[0x0c; 40]));
+    }
+
+    /// Au stratum 0, la sonde aveugle n'admet qu'un identifiant nul, ASCII
+    /// ou `127.0.0.1` ; le premier label d'une requete DNS (`07 68 65 6c`)
+    /// ou les octets d'un segment KCP (`01 00 00 00`) n'en sont pas.
+    #[test]
+    fn test_plausible_stratum_0_reference() {
+        for bytes in [[0u8; 4], *b"RATE", *b"INIT", *b"USER", [127, 0, 0, 1]] {
+            assert!(
+                is_plausible_stratum_0_reference(&Refid::KissCode(bytes)),
+                "{bytes:02x?}"
+            );
+        }
+        for bytes in [
+            [0x07, b'h', b'e', b'l'],
+            [1, 0, 0, 0],
+            [0xC3, 0xA9, 0xFF, 0xFE],
+            [127, 0, 0, 2],
+        ] {
+            assert!(
+                !is_plausible_stratum_0_reference(&Refid::KissCode(bytes)),
+                "{bytes:02x?}"
+            );
+        }
+        assert!(!is_plausible_stratum_0_reference(&Refid::Ipv4(
+            Ipv4Addr::LOCALHOST
+        )));
     }
 }

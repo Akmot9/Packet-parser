@@ -52,15 +52,19 @@
 ///    stratum 0 and from 2 to 15 any four bytes are accepted (a kiss code or
 ///    an unsynchronised client's id, an IPv4 address or the MD5 hash of an
 ///    IPv6 upstream).
-/// 7. The **Receive** and **Transmit** timestamps, both taken on the
-///    sender's clock, must be in order.
 ///    If any of these conditions are not met, an `NtpPacketParseError` is returned.
+///
+/// The **Receive** and **Transmit** timestamps are taken on the sender's
+/// clock, but their order is not checked here: in interleaved mode (chrony
+/// `xleave`), Transmit is the departure time of the previous reply.
 ///
 /// [`crate::parse::PacketFlow`] applies this decoder to UDP port 123. On any
 /// other port it labels a datagram NTP only if, in addition, its poll,
-/// precision and root delay are values an implementation emits and the bytes
-/// after the 48-byte header are well-formed extension fields and MAC: four
-/// header fields alone let about one random datagram in 230 pass for NTP.
+/// precision and root delay are values an implementation emits, the bytes
+/// after the 48-byte header are well-formed extension fields and MAC,
+/// Receive does not follow Transmit, and a stratum 0 reference id is zero,
+/// ASCII or `127.0.0.1`: the former decoder alone let about one random
+/// datagram in 250 pass for NTP.
 ///
 /// ## Usage
 ///
@@ -95,9 +99,6 @@
 /// - **`InvalidStratum`** → The stratum field contains an invalid value.
 /// - **`InvalidReferenceIdForStratum1`** → A stratum 1 reference id is not a
 ///   printable ASCII code.
-/// - **`InconsistentTimestamps`** → The receive timestamp is later than the
-///   transmit timestamp, both taken on the sender's clock. The originate
-///   timestamp is the client's clock and is never compared.
 ///
 /// These errors help diagnose malformed or unexpected packets.
 use std::fmt;
@@ -224,8 +225,9 @@ impl TryFrom<&[u8]> for NtpPacket {
         let receive_timestamp = extract_timestamp(&payload[32..40])?;
         let transmit_timestamp = extract_timestamp(&payload[40..48])?;
 
-        // Seuls Receive et Transmit partagent une horloge (#161).
-        validate_datetime_ordering(receive_timestamp, transmit_timestamp)?;
+        // Receive et Transmit partagent une horloge (#161), mais leur ordre
+        // n'est verifie que par la sonde aveugle : en mode entrelace (chrony
+        // `xleave`), Transmit est l'emission de la reponse precedente.
 
         Ok(NtpPacket {
             flags,
@@ -244,21 +246,34 @@ impl TryFrom<&[u8]> for NtpPacket {
 }
 
 impl NtpPacket {
+    /// Le poll, en log2 secondes : un entier signe (RFC 5905 §7.3), que le
+    /// champ [`NtpPacket::poll`] garde brut — -7 (1/128 s, chrony) y vaut
+    /// 249.
+    pub fn poll_exponent(&self) -> i8 {
+        self.poll as i8
+    }
+
     /// Sonde NTP aveugle, hors du port 123 (#164).
     ///
     /// Plus stricte que [`TryFrom::try_from`], que le port 123 garde
-    /// tolerant : sur des octets quelconques, l'en-tete ne contraint que la
-    /// version, le mode, le stratum et l'ordre de deux horodatages, et un
-    /// datagramme sur 230 environ passait pour du NTP — QUIC, KCP, PFCP,
-    /// datagrammes NetBIOS du corpus nDPI. Le poll, la precision et le root
-    /// delay doivent etre de ceux qu'une implementation emet, et ce qui suit
-    /// les 48 octets d'en-tete, des champs d'extension et un MAC bien formes.
+    /// tolerant : l'ancien decodeur laissait passer un datagramme aleatoire
+    /// sur 250 environ, et 43 datagrammes QUIC, KCP, PFCP ou NetBIOS du
+    /// corpus nDPI passaient pour du NTP. Le poll, la precision et le root
+    /// delay doivent etre de ceux qu'une implementation emet, ce qui suit les
+    /// 48 octets d'en-tete des champs d'extension et un MAC bien formes,
+    /// Receive ne pas suivre Transmit, et au stratum 0 l'identifiant de
+    /// reference etre nul, un code ASCII ou `127.0.0.1` — le decodeur y
+    /// accepte tout octet (#165), et une requete DNS hors du port 53 passait
+    /// alors.
     pub(crate) fn is_blind_udp_match(payload: &[u8]) -> bool {
         NtpPacket::try_from(payload).is_ok_and(|packet| {
             is_plausible_poll(packet.poll)
                 && is_plausible_precision(packet.precision)
                 && is_plausible_root_delay(packet.root_delay)
                 && is_valid_trailer(packet.flags.1, &payload[MINIMUM_NTP_PACKET_LENGTH..])
+                && validate_datetime_ordering(packet.receive_timestamp, packet.transmit_timestamp)
+                    .is_ok()
+                && (packet.stratum != 0 || is_plausible_stratum_0_reference(&packet.reference_id))
         })
     }
 }
@@ -343,17 +358,20 @@ mod tests {
         assert!(is_null_timestamp(packet.transmit_timestamp));
     }
 
-    /// Receive et Transmit sont pris sur la meme horloge : inverses, la
-    /// reponse est bien incoherente.
+    /// Receive et Transmit inverses : ce que fait une reponse en mode
+    /// entrelace (chrony `xleave`, Transmit de la reponse precedente). Le
+    /// decodeur l'accepte ; la sonde aveugle, non.
     #[test]
-    fn test_receive_after_transmit_is_still_rejected() {
+    fn test_receive_after_transmit_is_decoded_but_not_blind() {
         let mut swapped = hex::decode(SERVER_REPLY_CLIENT_AHEAD).unwrap();
         let (receive, transmit) = (swapped[32..40].to_vec(), swapped[40..48].to_vec());
         swapped[32..40].copy_from_slice(&transmit);
         swapped[40..48].copy_from_slice(&receive);
-        assert!(matches!(
-            NtpPacket::try_from(swapped.as_slice()),
-            Err(NtpPacketParseError::InconsistentTimestamps)
+        let packet = NtpPacket::try_from(swapped.as_slice()).expect("reponse entrelacee");
+        assert!(packet.receive_timestamp > packet.transmit_timestamp);
+        assert!(!NtpPacket::is_blind_udp_match(&swapped));
+        assert!(NtpPacket::is_blind_udp_match(
+            &hex::decode(SERVER_REPLY_CLIENT_AHEAD).unwrap()
         ));
     }
 
@@ -465,11 +483,12 @@ mod tests {
         "d94f4f1100000000d94f4f1100000000",
     );
 
-    /// Faux positifs de l'ancienne sonde aveugle (#164), dans
-    /// pcaps_exemple/protocols/ntp/ : ndpi_gnutella.pcap trame 1458 (poll
-    /// 49, precision +2, 33 octets apres l'en-tete), ndpi_crynet.pcap trame
-    /// 133 (en-tete nul, 85 octets apres) et ndpi_pfcp.pcapng trame 11
-    /// (PFCP sur 8805 : precision +41, 253 octets apres).
+    /// Faux positifs de l'ancienne sonde aveugle (#164) : `gnutella.pcap`
+    /// du corpus nDPI (`ntop/nDPI` 5915c399, non versee), trame 1458 (poll
+    /// 49, precision +2, 33 octets apres l'en-tete) ; dans
+    /// pcaps_exemple/protocols/ntp/, ndpi_crynet.pcap trame 133 (en-tete
+    /// nul, 85 octets apres) et ndpi_pfcp.pcapng trame 11 (PFCP sur 8805 :
+    /// precision +41, 253 octets apres).
     const NDPI_GNUTELLA_1458: &str = concat!(
         "9b0c3102b701e86616c4455c2d8b4eb84400003a0000000547544b470000289d",
         "0a8d06deffc8263c33897c2c9179fd84ab61045d2fe235700901010000e35524",
@@ -494,6 +513,22 @@ mod tests {
         "713663647935676a7835746a69676e2d79706866707064676e37646d39736280",
         "03000a48f9000000000000000b",
     );
+
+    /// Synthetique : la reponse reelle ci-dessus, poll de chrony a -7.
+    #[test]
+    fn test_negative_poll_is_signed() {
+        let mut payload = hex::decode(NDPI_NTPV3_REPLY).expect("valid hex");
+        payload[2] = (-7i8) as u8;
+        let packet = NtpPacket::try_from(payload.as_slice()).expect("poll de chrony");
+        assert_eq!(packet.poll, 249);
+        assert_eq!(packet.poll_exponent(), -7);
+        assert!(NtpPacket::is_blind_udp_match(&payload));
+        payload[2] = (-8i8) as u8;
+        assert!(matches!(
+            NtpPacket::try_from(payload.as_slice()),
+            Err(NtpPacketParseError::InvalidPoll)
+        ));
+    }
 
     #[test]
     fn test_blind_probe_keeps_real_ntp() {

@@ -52,7 +52,7 @@ licences obligent à reproduire.
 ## Captures sans texte de licence
 
 - **Pièces jointes du tracker Wireshark** (`wireshark_<issue>_*.pcap*` dans
-  `asterix`, `dis`, `giop`, `ptp`, `rtps`, `stanag5066`) : contributions
+  `asterix`, `dis`, `giop`, `ntp`, `ptp`, `rtps`, `stanag5066`) : contributions
   d'utilisateurs à des rapports de bug publics, sans licence explicite. Le
   projet Wireshark ne les couvre pas de sa GPL, et le statut d'une pièce
   jointe n'est pas celui du projet qui l'héberge. Position du dépôt : les

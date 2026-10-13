@@ -9,24 +9,26 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 ### Corrige
 
 - **NTP** (#164) : la sonde aveugle essayait le decodeur NTP sur tout
-  datagramme UDP, et l'en-tete ne contraint que la version, le mode, le
-  stratum et l'ordre de deux horodatages : un datagramme aleatoire sur 230
-  environ passait. Sur les 650 captures de test de nDPI, 43 des 59
-  etiquettes NTP etaient fausses (QUIC, CryNet, Gnutella, KCP, PFCP,
-  datagrammes NetBIOS, OpenVPN obfusque...). Le decodeur tolerant ne
-  s'applique plus qu'au port UDP 123, par une regle de port placee la ou
-  etait la sonde aveugle (rien ne change sur ce port) ; ailleurs, et dans
-  `Application::try_from`, la sonde exige aussi un poll de -7 a 24 (chrony,
-  ntpd, SNTP), une precision de -32 a 0 (ou +32, que chrony fixe dans ses
-  requetes de client), un root delay de moins de 16 s (`MAXDISP` ; le plus
-  grand des corpus vaut 1 s, un en-tete QUIC v1 en porte des centaines), et
-  ce qui suit l'en-tete forme de champs d'extension NTPv4 et d'un MAC
-  (crypto-NAK, MD5, SHA-1, l'Extended Authenticator de MS-SNTP). Sur nDPI,
-  la crate etiquette maintenant exactement les 16 NTP que voit tshark, et
-  plus aucun des 202 558 datagrammes UDP non NTP des 3 110 captures
-  examinees. Corpus `pcaps_exemple/protocols/ntp/` (8 captures nDPI,
-  LGPL-3.0) : deux vrais NTP et six captures porteuses de 31 des faux
-  positifs.
+  datagramme UDP, et l'en-tete ne suffit pas : l'ancien decodeur laissait
+  passer un datagramme aleatoire sur 250 environ. Sur les 654 captures de
+  test de nDPI, 43 des 59 etiquettes NTP etaient fausses (QUIC, CryNet,
+  Gnutella, KCP, PFCP, datagrammes NetBIOS, OpenVPN obfusque...). Le
+  decodeur tolerant ne s'applique plus qu'au port UDP 123, par une regle de
+  port placee la ou etait la sonde aveugle ; ailleurs, et dans
+  `Application::try_from`, la sonde exige aussi un poll de -7 a 24
+  (chrony, ntpd, SNTP), une precision de -32 a 0 (ou +32, que chrony fixe
+  dans ses requetes de client), un root delay de moins de 16 s (`MAXDISP` ;
+  le plus grand des corpus vaut 1 s, un en-tete QUIC v1 en porte des
+  centaines), ce qui suit l'en-tete forme de champs d'extension NTPv4 et
+  d'un MAC (crypto-NAK, MD5, SHA-1, SHA-256 a SHA-512, l'Extended
+  Authenticator de MS-SNTP), Receive avant Transmit, et au stratum 0 un
+  identifiant nul, ASCII ou `127.0.0.1`. Sur nDPI, la crate etiquette
+  maintenant exactement les 16 NTP de mode 1 a 5 que voit tshark (le 17e,
+  dans `NTPv2.pcap`, est une reponse de mode 7), et plus aucun des 202 558
+  datagrammes UDP non NTP des 3 110 captures examinees. Corpus
+  `pcaps_exemple/protocols/ntp/` : deux vrais NTP et six captures porteuses
+  de 31 des faux positifs (nDPI, LGPL-3.0), et les MAC SHA-1, SHA-256 et
+  SHA-512 de l'issue #16640 du tracker Wireshark.
 - **NTP** (#165) : au stratum 2 et au-dela, l'identifiant de reference
   devait etre une adresse IPv4 ni nulle ni multicast, alors que pour un
   amont IPv6 c'est le debut du hachage MD5 de son adresse (RFC 5905 §7.3) ;
@@ -35,14 +37,18 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   NTP de `The-Ultimate-PCAP.pcapng` sortaient `Unknown`. Les quatre octets
   sont acceptes tels quels au stratum 0 et de 2 a 15 ; `Refid` affiche les
   octets d'un identifiant de stratum 0 qui n'est pas ASCII. Le poll, signe,
-  est accepte jusqu'a -7, le minimum de chrony depuis sa version 4.3, qui
-  l'ecrit dans ses paquets (il etait refuse des qu'il etait negatif). Golden
-  `tests/ntp_golden.rs` etendu a ce corpus et, lues en place, a
-  l'Ultimate PCAP et a 4SICS : parite champ par champ avec tshark sur 1 287
-  datagrammes (NTS, MS-SNTP authentifie, mode symetrique, amonts IPv6), les
-  104 messages de controle (mode 6) et 36 citations ICMP nommes comme
-  ecarts ; les 1 287 datagrammes deplaces hors du port 123 sont tous
-  reconnus par la sonde aveugle. Histogramme golden "NTP" 54 -> 56.
+  est accepte jusqu'a -7, le minimum de chrony depuis sa version 4.3 (il
+  etait refuse des qu'il etait negatif), et `NtpPacket::poll_exponent` le
+  rend signe ; le decodeur ne compare plus Receive et Transmit, qu'une
+  reponse en mode entrelace (chrony `xleave`) inverse — seule la sonde
+  aveugle le fait. Golden `tests/ntp_golden.rs` etendu a ce corpus et, lues
+  en place, a l'Ultimate PCAP et a 4SICS : parite champ par champ avec
+  tshark sur 1 300 datagrammes (NTS, MS-SNTP authentifie, MAC SHA-256 et
+  SHA-512, mode symetrique, amonts IPv6), les 104 messages de controle
+  (mode 6) et 36 citations ICMP nommes comme ecarts, aucune etiquette NTP
+  ailleurs dans `pcaps_exemple/` ; les 1 300 datagrammes deplaces hors du
+  port 123 sont tous reconnus par la sonde aveugle. Histogramme golden
+  "NTP" 54 -> 69.
 
 - **NTP** (#161) : le decodeur exigeait `reference <= originate <= receive
   <= transmit`, alors qu'originate (T1) est l'horodatage du client copie tel

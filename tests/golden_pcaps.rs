@@ -337,15 +337,20 @@ fn application_classification_histogram_is_frozen() {
     // client, serveur de stratum 1 `SHM`) : "NTP" 32 -> 54, "Unknown"
     // 8 281 -> 8 259.
     //
-    // 2026-10-13 (#164, corpus NTP de nDPI, 8 captures, 1 011 trames) : deux
-    // vrais NTP (ndpi_NTPv3.pcap, ndpi_NTPv4.pcap) et six captures dont
+    // 2026-10-13 (#164, corpus NTP, 9 captures, 1 024 trames) : deux vrais
+    // NTP de nDPI (ndpi_NTPv3.pcap, ndpi_NTPv4.pcap), les 13 datagrammes
+    // NTPv4 et v3 a MAC SHA-1, SHA-256 et SHA-512 de
+    // wireshark_16640_NTP-with-mac.pcap, et six captures nDPI dont
     // l'ancienne sonde NTP aveugle prenait 31 datagrammes pour du NTP (QUIC,
-    // CryNet, KCP, PFCP, LINE, OpenVPN obfusque) : "NTP" 54 -> 56, "TLS"
-    // 1 066 -> 1 122 (56 records de ndpi_line.pcap ; tshark en voit 59, les
-    // trois autres commencent en cours de segment), "(sans application)"
-    // 5 864 -> 6 001 (+137 : 106 segments TCP sans payload, 31 erreurs ICMP
-    // et ICMPv6 qui citent un datagramme QUIC), "Unknown" 8 259 -> 9 075
-    // (+816, dont les 31 anciens faux positifs NTP).
+    // CryNet, KCP, PFCP, LINE, OpenVPN obfusque) : "NTP" 54 -> 69, "TLS"
+    // 1 066 -> 1 122 (56 trames de ndpi_line.pcap ; tshark, sans
+    // reassemblage, en voit 59 : les trames 71 et 72 sont des
+    // continuations, la trame 275 une trame TSO), "(sans application)"
+    // 5 864 -> 6 001 (+137 : 105 segments TCP sans payload, la trame 275 de
+    // ndpi_line.pcap — TSO, longueur totale IPv4 nulle, couche internet
+    // corrompue — et 31 erreurs ICMP et ICMPv6 qui citent un datagramme
+    // QUIC), "Unknown" 8 259 -> 9 075 (+816, dont les 31 anciens faux
+    // positifs NTP).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 6001),
@@ -372,7 +377,7 @@ fn application_classification_histogram_is_frozen() {
         ("ModbusTCP", 382),
         ("UMAS", 181),
         ("NNTP", 6),
-        ("NTP", 56),
+        ("NTP", 69),
         ("OPC UA", 187),
         ("OpenVPN", 766),
         ("PTP", 3221),

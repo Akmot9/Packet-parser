@@ -462,12 +462,13 @@ static RULES: &[Rule] = &[
     // TCP etiquetait "NTP" des Encrypted Alerts TLS (0x15 = LI/VN/mode
     // plausible — trames 44/329/614 de dump.pcapng). Seuls les protocoles
     // reellement bi-transport restent en Guard::Any. ---
-    // NTP hors du port 123 : l'en-tete seul laissait passer un datagramme
-    // aleatoire sur 230 (43 faux positifs sur 59 etiquettes NTP dans le
+    // NTP hors du port 123 : l'ancien decodeur laissait passer un datagramme
+    // aleatoire sur 250 (43 faux positifs sur 59 etiquettes NTP dans le
     // corpus nDPI : QUIC, KCP, PFCP, NetBIOS...). La sonde exige aussi un
-    // poll, une precision et un root delay qu'une implementation emet, et
-    // des champs d'extension et un MAC qui finissent avec le datagramme
-    // (#164). Reste qu'une requete DNS de 48 octets avec EDNS sur soixante
+    // poll, une precision et un root delay qu'une implementation emet, des
+    // champs d'extension et un MAC qui finissent avec le datagramme, Receive
+    // avant Transmit et, au stratum 0, un identifiant nul, ASCII ou
+    // `127.0.0.1` (#164). Reste qu'une requete DNS de 48 octets avec EDNS sur soixante
     // a la forme d'un paquet NTP : hors du port 53, elle sort NTP.
     rule("NTP", Guard::Udp, ProbeId::NtpBlind),
     // RTPS (DDS) : magic `RTPS` puis des sous-messages qui pavent exactement
@@ -1212,6 +1213,12 @@ mod tests {
             coarse[3] = 5;
             coarse
         };
+        // Le poll de 49 d'un datagramme Gnutella du corpus nDPI.
+        const SLOW_POLL: [u8; 48] = {
+            let mut slow = REPLY;
+            slow[2] = 49;
+            slow
+        };
         const PADDED: [u8; 53] = {
             let mut padded = [0u8; 53];
             let mut i = 0;
@@ -1233,7 +1240,7 @@ mod tests {
         };
         assert_eq!(label(123, &REPLY), Some("NTP"));
         assert_eq!(label(40_001, &REPLY), Some("NTP"));
-        for payload in [&COARSE[..], &PADDED[..]] {
+        for payload in [&COARSE[..], &SLOW_POLL[..], &PADDED[..]] {
             assert_eq!(label(123, payload), Some("NTP"));
             assert_ne!(label(40_001, payload), Some("NTP"));
         }
@@ -1248,6 +1255,61 @@ mod tests {
         assert_ne!(
             classify(&tcp, &[]).map(|a| a.application_protocol),
             Some("NTP")
+        );
+    }
+
+    /// #164 : la sonde aveugle lit tout le datagramme, pas les PROBE_CAP
+    /// premiers octets — un champ d'extension qui finit au plafond et des
+    /// octets au-dela ne font pas un paquet NTP. Synthetique.
+    #[test]
+    fn ntp_blind_probe_reads_the_whole_datagram() {
+        let mut datagram = vec![0u8; 48];
+        datagram[..4].copy_from_slice(&[0x24, 2, 6, 0xec]);
+        datagram[32..34].copy_from_slice(&[0xec, 0x7c]);
+        datagram[40..42].copy_from_slice(&[0xec, 0x7c]);
+        let field = PROBE_CAP - 48;
+        datagram.extend_from_slice(&[0x01, 0x04]);
+        datagram.extend_from_slice(&(field as u16).to_be_bytes());
+        datagram.resize(PROBE_CAP, 0);
+        let label = |payload: &[u8]| {
+            let transport = Transport {
+                protocol: TransportProtocol::Udp,
+                source_port: Some(40_000),
+                destination_port: Some(40_001),
+                payload: Some(payload),
+                details: None,
+            };
+            classify(&transport, &[]).map(|a| a.application_protocol)
+        };
+        assert_eq!(label(&datagram), Some("NTP"));
+        datagram.extend_from_slice(&[0; 100]);
+        assert_ne!(label(&datagram), Some("NTP"));
+    }
+
+    /// #164 : la regle NTP est la derniere regle de port — un datagramme
+    /// qui part du port 123 vers un port a regle (ici une requete DNS vers
+    /// 53) garde l'etiquette de ce port, meme quand ses octets forment un
+    /// en-tete NTP. Synthetique : requete DNS de 48 octets avec EDNS,
+    /// identifiant 0x2302 (lu VN 4, mode 3, stratum 2), drapeau RD.
+    #[test]
+    fn ntp_port_rule_comes_after_the_other_port_rules() {
+        const QUERY: [u8; 48] = [
+            0x23, 0x02, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 15, b'a', b'b',
+            b'c', b'd', b'e', b'f', b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', 3, b'c',
+            b'o', b'm', 0, 0x00, 0x01, 0x00, 0x01, 0, 0x00, 0x29, 0x04, 0xd0, 0, 0, 0, 0, 0x00,
+            0x00,
+        ];
+        assert!(NtpPacket::try_from(&QUERY[..]).is_ok());
+        let transport = Transport {
+            protocol: TransportProtocol::Udp,
+            source_port: Some(123),
+            destination_port: Some(53),
+            payload: Some(&QUERY),
+            details: None,
+        };
+        assert_eq!(
+            classify(&transport, &[]).map(|a| a.application_protocol),
+            Some("DNS")
         );
     }
 
