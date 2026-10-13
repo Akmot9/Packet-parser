@@ -70,7 +70,7 @@ exactement le datagramme, et les trois Set Data à longueur fausse restent
 
 - `dis_voice_sample.pcap` : GPL-2.0-or-later, licence du dépôt Wireshark (texte
   dans `LICENSES/GPL-2.0.txt`) ;
-- `DIS_signal_and_transmitter.pcapng` : licence de la wiki Wireshark (GNU GPL v2+, en pied de page de <https://wiki.wireshark.org> ; texte dans
+- `DIS_signal_and_transmitter.pcapng` : licence de la wiki Wireshark (GNU GPL sans numéro de version, selon <https://wiki.wireshark.org/License> — toute version publiée par la FSF peut s'appliquer, GPL v2 §9 ; texte dans
   `LICENSES/GPL-2.0.txt`) ;
 - pièces jointes du tracker Wireshark : aucune licence explicite, publiques
   depuis leur dépôt (position du dépôt sur ces pièces jointes :

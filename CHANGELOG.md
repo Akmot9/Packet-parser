@@ -479,6 +479,11 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Infrastructure
 
+- **Corpus** : la licence des captures du wiki Wireshark est la GNU GPL
+  sans numero de version (<https://wiki.wireshark.org/License>), si bien que
+  toute version publiee par la FSF peut s'appliquer (GPL v2 §9), et non une
+  « GPL v2+ » de pied de page, que le wiki n'affiche plus : douze `SOURCE.md`
+  et l'index `pcaps_exemple/LICENSES/README.md` le disent desormais.
 - **FOSSA par le CLI** : nouveau workflow `.github/workflows/fossa.yml`
   (`fossas/fossa-action` : `fossa analyze`, puis `fossa test` non bloquant)
   sur push main, PR et declenchement manuel, actif des que le secret

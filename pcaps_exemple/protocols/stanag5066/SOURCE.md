@@ -60,7 +60,7 @@ champs fixes compris, et marqués tronqués.
 
 ## Licences
 
-- captures de la wiki Wireshark : licence de la wiki (GNU GPL v2+, en pied de page de <https://wiki.wireshark.org> ; texte dans
+- captures de la wiki Wireshark : licence de la wiki (GNU GPL sans numéro de version, selon <https://wiki.wireshark.org/License> — toute version publiée par la FSF peut s'appliquer, GPL v2 §9 ; texte dans
   `LICENSES/GPL-2.0.txt`) ;
 - pièce jointe du tracker Wireshark : aucune licence explicite, publique
   depuis son dépôt (position du dépôt sur ces pièces jointes :

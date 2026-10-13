@@ -53,7 +53,7 @@ d'un côté, ESP natif est reconnu par le protocole IP.
 
 ## Licences
 
-- captures de la wiki Wireshark : licence de la wiki (GNU GPL v2+, en pied de page de <https://wiki.wireshark.org> ; texte dans
+- captures de la wiki Wireshark : licence de la wiki (GNU GPL sans numéro de version, selon <https://wiki.wireshark.org/License> — toute version publiée par la FSF peut s'appliquer, GPL v2 §9 ; texte dans
   `LICENSES/GPL-2.0.txt`) ;
 - `ipsec_isakmp_esp.pcap` : LGPL-3.0, licence du dépôt nDPI (texte : `LICENSES/LGPL-3.0.txt`).
 
