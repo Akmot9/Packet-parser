@@ -17,6 +17,26 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   `pcaps_exemple/protocols/ntp/ndpi_line.pcap` (un record TLS de 3 133
   octets) et la trame 47 790 de `The-Ultimate-PCAP.pcapng` (un ClientHello
   TLS de 1 908 octets) ; test `tests/ipv4_tso.rs`.
+- **ModbusTCP** (#167) : la sonde aveugle essayait le decodeur Modbus/TCP
+  sur tout segment TCP, et l'enveloppe MBAP — identifiant de protocole nul,
+  longueur qui pave le segment, un code fonction quelconque — est aussi
+  celle de tout message prefixe de deux octets et d'une longueur sur
+  quatre. Hors du port 502, 104 segments des corpus sortaient ModbusTCP :
+  le LDAP d'Active Directory (`30 84 00 00 ..`, 57 segments de
+  `The-Ultimate-PCAP.pcapng` et 14 de nDPI), DICOM, le transport
+  d'Elasticsearch, un jeu. Le decodeur tolerant ne s'applique plus qu'au
+  port TCP 502 (IANA `mbap`) et a `DecodeAsProtocol::ModbusTcp`, par des
+  regles de port — UMAS d'abord ; ailleurs, et dans `Application::try_from`,
+  chaque PDU doit porter un code fonction public d'usage courant (1 a 6,
+  15, 16, 22, 23, 43 et leurs reponses d'exception) et la taille qu'il
+  impose, quantites dans les bornes de la specification. Les 522 etiquettes
+  du port 502 sont inchangees ; hors de ce port, plus aucune. Golden
+  `tests/modbus_golden.rs` (oracle `tools/modbus_oracle.sh`, tshark 4.6.6) :
+  parite sur les 601 segments Modbus/TCP de `protocols/modbus/`,
+  `protocols/umas/` et de l'Ultimate PCAP, lue en place ; les 57 segments
+  LDAP ne sont plus Modbus ; deplaces hors du port 502, 358 segments reels
+  restent reconnus, les 243 autres etant les sondes d'un scanner qui essaie
+  presque tous les codes fonction.
 - **NTP** (#164) : la sonde aveugle essayait le decodeur NTP sur tout
   datagramme UDP, et l'en-tete ne suffit pas : l'ancien decodeur laissait
   passer un datagramme aleatoire sur 250 environ. Sur les 654 captures de

@@ -170,7 +170,8 @@ impl TryFrom<&[u8]> for Application {
                 application_protocol: "UMAS",
             });
         }
-        if ModbusTcpPacket::try_from(packet).is_ok() {
+        // Sans port, Modbus/TCP passe par la sonde aveugle stricte (#167).
+        if ModbusTcpPacket::is_blind_tcp_match(packet) {
             return Ok(Application {
                 application_protocol: "ModbusTCP",
             });

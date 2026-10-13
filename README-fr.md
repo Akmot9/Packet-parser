@@ -311,7 +311,8 @@ incluent notamment:
 - SSH (chaine d'identification seulement : tout ce qui suit l'echange de
   versions est chiffre, donc un parseur stateless etiquette les trames de
   banniere et rien d'autre)
-- Modbus TCP
+- Modbus TCP sur TCP 502 ; sur un autre port, seulement si chaque PDU porte
+  un code fonction public d'usage courant et la taille qu'il impose
 - UMAS (Schneider Electric)
 - EtherNet/IP
 - OPC UA

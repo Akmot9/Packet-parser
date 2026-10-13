@@ -302,7 +302,8 @@ Application detection is intentionally best-effort. Parser modules include:
 - NNTP
 - SSH (identification string only: everything after the version exchange is
   encrypted, so a stateless parser labels the banner frames and nothing else)
-- Modbus TCP
+- Modbus TCP on TCP 502; on any other port only when every PDU carries a
+  common public function code and the length it implies
 - UMAS (Schneider Electric)
 - EtherNet/IP
 - OPC UA
