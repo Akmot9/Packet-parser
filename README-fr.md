@@ -230,6 +230,11 @@ du payload ne sont pas serialises):
 
 - Ethernet II
 - VLAN 802.1Q
+- Session PPPoE (EtherType `0x8864`, RFC 2516) : pelee comme un tag VLAN
+  quand PPP porte IPv4 ou IPv6 (`DataLink::pppoe` garde la session, la
+  longueur et le protocole PPP) ; les protocoles de controle PPP (LCP,
+  IPCP, IPv6CP) sont nommes, PPPoE Discovery (`0x8863`) seulement par son
+  EtherType
 - RAW IPv4/IPv6 (`LINKTYPE_RAW`)
 - Linux cooked capture v1 (`LINKTYPE_LINUX_SLL`)
 - Linux cooked capture v2 (`LINKTYPE_LINUX_SLL2`)

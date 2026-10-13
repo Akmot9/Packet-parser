@@ -23,7 +23,18 @@ impl fmt::Display for DataLink<'_> {
                 None => "None".to_string(),
             },
             self.payload.len()
-        )
+        )?;
+        if let Some(session) = &self.pppoe {
+            writeln!(
+                f,
+                "    PPPoE: session {:#06x}, PPP {}",
+                session.session_id,
+                session
+                    .ppp_protocol_name()
+                    .map_or_else(|| format!("{:#06x}", session.ppp_protocol), str::to_string)
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -41,6 +52,7 @@ mod tests {
             ethertype: Ethertype(0x0800),
             vlan: None,
             vlan_stack: Default::default(),
+            pppoe: None,
             payload: &[0x01, 0x02, 0x03, 0x04],
         };
 
@@ -63,6 +75,7 @@ mod tests {
             ethertype: Ethertype(0x0806),
             vlan: None,
             vlan_stack: Default::default(),
+            pppoe: None,
             payload: &[],
         };
 

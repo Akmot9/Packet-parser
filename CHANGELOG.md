@@ -158,6 +158,30 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **PPPoE** (#172) : la session PPPoE (EtherType `0x8864`, RFC 2516 §5) etait
+  seulement nommee ; une liaison fibre ou xDSL d'abonne porte pourtant tout
+  son trafic IP. La couche liaison pele desormais la session comme un tag
+  VLAN quand PPP porte IPv4 (`0x0021`) ou IPv6 (`0x0057`) : `ethertype` et
+  `payload` decrivent ce paquet, et `DataLink::pppoe` (`PppoeSession`,
+  `#[non_exhaustive]` : session, longueur, protocole PPP,
+  `ppp_protocol_name`) garde la session ; comme chez tshark, le paquet est
+  borne par la longueur PPPoE (bourrage Ethernet ecarte), puis par la fin
+  de la trame (capture tronquee), et une longueur PPPoE plus courte que le
+  paquet IP le tronque : la couche internet le signale corrompu, comme sur
+  six trames de `pcaps_exemple/vlan/pppoe-over-qinq.pcap` que tshark
+  signale aussi (`tests/qinq_golden.rs`). Avec un protocole de controle
+  (LCP, IPCP, IPv6CP...), l'EtherType reste `0x8864` et la charge est le
+  paquet PPP ; une trame qui n'est pas une session bien formee reste sans
+  couche 3, comme un EtherType inconnu. Sous VLAN comme sans. Golden
+  `tests/pppoe_golden.rs` (oracle `tools/pppoe_oracle.sh`, tshark 4.6.6) : les
+  6 795 trames de session de `The-Ultimate-PCAP.pcapng`, lue en place, ont
+  la meme session, la meme longueur, le meme protocole PPP et le meme
+  transport que pour tshark (RTP et SIP, DHCPv6, IPv4 dans IPv6, LCP, IPCP,
+  IPv6CP), au premier fragment IPv4 pres, sans transport pour la crate. La
+  session n'est pas encore serialisee : `DataLinkOwned`, structure
+  exhaustive, ne peut pas la porter sans rupture d'API, et les deux modeles
+  doivent donner le meme JSON ; le paquet porte, lui, l'est.
+
 - **GOOSE** (epopee #102, Tier 2) : les evenements d'un poste electrique,
   IEC 61850-8-1, publies en multicast directement sur Ethernet (EtherType
   `0x88B8`, souvent sous une etiquette VLAN que la couche liaison retire).
