@@ -3,34 +3,129 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-//! Golden test NTP sur datagrammes reels (#161, #162).
+//! Golden test NTP sur datagrammes reels (#161, #162, #164, #165).
 //!
-//! Captures : le poste IEC 61850 de
-//! `pcaps_exemple/protocols/goose/iti_Sample_File_MMS_and_GOOSE.pcap` (voir
-//! son `SOURCE.md`), 52 datagrammes NTP — 26 requetes et 26 reponses, v4 et
-//! v1, dont les reponses a un client dont l'horloge est en avance sur celle
-//! du serveur, celles que la crate rejetait —, et l'echange de
-//! `pcaps_exemple/protocols/iec104/iti_JavaRMI_and_IEC_Misc.pcap` : un
-//! client Java qui emet un horodatage de l'ere 1 (2036) et un serveur de
-//! stratum 1 dont l'identifiant de reference, `SHM`, n'est pas dans la
-//! liste de la RFC 5905.
+//! Captures :
+//! - le poste IEC 61850 de
+//!   `pcaps_exemple/protocols/goose/iti_Sample_File_MMS_and_GOOSE.pcap` (voir
+//!   son `SOURCE.md`), 52 datagrammes NTP — requetes et reponses, v4 et v1,
+//!   dont les reponses a un client dont l'horloge est en avance sur celle du
+//!   serveur, que la crate rejetait (#161) ;
+//! - l'echange de `pcaps_exemple/protocols/iec104/iti_JavaRMI_and_IEC_Misc.pcap` :
+//!   un client Java qui emet un horodatage de l'ere 1 (2036) et un serveur
+//!   de stratum 1 dont l'identifiant de reference, `SHM`, n'est pas dans la
+//!   liste de la RFC 5905 (#162) ;
+//! - les captures nDPI de `pcaps_exemple/protocols/ntp/` (voir son
+//!   `SOURCE.md`) : deux vrais NTP, et des datagrammes QUIC, KCP, PFCP... que
+//!   l'ancienne sonde aveugle prenait pour du NTP (#164) ;
+//! - lues en place, `pcaps_exemple/The-Ultimate-PCAP.pcapng` — requetes NTS,
+//!   MS-SNTP authentifie, mode symetrique, serveurs a amont IPv6 dont
+//!   l'identifiant de reference se lit comme une adresse multicast, clients
+//!   non synchronises (#165) — et `pcaps_exemple/4SICS-GeekLounge-151020.pcap`.
 //!
-//! L'oracle est tshark 4.6.6 : pour chaque datagramme, ports, LI, version,
-//! mode, stratum, poll, precision, root delay, root dispersion, identifiant
-//! de reference et les quatre horodatages a la nanoseconde, figes dans
-//! `tests/data/ntp_tshark_oracle.tsv` et compares ici datagramme par
-//! datagramme.
+//! L'oracle est tshark 4.6.6 (`tools/ntp_oracle.sh`) : pour chaque datagramme,
+//! ports, LI, version, mode, stratum, poll, precision, root delay, root
+//! dispersion, identifiant de reference et les quatre horodatages a la
+//! nanoseconde, figes dans `tests/data/ntp_tshark_oracle.tsv` et compares ici
+//! datagramme par datagramme. Deux ecarts sont nommes, pas masques : les
+//! messages de controle du mode 6 (ntpq), dont le format n'est pas celui que
+//! [`NtpPacket`] modelise, et les erreurs ICMP qui citent un datagramme NTP —
+//! la crate etiquette la trame ICMP, pas le datagramme cite.
 
-use std::{collections::BTreeMap, fs, net::Ipv4Addr, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    net::Ipv4Addr,
+    path::{Path, PathBuf},
+};
 
 use chrono::{DateTime, SecondsFormat, Utc};
-use packet_parser::{parse, parse::application::protocols::ntp::NtpPacket};
+use packet_parser::{PacketFlow, parse, parse::application::protocols::ntp::NtpPacket};
 
 mod common;
-use common::{FileRead, read_capture};
+use common::{FileRead, collect_capture_files, read_capture};
 
 const CORPUS: &str = "pcaps_exemple/protocols";
+const NTP_FOLDER: &str = "pcaps_exemple/protocols/ntp";
 const ORACLE: &str = "tests/data/ntp_tshark_oracle.tsv";
+
+/// Une ligne d'oracle : le porteur (`udp` ou `icmp`), le mode, et les
+/// colonnes a partir du port source.
+struct Row {
+    carrier: String,
+    mode: Option<u8>,
+    columns: String,
+}
+
+fn read_oracle(path: &Path) -> BTreeMap<String, BTreeMap<usize, Row>> {
+    let oracle = fs::read_to_string(path).expect("oracle lisible");
+    let mut expected: BTreeMap<String, BTreeMap<usize, Row>> = BTreeMap::new();
+    for line in oracle.lines().filter(|line| !line.starts_with('#')) {
+        let fields: Vec<&str> = line.splitn(4, '\t').collect();
+        assert_eq!(fields.len(), 4, "ligne d'oracle malformee : {line}");
+        let columns = fields[3].to_string();
+        let mode = columns
+            .split('\t')
+            .nth(4)
+            .and_then(|mode| mode.parse().ok());
+        expected.entry(fields[0].to_string()).or_default().insert(
+            fields[1].parse().expect("numero de trame"),
+            Row {
+                carrier: fields[2].to_string(),
+                mode,
+                columns,
+            },
+        );
+    }
+    expected
+}
+
+/// Les captures du golden : celles de l'oracle, et tout `protocols/ntp/`,
+/// dont les captures sans aucun NTP.
+fn captures(
+    base: &Path,
+    oracle: &BTreeMap<String, BTreeMap<usize, Row>>,
+) -> Vec<(String, PathBuf)> {
+    let mut names: BTreeSet<String> = oracle.keys().cloned().collect();
+    let mut folder = Vec::new();
+    collect_capture_files(&base.join(NTP_FOLDER), &mut folder);
+    for path in folder {
+        let file = path.file_name().unwrap().to_string_lossy().to_string();
+        names.insert(format!("ntp/{file}"));
+    }
+    names
+        .into_iter()
+        .map(|name| {
+            let path = base.join(CORPUS).join(&name);
+            (name, path)
+        })
+        .collect()
+}
+
+fn frames_of(name: &str, path: &Path) -> Vec<(packet_parser::LinkType, Vec<u8>)> {
+    let FileRead::Frames {
+        frames,
+        read_error_after: None,
+    } = read_capture(path)
+    else {
+        panic!("{name} : capture illisible");
+    };
+    frames
+}
+
+fn label(flow: &PacketFlow<'_>) -> Option<&'static str> {
+    flow.application
+        .as_ref()
+        .map(|application| application.application_protocol)
+}
+
+/// Le niveau de la trame etiquete NTP : l'interieur du tunnel pour les
+/// trames 6in4 de l'Ultimate PCAP (IPv6 dans IPv4).
+fn ntp_level<'f, 'a>(flow: &'f PacketFlow<'a>) -> Option<&'f PacketFlow<'a>> {
+    flow.flatten()
+        .into_iter()
+        .find(|level| label(level) == Some("NTP"))
+}
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
@@ -45,26 +140,42 @@ fn timestamp(value: DateTime<Utc>) -> String {
     }
 }
 
-/// Les colonnes de l'oracle a partir de la trame 3.
-fn oracle_row(
+/// L'identifiant de reference tel que la crate doit le nommer : un code
+/// ASCII ou `NULL` au stratum 0 (sinon ses octets), un code au stratum 1,
+/// une adresse IPv4 — ou le hachage d'un amont IPv6 qui en a la forme —
+/// au-dela.
+fn expected_display(stratum: u8, bytes: [u8; 4]) -> String {
+    let code = {
+        let end = bytes
+            .iter()
+            .rposition(|&b| b != 0 && b != b' ')
+            .map_or(0, |i| i + 1);
+        bytes[..end]
+            .iter()
+            .all(u8::is_ascii_graphic)
+            .then(|| String::from_utf8_lossy(&bytes[..end]).to_string())
+    };
+    match (stratum, code) {
+        (0, Some(code)) if code.is_empty() => "NULL".to_string(),
+        (0 | 1, Some(code)) => code,
+        (0, None) => format!("{bytes:02X?}"),
+        _ => Ipv4Addr::from(bytes).to_string(),
+    }
+}
+
+/// Les colonnes de l'oracle a partir du port source.
+fn oracle_columns(
     source_port: u16,
     destination_port: u16,
     payload: &[u8],
     packet: &NtpPacket,
 ) -> String {
     let (li, version, mode) = packet.flags;
-    // L'identifiant de reference tel que tshark le montre : ses quatre octets.
-    let reference_id = hex(&payload[12..16]);
-    // Et tel que la crate le nomme : nul au stratum 0, code ASCII au stratum
-    // 1, adresse IPv4 au-dela.
-    let expected_display = match packet.stratum {
-        0 => "NULL".to_string(),
-        1 => String::from_utf8_lossy(&payload[12..16])
-            .trim_end_matches('\0')
-            .to_string(),
-        _ => Ipv4Addr::new(payload[12], payload[13], payload[14], payload[15]).to_string(),
-    };
-    assert_eq!(packet.reference_id.to_string(), expected_display);
+    let reference = [payload[12], payload[13], payload[14], payload[15]];
+    assert_eq!(
+        packet.reference_id.to_string(),
+        expected_display(packet.stratum, reference)
+    );
     [
         source_port.to_string(),
         destination_port.to_string(),
@@ -76,7 +187,7 @@ fn oracle_row(
         packet.precision.to_string(),
         packet.root_delay.to_string(),
         packet.root_dispersion.to_string(),
-        reference_id,
+        hex(&reference),
         timestamp(packet.reference_timestamp),
         timestamp(packet.originate_timestamp),
         timestamp(packet.receive_timestamp),
@@ -85,76 +196,200 @@ fn oracle_row(
     .join("\t")
 }
 
-/// Parite exacte avec tshark sur les 54 datagrammes NTP du corpus : la crate
-/// etiquette exactement ceux que tshark voit, et en decode les memes champs
-/// — reponses de serveur a un client en avance, horodatage de l'ere 1 et
-/// identifiant de reference hors liste compris (#161, #162).
+/// Parite exacte avec tshark : la crate etiquette NTP exactement les
+/// datagrammes NTP (modes 1 a 5) que tshark voit, et en decode les memes
+/// champs ; tout autre datagramme, faux positifs d'hier compris, reste hors
+/// de NTP.
 #[test]
 fn every_ntp_datagram_matches_the_tshark_oracle() {
     let base = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let oracle = fs::read_to_string(base.join(ORACLE)).expect("oracle lisible");
-    let mut expected: BTreeMap<String, BTreeMap<usize, String>> = BTreeMap::new();
-    for line in oracle.lines().filter(|line| !line.starts_with('#')) {
-        let (file, rest) = line.split_once('\t').expect("ligne d'oracle");
-        let (number, row) = rest.split_once('\t').expect("ligne d'oracle");
-        expected
-            .entry(file.to_string())
-            .or_default()
-            .insert(number.parse().expect("numero de trame"), row.to_string());
-    }
-    assert_eq!(expected.values().map(BTreeMap::len).sum::<usize>(), 54);
+    let oracle = read_oracle(&base.join(ORACLE));
 
+    let mut datagrams = 0;
+    let mut control_messages = 0;
+    let mut icmp_quotes = 0;
     let mut by_version_and_mode: BTreeMap<(u8, u8), usize> = BTreeMap::new();
     let mut client_ahead = 0;
-    for (name, rows) in &expected {
-        let FileRead::Frames {
-            frames,
-            read_error_after: None,
-        } = read_capture(&base.join(CORPUS).join(name))
-        else {
-            panic!("{name} : capture illisible");
-        };
-
-        let mut actual = BTreeMap::new();
-        for (index, (link_type, data)) in frames.iter().enumerate() {
-            let flow = parse(*link_type, data).expect("trame du corpus decodable");
-            let Some(application) = flow.application.as_ref() else {
+    let mut with_trailer: BTreeMap<usize, usize> = BTreeMap::new();
+    let mut multicast_like_reference = 0;
+    let mut stratum_0_reference = 0;
+    for (name, path) in captures(base, &oracle) {
+        let empty = BTreeMap::new();
+        let rows = oracle.get(&name).unwrap_or(&empty);
+        let mut seen = 0;
+        for (index, (link_type, data)) in frames_of(&name, &path).iter().enumerate() {
+            let number = index + 1;
+            let flow = parse(*link_type, data);
+            let level = flow.as_ref().ok().and_then(ntp_level);
+            let is_ntp = level.is_some();
+            let Some(row) = rows.get(&number) else {
+                assert!(
+                    !is_ntp,
+                    "{name}:{number} : etiquete NTP, tshark n'y voit pas de NTP"
+                );
                 continue;
             };
-            if application.application_protocol != "NTP" {
+            seen += 1;
+            if row.carrier == "icmp" {
+                assert!(!is_ntp, "{name}:{number} : citation ICMP etiquetee NTP");
+                icmp_quotes += 1;
                 continue;
             }
-            let transport = flow.transport.as_ref().expect("NTP est sur UDP");
+            if matches!(row.mode, Some(6 | 7)) {
+                assert!(
+                    !is_ntp,
+                    "{name}:{number} : message de controle etiquete NTP"
+                );
+                control_messages += 1;
+                continue;
+            }
+            let level =
+                level.unwrap_or_else(|| panic!("{name}:{number} : datagramme NTP non etiquete"));
+            let transport = level.transport.as_ref().expect("NTP est sur UDP");
             let payload = transport.payload.expect("un datagramme NTP a un payload");
             let packet =
                 NtpPacket::try_from(payload).expect("un datagramme etiquete NTP se decode");
+            assert_eq!(
+                oracle_columns(
+                    transport.source_port.expect("port UDP"),
+                    transport.destination_port.expect("port UDP"),
+                    payload,
+                    &packet,
+                ),
+                row.columns,
+                "{name}:{number} : ecart avec tshark"
+            );
             *by_version_and_mode
                 .entry((packet.flags.1, packet.flags.2))
                 .or_default() += 1;
             if packet.originate_timestamp > packet.receive_timestamp {
                 client_ahead += 1;
             }
-            actual.insert(
-                index + 1,
-                oracle_row(
-                    transport.source_port.expect("port UDP"),
-                    transport.destination_port.expect("port UDP"),
-                    payload,
-                    &packet,
-                ),
-            );
+            if payload.len() > 48 {
+                *with_trailer.entry(payload.len()).or_default() += 1;
+            }
+            if packet.stratum >= 2 && (224..=239).contains(&payload[12]) {
+                multicast_like_reference += 1;
+            }
+            if packet.stratum == 0 && payload[12..16] != [0; 4] {
+                stratum_0_reference += 1;
+            }
+            datagrams += 1;
         }
-        assert_eq!(&actual, rows, "{name} : ecart avec tshark");
+        assert_eq!(seen, rows.len(), "{name} : des lignes d'oracle sans trame");
     }
 
-    // 25 echanges v4 et 2 echanges v1 : (version, mode) -> datagrammes.
+    assert_eq!(datagrams, 1_287);
+    // Les deux ecarts nommes : messages de controle (ntpq) et erreurs ICMP
+    // qui citent un datagramme NTP.
+    assert_eq!(control_messages, 104);
+    assert_eq!(icmp_quotes, 36);
     assert_eq!(
         by_version_and_mode,
-        BTreeMap::from([((4, 3), 25), ((4, 4), 25), ((1, 3), 2), ((1, 4), 2)])
+        BTreeMap::from([
+            ((1, 3), 2),
+            ((1, 4), 2),
+            ((3, 3), 29),
+            ((3, 4), 30),
+            ((4, 1), 38),
+            ((4, 3), 597),
+            ((4, 4), 589),
+        ])
     );
-    // Dans 18 reponses du poste, l'horloge du client (originate) est en
-    // avance sur celle du serveur (receive) : exactement ce que le decodeur
-    // rejetait ; la reponse au client Java l'est aussi, son originate etant
-    // l'horodatage de l'ere 1 que le client a emis.
-    assert_eq!(client_ahead, 19);
+    // Dans 128 reponses, l'horloge du client (originate) est en avance sur
+    // celle du serveur (receive) : exactement ce que le decodeur rejetait
+    // (#161).
+    assert_eq!(client_ahead, 128);
+    // Apres l'en-tete : crypto-NAK (4 octets), MAC MD5 (20) ou SHA-1 (24),
+    // Extended Authenticator de MS-SNTP (72), champs d'extension NTS (180 et
+    // 492 octets).
+    assert_eq!(
+        with_trailer,
+        BTreeMap::from([(52, 40), (68, 42), (72, 4), (120, 6), (228, 58), (540, 2)])
+    );
+    // #165 : 23 reponses dont l'amont IPv6 a un hachage qui se lit comme une
+    // adresse multicast, et 62 datagrammes au stratum 0 qui portent un
+    // identifiant (kiss codes, et requetes de clients non synchronises).
+    assert_eq!(multicast_like_reference, 23);
+    assert_eq!(stratum_0_reference, 62);
+}
+
+/// Les faux positifs de l'ancienne sonde aveugle dans `protocols/ntp/`
+/// (#164) : le decodeur tolerant du port 123 les accepte, la sonde aveugle
+/// non. La trame 24 de `ndpi_kcp.pcap` (`01 00 00 00` au stratum 0) ne
+/// passait pas l'ancien decodeur, mais le passe depuis #165 : c'est son
+/// root delay, 20 992 s, que la sonde aveugle refuse.
+const FORMER_FALSE_POSITIVES: &[(&str, &[usize])] = &[
+    (
+        "ntp/ndpi_crynet.pcap",
+        &[120, 121, 124, 133, 139, 162, 163, 167, 177, 194, 200],
+    ),
+    ("ntp/ndpi_kcp.pcap", &[1, 18, 24]),
+    ("ntp/ndpi_line.pcap", &[41]),
+    ("ntp/ndpi_openvpn_obfuscated.pcapng", &[78]),
+    ("ntp/ndpi_pfcp.pcapng", &[11]),
+    (
+        "ntp/ndpi_quic_interop_V.pcapng",
+        &[
+            20, 40, 58, 60, 65, 69, 80, 81, 84, 100, 145, 163, 196, 205, 206,
+        ],
+    ),
+];
+
+#[test]
+fn former_false_positives_are_no_longer_ntp() {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut checked = 0;
+    for (name, numbers) in FORMER_FALSE_POSITIVES {
+        let frames = frames_of(name, &base.join(CORPUS).join(name));
+        for &number in *numbers {
+            let (link_type, data) = &frames[number - 1];
+            let flow = parse(*link_type, data).expect("trame decodable");
+            assert!(ntp_level(&flow).is_none(), "{name}:{number} : encore NTP");
+            let transport = flow.transport.as_ref().expect("UDP");
+            assert!(transport.source_port != Some(123) && transport.destination_port != Some(123));
+            let payload = transport.payload.expect("payload UDP");
+            assert!(
+                NtpPacket::try_from(payload).is_ok(),
+                "{name}:{number} : le decodeur tolerant ne l'accepte plus"
+            );
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 32);
+}
+
+/// Les datagrammes NTP reels, deplaces hors du port 123 (UDP 40000 ->
+/// 40001) : la sonde aveugle les reconnait tous — requetes NTS et MS-SNTP,
+/// precision tue de chrony, clients non synchronises au stratum 0 compris.
+#[test]
+fn real_datagrams_are_ntp_off_port_too() {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let oracle = read_oracle(&base.join(ORACLE));
+    let mut replayed = 0;
+    let mut refused = Vec::new();
+    for (name, rows) in &oracle {
+        let frames = frames_of(name, &base.join(CORPUS).join(name));
+        for (number, row) in rows {
+            if row.carrier != "udp" || matches!(row.mode, Some(6 | 7)) {
+                continue;
+            }
+            let (link_type, data) = &frames[number - 1];
+            let flow = parse(*link_type, data).expect("trame decodable");
+            let level = ntp_level(&flow).expect("datagramme NTP");
+            let payload = level.transport.as_ref().unwrap().payload.unwrap();
+            // L'en-tete UDP precede le payload : ses ports en sont les huit
+            // premiers octets moins quatre.
+            let start = payload.as_ptr() as usize - data.as_ptr() as usize;
+            let mut moved = data.clone();
+            moved[start - 8..start - 4].copy_from_slice(&[0x9c, 0x40, 0x9c, 0x41]);
+            let moved_flow = parse(*link_type, &moved).expect("trame deplacee");
+            if ntp_level(&moved_flow).is_none() {
+                refused.push(format!("{name}:{number}"));
+            }
+            replayed += 1;
+        }
+    }
+    assert_eq!(replayed, 1_287);
+    assert_eq!(refused, Vec::<String>::new());
 }

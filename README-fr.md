@@ -292,7 +292,10 @@ incluent notamment:
 - DNS (mDNS inclus via `DnsPacket::try_from_mdns`)
 - TLS
 - SNMP
-- NTP
+- NTP (modes 1 a 5) sur UDP 123 ; sur un autre port, seulement si le poll,
+  la precision et le root delay sont de ceux qu'une implementation emet et
+  si ce qui suit l'en-tete de 48 octets forme des champs d'extension et un
+  MAC (NTS, MS-SNTP)
 - DHCP / DHCPv6
 - HTTP
 - MQTT

@@ -123,6 +123,7 @@ enum ProbeId {
     NntpUnambiguous,
     QuicShortHeader,
     Ntp,
+    NtpBlind,
     Asterix,
     Bitcoin,
     Opcua,
@@ -184,6 +185,9 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         ProbeId::Ams => AmsPacket::try_from(payload).is_ok(),
         ProbeId::QuicShortHeader => is_plausible_short_header(payload),
         ProbeId::Ntp => NtpPacket::try_from(payload).is_ok(),
+        // Sur le payload reel : les champs d'extension et le MAC doivent
+        // finir exactement avec le datagramme.
+        ProbeId::NtpBlind => NtpPacket::is_blind_udp_match(full_payload),
         ProbeId::Asterix => AsterixPacket::try_from(payload).is_ok(),
         ProbeId::Bitcoin => BitcoinPacket::try_from(payload).is_ok(),
         ProbeId::Opcua => OpcuaPacket::try_from(payload).is_ok(),
@@ -449,12 +453,23 @@ static RULES: &[Rule] = &[
         is_stanag5066_tcp_port,
         ProbeId::Stanag5066,
     ),
+    // NTP (RFC 5905) : UDP 123, en derniere regle de port — la place
+    // qu'avait la sonde aveugle, si bien que rien ne change sur ce port :
+    // le decodeur tolerant suffit quand le port confirme (#164).
+    port_rule("NTP", Guard::Udp, is_ntp_udp_port, ProbeId::Ntp),
     // --- cascade aveugle, ordre historique de `Application::try_from`,
     // avec les gardes de transport que les RFC imposent : sonder NTP sur du
     // TCP etiquetait "NTP" des Encrypted Alerts TLS (0x15 = LI/VN/mode
     // plausible — trames 44/329/614 de dump.pcapng). Seuls les protocoles
     // reellement bi-transport restent en Guard::Any. ---
-    rule("NTP", Guard::Udp, ProbeId::Ntp),
+    // NTP hors du port 123 : l'en-tete seul laissait passer un datagramme
+    // aleatoire sur 230 (43 faux positifs sur 59 etiquettes NTP dans le
+    // corpus nDPI : QUIC, KCP, PFCP, NetBIOS...). La sonde exige aussi un
+    // poll, une precision et un root delay qu'une implementation emet, et
+    // des champs d'extension et un MAC qui finissent avec le datagramme
+    // (#164). Reste qu'une requete DNS de 48 octets avec EDNS sur soixante
+    // a la forme d'un paquet NTP : hors du port 53, elle sort NTP.
+    rule("NTP", Guard::Udp, ProbeId::NtpBlind),
     // RTPS (DDS) : magic `RTPS` puis des sous-messages qui pavent exactement
     // le datagramme. Sonde aveugle sur UDP : Cyclone DDS et Connext Micro
     // emploient des ports unicast aleatoires (#120).
@@ -768,6 +783,12 @@ fn is_ams_tcp_port(port: Option<u16>) -> bool {
 /// Beckhoff AMS/ADS discovery sur UDP.
 fn is_ams_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(48899))
+}
+
+/// NTP : UDP 123 (IANA `ntp`), source d'un serveur, destination d'un
+/// client, les deux en mode symetrique.
+fn is_ntp_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(123))
 }
 
 /// QUIC (HTTP/3) : UDP 443.
@@ -1159,6 +1180,74 @@ mod tests {
         assert_eq!(
             label(4501, &ESP, &[(4501, DecodeAsProtocol::Ike)]),
             Some("Unknown")
+        );
+    }
+
+    /// #164 : sur UDP 123, le decodeur NTP tolerant ; sur tout autre port,
+    /// la sonde aveugle stricte. Synthetique : une reponse NTPv4 de serveur
+    /// (stratum 2, poll 6, precision -20), puis la meme avec une precision
+    /// de +5 (2^5 s) ou cinq octets de trop apres l'en-tete.
+    #[test]
+    fn ntp_is_lenient_on_port_123_and_strict_elsewhere() {
+        const REPLY: [u8; 48] = {
+            let mut reply = [0u8; 48];
+            reply[0] = 0x24;
+            reply[1] = 2;
+            reply[2] = 6;
+            reply[3] = 0xec;
+            reply[12] = 192;
+            reply[13] = 0;
+            reply[14] = 2;
+            reply[15] = 1;
+            // Receive puis transmit, en 2026.
+            reply[32] = 0xec;
+            reply[33] = 0x7c;
+            reply[40] = 0xec;
+            reply[41] = 0x7c;
+            reply[47] = 1;
+            reply
+        };
+        const COARSE: [u8; 48] = {
+            let mut coarse = REPLY;
+            coarse[3] = 5;
+            coarse
+        };
+        const PADDED: [u8; 53] = {
+            let mut padded = [0u8; 53];
+            let mut i = 0;
+            while i < 48 {
+                padded[i] = REPLY[i];
+                i += 1;
+            }
+            padded
+        };
+        let label = |port: u16, payload: &'static [u8]| {
+            let transport = Transport {
+                protocol: TransportProtocol::Udp,
+                source_port: Some(port),
+                destination_port: Some(40_000),
+                payload: Some(payload),
+                details: None,
+            };
+            classify(&transport, &[]).map(|a| a.application_protocol)
+        };
+        assert_eq!(label(123, &REPLY), Some("NTP"));
+        assert_eq!(label(40_001, &REPLY), Some("NTP"));
+        for payload in [&COARSE[..], &PADDED[..]] {
+            assert_eq!(label(123, payload), Some("NTP"));
+            assert_ne!(label(40_001, payload), Some("NTP"));
+        }
+        // Jamais sur TCP, port 123 compris.
+        let tcp = Transport {
+            protocol: TransportProtocol::Tcp,
+            source_port: Some(123),
+            destination_port: Some(40_000),
+            payload: Some(&REPLY),
+            details: None,
+        };
+        assert_ne!(
+            classify(&tcp, &[]).map(|a| a.application_protocol),
+            Some("NTP")
         );
     }
 

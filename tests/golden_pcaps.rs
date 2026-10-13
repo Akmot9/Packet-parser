@@ -336,9 +336,19 @@ fn application_classification_histogram_is_frozen() {
     // iec104/iti_JavaRMI_and_IEC_Misc.pcap (#162 : horodatage de l'ere 1 du
     // client, serveur de stratum 1 `SHM`) : "NTP" 32 -> 54, "Unknown"
     // 8 281 -> 8 259.
+    //
+    // 2026-10-13 (#164, corpus NTP de nDPI, 8 captures, 1 011 trames) : deux
+    // vrais NTP (ndpi_NTPv3.pcap, ndpi_NTPv4.pcap) et six captures dont
+    // l'ancienne sonde NTP aveugle prenait 31 datagrammes pour du NTP (QUIC,
+    // CryNet, KCP, PFCP, LINE, OpenVPN obfusque) : "NTP" 54 -> 56, "TLS"
+    // 1 066 -> 1 122 (56 records de ndpi_line.pcap ; tshark en voit 59, les
+    // trois autres commencent en cours de segment), "(sans application)"
+    // 5 864 -> 6 001 (+137 : 106 segments TCP sans payload, 31 erreurs ICMP
+    // et ICMPv6 qui citent un datagramme QUIC), "Unknown" 8 259 -> 9 075
+    // (+816, dont les 31 anciens faux positifs NTP).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 5864),
+        (NO_APPLICATION, 6001),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 32),
@@ -362,7 +372,7 @@ fn application_classification_histogram_is_frozen() {
         ("ModbusTCP", 382),
         ("UMAS", 181),
         ("NNTP", 6),
-        ("NTP", 54),
+        ("NTP", 56),
         ("OPC UA", 187),
         ("OpenVPN", 766),
         ("PTP", 3221),
@@ -374,10 +384,10 @@ fn application_classification_histogram_is_frozen() {
         ("SRVLOC", 1),
         ("SSDP", 24),
         ("STP", 107),
-        ("TLS", 1066),
+        ("TLS", 1122),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 8_259),
+        ("Unknown", 9_075),
         ("mDNS", 12),
     ]
     .into_iter()

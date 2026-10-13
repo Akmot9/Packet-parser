@@ -42,7 +42,9 @@ impl TryFrom<&[u8]> for Application {
             return Err(ApplicationError::EmptyPacket);
         }
 
-        if NtpPacket::try_from(packet).is_ok() {
+        // Sans port, NTP passe par la sonde aveugle stricte : l'en-tete seul
+        // laissait passer un payload aleatoire sur 230 (#164).
+        if NtpPacket::is_blind_udp_match(packet) {
             return Ok(Application {
                 application_protocol: "NTP",
             });
