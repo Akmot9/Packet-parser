@@ -39,8 +39,10 @@ conditions que ces licences obligent à reproduire.
 - **GPL v2** (Croatia Control, Wireshark) : même logique, §1 et §2. Le
   wiki Wireshark publie son contenu « sous la GNU General Public License »
   sans numéro de version (<https://wiki.wireshark.org/License>, lu le
-  2026-10-13) : toute version publiée par la FSF peut alors s'appliquer
-  (GPL v2 §9), et le texte de la v2 joint ici en tient lieu. Les
+  2026-10-13), et son lien mène à <http://www.gnu.org/licenses/gpl.html>,
+  la page de la version courante : toute version publiée par la FSF peut
+  alors s'appliquer (GPL v2 §9, GPL v3 §14), et le texte de la v2 joint ici
+  en tient lieu. Les
   fichiers de Croatia Control, du dépôt Wireshark et la plupart des samples
   du wiki sont repris tels quels ; les extraits `ftp`, `smtp`, `nntp` et
   `mdns_llmnr_ssdp` sont **modifiés** (trames extraites avec `editcap` le

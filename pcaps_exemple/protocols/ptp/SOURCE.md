@@ -55,7 +55,9 @@ Fichiers d'origine des pièces jointes : `1588_on_nodeb3_startup.pcap`
 
 ## Licences
 
-- captures de la wiki Wireshark : licence de la wiki (GNU GPL sans numéro de version, selon <https://wiki.wireshark.org/License> — toute version publiée par la FSF peut s'appliquer, GPL v2 §9 ; texte dans
+- captures de la wiki Wireshark : licence de la wiki (GNU GPL sans numéro de
+  version, selon <https://wiki.wireshark.org/License> — toute version publiée
+  par la FSF peut s'appliquer, GPL v2 §9 ; texte dans
   `LICENSES/GPL-2.0.txt`) ;
 - `ndpi_ptpv2.pcap` : LGPL-3.0, licence du dépôt nDPI (texte : `LICENSES/LGPL-3.0.txt`) ;
 - pièces jointes du tracker Wireshark : aucune licence explicite, publiques

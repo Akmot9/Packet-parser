@@ -17,7 +17,9 @@ conserves. Aucune autre anonymisation n'a ete appliquee au sample public.
 
 ## Licence
 
-Samples du wiki Wireshark : GNU GPL sans numéro de version (<https://wiki.wireshark.org/License> ; toute version publiée par la FSF peut s'appliquer, GPL v2 §9), texte dans
+Samples du wiki Wireshark : GNU GPL sans numéro de version
+(<https://wiki.wireshark.org/License> ; toute version publiée par la FSF peut
+s'appliquer, GPL v2 §9), texte dans
 [`LICENSES/GPL-2.0.txt`](../../LICENSES/GPL-2.0.txt). Les modifications que la
 licence oblige à signaler sont celles décrites ci-dessus : extraction et
 troncature du 2026-08-03 (#104).

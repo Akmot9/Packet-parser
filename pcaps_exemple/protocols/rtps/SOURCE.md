@@ -79,7 +79,9 @@ même capture, 1 de `rtps.pcap`).
 
 - `talker-listener-rtps.pcapng` : licence MIT du dépôt foxglove/rtps (notice et
   texte dans `LICENSES/MIT-foxglove.txt`) ;
-- `RTPS_Discovery.pcapng` : licence de la wiki Wireshark (GNU GPL sans numéro de version, selon <https://wiki.wireshark.org/License> — toute version publiée par la FSF peut s'appliquer, GPL v2 §9 ; texte dans
+- `RTPS_Discovery.pcapng` : licence de la wiki Wireshark (GNU GPL sans numéro
+  de version, selon <https://wiki.wireshark.org/License> — toute version
+  publiée par la FSF peut s'appliquer, GPL v2 §9 ; texte dans
   `LICENSES/GPL-2.0.txt`) ;
 - `rtps.pcap` : LGPL-3.0, licence du dépôt nDPI (texte : `LICENSES/LGPL-3.0.txt`) ;
 - pièces jointes du tracker Wireshark : aucune licence explicite, publiques
