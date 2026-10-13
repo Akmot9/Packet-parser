@@ -42,11 +42,18 @@ pub fn validate_ipv4_header_available(data_len: usize, header_len: usize) -> Res
     Ok(())
 }
 
+/// Une longueur totale nulle est celle d'un paquet capture avant que la
+/// carte ne le segmente (TSO, LSO de Windows) : la pile ne l'ecrit pas. Le
+/// paquet court alors jusqu'a la fin de la trame, comme le lit tshark
+/// (`ip.tso_support`, vrai par defaut) (#168).
 pub fn validate_ipv4_total_length(
     total_length: u16,
     header_len: usize,
     data_len: usize,
 ) -> Result<(), Ipv4Error> {
+    if total_length == 0 {
+        return Ok(());
+    }
     let total_length = total_length as usize;
     if total_length < header_len || total_length > data_len {
         return Err(Ipv4Error::InvalidTotalLength {

@@ -8,6 +8,14 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Corrige
 
+- **IPv4** (#168) : une longueur totale nulle rendait la couche internet
+  corrompue (`InvalidTotalLength`), alors que c'est celle d'un paquet
+  capture avant que la carte ne le segmente (TSO, LSO de Windows), que la
+  pile ne renseigne pas. Comme tshark (`ip.tso_support`), le paquet court
+  desormais jusqu'a la fin de la trame ; `Ipv4Packet::total_length` garde la
+  valeur du fil. Seize trames des corpus examines, dont la trame 275 de
+  `pcaps_exemple/protocols/ntp/ndpi_line.pcap` (un record TLS de 3 133
+  octets) et une de `The-Ultimate-PCAP.pcapng` ; test `tests/ipv4_tso.rs`.
 - **NTP** (#164) : la sonde aveugle essayait le decodeur NTP sur tout
   datagramme UDP, et l'en-tete ne suffit pas : l'ancien decodeur laissait
   passer un datagramme aleatoire sur 250 environ. Sur les 654 captures de
