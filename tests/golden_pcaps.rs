@@ -336,9 +336,24 @@ fn application_classification_histogram_is_frozen() {
     // iec104/iti_JavaRMI_and_IEC_Misc.pcap (#162 : horodatage de l'ere 1 du
     // client, serveur de stratum 1 `SHM`) : "NTP" 32 -> 54, "Unknown"
     // 8 281 -> 8 259.
+    //
+    // 2026-10-13 (#164, corpus NTP, 9 captures, 1 024 trames) : deux vrais
+    // NTP de nDPI (ndpi_NTPv3.pcap, ndpi_NTPv4.pcap), les 13 datagrammes
+    // NTPv4 et v3 a MAC SHA-1, SHA-256 et SHA-512 de
+    // wireshark_16640_NTP-with-mac.pcap, et six captures nDPI dont
+    // l'ancienne sonde NTP aveugle prenait 31 datagrammes pour du NTP (QUIC,
+    // CryNet, KCP, PFCP, LINE, OpenVPN obfusque) : "NTP" 54 -> 69, "TLS"
+    // 1 066 -> 1 122 (56 trames de ndpi_line.pcap ; tshark, sans
+    // reassemblage, en voit 59 : les trames 71 et 72 sont des
+    // continuations, la trame 275 une trame TSO), "(sans application)"
+    // 5 864 -> 6 001 (+137 : 105 segments TCP sans payload, la trame 275 de
+    // ndpi_line.pcap — TSO, longueur totale IPv4 nulle, couche internet
+    // corrompue — et 31 erreurs ICMP et ICMPv6 qui citent un datagramme
+    // QUIC), "Unknown" 8 259 -> 9 075 (+816, dont les 31 anciens faux
+    // positifs NTP).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 5864),
+        (NO_APPLICATION, 6001),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 32),
@@ -362,7 +377,7 @@ fn application_classification_histogram_is_frozen() {
         ("ModbusTCP", 382),
         ("UMAS", 181),
         ("NNTP", 6),
-        ("NTP", 54),
+        ("NTP", 69),
         ("OPC UA", 187),
         ("OpenVPN", 766),
         ("PTP", 3221),
@@ -374,10 +389,10 @@ fn application_classification_histogram_is_frozen() {
         ("SRVLOC", 1),
         ("SSDP", 24),
         ("STP", 107),
-        ("TLS", 1066),
+        ("TLS", 1122),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 8_259),
+        ("Unknown", 9_075),
         ("mDNS", 12),
     ]
     .into_iter()

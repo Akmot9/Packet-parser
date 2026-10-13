@@ -285,7 +285,10 @@ Application detection is intentionally best-effort. Parser modules include:
 - DNS (including mDNS through `DnsPacket::try_from_mdns`)
 - TLS
 - SNMP
-- NTP
+- NTP (modes 1 to 5) on UDP 123; on any other port only when the poll,
+  precision and root delay are values real implementations send and the
+  bytes after the 48-byte header are well-formed extension fields and MAC
+  (NTS, MS-SNTP)
 - DHCP / DHCPv6
 - HTTP
 - MQTT

@@ -720,14 +720,19 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // 67 814 -> 68 575 flux. iti_Sample_File_MMS_and_GOOSE.pcap porte du MMS
     // (ISO 9506) sur TPKT/COTP, port 102 : ses 32 segments COTP sont de
     // vrais COTP, mis a part ci-dessous ; aucun n'est etiquete S7Comm.
-    assert_eq!(captures.len(), 167);
-    assert_eq!(opened_files, 166);
-    assert_eq!(frame_count, 68_617);
+    // 2026-10-13 (#164) : +9 captures dans protocols/ntp/ (voir SOURCE.md :
+    // nDPI, tracker Wireshark), 1 024 trames Ethernet et IP brut decodees
+    // sans erreur L2 : 167 -> 176 captures, 166 -> 175 fichiers lus,
+    // 68 617 -> 69 641 trames, 68 575 -> 69 599 flux. Aucune n'est etiquetee
+    // S7Comm ni COTP.
+    assert_eq!(captures.len(), 176);
+    assert_eq!(opened_files, 175);
+    assert_eq!(frame_count, 69_641);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 68_575);
+    assert_eq!(parsed_flows, 69_599);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

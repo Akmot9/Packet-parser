@@ -42,7 +42,9 @@ impl TryFrom<&[u8]> for Application {
             return Err(ApplicationError::EmptyPacket);
         }
 
-        if NtpPacket::try_from(packet).is_ok() {
+        // Sans port, NTP passe par la sonde aveugle stricte : l'ancien
+        // decodeur laissait passer un payload aleatoire sur 250 (#164).
+        if NtpPacket::is_blind_udp_match(packet) {
             return Ok(Application {
                 application_protocol: "NTP",
             });
@@ -228,6 +230,16 @@ mod tests {
                 panic!("Failed to parse DNS packet: {:?}", e);
             }
         }
+    }
+
+    /// #164 : sans port, NTP passe par la sonde aveugle. Synthetique : la
+    /// requete NTP du test precedent, precision portee a +5 (2^5 s).
+    #[test]
+    fn test_ntp_needs_the_blind_probe_without_a_port() {
+        let mut coarse = hex::decode("d9000afa000000000001029000000000000000000000000000000000000000000000000000000000c50204ecec42ee92").expect("hex");
+        coarse[3] = 5;
+        let parsed = Application::try_from(coarse.as_slice()).expect("payload non vide");
+        assert_ne!(parsed.application_protocol, "NTP");
     }
 
     #[test]
