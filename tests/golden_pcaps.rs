@@ -357,9 +357,24 @@ fn application_classification_histogram_is_frozen() {
     // ntp/ndpi_line.pcap, capturee avant la segmentation par la carte (TSO),
     // n'est plus une couche internet corrompue : "(sans application)"
     // 6 001 -> 6 000, "TLS" 1 122 -> 1 123 (son record Application Data).
+    //
+    // 2026-10-13 (epopee #103, corpus WireGuard, 9 captures, 1 110 trames) :
+    // "WireGuard" 0 -> 128 (Linux, NordVPN, ProtonVPN sur UDP 443, Mullvad
+    // sur UDP 5060, TunnelBear, Tailscale sur UDP 41641), "TLS" 1 123 ->
+    // 1 294 (+171 : les applications de NordVPN, ProtonVPN, TunnelBear et
+    // Zoom, dont trois retransmissions de TunnelBear que tshark ne dissèque
+    // pas), "(sans application)" 6 000 -> 6 307 (+307 segments TCP sans
+    // payload), "Unknown" 9 075 -> 9 579 (+504 : 326 trames de la session
+    // Zoom, dont les 22 datagrammes que l'heuristique WireGuard de tshark
+    // accepte ; les 61 messages disco de Tailscale ; chez NordVPN, 43
+    // datagrammes OpenVPN obfusques, 32 segments d'OpenVPN sur TCP 995 et 3
+    // segments TLS sur 8443 ; 3 segments TLS de ProtonVPN ; chez TunnelBear,
+    // ses 2 handshakes etendus et 26 segments TLS ; les 8 datagrammes de
+    // League of Legends ; tshark, sans reassemblage, lit un record TLS dans
+    // 18 de ces trames).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 6000),
+        (NO_APPLICATION, 6307),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 32),
@@ -395,10 +410,11 @@ fn application_classification_histogram_is_frozen() {
         ("SRVLOC", 1),
         ("SSDP", 24),
         ("STP", 107),
-        ("TLS", 1123),
+        ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 9_075),
+        ("Unknown", 9_579),
+        ("WireGuard", 128),
         ("mDNS", 12),
     ]
     .into_iter()

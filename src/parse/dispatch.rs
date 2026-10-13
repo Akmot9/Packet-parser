@@ -63,6 +63,7 @@ use super::application::protocols::ssh::SshPacket;
 use super::application::protocols::stanag5066::SisPdu;
 use super::application::protocols::tls::TlsPacket;
 use super::application::protocols::umas::UmasPacket;
+use super::application::protocols::wireguard::WireGuardPacket;
 use super::cotp_from_tpkt;
 use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
@@ -158,6 +159,8 @@ enum ProbeId {
     Ike,
     EspNatT,
     NatKeepalive,
+    WireGuard,
+    WireGuardBlind,
 }
 
 fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
@@ -242,6 +245,10 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
             UdpEncapsulation::classify(payload),
             Ok(UdpEncapsulation::Keepalive)
         ),
+        // Sur le payload reel : un message par datagramme, de taille fixe ou,
+        // pour les donnees, complete a seize octets jusqu'a sa fin.
+        ProbeId::WireGuard => WireGuardPacket::try_from(full_payload).is_ok(),
+        ProbeId::WireGuardBlind => WireGuardPacket::is_blind_udp_match(full_payload),
         // Garde a cout constant sur le magic, comme GIOP ; puis le payload REEL :
         // les sous-messages doivent paver tout le datagramme, et un DATA_FRAG de
         // 60 Ko depasse PROBE_CAP sans cesser d'etre du RTPS.
@@ -373,6 +380,15 @@ static RULES: &[Rule] = &[
     // OpenVPN : datagramme nu sur UDP 1194, prefixe de longueur sur TCP.
     port_rule("OpenVPN", Guard::Udp, is_openvpn_port, ProbeId::OpenVpnUdp),
     port_rule("OpenVPN", Guard::Tcp, is_openvpn_port, ProbeId::OpenVpnTcp),
+    // WireGuard : UDP 51820, le port de `wg-quick` — aucun port IANA. Sur ce
+    // port, la forme du message suffit, octets reserves compris (Cloudflare
+    // WARP s'en sert) ; ailleurs, la sonde aveugle plus bas (#103).
+    port_rule(
+        "WireGuard",
+        Guard::Udp,
+        is_wireguard_udp_port,
+        ProbeId::WireGuard,
+    ),
     port_rule("AMS", Guard::Tcp, is_ams_tcp_port, ProbeId::Ams),
     port_rule("AMS", Guard::Udp, is_ams_udp_port, ProbeId::Ams),
     // QUIC 1-RTT (Short Header) : en-tete volontairement opaque (RFC 9000
@@ -525,6 +541,11 @@ static RULES: &[Rule] = &[
     rule("UMAS", Guard::Tcp, ProbeId::Umas),
     rule("ModbusTCP", Guard::Tcp, ProbeId::ModbusTcp),
     rule("QUIC", Guard::Udp, ProbeId::QuicLongHeader),
+    // WireGuard hors de 51820 : un octet de type, trois octets reserves nuls,
+    // une taille fixe ou, pour les donnees, un compteur sous 2^60 et un
+    // paquet clair complete a seize octets. Derniere sonde UDP : un Transport
+    // Data n'a pour lui que `04 00 00 00` et ces contraintes (#103).
+    rule("WireGuard", Guard::Udp, ProbeId::WireGuardBlind),
     // MQTT (TCP) en dernier : en-tete fixe peu discriminant.
     rule("MQTT", Guard::Tcp, ProbeId::Mqtt),
 ];
@@ -567,6 +588,8 @@ pub enum DecodeAsProtocol {
     Rdp,
     /// IEC 60870-5-104 : APDU `0x68` sur TCP.
     Iec104,
+    /// WireGuard sur UDP : la forme du message, octets reserves compris.
+    WireGuard,
 }
 
 impl DecodeAsProtocol {
@@ -607,6 +630,7 @@ impl DecodeAsProtocol {
             Self::Esp => ("ESP", Guard::Udp, ProbeId::EspNatT),
             Self::Rdp => ("RDP", Guard::Tcp, ProbeId::Rdp),
             Self::Iec104 => ("IEC 104", Guard::Tcp, ProbeId::Iec104),
+            Self::WireGuard => ("WireGuard", Guard::Udp, ProbeId::WireGuard),
         }
     }
 }
@@ -795,6 +819,11 @@ fn is_ntp_udp_port(port: Option<u16>) -> bool {
 /// QUIC (HTTP/3) : UDP 443.
 fn is_quic_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(443))
+}
+
+/// WireGuard : UDP 51820, le port par defaut de `wg-quick` (aucun port IANA).
+fn is_wireguard_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(51820))
 }
 
 /// DIS : UDP 3000, le port d'usage que Wireshark enregistre par defaut.
@@ -1346,6 +1375,7 @@ mod tests {
             DecodeAsProtocol::Esp,
             DecodeAsProtocol::Rdp,
             DecodeAsProtocol::Iec104,
+            DecodeAsProtocol::WireGuard,
         ];
         for protocol in all {
             for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {
@@ -1447,6 +1477,7 @@ mod tests {
                 "UMAS",
                 "ModbusTCP",
                 "QUIC",
+                "WireGuard",
                 "MQTT",
             ],
             "S7Comm est promu en tete (priorite sur COTP), les verbes \

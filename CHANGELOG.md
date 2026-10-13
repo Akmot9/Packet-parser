@@ -158,6 +158,36 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **WireGuard** (epopee #103, Tier 3) : le tunnel VPN sur UDP, un message
+  par datagramme. `wireguard::WireGuardPacket` lit le type, les trois
+  octets reserves et le message (`WireGuardMessage`, `#[non_exhaustive]`) :
+  `HandshakeInitiation` (index de l'emetteur, cle ephemere, cle statique et
+  horodatage chiffres, mac1, mac2), `HandshakeResponse` (index des deux
+  pairs, cle ephemere, « rien » chiffre, mac1, mac2), `CookieReply` (index,
+  nonce, cookie chiffre) et `TransportData` (index du destinataire,
+  compteur, paquet chiffre emprunte, `is_keepalive`) ; tailles fixes de 148,
+  92 et 64 octets, au moins 32 pour les donnees ; rien n'est dechiffre.
+  Detection : WireGuard n'a pas de port IANA ; sur UDP 51820, le port de
+  `wg-quick`, et par `DecodeAsProtocol::WireGuard` (fin d'enum), la forme
+  du message suffit, octets reserves compris (Cloudflare WARP s'en sert) ;
+  ailleurs, la sonde aveugle — derniere des sondes UDP, apres QUIC — exige
+  des octets reserves nuls et, pour les donnees, un compteur sous 2^60
+  (`REKEY_AFTER_MESSAGES`) et un paquet clair complete a seize octets ou
+  arrete a une MTU d'au moins 576 octets : l'heuristique de tshark, qui
+  n'exige que le type et la taille, prend 59 datagrammes Zoom, TeamViewer et
+  League of Legends du corpus de nDPI pour du WireGuard, la crate aucun.
+  Corpus `pcaps_exemple/protocols/wireguard/` : 128 messages de Linux
+  (depot Wireshark, GPL-2.0), NordVPN, ProtonVPN sur UDP 443, Mullvad sur
+  UDP 5060 et TunnelBear (nDPI, LGPL-3.0), Tailscale/wireguard-go sur UDP
+  41641 (Corelight, BSD-3-Clause, texte verse dans
+  `pcaps_exemple/LICENSES/BSD-3-Clause-Corelight.txt`), et deux captures
+  Zoom et LoL sans WireGuard. Parite avec tshark 4.6.6 sur les 128 messages
+  (`tests/wireguard_golden.rs`, oracle `tools/wireguard_oracle.sh`), les 25
+  datagrammes Zoom et LoL que tshark accepte nommes comme ecarts, aucun des
+  voisins (disco de Tailscale, handshakes etendus de TunnelBear, OpenVPN
+  obfusque de NordVPN) etiquete WireGuard ; les 128 messages sont reconnus
+  hors de leur port, et, octets reserves non nuls, sur 51820 et par Decode
+  As seulement. Cible de fuzz `parse_wireguard`.
 - **PPPoE** (#172) : la session PPPoE (EtherType `0x8864`, RFC 2516 §5)
   etait seulement nommee ; une liaison fibre ou xDSL d'abonne porte pourtant
   tout son trafic IP. La couche liaison pele desormais la session comme un

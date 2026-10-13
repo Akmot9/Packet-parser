@@ -44,6 +44,7 @@ pub mod ssh;
 pub mod stanag5066;
 pub mod tls;
 pub mod umas;
+pub mod wireguard;
 
 /// Errors related to parsing an `Application`.
 ///

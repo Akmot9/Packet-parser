@@ -354,6 +354,13 @@ Application detection is intentionally best-effort. Parser modules include:
   texts and Vendor-Specific); recognised on UDP 1812/1813/1645/1646/3799 and
   blindly on any port (known code, length equal to the datagram, attributes
   tiling it)
+- WireGuard: the four messages (handshake initiation and response, cookie
+  reply, transport data) with their reserved bytes, session indexes, data
+  counter and fixed fields (ephemeral key, encrypted fields, mac1, mac2),
+  borrowed; nothing is decrypted. Recognised on UDP 51820 and through Decode
+  As by its shape, and blindly on any other port only with zero reserved
+  bytes and, for data, a counter below 2^60 and a plaintext padded to 16
+  bytes or cut at the MTU
 - DNP3 (IEEE 1815): link frames with their header and per-block CRC-16/DNP
   verified (length, control bits and function, addresses), transport header,
   application header (control, function code, internal indications) and the

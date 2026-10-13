@@ -66,6 +66,7 @@ réellement capturées sur un réseau.
 | `ipsec/` | #124 | ⏳ IKEv1, IKEv2, ESP natif et NAT-T (UDP 4500) — wiki Wireshark et nDPI (LGPL-3.0), voir `SOURCE.md`. Pas encore décodé |
 | `profinet/` | #133 | ⏳ PROFINET réel (EtherType `0x8892`) : DCP Identify et Set (wiki Wireshark, CloudShark, via ITI/ICS-Security-Tools, CC-BY-4.0), trafic cyclique RT_CLASS_1 et `0xC000`, alarmes, PTCP, fragments et PN-IO-CM sur UDP 34964 (CISA icsnpp, BSD-3 ; labo miguelob/ICS-Hacking, GPL-3.0) — voir `SOURCE.md`. 232 trames PN-RT, dont le validateur DCP rejette 129 comme corrompues, presque toutes saines : état de départ figé par `tests/profinet_corpus.rs` |
 | `umas/` | #10 | ✅ UMAS réel (Schneider Electric) : 180 trames Modbus/TCP en code fonction 0x5A, deux sessions, treize codes de requête et les réponses `0xFE`, dont le modèle de l'automate en clair — corpus nDPI (LGPL-3.0), voir `SOURCE.md`. tshark ne décode pas UMAS : l'oracle des golden est double |
+| `wireguard/` | #103 | ✅ WireGuard réel, 128 messages : Linux (dépôt Wireshark, GPL-2.0), NordVPN, ProtonVPN sur UDP 443, Mullvad sur UDP 5060, TunnelBear (nDPI, LGPL-3.0), Tailscale/wireguard-go sur UDP 41641 (Corelight, BSD-3-Clause) ; et deux captures Zoom et LoL dont l'heuristique de tshark prend 25 datagrammes pour du WireGuard — voir `SOURCE.md`. Parité trame par trame avec tshark (`tests/wireguard_golden.rs`) |
 
 ## Crédits
 

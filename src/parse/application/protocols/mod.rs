@@ -41,6 +41,7 @@ pub mod ssh;
 pub mod stanag5066;
 pub mod tls;
 pub mod umas;
+pub mod wireguard;
 
 /// Borne une pré-allocation dimensionnée par un champ du paquet.
 ///
