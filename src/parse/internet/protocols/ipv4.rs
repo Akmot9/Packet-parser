@@ -44,7 +44,9 @@ pub struct Ipv4Packet<'a> {
     pub version_ihl: u8,
     /// Type of Service
     pub dscp_ecn: u8,
-    /// Total Length of the packet (header + data)
+    /// Total Length of the packet (header + data), as on the wire: 0 for a
+    /// packet captured before TCP segmentation offload, whose payload then
+    /// runs to the end of the frame.
     pub total_length: u16,
     /// Identification
     pub identification: u16,
@@ -163,17 +165,19 @@ impl<'a> TryFrom<&'a [u8]> for Ipv4Packet<'a> {
             &[]
         };
 
-        // Extract payload
-        let payload =
-            if (total_length as usize) > header_len && (total_length as usize) <= data.len() {
-                &data[header_len..(total_length as usize)]
-            } else if (total_length as usize) > data.len() {
-                // If the total length exceeds the available data, use what we have
-                &data[header_len..]
-            } else {
-                // Empty slice if no payload
-                &[]
-            };
+        // Extract payload : une longueur nulle (TSO) court jusqu'a la fin de
+        // la trame.
+        let payload = if total_length == 0 {
+            &data[header_len..]
+        } else if (total_length as usize) > header_len && (total_length as usize) <= data.len() {
+            &data[header_len..(total_length as usize)]
+        } else if (total_length as usize) > data.len() {
+            // If the total length exceeds the available data, use what we have
+            &data[header_len..]
+        } else {
+            // Empty slice if no payload
+            &[]
+        };
 
         Ok(Ipv4Packet {
             version_ihl,
@@ -257,5 +261,23 @@ mod tests {
         assert!(packet.more_fragments());
         assert!(packet.is_fragmented());
         assert!(packet.is_non_initial_fragment());
+    }
+
+    /// #168 : longueur totale nulle d'un paquet capture avant la
+    /// segmentation par la carte (TSO) — la charge court jusqu'a la fin de
+    /// la trame. Synthetique : en-tete de vingt octets, TCP, 1 400 octets.
+    #[test]
+    fn test_zero_total_length_is_tso() {
+        let mut data = vec![
+            0x45, 0x00, 0x00, 0x00, 0x12, 0x34, 0x40, 0x00, 0x40, 0x06, 0x00, 0x00, 10, 0, 2, 15,
+            125, 209, 252, 210,
+        ];
+        data.extend(std::iter::repeat_n(0xab, 1400));
+        let packet = Ipv4Packet::try_from(data.as_slice()).expect("paquet TSO");
+        assert_eq!(packet.total_length, 0);
+        assert_eq!(packet.payload.len(), 1400);
+        // Toute autre longueur plus courte que l'en-tete reste invalide.
+        data[3] = 19;
+        assert!(Ipv4Packet::try_from(data.as_slice()).is_err());
     }
 }

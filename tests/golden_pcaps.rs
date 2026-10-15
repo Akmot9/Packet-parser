@@ -352,9 +352,14 @@ fn application_classification_histogram_is_frozen() {
     // corrompue — et 31 erreurs ICMP et ICMPv6 qui citent un datagramme
     // QUIC), "Unknown" 8 259 -> 9 075 (+816, dont les 31 anciens faux
     // positifs NTP).
+    //
+    // 2026-10-13 (#168, longueur totale IPv4 nulle) : la trame 275 de
+    // ntp/ndpi_line.pcap, capturee avant la segmentation par la carte (TSO),
+    // n'est plus une couche internet corrompue : "(sans application)"
+    // 6 001 -> 6 000, "TLS" 1 122 -> 1 123 (son record Application Data).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 6001),
+        (NO_APPLICATION, 6000),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 32),
@@ -390,7 +395,7 @@ fn application_classification_histogram_is_frozen() {
         ("SRVLOC", 1),
         ("SSDP", 24),
         ("STP", 107),
-        ("TLS", 1122),
+        ("TLS", 1123),
         ("RTPS", 231),
         ("STANAG 5066", 34),
         ("Unknown", 9_075),
