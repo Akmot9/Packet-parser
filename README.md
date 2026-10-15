@@ -254,6 +254,12 @@ serialized):
   and sequence numbers, simulation, configuration revision, needs
   commissioning, number of entries, every `allData` value with its BER tag
   and bytes); also recognised blindly when the EtherType is unknown
+- LLDP (IEEE 802.1AB) directly over Ethernet, EtherType `0x88CC`, decoded into
+  `InternetDetails::Lldp`: every TLV borrowed, the mandatory chassis ID, port
+  ID and time to live, then port description, system name and description,
+  capabilities, management addresses and organizationally specific TLVs
+  (OUI, subtype, information: PROFINET, IEEE 802.1, IEEE 802.3, LLDP-MED...);
+  also recognised blindly when the EtherType is unknown
 
 For fragmented IPv4 packets, the crate does not perform IP reassembly. In that
 case `payload_protocol` is set to `None` so the transport layer is not parsed

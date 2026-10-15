@@ -161,6 +161,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "parse_lldp"
+path = "fuzz_targets/parse_lldp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "parse_wireguard"
 path = "fuzz_targets/parse_wireguard.rs"
 test = false

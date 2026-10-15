@@ -14,6 +14,7 @@ use crate::errors::internet::InternetError;
 use crate::parse::application::protocols::ptp::PtpPacket;
 use crate::parse::data_link::ethertype::Ethertype;
 use crate::parse::internet::protocols::goose::GoosePacket;
+use crate::parse::internet::protocols::lldp::LldpPacket;
 use crate::parse::internet::protocols::profinet;
 use crate::parse::transport::protocols::TransportProtocol;
 use protocols::arp::ArpPacket;
@@ -41,6 +42,8 @@ pub enum InternetDetails<'a> {
     Ptp(PtpPacket<'a>),
     /// GOOSE, IEC 61850-8-1, directement sur Ethernet (EtherType `0x88B8`).
     Goose(GoosePacket<'a>),
+    /// LLDP, IEEE 802.1AB, directement sur Ethernet (EtherType `0x88CC`).
+    Lldp(LldpPacket<'a>),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -149,6 +152,7 @@ impl<'a> Internet<'a> {
                 Err(error) => Err(error.into()),
             },
             NetworkProtocol::Goose => Ok(Self::from_goose(GoosePacket::try_from(payload)?)),
+            NetworkProtocol::Lldp => Ok(Self::from_lldp(LldpPacket::try_from(payload)?)),
             NetworkProtocol::Other(_) => Err(InternetError::UnsupportedProtocol),
         }
     }
@@ -230,6 +234,21 @@ impl<'a> Internet<'a> {
         }
     }
 
+    /// LLDP s'annonce en multicast Ethernet, sans IP ni transport : le
+    /// LLDPDU decode est garde dans `details`, comme GOOSE.
+    fn from_lldp(lldp_packet: LldpPacket<'a>) -> Self {
+        Internet {
+            source: None,
+            source_type: None,
+            destination: None,
+            destination_type: None,
+            protocol_name: "LLDP",
+            payload_protocol: None,
+            payload: &[],
+            details: Some(InternetDetails::Lldp(lldp_packet)),
+        }
+    }
+
     fn profinet() -> Self {
         Internet {
             source: None,
@@ -247,8 +266,8 @@ impl<'a> Internet<'a> {
 impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
     type Error = InternetError;
 
-    /// Probes ARP, IPv4, IPv6, Profinet then GOOSE in order, without knowing
-    /// the EtherType. Prefer [`Internet::try_from_parts`] when the data-link
+    /// Probes ARP, IPv4, IPv6, Profinet, GOOSE then LLDP in order, without
+    /// knowing the EtherType. Prefer [`Internet::try_from_parts`] when the data-link
     /// layer is available: probing cannot distinguish a corrupt packet from
     /// an unsupported protocol.
     fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
@@ -278,6 +297,14 @@ impl<'a> TryFrom<&'a [u8]> for Internet<'a> {
         // et un goosePdu BER complet avec ses champs obligatoires.
         if let Ok(goose_packet) = GoosePacket::try_from(packet) {
             return Ok(Self::from_goose(goose_packet));
+        }
+
+        // LLDP se prouve par ses trois TLV obligatoires, dans l'ordre, un TLV
+        // End of LLDPDU et un bourrage nul.
+        if LldpPacket::is_blind_match(packet) {
+            return LldpPacket::try_from(packet)
+                .map(Self::from_lldp)
+                .map_err(InternetError::from);
         }
 
         Err(InternetError::UnsupportedProtocol)
@@ -406,6 +433,35 @@ mod tests {
             Internet::try_from_network_parts(NetworkProtocol::Goose, &payload[..100]),
             Err(InternetError::GooseError(
                 crate::errors::internet::goose::GooseParseError::LengthMismatch { .. }
+            ))
+        ));
+    }
+
+    /// LLDPDU minimal (#177) : chassis MAC `00:11:22:33:44:55`, port
+    /// `eth0`, TTL 120, End of LLDPDU, puis le bourrage d'une trame courte.
+    const LLDP_MINIMAL: &str = "020704001122334455040505657468300602007800000000000000";
+
+    #[test]
+    fn lldp_on_ethertype_0x88cc_keeps_the_decoded_lldpdu_and_is_probed_blindly() {
+        let payload = hex::decode(LLDP_MINIMAL).unwrap();
+        let internet =
+            Internet::try_from_network_parts(NetworkProtocol::Lldp, &payload).expect("LLDP");
+        assert_eq!(internet.protocol_name, "LLDP");
+        assert!(internet.source.is_none() && internet.payload_protocol.is_none());
+        let Some(InternetDetails::Lldp(packet)) = &internet.details else {
+            panic!("details LLDP attendus");
+        };
+        assert_eq!(packet.port_id.as_text(), Some("eth0"));
+        assert_eq!(packet.time_to_live, 120);
+        assert_eq!(packet.padding.len(), 5);
+        // Sans EtherType, la sonde aveugle le reconnait aussi.
+        let probed = Internet::try_from(payload.as_slice()).expect("sonde aveugle");
+        assert_eq!(probed.protocol_name, "LLDP");
+        // Coupe au milieu du Port ID : corrompu, pas inconnu.
+        assert!(matches!(
+            Internet::try_from_network_parts(NetworkProtocol::Lldp, &payload[..12]),
+            Err(InternetError::LldpError(
+                crate::errors::internet::lldp::LldpParseError::TlvOverflow { tlv_type: 2, .. }
             ))
         ));
     }

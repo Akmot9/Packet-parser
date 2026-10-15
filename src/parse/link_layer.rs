@@ -32,6 +32,8 @@ pub enum NetworkProtocol {
     Ptp,
     /// GOOSE (IEC 61850-8-1) directement sur Ethernet, EtherType `0x88B8`.
     Goose,
+    /// LLDP (IEEE 802.1AB) directement sur Ethernet, EtherType `0x88CC`.
+    Lldp,
 }
 
 impl NetworkProtocol {
@@ -43,6 +45,7 @@ impl NetworkProtocol {
             0x8892 => Self::Profinet,
             0x88f7 => Self::Ptp,
             0x88b8 => Self::Goose,
+            0x88cc => Self::Lldp,
             other => Self::Other(other),
         }
     }
@@ -58,6 +61,7 @@ impl fmt::Display for NetworkProtocol {
             Self::Other(value) => write!(f, "0x{value:04X}"),
             Self::Ptp => f.write_str("PTP"),
             Self::Goose => f.write_str("GOOSE"),
+            Self::Lldp => f.write_str("LLDP"),
         }
     }
 }

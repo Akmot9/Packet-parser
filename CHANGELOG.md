@@ -186,6 +186,35 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **LLDP** (epopee #177) : l'annonce IEEE 802.1AB que chaque equipement fait
+  a ses voisins directs (EtherType `0x88CC`) etait seulement nommee. Comme
+  GOOSE, elle se decode dans la couche internet : `NetworkProtocol::Lldp` et
+  `InternetDetails::Lldp` (fin d'enum), `InternetError::LldpError`.
+  `lldp::LldpPacket` garde chaque TLV, valeur empruntee a la trame, lit les
+  trois TLV obligatoires (`chassis_id` et `port_id` : `LldpId`, sous-type et
+  identifiant, `as_mac`, `as_network_address`, `as_text` ; `time_to_live`)
+  et le bourrage qui suit le TLV End of LLDPDU, et, par des accesseurs, la
+  description du port, le nom et la description de l'equipement, ses
+  capacites (`SystemCapabilities`), ses adresses de gestion
+  (`ManagementAddress`, `ip`) et les TLV d'organisation (`OrganizationTlv` :
+  OUI, sous-type, information ; `organization` nomme PROFINET, IEEE 802.1,
+  IEEE 802.3, LLDP-MED, Hirschmann et Cisco). Les trois TLV obligatoires
+  ouvrent le LLDPDU dans l'ordre, et les longueurs restent dans les bornes
+  de la norme (Chassis ID et Port ID de 2 a 256 octets, TTL de 2, capacites
+  de 4, End vide, Management Address de 9 a 167 et pavee par ses longueurs
+  internes, TLV d'organisation d'au moins 4) : une trame qui ne les respecte
+  pas est une couche internet corrompue. La sonde aveugle de
+  `Internet::try_from` reconnait LLDP apres GOOSE, TLV End et bourrage nul
+  en plus. Parite avec tshark 4.6.6 sur les 276 trames LLDP du depot
+  (`tests/lldp_golden.rs`, oracle `tools/lldp_oracle.sh`) : 201 et 4 de
+  `protocols/profinet/` (Siemens SCALANCE et SIMATIC, TLV PROFINET et IEEE
+  802.3), 71 de `The-Ultimate-PCAP.pcapng`, lue en place (deux commutateurs
+  Cisco : 12 trames Ethernet aux adresses de gestion IPv4 et IPv6, 59
+  mPackets IEEE 802.3br) — types et longueurs des TLV, chassis, port, TTL,
+  nom, description du port, capacites, adresses de gestion et OUI ; aucune
+  autre trame ne passe pour du LLDP. Une trame LLDP a desormais une couche
+  internet `LLDP` (`protocol_internet` en JSON), toujours sans application :
+  l'histogramme golden ne change pas. Cible de fuzz `parse_lldp`.
 - **WireGuard** (epopee #103, Tier 3) : le tunnel VPN sur UDP, un message
   par datagramme. `wireguard::WireGuardPacket` lit le type, les trois
   octets reserves et le message (`WireGuardMessage`, `#[non_exhaustive]`) :

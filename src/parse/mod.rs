@@ -2439,12 +2439,15 @@ mod tests {
         assert!(!corrupted.error.is_empty());
     }
 
-    /// EtherType inconnu (LLDP) : pas de L3, mais pas de corruption non plus.
+    /// EtherType inconnu (`0x88B5`, l'EtherType experimental local de
+    /// l'IEEE 802) : pas de L3, mais pas de corruption non plus. LLDP
+    /// (`0x88CC`), l'exemple d'avant #177, est desormais decode : les memes
+    /// octets invalides y sont une couche internet corrompue.
     #[test]
     fn unknown_ethertype_is_not_corruption() {
         let mut packet = vec![
             0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0x88,
-            0xCC, // EtherType LLDP
+            0xB5, // EtherType experimental local
         ];
         packet.extend_from_slice(&[0xFF; 6]);
 
@@ -2452,6 +2455,14 @@ mod tests {
 
         assert!(flow.internet.is_none());
         assert!(flow.corrupted.is_none());
+
+        packet[13] = 0xCC;
+        let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
+        assert!(flow.internet.is_none());
+        assert_eq!(
+            flow.corrupted.as_ref().map(|corrupted| corrupted.layer),
+            Some(CorruptedLayerKind::Internet)
+        );
     }
 
     /// IPv4 valide annonçant du TCP, mais segment TCP tronqué : le L3 doit
