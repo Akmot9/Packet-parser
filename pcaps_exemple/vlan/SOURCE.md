@@ -12,7 +12,11 @@
   IPv4 (`0x0021`) — une session TCP 1.1.1.1:443 ↔ 2.2.2.2.
 - Sert de source au golden test `tests/qinq_golden.rs` : la pile de tags est
   consommée entière, `vlan` retient le tag interne (2474) et l'EtherType
-  atteint est PPPoE. PPPoE lui-même n'est pas décodé (hors périmètre de #82).
+  atteint est PPPoE. Depuis #172, la session PPPoE est pelée à son tour
+  jusqu'à IPv4 et TCP, sauf sur six trames (19, 33, 41, 47, 63, 81) dont la
+  longueur PPPoE (42) ne couvre pas le paquet IPv4 de 46 octets, que tshark
+  signale aussi : la crate borne le paquet par la longueur PPPoE et signale
+  la couche internet corrompue.
 - Aucune capture réelle 802.1ad (`0x88a8`) n'est disponible à ce jour : ce
   cas est couvert par les tests unitaires de `parse/data_link/mod.rs` sur
   octets fabriqués, faute de mieux.

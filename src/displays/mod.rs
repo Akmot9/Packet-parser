@@ -48,6 +48,7 @@ mod tests {
                 ethertype: Ethertype(0x0800),
                 vlan: None,
                 vlan_stack: Default::default(),
+                pppoe: None,
                 payload: &payload,
             }
             .into(),
@@ -83,6 +84,7 @@ mod tests {
                 ethertype: Ethertype(0x0806),
                 vlan: None,
                 vlan_stack: Default::default(),
+                pppoe: None,
                 payload: &payload,
             }
             .into(),

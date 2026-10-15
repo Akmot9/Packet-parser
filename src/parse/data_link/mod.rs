@@ -52,13 +52,17 @@ use mac_addres::MacAddress;
 use serde::Serialize;
 
 pub mod ethertype;
+pub mod pppoe;
 pub mod stp;
 pub mod vlan_tag;
 
 use crate::{
     checks::data_link::{validate_data_link_length, validate_data_link_vlan_stack_length},
     errors::data_link::DataLinkError,
-    parse::data_link::vlan_tag::{VlanStack, VlanTag},
+    parse::data_link::{
+        pppoe::{PPPOE_SESSION_ETHERTYPE, PppoeSession, peel_session},
+        vlan_tag::{VlanStack, VlanTag},
+    },
 };
 
 use ethertype::Ethertype;
@@ -92,6 +96,15 @@ const VLAN_TAG_LEN: usize = 4;
 /// then holds the **innermost** tag (the C-VLAN, i.e. the customer network),
 /// the only one whose `inner_ethertype` is that real layer 3. The whole
 /// stack, outermost tag first, is in `vlan_stack` (#82).
+///
+/// A PPPoE session (EtherType `0x8864`, RFC 2516) is unwrapped the same way
+/// when its PPP payload is IPv4 or IPv6: `ethertype` and `payload` then
+/// describe that packet, and `pppoe` keeps the session (#172). With a PPP
+/// control protocol (LCP, IPCP...), `ethertype` stays `0x8864` and `payload`
+/// is the PPP packet. Like tshark, the PPP packet is bounded by the PPPoE
+/// length, which drops the Ethernet padding of a short frame, then by the
+/// end of the frame: a PPPoE length shorter than the IP packet it carries
+/// truncates it, and the Internet layer reports it corrupted.
 #[derive(Debug, Clone, Serialize, Eq)]
 #[non_exhaustive]
 pub struct DataLink<'a> {
@@ -106,6 +119,12 @@ pub struct DataLink<'a> {
     /// that, `vlan` already says it all.
     #[serde(skip_serializing_if = "VlanStack::is_not_stacked")]
     pub vlan_stack: VlanStack<'a>,
+    /// The PPPoE session the frame belongs to, if any. Not serialized yet:
+    /// the owned model (`DataLinkOwned`, an exhaustive struct) cannot carry
+    /// it without an API break, and both models must serialize to the same
+    /// JSON.
+    #[serde(skip_serializing)]
+    pub pppoe: Option<PppoeSession>,
     /// The Ethertype of the packet, indicating the protocol in the payload
     /// (serialized as its name, e.g. "IPv4").
     #[serde(serialize_with = "ethertype::serialize_name")]
@@ -136,6 +155,15 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
         if VlanTag::is_tpid(raw_ethertype) {
             return Self::parse_tagged(packets, destination_mac, source_mac, raw_ethertype);
         }
+        if raw_ethertype == PPPOE_SESSION_ETHERTYPE {
+            return Ok(Self::parse_pppoe(
+                destination_mac,
+                source_mac,
+                None,
+                VlanStack::default(),
+                &packets[DATALINK_HEADER_LEN..],
+            ));
+        }
 
         // Cas courant, sans tag : chemin en ligne droite. La pile de tags vit
         // dans une fonction a part — la derouler ici coutait ~13 ns a chaque
@@ -145,6 +173,7 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
             source_mac,
             vlan: None,
             vlan_stack: VlanStack::default(),
+            pppoe: None,
             ethertype: Ethertype::from(raw_ethertype),
             payload: &packets[DATALINK_HEADER_LEN..],
         })
@@ -178,17 +207,70 @@ impl<'a> DataLink<'a> {
             vlan = Some(tag);
         }
 
+        // Blocs TCI + EtherType suivant de chaque tag : du premier TCI
+        // (octet 14) a l'EtherType de couche 3, deja bornes par
+        // validate_data_link_vlan_stack_length.
+        let vlan_stack = VlanStack::new(&packets[DATALINK_HEADER_LEN..offset]);
+        if next_ethertype == PPPOE_SESSION_ETHERTYPE {
+            return Ok(Self::parse_pppoe(
+                destination_mac,
+                source_mac,
+                vlan,
+                vlan_stack,
+                &packets[offset..],
+            ));
+        }
         Ok(DataLink {
             destination_mac,
             source_mac,
             vlan,
-            // Blocs TCI + EtherType suivant de chaque tag : du premier TCI
-            // (octet 14) a l'EtherType de couche 3, deja bornes par
-            // validate_data_link_vlan_stack_length.
-            vlan_stack: VlanStack::new(&packets[DATALINK_HEADER_LEN..offset]),
+            vlan_stack,
+            pppoe: None,
             ethertype: Ethertype::from(next_ethertype),
             payload: &packets[offset..],
         })
+    }
+
+    /// Session PPPoE (#172) : quand PPP porte IPv4 ou IPv6, la session est
+    /// pelee comme un tag VLAN ; avec un protocole de controle, l'EtherType
+    /// reste `0x8864` et la charge est le paquet PPP ; une trame qui n'est
+    /// pas une session bien formee reste telle quelle, sans couche 3, comme
+    /// un EtherType inconnu.
+    #[inline(never)]
+    fn parse_pppoe(
+        destination_mac: MacAddress,
+        source_mac: MacAddress,
+        vlan: Option<VlanTag>,
+        vlan_stack: VlanStack<'a>,
+        payload: &'a [u8],
+    ) -> Self {
+        let (pppoe, ethertype, payload) = match peel_session(payload) {
+            Some((session, inner)) => (
+                Some(session),
+                session.inner_ethertype().unwrap_or(PPPOE_SESSION_ETHERTYPE),
+                inner,
+            ),
+            None => (None, PPPOE_SESSION_ETHERTYPE, payload),
+        };
+        DataLink {
+            destination_mac,
+            source_mac,
+            vlan,
+            vlan_stack,
+            pppoe,
+            ethertype: Ethertype::from(ethertype),
+            payload,
+        }
+    }
+}
+
+impl DataLink<'_> {
+    /// Ce qui, dans la session PPPoE, identifie un flux : la session et le
+    /// protocole PPP. La longueur PPPoE change a chaque paquet, comme la
+    /// charge utile, et n'en fait pas partie.
+    fn pppoe_flow_key(&self) -> Option<(u16, u16)> {
+        self.pppoe
+            .map(|session| (session.session_id, session.ppp_protocol))
     }
 }
 
@@ -198,6 +280,7 @@ impl<'a> PartialEq for DataLink<'a> {
             && self.source_mac == other.source_mac
             && self.vlan == other.vlan
             && self.vlan_stack == other.vlan_stack
+            && self.pppoe_flow_key() == other.pppoe_flow_key()
             && self.ethertype == other.ethertype
     }
 }
@@ -210,6 +293,7 @@ impl<'a> Hash for DataLink<'a> {
         self.source_mac.hash(state);
         self.vlan.hash(state);
         self.vlan_stack.hash(state);
+        self.pppoe_flow_key().hash(state);
         self.ethertype.hash(state);
     }
 }
@@ -217,9 +301,84 @@ impl<'a> Hash for DataLink<'a> {
 #[cfg(test)]
 mod tests {
 
+    use std::hash::{DefaultHasher, Hash, Hasher};
+
     use crate::errors::data_link::DataLinkError;
     use crate::parse::data_link::DataLink;
     use crate::parse::data_link::mac_addres::MacAddress;
+
+    /// Ethernet, PPPoE session `session`, PPP `protocol` (deux octets), puis
+    /// `body` ; la longueur PPPoE couvre le protocole et `body`.
+    fn pppoe_frame(session: u16, protocol: u16, body: &[u8]) -> Vec<u8> {
+        let mut frame = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0x88, 0x64, 0x11, 0x00];
+        frame.extend(session.to_be_bytes());
+        frame.extend(u16::try_from(body.len() + 2).unwrap().to_be_bytes());
+        frame.extend(protocol.to_be_bytes());
+        frame.extend(body);
+        frame
+    }
+
+    fn hash_of(frame: &DataLink<'_>) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        frame.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// #172 : PPP IPv4 sans tag VLAN — `ethertype` et `payload` decrivent le
+    /// paquet IP, `pppoe` garde la session ; le bourrage est ecarte.
+    #[test]
+    fn test_pppoe_session_is_peeled_to_ipv4() {
+        let mut bytes = pppoe_frame(0x0f07, 0x0021, &[0x45, 0, 0, 20]);
+        bytes.extend([0; 6]);
+        let frame = DataLink::try_from(bytes.as_slice()).expect("PPPoE");
+        assert_eq!(frame.ethertype.name(), "IPv4");
+        assert_eq!(frame.payload, &[0x45, 0, 0, 20]);
+        let session = frame.pppoe.expect("session");
+        assert_eq!((session.session_id, session.length), (0x0f07, 6));
+    }
+
+    /// LCP : la session est gardee, l'EtherType reste PPPoE et la charge est
+    /// le paquet PPP ; une session mal formee n'est pas pelee.
+    #[test]
+    fn test_pppoe_control_protocol_and_malformed_session() {
+        let bytes = pppoe_frame(0x0f07, 0xc021, &[0x09, 0x01, 0x00, 0x04]);
+        let frame = DataLink::try_from(bytes.as_slice()).expect("LCP");
+        assert_eq!(frame.ethertype.0, 0x8864);
+        assert_eq!(frame.payload, &[0x09, 0x01, 0x00, 0x04]);
+        assert_eq!(frame.pppoe.map(|s| s.ppp_protocol), Some(0xc021));
+
+        let mut bytes = pppoe_frame(0x0f07, 0x0021, &[0x45]);
+        bytes[14] = 0x12;
+        let frame = DataLink::try_from(bytes.as_slice()).expect("version 2");
+        assert_eq!(frame.ethertype.0, 0x8864);
+        assert!(frame.pppoe.is_none());
+        assert_eq!(frame.payload, &bytes[14..]);
+    }
+
+    /// L'identite d'un flux PPPoE : la session et le protocole PPP, pas la
+    /// longueur, qui change a chaque paquet comme la charge utile.
+    #[test]
+    fn test_pppoe_flow_identity_ignores_the_length() {
+        let short = pppoe_frame(0x0f07, 0x0021, &[0x45, 0, 0, 20]);
+        let long = pppoe_frame(0x0f07, 0x0021, &[0x45, 0, 0, 24, 0, 0, 0, 0]);
+        let other = pppoe_frame(0x0f08, 0x0021, &[0x45, 0, 0, 20]);
+        let short = DataLink::try_from(short.as_slice()).unwrap();
+        let long = DataLink::try_from(long.as_slice()).unwrap();
+        let other = DataLink::try_from(other.as_slice()).unwrap();
+        assert_ne!(short.pppoe, long.pppoe, "longueurs differentes");
+        assert_eq!(short, long);
+        assert_eq!(hash_of(&short), hash_of(&long));
+        assert_ne!(short, other, "autre session");
+        assert_ne!(hash_of(&short), hash_of(&other));
+        // Meme EtherType (0x8864) : seul le protocole PPP separe LCP d'IPCP.
+        let lcp = pppoe_frame(0x0f07, 0xc021, &[0x09, 0x01, 0x00, 0x04]);
+        let ipcp = pppoe_frame(0x0f07, 0x8021, &[0x09, 0x01, 0x00, 0x04]);
+        let lcp = DataLink::try_from(lcp.as_slice()).unwrap();
+        let ipcp = DataLink::try_from(ipcp.as_slice()).unwrap();
+        assert_eq!(lcp.ethertype, ipcp.ethertype);
+        assert_ne!(lcp, ipcp);
+        assert_ne!(hash_of(&lcp), hash_of(&ipcp));
+    }
 
     #[test]
     fn test_datalink_try_from_valid_packet() {
