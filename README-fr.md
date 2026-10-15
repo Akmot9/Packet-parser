@@ -365,6 +365,18 @@ incluent notamment:
   les entiers, adresses IPv4, textes et Vendor-Specific) ; reconnu sur UDP
   1812/1813/1645/1646/3799 et a l'aveugle sur tout port (code connu,
   longueur egale au datagramme, attributs qui le pavent)
+- WireGuard : les quatre messages (initiation et reponse du handshake,
+  cookie, donnees) avec leurs octets reserves, index de session, compteur
+  des donnees et champs de taille fixe (cle ephemere, champs chiffres, mac1,
+  mac2), empruntes ; rien n'est dechiffre. Reconnu par Decode As a sa
+  forme ; sur UDP 51820 comme par l'heuristique de tshark (octets reserves
+  nuls pour un cookie ou des donnees) ; a l'aveugle sur tout autre port
+  seulement avec des octets reserves nuls et, pour les donnees, un compteur
+  sous 2^60 et un paquet clair complete a seize octets ou arrete a une MTU
+  d'au moins 552 octets. Les pairs bases sur boringtun, qui ne completent
+  pas, ne sont reconnus a l'aveugle que sur leurs handshakes, keepalives et
+  paquets de taille ronde ; le client officiel de Cloudflare WARP (types
+  0xC1 a 0xC4) n'est pas decode
 - DNP3 (IEEE 1815) : trames de liaison aux CRC-16/DNP verifies, en-tete et
   blocs (longueur, bits de controle et fonction, adresses), en-tete de
   transport, en-tete applicatif (controle, code de fonction, indications

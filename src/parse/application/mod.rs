@@ -17,7 +17,7 @@ use crate::{
         dnp3::Dnp3Packet, giop::GiopPacket, http::HttpRequest, modbus_tcp::ModbusTcpPacket,
         mqtt::MqttPacket, ntp::NtpPacket, opcua::OpcuaPacket,
         postgresql::is_likely_postgresql_payload, quic::QuicPacket, radius::RadiusPacket,
-        rtps::RtpsPacket, srvloc::SrvlocPacket, umas::UmasPacket,
+        rtps::RtpsPacket, srvloc::SrvlocPacket, umas::UmasPacket, wireguard::WireGuardPacket,
     },
 };
 
@@ -181,6 +181,13 @@ impl TryFrom<&[u8]> for Application {
         if QuicPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "QUIC",
+            });
+        }
+        // WireGuard : la sonde aveugle stricte (octets reserves nuls,
+        // compteur et bourrage plausibles pour les donnees, #103).
+        if WireGuardPacket::is_blind_udp_match(packet) {
+            return Ok(Application {
+                application_protocol: "WireGuard",
             });
         }
         // MQTT en dernier : son en-tête fixe (1 octet de type + longueur) est

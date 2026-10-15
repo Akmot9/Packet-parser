@@ -41,6 +41,7 @@ pub mod ssh;
 pub mod stanag5066;
 pub mod tls;
 pub mod umas;
+pub mod wireguard;
 
 /// Octet qu'une ligne d'un protocole texte (FTP, SMTP, NNTP) ne porte jamais.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

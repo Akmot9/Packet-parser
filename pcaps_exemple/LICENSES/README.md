@@ -15,19 +15,20 @@ Aucun de ces fichiers n'entre dans le paquet publié sur crates.io :
 
 | Fichier | Licence | Texte repris de | SHA-256 | Titulaires | Dossiers couverts |
 |---|---|---|---|---|---|
-| `LGPL-3.0.txt` | GNU LGPL v3 | <https://www.gnu.org/licenses/lgpl-3.0.txt> | `e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118` | nDPI, © 2011-2026 ntop.org | `umas`, `opcua`, `giop` (`corba.pcap`), `s7comm` (`s7comm_plus.pcap`), `ptp` (`ndpi_ptpv2.pcap`), `rtps` (`rtps.pcap`), `ipsec` (`ipsec_isakmp_esp.pcap`), `iec104` (`ndpi_IEC104.pcap`), `bacnet` (`ndpi_bacnet.pcap`), `ntp` (`ndpi_*`) |
+| `LGPL-3.0.txt` | GNU LGPL v3 | <https://www.gnu.org/licenses/lgpl-3.0.txt> | `e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118` | nDPI, © 2011-2026 ntop.org | `umas`, `opcua`, `giop` (`corba.pcap`), `s7comm` (`s7comm_plus.pcap`), `ptp` (`ndpi_ptpv2.pcap`), `rtps` (`rtps.pcap`), `ipsec` (`ipsec_isakmp_esp.pcap`), `iec104` (`ndpi_IEC104.pcap`), `bacnet` (`ndpi_bacnet.pcap`), `ntp` (`ndpi_*`), `wireguard` (`ndpi_*`) |
 | `GPL-3.0.txt` | GNU GPL v3 | <https://www.gnu.org/licenses/gpl-3.0.txt> | `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986` | miguelob/ICS-Hacking ; incorporée par la LGPL v3 | `profinet` (`miguelob_*.pcapng`), et les fichiers LGPL ci-dessus |
-| `GPL-2.0.txt` | GNU GPL v2 (« ou ultérieure » pour le dépôt Wireshark ; GPL sans numéro de version pour le wiki, <https://wiki.wireshark.org/License>) | <https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt> | `edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6` | Croatia Control Ltd (dépôt `asterix`) ; projet Wireshark (dépôt et wiki) | `asterix` (`cat_034_048.pcap`, `cat21_re.ast`, `cat_062_065.pcap`) ; dépôt Wireshark : `dis` (`dis_voice_sample.pcap`), `tls` (`tls12-dsb.pcapng`) ; wiki Wireshark : `openvpn`, `ptp` (`ptpv2.pcap`, `PTP_sync.pcap`), `rtps` (`RTPS_Discovery.pcapng`), `ipsec`, `dis` (`DIS_signal_and_transmitter.pcapng`), `stanag5066`, `iec104` (`wireshark_*`), et les extraits `ftp`, `smtp`, `nntp`, `mdns_llmnr_ssdp` ; `s7comm` si l'origine wiki se confirme |
+| `GPL-2.0.txt` | GNU GPL v2 (« ou ultérieure » pour le dépôt Wireshark ; GPL sans numéro de version pour le wiki, <https://wiki.wireshark.org/License>) | <https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt> | `edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6` | Croatia Control Ltd (dépôt `asterix`) ; projet Wireshark (dépôt et wiki) | `asterix` (`cat_034_048.pcap`, `cat21_re.ast`, `cat_062_065.pcap`) ; dépôt Wireshark : `dis` (`dis_voice_sample.pcap`), `tls` (`tls12-dsb.pcapng`), `wireguard` (`wireshark_*`) ; wiki Wireshark : `openvpn`, `ptp` (`ptpv2.pcap`, `PTP_sync.pcap`), `rtps` (`RTPS_Discovery.pcapng`), `ipsec`, `dis` (`DIS_signal_and_transmitter.pcapng`), `stanag5066`, `iec104` (`wireshark_*`), et les extraits `ftp`, `smtp`, `nntp`, `mdns_llmnr_ssdp` ; `s7comm` si l'origine wiki se confirme |
 | `CC-BY-4.0.txt` | Creative Commons Attribution 4.0 | <https://creativecommons.org/licenses/by/4.0/legalcode.txt> | `9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411` | ITI/ICS-Security-Tools (Information Trust Institute, University of Illinois) | `ethernet_ip`, `modbus` (`MODBUS-TestDataPart2.pcap`), `profinet` (`iti_*.pcap`), `iec104` (`iti_*.pcap`), `bacnet` (`iti_bacnet_test.pcap`) |
 | `BSD-3-Clause-CISA.txt` | BSD 3-Clause | `LICENSE.txt` de cisagov/icsnpp-profinet-io-cm | `73a28a4fb94ee6149eb201a4fa2b8cbd228252f4cfb1df912cc27795c7d016a1` | Battelle Energy Alliance, LLC (2024) | `profinet` (`cisagov_*.pcap`) |
 | `MIT-foxglove.txt` | MIT | `LICENSE` de foxglove/rtps | `da11235665c17d4c1634072dae92b8ba1b38d6fdde2ccf19a6bbede33253f58d` | Foxglove Technologies Inc | `rtps` (`talker-listener-rtps.pcapng`) |
 | `BSD-3-Clause-Zeek.txt` | BSD 3-Clause | `COPYING` de zeek/zeek (copie de `../tunnels/gtp_u/LICENSE-ZEEK.txt`, versé par #97 avant ce dossier) | `1f984adb6b5cd93d5035c2a87c2df5f38922649fbea90c7bd79ff321d17333aa` | Regents of the University of California, LBNL, ICSI | `tunnels/gtp_u`, `postgresql`, `dnp3`, `radius`, `rdp` |
 | `BSD-3-Clause-tcpdump.txt` | BSD 3-Clause | `LICENSE` de the-tcpdump-group/tcpdump (commit `57768afc`) | `8a54594d257e14a5260ac770f1633516cb51e3fc28c40136ce2697014eda7afd` | The Tcpdump Group | `ntp` (`tcpdump_ntp.pcap`) |
+| `BSD-3-Clause-Corelight.txt` | BSD 3-Clause | `LICENSE` de corelight/zeek-spicy-wireguard (commit `c235fe2a`) | `343a3f8f94200f4909a73f465a2784e09a17b3698bb9e885ac207c2ffbfd04c1` | Corelight, Inc. (2021) | `wireguard` (`corelight_tailscale_linux.pcap`) |
 
 Les textes GNU et Creative Commons sont les textes canoniques de leurs
-éditeurs, à l'URL indiquée ; ceux de la CISA, de foxglove et de tcpdump
-sont les fichiers des dépôts, parce qu'ils portent la notice ou les
-conditions que ces licences obligent à reproduire.
+éditeurs, à l'URL indiquée ; ceux de la CISA, de foxglove, de tcpdump et
+de Corelight sont les fichiers des dépôts, parce qu'ils portent la notice
+ou les conditions que ces licences obligent à reproduire.
 
 ## Ce que chaque licence impose ici
 
@@ -52,7 +53,7 @@ conditions que ces licences obligent à reproduire.
   — ICS PCAPs, developed as a community asset*
   (<https://github.com/ITI/ICS-Security-Tools>), et indiquer les
   modifications : aucune.
-- **BSD 3-Clause** (CISA, Zeek, tcpdump) et **MIT** (foxglove) : reproduire la notice
+- **BSD 3-Clause** (CISA, Zeek, tcpdump, Corelight) et **MIT** (foxglove) : reproduire la notice
   de copyright, la liste des conditions et le disclaimer, ce que le fichier
   copié fait.
 

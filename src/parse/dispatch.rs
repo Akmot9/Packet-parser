@@ -63,6 +63,7 @@ use super::application::protocols::ssh::SshPacket;
 use super::application::protocols::stanag5066::SisPdu;
 use super::application::protocols::tls::TlsPacket;
 use super::application::protocols::umas::UmasPacket;
+use super::application::protocols::wireguard::WireGuardPacket;
 use super::cotp_from_tpkt;
 use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
@@ -158,6 +159,9 @@ enum ProbeId {
     Ike,
     EspNatT,
     NatKeepalive,
+    WireGuard,
+    WireGuardBlind,
+    WireGuardPort,
 }
 
 fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
@@ -242,6 +246,11 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
             UdpEncapsulation::classify(payload),
             Ok(UdpEncapsulation::Keepalive)
         ),
+        // Sur le payload reel : un message par datagramme, de taille fixe ou,
+        // pour les donnees, jusqu'a la fin du datagramme.
+        ProbeId::WireGuard => WireGuardPacket::try_from(full_payload).is_ok(),
+        ProbeId::WireGuardPort => WireGuardPacket::is_port_udp_match(full_payload),
+        ProbeId::WireGuardBlind => WireGuardPacket::is_blind_udp_match(full_payload),
         // Garde a cout constant sur le magic, comme GIOP ; puis le payload REEL :
         // les sous-messages doivent paver tout le datagramme, et un DATA_FRAG de
         // 60 Ko depasse PROBE_CAP sans cesser d'etre du RTPS.
@@ -453,6 +462,19 @@ static RULES: &[Rule] = &[
         is_stanag5066_tcp_port,
         ProbeId::Stanag5066,
     ),
+    // WireGuard : UDP 51820, le port des exemples de `wg(8)` — aucun port
+    // IANA. Comme pour l'heuristique de tshark, la forme du message suffit
+    // a une initiation ou une reponse, octets reserves compris (Cloudflare
+    // s'en sert), et un cookie ou des donnees ont des octets reserves nuls.
+    // 51820 est un port ephemere : apres les autres regles de port, pour
+    // qu'un paquet ESP, IKE ou DNS dont le pair l'a tire au hasard garde
+    // son etiquette. Ailleurs, la sonde aveugle plus bas (#103).
+    port_rule(
+        "WireGuard",
+        Guard::Udp,
+        is_wireguard_udp_port,
+        ProbeId::WireGuardPort,
+    ),
     // NTP (RFC 5905) : UDP 123, en derniere regle de port — la place
     // qu'avait la sonde aveugle, si bien que rien ne change sur ce port :
     // le decodeur tolerant suffit quand le port confirme (#164).
@@ -525,6 +547,12 @@ static RULES: &[Rule] = &[
     rule("UMAS", Guard::Tcp, ProbeId::Umas),
     rule("ModbusTCP", Guard::Tcp, ProbeId::ModbusTcp),
     rule("QUIC", Guard::Udp, ProbeId::QuicLongHeader),
+    // WireGuard hors de 51820 : un octet de type, trois octets reserves nuls,
+    // une taille fixe ou, pour les donnees, un compteur sous 2^60 et un
+    // paquet clair complete a seize octets ou arrete a la MTU. Derniere sonde
+    // UDP : un Transport Data n'a pour lui que `04 00 00 00` et ces
+    // contraintes (#103).
+    rule("WireGuard", Guard::Udp, ProbeId::WireGuardBlind),
     // MQTT (TCP) en dernier : en-tete fixe peu discriminant.
     rule("MQTT", Guard::Tcp, ProbeId::Mqtt),
 ];
@@ -567,6 +595,9 @@ pub enum DecodeAsProtocol {
     Rdp,
     /// IEC 60870-5-104 : APDU `0x68` sur TCP.
     Iec104,
+    /// WireGuard sur UDP : la forme du message, octets reserves compris
+    /// quel que soit le type.
+    WireGuard,
 }
 
 impl DecodeAsProtocol {
@@ -607,6 +638,7 @@ impl DecodeAsProtocol {
             Self::Esp => ("ESP", Guard::Udp, ProbeId::EspNatT),
             Self::Rdp => ("RDP", Guard::Tcp, ProbeId::Rdp),
             Self::Iec104 => ("IEC 104", Guard::Tcp, ProbeId::Iec104),
+            Self::WireGuard => ("WireGuard", Guard::Udp, ProbeId::WireGuard),
         }
     }
 }
@@ -795,6 +827,12 @@ fn is_ntp_udp_port(port: Option<u16>) -> bool {
 /// QUIC (HTTP/3) : UDP 443.
 fn is_quic_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(443))
+}
+
+/// WireGuard : UDP 51820, le port des exemples de `wg(8)` et `wg-quick(8)`
+/// (aucun port IANA ; sans `ListenPort`, wg choisit un port au hasard).
+fn is_wireguard_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(51820))
 }
 
 /// DIS : UDP 3000, le port d'usage que Wireshark enregistre par defaut.
@@ -1313,6 +1351,66 @@ mod tests {
         );
     }
 
+    /// 51820 est un port ephemere (#169, revue) : un paquet ESP de 148 octets
+    /// au SPI `0x01......` a la forme d'une initiation WireGuard, une reponse
+    /// DNS de 92 octets a l'identifiant `0x02..` celle d'une reponse
+    /// WireGuard. La regle de port WireGuard vient donc apres les leurs. Et
+    /// sur 51820, un datagramme DCE/RPC (`04 00 28 00`, octets reserves non
+    /// nuls) n'est pas des donnees WireGuard, comme pour tshark.
+    #[test]
+    fn wireguard_port_rule_comes_after_the_other_udp_port_rules() {
+        let label = |source: u16, destination: u16, payload: &[u8]| {
+            let transport = Transport {
+                protocol: TransportProtocol::Udp,
+                source_port: Some(source),
+                destination_port: Some(destination),
+                payload: Some(payload),
+                details: None,
+            };
+            classify(&transport, &[]).map(|a| a.application_protocol)
+        };
+        let mut esp = vec![0x01, 0x02, 0x03, 0x04, 0, 0, 0, 1];
+        esp.extend((0..140).map(|i| (i * 7 + 3) as u8));
+        assert_eq!(esp.len(), 148);
+        assert!(WireGuardPacket::is_port_udp_match(&esp));
+        assert_eq!(label(51820, 4500, &esp), Some("ESP"));
+
+        let mut dns = vec![
+            0x02, 0xab, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0, 7, b'e', b'x', b'a', b'm', b'p', b'l',
+            b'e', 3, b'c', b'o', b'm', 0, 0x00, 0x10, 0x00, 0x01, 0xc0, 0x0c, 0x00, 0x10, 0x00,
+            0x01, 0, 0, 0, 60, 0, 51, 50,
+        ];
+        dns.extend([b'a'; 50]);
+        assert_eq!(dns.len(), 92);
+        assert!(WireGuardPacket::is_port_udp_match(&dns));
+        assert_eq!(label(53, 51820, &dns), Some("DNS"));
+
+        let mut dcerpc = vec![0x04, 0x00, 0x28, 0x00];
+        dcerpc.extend([0x10; 76]);
+        assert!(WireGuardPacket::try_from(dcerpc.as_slice()).is_ok());
+        assert_ne!(label(49153, 51820, &dcerpc), Some("WireGuard"));
+        assert_eq!(
+            classify(
+                &Transport {
+                    protocol: TransportProtocol::Udp,
+                    source_port: Some(49153),
+                    destination_port: Some(51820),
+                    payload: Some(&dcerpc),
+                    details: None,
+                },
+                &[(51820, DecodeAsProtocol::WireGuard)]
+            )
+            .map(|a| a.application_protocol),
+            Some("WireGuard"),
+            "un port declare reste tolerant"
+        );
+
+        let keepalive =
+            hex::decode("0400000006f47dab03000000000000001956e2b6651dd4f59cb23092a0d09671")
+                .unwrap();
+        assert_eq!(label(40000, 51820, &keepalive), Some("WireGuard"));
+    }
+
     /// Anti-derive (revue 10.4.0) : chaque protocole Decode-As doit se
     /// resoudre vers une etiquette et une sonde que la table connait — les
     /// deux encodages ne peuvent pas diverger silencieusement.
@@ -1346,14 +1444,25 @@ mod tests {
             DecodeAsProtocol::Esp,
             DecodeAsProtocol::Rdp,
             DecodeAsProtocol::Iec104,
+            DecodeAsProtocol::WireGuard,
         ];
+        // Decode As plus tolerant que la regle de port, a dessein : un port
+        // declare est du WireGuard, octets reserves de Cloudflare compris
+        // (le recours que l'heuristique de Wireshark indique), la ou 51820
+        // n'est qu'un port ephemere (#169). La table doit connaitre la sonde
+        // jumelle.
+        let lenient_twins = [(ProbeId::WireGuard, ProbeId::WireGuardPort)];
         for protocol in all {
             for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {
                 let (label, _, probe) = protocol.rule(transport);
+                let table_probe = lenient_twins
+                    .iter()
+                    .find(|(lenient, _)| *lenient as u32 == probe as u32)
+                    .map_or(probe, |(_, twin)| *twin);
                 assert!(
                     RULES
                         .iter()
-                        .any(|rule| rule.label == label && rule.probe as u32 == probe as u32),
+                        .any(|rule| rule.label == label && rule.probe as u32 == table_probe as u32),
                     "{label} (sonde {:?}) absent de la table",
                     probe as u32
                 );
@@ -1447,6 +1556,7 @@ mod tests {
                 "UMAS",
                 "ModbusTCP",
                 "QUIC",
+                "WireGuard",
                 "MQTT",
             ],
             "S7Comm est promu en tete (priorite sur COTP), les verbes \
