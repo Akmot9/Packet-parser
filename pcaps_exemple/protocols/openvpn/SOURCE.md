@@ -29,6 +29,7 @@
 ## Licence
 
 Les captures de la wiki Wireshark sont publiées sous la licence de la wiki
-(GNU GPL v2+, comme indiqué en pied de page de <https://wiki.wireshark.org>) ;
+(GNU GPL sans numéro de version, selon <https://wiki.wireshark.org/License> ;
+toute version publiée par la FSF peut s'appliquer, GPL v2 §9) ;
 elles sont réutilisées ici comme données de test avec citation de la source.
 Texte de la licence : [`LICENSES/GPL-2.0.txt`](../../LICENSES/GPL-2.0.txt) (#104).

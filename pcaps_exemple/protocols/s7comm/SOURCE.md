@@ -66,7 +66,8 @@ originaux et 12 rejeux parmi les 36 trames S7CommPlus.
 ## Licences
 
 - Captures aux noms du wiki Wireshark : si leur origine wiki se confirme,
-  GNU GPL v2+ (pied de page de <https://wiki.wireshark.org>), texte dans
+  GNU GPL sans numéro de version (<https://wiki.wireshark.org/License> ; toute
+  version publiée par la FSF peut s'appliquer, GPL v2 §9), texte dans
   [`LICENSES/GPL-2.0.txt`](../../LICENSES/GPL-2.0.txt) ; si ce sont des
   captures locales équivalentes, licence MIT du dépôt (#104).
 - `s7comm_plus.pcap` : LGPL-3.0, voir ci-dessus.

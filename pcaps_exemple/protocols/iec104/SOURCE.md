@@ -56,8 +56,10 @@ parité APDU par APDU, séquences comprises.
 
 ## Licences
 
-- captures du wiki Wireshark : licence du wiki (GNU GPL v2+, en pied de page
-  de <https://wiki.wireshark.org> ; texte dans `pcaps_exemple/LICENSES/GPL-2.0.txt`) ;
+- captures du wiki Wireshark : licence du wiki (GNU GPL sans numéro de
+  version, selon <https://wiki.wireshark.org/License> — toute version publiée
+  par la FSF peut s'appliquer, GPL v2 §9 ; texte dans
+  `pcaps_exemple/LICENSES/GPL-2.0.txt`) ;
 - `ndpi_IEC104.pcap` : LGPL-3.0, licence du dépôt nDPI (texte :
   `pcaps_exemple/LICENSES/LGPL-3.0.txt`) ;
 - `iti_*.pcap` : CC-BY-4.0, licence du dépôt ITI/ICS-Security-Tools
