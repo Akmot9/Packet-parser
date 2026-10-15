@@ -142,6 +142,7 @@ enum ProbeId {
     Dhcp,
     Srvloc,
     ModbusTcp,
+    ModbusTcpBlind,
     Umas,
     QuicLongHeader,
     Mqtt,
@@ -211,6 +212,7 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         ProbeId::Srvloc => SrvlocPacket::try_from(payload).is_ok(),
         ProbeId::Umas => UmasPacket::try_from(payload).is_ok(),
         ProbeId::ModbusTcp => ModbusTcpPacket::try_from(payload).is_ok(),
+        ProbeId::ModbusTcpBlind => ModbusTcpPacket::is_blind_tcp_match(payload),
         ProbeId::QuicLongHeader => QuicPacket::try_from(payload).is_ok(),
         ProbeId::Mqtt => MqttPacket::try_from(payload).is_ok(),
         // Sur le payload plafonne : un datagramme plus long que PROBE_CAP ne
@@ -462,6 +464,16 @@ static RULES: &[Rule] = &[
         is_stanag5066_tcp_port,
         ProbeId::Stanag5066,
     ),
+    // Modbus/TCP sur TCP 502 (IANA `mbap`) : l'enveloppe MBAP suffit quand le
+    // port confirme, UMAS d'abord, protocole le plus specifique ; ailleurs,
+    // la sonde aveugle stricte plus bas (#167).
+    port_rule("UMAS", Guard::Tcp, is_modbus_tcp_port, ProbeId::Umas),
+    port_rule(
+        "ModbusTCP",
+        Guard::Tcp,
+        is_modbus_tcp_port,
+        ProbeId::ModbusTcp,
+    ),
     // WireGuard : UDP 51820, le port des exemples de `wg(8)` — aucun port
     // IANA. Comme pour l'heuristique de tshark, la forme du message suffit
     // a une initiation ou une reponse, octets reserves compris (Cloudflare
@@ -545,7 +557,12 @@ static RULES: &[Rule] = &[
     // donc la sonde Modbus reconnaitrait aussi ses trames. Le protocole le
     // plus specifique gagne l'etiquette, comme S7Comm devant COTP.
     rule("UMAS", Guard::Tcp, ProbeId::Umas),
-    rule("ModbusTCP", Guard::Tcp, ProbeId::ModbusTcp),
+    // Modbus/TCP hors du port 502 : l'enveloppe MBAP (identifiant de
+    // protocole nul, longueur qui pave le segment) est aussi celle de tout
+    // message prefixe de deux octets et d'une longueur sur quatre — LDAP,
+    // DICOM, Elasticsearch ; chaque PDU doit en plus porter un code fonction
+    // courant et la taille qu'il impose (#167).
+    rule("ModbusTCP", Guard::Tcp, ProbeId::ModbusTcpBlind),
     rule("QUIC", Guard::Udp, ProbeId::QuicLongHeader),
     // WireGuard hors de 51820 : un octet de type, trois octets reserves nuls,
     // une taille fixe ou, pour les donnees, un compteur sous 2^60 et un
@@ -801,6 +818,11 @@ fn is_snmp_udp_port(port: Option<u16>) -> bool {
 
 fn is_dhcpv6_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(546 | 547))
+}
+
+/// Modbus/TCP : TCP 502 (IANA `mbap`).
+fn is_modbus_tcp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(502))
 }
 
 /// ISO-TSAP (TPKT/COTP, notamment S7comm).
@@ -1220,6 +1242,37 @@ mod tests {
             label(4501, &ESP, &[(4501, DecodeAsProtocol::Ike)]),
             Some("Unknown")
         );
+    }
+
+    /// #167 : sur TCP 502, l'enveloppe MBAP suffit, UMAS d'abord ; ailleurs,
+    /// le code fonction et la taille de la PDU doivent concorder. Requete
+    /// Read Holding Registers de Modbus.pcap (trame 1), puis la meme portant
+    /// le code 0x41, defini par l'utilisateur.
+    #[test]
+    fn modbus_is_lenient_on_port_502_and_strict_elsewhere() {
+        const READ: [u8; 12] = [0x00, 0xd1, 0, 0, 0, 6, 0x01, 0x03, 0x00, 0x01, 0x00, 0x01];
+        const USER_DEFINED: [u8; 12] = [0x00, 0xd1, 0, 0, 0, 6, 0x01, 0x41, 0x00, 0x01, 0x00, 0x01];
+        // UMAS : code 0x5A, session 0, fonction 0x02 (Read ID).
+        const UMAS: [u8; 10] = [0x00, 0x01, 0, 0, 0, 4, 0x00, 0x5a, 0x00, 0x02];
+        let label = |protocol: TransportProtocol, port: u16, payload: &'static [u8]| {
+            let transport = Transport {
+                protocol,
+                source_port: Some(40_000),
+                destination_port: Some(port),
+                payload: Some(payload),
+                details: None,
+            };
+            classify(&transport, &[]).map(|a| a.application_protocol)
+        };
+        let tcp = TransportProtocol::Tcp;
+        assert_eq!(label(tcp, 502, &READ), Some("ModbusTCP"));
+        assert_eq!(label(tcp, 40_001, &READ), Some("ModbusTCP"));
+        assert_eq!(label(tcp, 502, &USER_DEFINED), Some("ModbusTCP"));
+        assert_ne!(label(tcp, 40_001, &USER_DEFINED), Some("ModbusTCP"));
+        assert_eq!(label(tcp, 502, &UMAS), Some("UMAS"));
+        assert_eq!(label(tcp, 40_001, &UMAS), Some("UMAS"));
+        // Jamais sur UDP, port 502 compris.
+        assert_ne!(label(TransportProtocol::Udp, 502, &READ), Some("ModbusTCP"));
     }
 
     /// #164 : sur UDP 123, le decodeur NTP tolerant ; sur tout autre port,
