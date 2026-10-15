@@ -117,6 +117,7 @@ mod tests {
             (0x8892, NetworkProtocol::Profinet),
             (0x88f7, NetworkProtocol::Ptp),
             (0x88b8, NetworkProtocol::Goose),
+            (0x88cc, NetworkProtocol::Lldp),
             (0x893a, NetworkProtocol::Other(0x893a)),
             (0x0004, NetworkProtocol::Other(0x0004)),
         ] {

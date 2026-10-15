@@ -260,6 +260,13 @@ du payload ne sont pas serialises):
   configuration, mise en service, nombre d'entrees, chaque valeur de
   `allData` avec son etiquette BER et ses octets) ; reconnu aussi a
   l'aveugle quand l'EtherType est inconnu
+- LLDP (IEEE 802.1AB) directement sur Ethernet, EtherType `0x88CC`, decode
+  dans `InternetDetails::Lldp` : chaque TLV emprunte, les identifiants
+  obligatoires du chassis et du port et la duree de vie, puis la description
+  du port, le nom et la description de l'equipement, ses capacites, ses
+  adresses de gestion et les TLV d'organisation (OUI, sous-type,
+  information : PROFINET, IEEE 802.1, IEEE 802.3, LLDP-MED...) ; reconnu
+  aussi a l'aveugle quand l'EtherType est inconnu
 
 Pour IPv4 fragmente, la crate ne fait pas de reassemblage IP. Dans ce cas,
 `payload_protocol` vaut `None` pour eviter de parser une couche transport

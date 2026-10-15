@@ -9,6 +9,7 @@ pub mod arp;
 pub mod goose;
 pub mod ipv4;
 pub mod ipv6;
+pub mod lldp;
 pub mod profinet;
 /// Errors that can occur when parsing or processing internet layer protocols
 #[derive(Debug, Error)]
@@ -57,4 +58,8 @@ pub enum InternetError {
     /// Error related to GOOSE parsing on EtherType 0x88B8
     #[error("GOOSE error: {0}")]
     GooseError(#[from] goose::GooseParseError),
+
+    /// Error related to LLDP parsing on EtherType 0x88CC
+    #[error("LLDP error: {0}")]
+    LldpError(#[from] lldp::LldpParseError),
 }

@@ -7,6 +7,7 @@ pub mod arp;
 pub mod goose;
 pub mod ipv4;
 pub mod ipv6;
+pub mod lldp;
 pub mod profinet;
 
 #[derive(Debug)]
