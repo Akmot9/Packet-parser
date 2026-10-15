@@ -158,24 +158,27 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
-- **PPPoE** (#172) : la session PPPoE (EtherType `0x8864`, RFC 2516 §5) etait
-  seulement nommee ; une liaison fibre ou xDSL d'abonne porte pourtant tout
-  son trafic IP. La couche liaison pele desormais la session comme un tag
-  VLAN quand PPP porte IPv4 (`0x0021`) ou IPv6 (`0x0057`) : `ethertype` et
-  `payload` decrivent ce paquet, et `DataLink::pppoe` (`PppoeSession`,
+- **PPPoE** (#172) : la session PPPoE (EtherType `0x8864`, RFC 2516 §5)
+  etait seulement nommee ; une liaison fibre ou xDSL d'abonne porte pourtant
+  tout son trafic IP. La couche liaison pele desormais la session comme un
+  tag VLAN quand PPP porte IPv4 (`0x0021`) ou IPv6 (`0x0057`) : `ethertype`
+  et `payload` decrivent ce paquet, et `DataLink::pppoe` (`PppoeSession`,
   `#[non_exhaustive]` : session, longueur, protocole PPP,
   `ppp_protocol_name`) garde la session ; comme chez tshark, le paquet est
-  borne par la longueur PPPoE (bourrage Ethernet ecarte), puis par la fin
-  de la trame (capture tronquee), et une longueur PPPoE plus courte que le
+  borne par la longueur PPPoE (bourrage Ethernet ecarte), puis par la fin de
+  la trame (capture tronquee), et une longueur PPPoE plus courte que le
   paquet IP le tronque : la couche internet le signale corrompu, comme sur
-  six trames de `pcaps_exemple/vlan/pppoe-over-qinq.pcap` que tshark
-  signale aussi (`tests/qinq_golden.rs`). Avec un protocole de controle
+  six trames de `pcaps_exemple/vlan/pppoe-over-qinq.pcap` que tshark signale
+  aussi (`tests/qinq_golden.rs`). Un champ protocole PPP compresse sur un
+  octet (PFC, RFC 1661 §6.5) est lu comme chez tshark. L'identite d'un flux
+  (`PartialEq`, `Hash`) retient la session et le protocole PPP, pas la
+  longueur PPPoE, qui change a chaque paquet. Avec un protocole de controle
   (LCP, IPCP, IPv6CP...), l'EtherType reste `0x8864` et la charge est le
   paquet PPP ; une trame qui n'est pas une session bien formee reste sans
   couche 3, comme un EtherType inconnu. Sous VLAN comme sans. Golden
-  `tests/pppoe_golden.rs` (oracle `tools/pppoe_oracle.sh`, tshark 4.6.6) : les
-  6 795 trames de session de `The-Ultimate-PCAP.pcapng`, lue en place, ont
-  la meme session, la meme longueur, le meme protocole PPP et le meme
+  `tests/pppoe_golden.rs` (oracle `tools/pppoe_oracle.sh`, tshark 4.6.6) :
+  les 6 795 trames de session de `The-Ultimate-PCAP.pcapng`, lue en place,
+  ont la meme session, la meme longueur, le meme protocole PPP et le meme
   transport que pour tshark (RTP et SIP, DHCPv6, IPv4 dans IPv6, LCP, IPCP,
   IPv6CP), au premier fragment IPv4 pres, sans transport pour la crate. La
   session n'est pas encore serialisee : `DataLinkOwned`, structure

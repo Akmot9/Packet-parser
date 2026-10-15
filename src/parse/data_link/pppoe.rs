@@ -27,6 +27,9 @@ const PPPOE_HEADER_LEN: usize = 6;
 /// Champ protocole PPP, non compresse.
 const PPP_PROTOCOL_LEN: usize = 2;
 
+/// Champ protocole PPP compresse (PFC, RFC 1661 §6.5) : un octet.
+const PPP_COMPRESSED_PROTOCOL_LEN: usize = 1;
+
 /// Protocoles PPP qui portent un paquet IP (RFC 1332, RFC 5072).
 const PPP_IPV4: u16 = 0x0021;
 const PPP_IPV6: u16 = 0x0057;
@@ -54,7 +57,9 @@ pub struct PppoeSession {
     /// Longueur declaree de la charge PPPoE, protocole PPP compris.
     pub length: u16,
     /// Protocole PPP (RFC 1661 §2) : `0x0021` IPv4, `0x0057` IPv6, `0xC021`
-    /// LCP, `0x8021` IPCP, `0x8057` IPv6CP...
+    /// LCP, `0x8021` IPCP, `0x8057` IPv6CP... Un champ compresse sur un
+    /// octet (PFC, RFC 1661 §6.5) est rendu sur seize bits : `0x21` vaut
+    /// `0x0021`.
     pub ppp_protocol: u16,
 }
 
@@ -94,13 +99,21 @@ impl PppoeSession {
 /// signale alors corrompu. `None` si ce n'est pas une trame de donnees de
 /// session bien formee.
 pub(crate) fn peel_session(payload: &[u8]) -> Option<(PppoeSession, &[u8])> {
-    let header = payload.get(..PPPOE_HEADER_LEN + PPP_PROTOCOL_LEN)?;
+    let header = payload.get(..PPPOE_HEADER_LEN)?;
     if header[0] != PPPOE_VERSION_TYPE || header[1] != PPPOE_SESSION_DATA {
         return None;
     }
+    // L'octet de poids faible d'un protocole PPP est impair, celui de poids
+    // fort pair (RFC 1661 §2) : un premier octet impair est un champ
+    // compresse (PFC), que RFC 2516 §7 deconseille sans l'interdire.
+    let (ppp_protocol, protocol_len) = match *payload.get(PPPOE_HEADER_LEN..)? {
+        [low, ..] if low & 1 == 1 => (u16::from(low), PPP_COMPRESSED_PROTOCOL_LEN),
+        [high, low, ..] => (u16::from_be_bytes([high, low]), PPP_PROTOCOL_LEN),
+        _ => return None,
+    };
     let length = u16::from_be_bytes([header[4], header[5]]);
     let declared = usize::from(length);
-    if declared < PPP_PROTOCOL_LEN {
+    if declared < protocol_len {
         return None;
     }
     let end = payload.len().min(PPPOE_HEADER_LEN + declared);
@@ -108,9 +121,9 @@ pub(crate) fn peel_session(payload: &[u8]) -> Option<(PppoeSession, &[u8])> {
         PppoeSession {
             session_id: u16::from_be_bytes([header[2], header[3]]),
             length,
-            ppp_protocol: u16::from_be_bytes([header[6], header[7]]),
+            ppp_protocol,
         },
-        &payload[PPPOE_HEADER_LEN + PPP_PROTOCOL_LEN..end],
+        &payload[PPPOE_HEADER_LEN + protocol_len..end],
     ))
 }
 
@@ -157,6 +170,22 @@ mod tests {
         assert_eq!(inner, &[1]);
     }
 
+    /// Champ protocole compresse (PFC) : `0x21` sur un octet est IPv4, comme
+    /// le lit tshark ; un premier octet pair annonce un champ sur deux
+    /// octets.
+    #[test]
+    fn test_compressed_protocol_field() {
+        let payload = [0x11, 0x00, 0x00, 0x1e, 0x00, 0x05, 0x21, 1, 2, 3, 4, 0];
+        let (session, inner) = peel_session(&payload).expect("PFC");
+        assert_eq!(session.ppp_protocol, 0x0021);
+        assert_eq!(session.inner_ethertype(), Some(0x0800));
+        assert_eq!(inner, &[1, 2, 3, 4]);
+        let payload = [0x11, 0x00, 0x00, 0x1e, 0x00, 0x01, 0x57];
+        let (session, inner) = peel_session(&payload).expect("PFC, IPv6 vide");
+        assert_eq!(session.ppp_protocol_name(), Some("IPv6"));
+        assert!(inner.is_empty());
+    }
+
     #[test]
     fn test_malformed_sessions() {
         // Version ou type autre que 1, code de decouverte, longueur qui ne
@@ -168,6 +197,9 @@ mod tests {
         ] {
             assert!(peel_session(&payload).is_none(), "{payload:02x?}");
         }
+        // En-tete PPPoE ou champ protocole incomplet.
         assert!(peel_session(&[0x11, 0x00, 0, 1, 0, 2, 0x00]).is_none());
+        assert!(peel_session(&[0x11, 0x00, 0, 1, 0, 2]).is_none());
+        assert!(peel_session(&[0x11, 0x00, 0, 1, 0]).is_none());
     }
 }
