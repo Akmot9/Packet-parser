@@ -370,8 +370,8 @@ fn application_classification_histogram_is_frozen() {
     // datagrammes OpenVPN obfusques, 32 segments d'OpenVPN sur TCP 995 et 3
     // segments TLS sur 8443 ; 3 segments TLS de ProtonVPN ; chez TunnelBear,
     // ses 2 handshakes etendus et 26 segments TLS ; les 8 datagrammes de
-    // League of Legends ; tshark, sans reassemblage, lit un record TLS dans
-    // 18 de ces trames).
+    // League of Legends ; dans 18 de ces trames TCP, tshark termine un record
+    // TLS qu'il a reassemble — sans reassemblage, dans aucune).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 6307),
