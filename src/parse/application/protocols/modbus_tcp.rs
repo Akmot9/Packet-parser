@@ -71,15 +71,17 @@ impl ModbusTcpPacket<'_> {
     /// gardent tolerant : un identifiant de protocole nul et une longueur qui
     /// pave le segment ne suffisent pas — tout protocole qui prefixe ses
     /// messages de deux octets puis d'une longueur sur quatre en a la forme,
-    /// et 104 segments LDAP, DICOM et Elasticsearch des corpus passaient pour
-    /// du Modbus. Chaque PDU doit porter un code fonction public d'usage
-    /// courant et la taille qu'il impose, en requete ou en reponse.
+    /// et 97 segments LDAP, DICOM, Elasticsearch et d'un jeu des corpus
+    /// passaient pour du Modbus. Chaque PDU doit porter un code fonction
+    /// public d'usage courant et la taille qu'il impose, en requete ou en
+    /// reponse ; et deux en-tetes qui restent des PDU Modbus valides sont
+    /// ecartes ([`MBAP::is_known_lookalike`]).
     pub(crate) fn is_blind_tcp_match(payload: &[u8]) -> bool {
         ModbusTcpPacket::try_from(payload).is_ok_and(|packet| {
-            packet
-                .mbaps
-                .iter()
-                .all(|mbap| is_plausible_pdu(mbap.pdu.function_code, mbap.pdu.pdu_data))
+            packet.mbaps.iter().all(|mbap| {
+                !mbap.is_known_lookalike()
+                    && is_plausible_pdu(mbap.pdu.function_code, mbap.pdu.pdu_data)
+            })
         })
     }
 }
@@ -99,6 +101,31 @@ pub struct MBAP<'a> {
 pub struct Modbus<'a> {
     pub function_code: u8,
     pub pdu_data: &'a [u8],
+}
+
+impl MBAP<'_> {
+    /// Deux en-tetes qui, octet pour octet, font des PDU Modbus valides :
+    ///
+    /// - un LDAPMessage d'Active Directory, `30 84 00 00 LL LL 02 n` —
+    ///   SEQUENCE a longueur sur quatre octets, puis l'INTEGER du messageID
+    ///   lu comme unite 2 et code fonction n (1 a 4) ; un unbindRequest(2)
+    ///   ou un abandonRequest y est une lecture de bobines (trame 3627 de
+    ///   `NEWYORK.cap`, jeux de donnees OTRF) ;
+    /// - un A-ASSOCIATE-RJ de DICOM, `03 00 00 00 00 04 00 r s c` — le
+    ///   type 3 et sa longueur de quatre octets, puis le resultat lu comme
+    ///   code fonction et la source comme nombre d'octets.
+    ///
+    /// Un vrai Modbus hors du port 502 n'y perd que la transaction 0x3084
+    /// d'une unite 2, et, a la transaction 0x0300, une reponse de lecture
+    /// d'un octet de l'unite 0.
+    fn is_known_lookalike(&self) -> bool {
+        let ldap = self.transaction_identifier == 0x3084
+            && self.unit_identifier == 0x02
+            && (1..=4).contains(&self.pdu.function_code);
+        let dicom_reject =
+            self.transaction_identifier == 0x0300 && self.length == 4 && self.unit_identifier == 0;
+        ldap || dicom_reject
+    }
 }
 
 impl<'a> TryFrom<&'a [u8]> for MBAP<'a> {
@@ -268,6 +295,40 @@ mod tests {
     /// pcaps_exemple/protocols/modbus/Modbus.pcap, trames 1 et 2.
     const READ_HOLDING_REGISTERS: &str = "00d100000006010300010001";
     const READ_HOLDING_REGISTERS_RESPONSE: &str = "00d1000000050103020000";
+
+    /// Des en-tetes qui restent des PDU Modbus valides (revue de #171) :
+    /// l'unbindRequest(2) d'Active Directory de la trame 3627 de
+    /// `NEWYORK.cap` (OTRF Security-Datasets, apt29), un abandonRequest de
+    /// la meme forme (lu comme une lecture de 382 bobines), et un
+    /// A-ASSOCIATE-RJ de DICOM dont la source est l'utilisateur.
+    const AD_UNBIND_REQUEST: &str = "3084000000050201024200";
+    const AD_ABANDON_REQUEST: &str = "30840000000602010350017e";
+    const DICOM_ASSOCIATE_REJECT: &str = "03000000000400010103";
+
+    #[test]
+    fn test_blind_probe_refuses_valid_looking_ldap_and_dicom() {
+        for hex_payload in [
+            AD_UNBIND_REQUEST,
+            AD_ABANDON_REQUEST,
+            DICOM_ASSOCIATE_REJECT,
+        ] {
+            let payload = hex::decode(hex_payload).unwrap();
+            let packet = ModbusTcpPacket::try_from(payload.as_slice()).expect("forme MBAP");
+            let mbap = &packet.mbaps[0];
+            assert!(
+                is_plausible_pdu(mbap.pdu.function_code, mbap.pdu.pdu_data),
+                "{hex_payload} : une PDU Modbus valide"
+            );
+            assert!(
+                !ModbusTcpPacket::is_blind_tcp_match(&payload),
+                "{hex_payload}"
+            );
+        }
+        // Une unite ou un code fonction de plus, et ce ne sont plus ces
+        // en-tetes : la sonde juge la PDU seule.
+        let payload = hex::decode("3084000000050301020000").unwrap();
+        assert!(ModbusTcpPacket::is_blind_tcp_match(&payload));
+    }
 
     #[test]
     fn test_blind_probe_keeps_modbus_and_refuses_lookalikes() {

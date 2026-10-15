@@ -21,22 +21,30 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   sur tout segment TCP, et l'enveloppe MBAP — identifiant de protocole nul,
   longueur qui pave le segment, un code fonction quelconque — est aussi
   celle de tout message prefixe de deux octets et d'une longueur sur
-  quatre. Hors du port 502, 104 segments des corpus sortaient ModbusTCP :
+  quatre. Hors du port 502, 97 segments des corpus sortaient ModbusTCP :
   le LDAP d'Active Directory (`30 84 00 00 ..`, 57 segments de
-  `The-Ultimate-PCAP.pcapng` et 14 de nDPI), DICOM, le transport
-  d'Elasticsearch, un jeu. Le decodeur tolerant ne s'applique plus qu'au
-  port TCP 502 (IANA `mbap`) et a `DecodeAsProtocol::ModbusTcp`, par des
-  regles de port — UMAS d'abord ; ailleurs, et dans `Application::try_from`,
-  chaque PDU doit porter un code fonction public d'usage courant (1 a 6,
-  15, 16, 22, 23, 43 et leurs reponses d'exception) et la taille qu'il
-  impose, quantites dans les bornes de la specification. Les 522 etiquettes
+  `The-Ultimate-PCAP.pcapng` et 7 de `kerberos.pcap` de nDPI), DICOM, le
+  transport d'Elasticsearch, un jeu. Le decodeur tolerant ne s'applique
+  plus qu'au port TCP 502 (IANA `mbap`), par des regles de port — UMAS
+  d'abord —, et a un port declare par `DecodeAsProtocol::ModbusTcp`, qui
+  etiquette ModbusTCP tout ce qu'il porte, UMAS compris, comme Decode As le
+  fait de tout protocole. Ailleurs, et dans `Application::try_from`, chaque
+  PDU doit porter un code fonction public d'usage courant (1 a 6, 15, 16,
+  22, 23, 43 et leurs reponses d'exception) et la taille qu'il impose :
+  quantites et nombres d'octets dans les bornes de la specification, et,
+  pour la fonction 43, une Read Device Identification dont les objets
+  pavent la PDU (MEI 14 ; CANopen, MEI 13, n'a pas de taille definie). Deux
+  en-tetes qui restent des PDU valides sont en outre ecartes : le
+  LDAPMessage d'Active Directory dont l'INTEGER du messageID se lit unite 2
+  et code 1 a 4 (l'unbindRequest(2) de `NEWYORK.cap`, jeux de donnees
+  OTRF), et l'A-ASSOCIATE-RJ de DICOM. Les 522 etiquettes
   du port 502 sont inchangees ; hors de ce port, plus aucune. Golden
   `tests/modbus_golden.rs` (oracle `tools/modbus_oracle.sh`, tshark 4.6.6) :
   parite sur les 601 segments Modbus/TCP de `protocols/modbus/`,
   `protocols/umas/` et de l'Ultimate PCAP, lue en place ; les 57 segments
   LDAP ne sont plus Modbus ; deplaces hors du port 502, 358 segments reels
   restent reconnus, les 243 autres etant les sondes d'un scanner qui essaie
-  presque tous les codes fonction.
+  les 128 codes de requete (0x00 a 0x7F) et leurs reponses d'exception.
 - **NTP** (#164) : la sonde aveugle essayait le decodeur NTP sur tout
   datagramme UDP, et l'en-tete ne suffit pas : l'ancien decodeur laissait
   passer un datagramme aleatoire sur 250 environ. Sur les 654 captures de

@@ -143,6 +143,51 @@ fn is_exception_code(code: u8) -> bool {
     matches!(code, 1..=6 | 8 | 10 | 11)
 }
 
+/// Une reponse de lecture : un nombre d'octets, puis les valeurs. Au plus
+/// 250 octets : 2 000 bits (250 octets) pour les fonctions 1 et 2, 125
+/// registres (250 octets, un nombre pair) pour 3, 4 et 23 (§6.1 a §6.4,
+/// §6.17).
+fn is_read_response(data: &[u8], even: bool) -> bool {
+    data.first().is_some_and(|&count| {
+        (1..=250).contains(&count)
+            && (!even || count % 2 == 0)
+            && data.len() == 1 + usize::from(count)
+    })
+}
+
+/// Read Device Identification (fonction 43, MEI 14, §6.21) : la requete
+/// porte un code de lecture (1 a 4) et un identifiant d'objet ; la reponse,
+/// le code, un niveau de conformite (1 a 3, ou 0x81 a 0x83), « suite »
+/// (`0x00` ou `0xFF`), l'objet suivant, le nombre d'objets, puis les objets
+/// (identifiant, longueur, valeur) qui pavent exactement la fin de la PDU.
+fn is_read_device_identification(data: &[u8]) -> bool {
+    match *data {
+        [0x0E, 1..=4, _] => true,
+        [
+            0x0E,
+            1..=4,
+            0x01..=0x03 | 0x81..=0x83,
+            0x00 | 0xFF,
+            _,
+            count,
+            ref objects @ ..,
+        ] => {
+            let mut rest = objects;
+            for _ in 0..count {
+                let [_, length, ref tail @ ..] = *rest else {
+                    return false;
+                };
+                let Some(after) = tail.get(usize::from(length)..) else {
+                    return false;
+                };
+                rest = after;
+            }
+            rest.is_empty()
+        }
+        _ => false,
+    }
+}
+
 /// La PDU d'un vrai message Modbus/TCP, pour la sonde aveugle (#167) : un
 /// code fonction public d'usage courant et des donnees de la taille qu'il
 /// impose, en requete ou en reponse. Sans cela, tout protocole qui prefixe
@@ -155,12 +200,7 @@ fn is_exception_code(code: u8) -> bool {
 /// sont refuses : sur le port 502, le decodeur tolerant les accepte.
 pub fn is_plausible_pdu(function_code: u8, data: &[u8]) -> bool {
     let len = data.len();
-    // Une reponse de lecture : un nombre d'octets, puis les valeurs.
-    let read_response = |even: bool| {
-        data.first().is_some_and(|&count| {
-            count > 0 && (!even || count % 2 == 0) && len == 1 + usize::from(count)
-        })
-    };
+    let read_response = |even: bool| is_read_response(data, even);
     match function_code {
         // Read Coils, Read Discrete Inputs : adresse et quantite (1 a 2 000).
         0x01 | 0x02 => (len == 4 && quantity_in(data, 2, 2000)) || read_response(false),
@@ -205,9 +245,10 @@ pub fn is_plausible_pdu(function_code: u8, data: &[u8]) -> bool {
                 }))
                 || read_response(true)
         }
-        // Encapsulated Interface Transport : CANopen (13) ou Read Device
-        // Identification (14).
-        0x2B => data.first().is_some_and(|&mei| matches!(mei, 0x0D | 0x0E)),
+        // Encapsulated Interface Transport : Read Device Identification (MEI
+        // 14) seulement — la specification ne dit pas la taille d'une PDU
+        // CANopen (MEI 13), refusee ici, acceptee sur le port 502.
+        0x2B => is_read_device_identification(data),
         // Reponse d'exception a l'un des codes ci-dessus : le code fonction
         // plus 0x80, puis un code d'exception.
         0x81..=0x86 | 0x8F | 0x90 | 0x96 | 0x97 | 0xAB => len == 1 && is_exception_code(data[0]),
@@ -333,6 +374,21 @@ mod tests {
             ]
         ));
         assert!(is_plausible_pdu(0x2b, &[0x0e, 0x01, 0x00]));
+        // Read Device Identification, reponse : un objet « VendorName » de
+        // deux octets, puis une reponse sans objet.
+        assert!(is_plausible_pdu(
+            0x2b,
+            &[0x0e, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x02, b'a', b'b']
+        ));
+        assert!(is_plausible_pdu(
+            0x2b,
+            &[0x0e, 0x04, 0x83, 0xff, 0x05, 0x00]
+        ));
+        // Les plus longues reponses de lecture : 250 octets.
+        let mut bits = vec![250u8];
+        bits.extend([0x55; 250]);
+        assert!(is_plausible_pdu(0x01, &bits));
+        assert!(is_plausible_pdu(0x03, &bits));
         assert!(is_plausible_pdu(0x83, &[0x02]));
         assert!(is_plausible_pdu(0x81, &[0x0b]));
     }
@@ -359,6 +415,26 @@ mod tests {
             0x0f,
             &[0x00, 0x13, 0x00, 0x0a, 0x01, 0xcd]
         ));
+        // Au-dela de 2 000 bits ou de 125 registres (250 octets).
+        let mut bits = vec![251u8];
+        bits.extend([0x55; 251]);
+        assert!(!is_plausible_pdu(0x01, &bits));
+        let mut registers = vec![252u8];
+        registers.extend([0x55; 252]);
+        assert!(!is_plausible_pdu(0x03, &registers));
+        // Fonction 43 : MEI seul, code de lecture hors de 1 a 4, objets qui
+        // ne pavent pas la PDU, MEI 13 (CANopen, taille non definie).
+        assert!(!is_plausible_pdu(0x2b, &[0x0e]));
+        assert!(!is_plausible_pdu(0x2b, &[0x0e, 0x05, 0x00]));
+        assert!(!is_plausible_pdu(
+            0x2b,
+            &[0x0e, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x03, b'a', b'b']
+        ));
+        assert!(!is_plausible_pdu(
+            0x2b,
+            &[0x0e, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00]
+        ));
+        assert!(!is_plausible_pdu(0x2b, &[0x0d, 0x00, 0x01, 0x02]));
         // Exception : un octet, un code de la specification.
         assert!(!is_plausible_pdu(0x83, &[0x07]));
         assert!(!is_plausible_pdu(0x83, &[0x02, 0x00]));

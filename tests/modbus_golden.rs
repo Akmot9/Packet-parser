@@ -193,8 +193,8 @@ fn ldap_segments_are_not_modbus() {
 /// Les 601 segments Modbus/TCP reels, deplaces hors du port 502 (TCP 40000
 /// -> 40001) : la sonde aveugle reconnait tous ceux dont le code fonction
 /// est d'usage courant ; les autres sont les sondes d'un scanner qui essaie
-/// les 256 codes fonction (`MODBUS-TestDataPart2.pcap`) et leurs reponses
-/// d'exception, que seul le port 502 fait reconnaitre.
+/// les 128 codes de requete, 0x00 a 0x7F (`MODBUS-TestDataPart2.pcap`), et
+/// leurs reponses d'exception, que seul le port 502 fait reconnaitre.
 #[test]
 fn real_segments_off_port() {
     let base = Path::new(env!("CARGO_MANIFEST_DIR"));

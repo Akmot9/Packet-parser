@@ -311,8 +311,11 @@ incluent notamment:
 - SSH (chaine d'identification seulement : tout ce qui suit l'echange de
   versions est chiffre, donc un parseur stateless etiquette les trames de
   banniere et rien d'autre)
-- Modbus TCP sur TCP 502 ; sur un autre port, seulement si chaque PDU porte
-  un code fonction public d'usage courant et la taille qu'il impose
+- Modbus TCP sur TCP 502 ou un port declare par Decode As ; sur un autre
+  port, seulement si chaque PDU porte un code fonction public d'usage
+  courant et la taille qu'il impose (une Read Device Identification bornee
+  pour la fonction 43), hors LDAP d'Active Directory et rejets
+  d'association DICOM
 - UMAS (Schneider Electric)
 - EtherNet/IP
 - OPC UA
