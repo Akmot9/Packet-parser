@@ -13,15 +13,18 @@
 //! champs chiffres, mac1 et mac2), empruntes au datagramme. Rien n'est
 //! dechiffre : sans les cles, le paquet transporte reste opaque.
 //!
-//! WireGuard n'a pas de port IANA ; 51820 est celui de `wg-quick`, et l'on en
-//! voit bien d'autres (Tailscale 41641, ProtonVPN 443, Mullvad 5060). Sur
-//! 51820 ou un port declare par Decode As, la forme suffit ; ailleurs, la
-//! sonde aveugle exige en plus des octets reserves nuls (Linux lit
-//! l'en-tete comme un entier de quatre octets) et, pour les donnees, un
-//! compteur sous `REKEY_AFTER_MESSAGES` et un paquet clair complete a seize
-//! octets ou arrete a la MTU : sans ces deux gardes, un datagramme Zoom ou
-//! TeamViewer qui commence par `04 00 00 00` passait pour du WireGuard, comme
-//! il passe pour tshark.
+//! WireGuard n'a pas de port IANA. 51820 est celui des exemples de `wg(8)`
+//! et `wg-quick(8)` — sans `ListenPort`, le port est choisi au hasard —, et
+//! l'on en voit bien d'autres (Tailscale 41641, ProtonVPN 443, Mullvad
+//! 5060). Sur un port declare par Decode As, la forme suffit. Sur 51820,
+//! qui tombe dans les plages de ports ephemeres, un cookie et des donnees
+//! doivent en plus avoir des octets reserves nuls, comme pour l'heuristique
+//! de tshark. Ailleurs, la sonde aveugle exige des octets reserves nuls pour
+//! tout message (Linux lit l'en-tete comme un entier de quatre octets) et,
+//! pour les donnees, un compteur sous `REKEY_AFTER_MESSAGES` et un paquet
+//! clair complete a seize octets ou arrete a la MTU : sans ces deux gardes,
+//! un datagramme Zoom ou TeamViewer qui commence par `04 00 00 00` passait
+//! pour du WireGuard, comme il passe pour tshark.
 
 use std::convert::TryFrom;
 
@@ -176,22 +179,45 @@ pub enum WireGuardMessage<'a> {
 pub struct WireGuardPacket<'a> {
     /// 1 a 4.
     pub message_type: u8,
-    /// Nuls chez Linux et wireguard-go ; Cloudflare WARP s'en sert.
+    /// Nuls dans le protocole ; Cloudflare s'en sert pour repartir la
+    /// charge (commentaire de l'heuristique de Wireshark). Le client WARP
+    /// officiel change en outre l'octet de type (`0xC1` a `0xC4`,
+    /// `cloudflare-warp.pcap` du corpus de nDPI) : il n'est pas decode.
     pub reserved: [u8; 3],
     pub message: WireGuardMessage<'a>,
 }
 
 impl WireGuardPacket<'_> {
+    /// Regle du port UDP 51820 : la forme du message, et des octets reserves
+    /// nuls pour un cookie et des donnees, comme l'heuristique de tshark —
+    /// 51820 est un port ephemere comme un autre, et un datagramme DCE/RPC
+    /// (`04 00 28 00`...) ou une reponse DNS d'identifiant `0x04..` y
+    /// passeraient sinon pour du WireGuard.
+    pub(crate) fn is_port_udp_match(payload: &[u8]) -> bool {
+        WireGuardPacket::try_from(payload).is_ok_and(|packet| {
+            packet.reserved == [0; 3]
+                || matches!(
+                    packet.message,
+                    WireGuardMessage::HandshakeInitiation(_)
+                        | WireGuardMessage::HandshakeResponse(_)
+                )
+        })
+    }
+
     /// Sonde WireGuard aveugle, hors du port 51820 et des ports declares.
     ///
     /// Plus stricte que [`TryFrom::try_from`] : le type n'est qu'un octet,
     /// et un Transport Data n'a que `04 00 00 00` et sa taille minimale pour
     /// lui. Les octets reserves doivent etre nuls, et un Transport Data
     /// porter un compteur sous 2^60 et un paquet clair complete a seize
-    /// octets — ou arrete a une MTU d'au moins 576 octets. Sur le corpus de
+    /// octets — ou arrete a une MTU d'au moins 552 octets. Sur le corpus de
     /// tests de nDPI, 59 datagrammes Zoom, TeamViewer et League of Legends
     /// que tshark prend pour du WireGuard echouent ainsi, et aucun des 128
     /// vrais messages du corpus de `pcaps_exemple/protocols/wireguard/`.
+    /// boringtun et ses derives ne completent pas leurs donnees : hors de
+    /// 51820, seuls leurs handshakes et keepalives, et les paquets dont la
+    /// taille tombe juste, sont reconnus (voir
+    /// [`is_padded_transport_length`]).
     pub(crate) fn is_blind_udp_match(payload: &[u8]) -> bool {
         WireGuardPacket::try_from(payload).is_ok_and(|packet| {
             packet.reserved == [0; 3]
@@ -409,14 +435,52 @@ mod tests {
         assert!(WireGuardPacket::try_from(&decode(PING_KEEPALIVE)[..31]).is_err());
     }
 
-    /// Synthetique : des octets reserves non nuls (Cloudflare WARP) se
-    /// decodent, mais ne passent pas la sonde aveugle.
+    /// Synthetique : des octets reserves non nuls (ceux de Cloudflare, sur
+    /// les types standard) se decodent ; sur 51820, ils passent pour une
+    /// initiation ou une reponse, pas pour un cookie ou des donnees, comme
+    /// pour tshark ; la sonde aveugle les refuse tous.
     #[test]
     fn test_reserved_bytes_are_kept_but_refused_blind() {
         let mut payload = decode(PING_KEEPALIVE);
         payload[1..4].copy_from_slice(&[0x02, 0x78, 0x00]);
         let packet = WireGuardPacket::try_from(payload.as_slice()).expect("keepalive");
         assert_eq!(packet.reserved, [0x02, 0x78, 0x00]);
+        assert!(!WireGuardPacket::is_port_udp_match(&payload));
+        assert!(!WireGuardPacket::is_blind_udp_match(&payload));
+
+        let mut payload = decode(PING_INITIATION);
+        payload[1..4].copy_from_slice(&[0x02, 0x78, 0x00]);
+        assert!(WireGuardPacket::is_port_udp_match(&payload));
+        assert!(!WireGuardPacket::is_blind_udp_match(&payload));
+        assert!(WireGuardPacket::is_port_udp_match(&decode(PING_KEEPALIVE)));
+    }
+
+    /// Le client WARP officiel : types `0xC1` a `0xC4`, octets reserves
+    /// `02 78 00` (`cloudflare-warp.pcap` de nDPI, trames 64 a 78) — pas du
+    /// WireGuard que la crate decode, meme par Decode As.
+    #[test]
+    fn test_official_warp_client_types_are_not_decoded() {
+        for message_type in [0xc1u8, 0xc2, 0xc4] {
+            let mut payload = decode(PING_KEEPALIVE);
+            payload[0] = message_type;
+            payload[1..4].copy_from_slice(&[0x02, 0x78, 0x00]);
+            assert_eq!(
+                WireGuardPacket::try_from(payload.as_slice()),
+                Err(WireGuardParseError::UnknownMessageType(message_type))
+            );
+        }
+    }
+
+    /// Synthetique, au format de boringtun : un Transport Data dont le
+    /// paquet clair (un ping de 84 octets) n'est pas complete a seize
+    /// octets. Il se decode, passe sur 51820, mais pas a l'aveugle.
+    #[test]
+    fn test_unpadded_boringtun_data_is_only_recognised_on_its_port() {
+        let mut payload = decode(PING_KEEPALIVE)[..16].to_vec();
+        payload.extend(std::iter::repeat_n(0xa5, 84 + 16));
+        assert_eq!(payload.len(), 116);
+        assert!(WireGuardPacket::try_from(payload.as_slice()).is_ok());
+        assert!(WireGuardPacket::is_port_udp_match(&payload));
         assert!(!WireGuardPacket::is_blind_udp_match(&payload));
     }
 

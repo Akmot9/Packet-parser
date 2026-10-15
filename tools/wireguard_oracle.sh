@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Regenere l'oracle tshark de tests/wireguard_golden.rs.
 #
-# Une ligne par message WireGuard que tshark reconnait (heuristique `wg`,
-# seule voie de detection : tshark n'enregistre WireGuard sur aucun port)
+# Une ligne par message WireGuard que tshark reconnait : heuristique `wg`,
+# puis la conversation qu'elle epingle apres une Handshake Initiation, ou
+# tshark accepte aussi des octets reserves non nuls (tshark n'enregistre
+# WireGuard sur aucun port)
 # dans les captures passees en argument, par defaut tout
 # pcaps_exemple/protocols/wireguard/ — dont les datagrammes Zoom et League of
 # Legends que l'heuristique prend a tort pour du WireGuard, nommes comme

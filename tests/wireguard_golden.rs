@@ -12,7 +12,8 @@
 //! captures sans WireGuard dont tshark prend des datagrammes pour du
 //! WireGuard (Zoom, League of Legends).
 //!
-//! L'oracle est tshark 4.6.6 (`tools/wireguard_oracle.sh`, heuristique `wg`) :
+//! L'oracle est tshark 4.6.6 (`tools/wireguard_oracle.sh`, heuristique `wg`
+//! et conversations qu'elle epingle) :
 //! pour chaque message, ports, longueur, type, octets reserves, index,
 //! compteur, cle ephemere, mac1, mac2, nonce, cookie et keepalive, figes dans
 //! `tests/data/wireguard_tshark_oracle.tsv` et compares ici message par
@@ -22,8 +23,9 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
 use packet_parser::{
-    DecodeAsProtocol, PacketFlow, ParseConfig, parse,
+    DecodeAsProtocol, LinkType, PacketFlow, ParseConfig, parse,
     parse::application::protocols::wireguard::{WireGuardMessage, WireGuardPacket},
+    parse::internet::InternetDetails,
     parse_with,
 };
 
@@ -313,15 +315,18 @@ fn wireguard_neighbours_are_not_wireguard() {
 }
 
 /// Les 128 messages deplaces hors de leur port (UDP 40000 -> 40001) : la
-/// sonde aveugle les reconnait tous. Altere de trois octets reserves non
-/// nuls, comme le fait Cloudflare WARP, un message n'est plus reconnu a
-/// l'aveugle, mais l'est sur 51820 et sur un port declare par Decode As.
+/// sonde aveugle les reconnait tous. Alteres de trois octets reserves non
+/// nuls, comme ceux dont Cloudflare se sert, ils ne sont plus reconnus a
+/// l'aveugle ; sur 51820, seuls les handshakes le restent, comme pour
+/// l'heuristique de tshark ; un port declare par Decode As les reconnait
+/// tous.
 #[test]
 fn blind_probe_port_51820_and_decode_as() {
     let base = Path::new(env!("CARGO_MANIFEST_DIR"));
     let oracle = read_oracle(&base.join(ORACLE));
     let config = ParseConfig::new().decode_as(40_001, DecodeAsProtocol::WireGuard);
     let mut replayed = 0;
+    let mut handshakes_on_51820 = 0;
     for (name, rows) in &oracle {
         if TSHARK_MISFIRES.iter().any(|(file, _)| file == name) {
             continue;
@@ -357,12 +362,103 @@ fn blind_probe_port_51820_and_decode_as() {
             let mut on_51820 = warp.clone();
             on_51820[start - 8..start - 4].copy_from_slice(&[0x9c, 0x40, 0xca, 0x6c]);
             let flow = parse(*link_type, &on_51820).expect("trame alteree");
-            assert!(
+            let handshake = matches!(warp[start], 1 | 2);
+            assert_eq!(
                 wireguard_level(&flow).is_some(),
+                handshake,
                 "{name}:{number} sur 51820"
             );
+            handshakes_on_51820 += usize::from(handshake);
             replayed += 1;
         }
     }
     assert_eq!(replayed, 128);
+    // Six initiations et six reponses : quatre messages dans chacune des
+    // deux captures du depot Wireshark, deux chez NordVPN et chez ProtonVPN.
+    assert_eq!(handshakes_on_51820, 12);
+}
+
+/// Raw IPv6 (`LINKTYPE_IPV6`) : `2001:db8::1` -> `2001:db8::2`, UDP de
+/// `source` vers `destination`, somme de controle juste (RFC 8200 §8.1).
+fn ipv6_udp_frame(source: u16, destination: u16, payload: &[u8]) -> Vec<u8> {
+    let udp_length = u16::try_from(8 + payload.len()).expect("datagramme court");
+    let mut source_address = [0u8; 16];
+    source_address[..4].copy_from_slice(&[0x20, 0x01, 0x0d, 0xb8]);
+    let mut destination_address = source_address;
+    source_address[15] = 1;
+    destination_address[15] = 2;
+    let mut udp = Vec::new();
+    udp.extend(source.to_be_bytes());
+    udp.extend(destination.to_be_bytes());
+    udp.extend(udp_length.to_be_bytes());
+    udp.extend([0, 0]);
+    udp.extend(payload);
+    let mut pseudo = Vec::new();
+    pseudo.extend(source_address);
+    pseudo.extend(destination_address);
+    pseudo.extend(u32::from(udp_length).to_be_bytes());
+    pseudo.extend([0, 0, 0, 17]);
+    pseudo.extend(&udp);
+    if !pseudo.len().is_multiple_of(2) {
+        pseudo.push(0);
+    }
+    let mut sum: u32 = pseudo
+        .chunks(2)
+        .map(|word| u32::from(u16::from_be_bytes([word[0], word[1]])))
+        .sum();
+    while sum > 0xffff {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+    let checksum = !u16::try_from(sum).expect("somme repliee");
+    udp[6..8].copy_from_slice(&checksum.max(1).to_be_bytes());
+    let mut frame = vec![0x60, 0, 0, 0];
+    frame.extend(udp_length.to_be_bytes());
+    frame.extend([17, 64]);
+    frame.extend(source_address);
+    frame.extend(destination_address);
+    frame.extend(udp);
+    frame
+}
+
+/// Aucune capture reelle ne porte de WireGuard sur IPv6 : le keepalive reel
+/// de `wireshark_wireguard-ping-tcp.pcap` (trame 9), dans une trame IPv6
+/// brute, suit les memes regles qu'en IPv4 — reconnu sur 51820, a l'aveugle
+/// et sur un port declare ; ses octets reserves alteres, refuse a l'aveugle
+/// et sur 51820, reconnu sur un port declare.
+#[test]
+fn wireguard_over_ipv6_follows_the_same_rules() {
+    let keepalive: Vec<u8> = (0..64)
+        .step_by(2)
+        .map(|i| {
+            u8::from_str_radix(
+                &"0400000006f47dab03000000000000001956e2b6651dd4f59cb23092a0d09671"[i..i + 2],
+                16,
+            )
+            .expect("hex")
+        })
+        .collect();
+    let mut altered = keepalive.clone();
+    altered[1..4].copy_from_slice(&[0x02, 0x78, 0x00]);
+    let config = ParseConfig::new().decode_as(40_001, DecodeAsProtocol::WireGuard);
+    let recognised = |payload: &[u8], destination: u16, config: &ParseConfig| {
+        let frame = ipv6_udp_frame(40_000, destination, payload);
+        let flow = parse_with(LinkType::IPV6, &frame, config).expect("trame IPv6");
+        assert!(matches!(
+            flow.internet
+                .as_ref()
+                .and_then(|internet| internet.details.as_ref()),
+            Some(InternetDetails::Ipv6(_))
+        ));
+        wireguard_level(&flow).is_some()
+    };
+    let none = ParseConfig::new();
+    assert!(recognised(&keepalive, 51820, &none), "sur 51820");
+    assert!(recognised(&keepalive, 40_001, &none), "a l'aveugle");
+    assert!(recognised(&keepalive, 40_001, &config), "port declare");
+    assert!(!recognised(&altered, 51820, &none), "reserves sur 51820");
+    assert!(!recognised(&altered, 40_001, &none), "reserves a l'aveugle");
+    assert!(
+        recognised(&altered, 40_001, &config),
+        "reserves, port declare"
+    );
 }

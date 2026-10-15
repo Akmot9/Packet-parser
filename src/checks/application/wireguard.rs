@@ -39,11 +39,15 @@ pub const REKEY_AFTER_MESSAGES: u64 = 1 << 60;
 /// octets (livre blanc §5.4.6)...
 pub const PADDING_MULTIPLE: usize = 16;
 
-/// ... sauf quand ce multiple depasserait la MTU du tunnel : Linux
+/// ... sauf quand ce multiple depasserait la MTU du paquet : Linux
 /// (`calculate_skb_padding`) et wireguard-go (`calculatePaddingSize`)
-/// s'arretent a la MTU, que rien ne fixe sous 576 octets, la taille que tout
-/// hote IPv4 doit accepter (RFC 791).
-pub const MIN_TUNNEL_MTU: usize = 576;
+/// s'arretent alors a la MTU. La sonde aveugle suppose une MTU d'au moins
+/// 552 octets, le plancher de la PMTU IPv4 de Linux (`DEFAULT_MIN_PMTU`,
+/// 512 + 20 + 20, `net/ipv4/route.c`) ; rien d'autre ne l'impose (RFC 791
+/// n'exige que 68 octets), si bien qu'un tunnel configure plus bas, a une
+/// MTU qui n'est pas un multiple de seize, n'est reconnu que sur 51820 ou
+/// par Decode As.
+pub const MIN_TUNNEL_MTU: usize = 552;
 
 pub fn ensure_len(buf: &[u8], needed: usize) -> Result<(), WireGuardParseError> {
     if buf.len() < needed {
@@ -90,9 +94,15 @@ pub fn is_plausible_counter(counter: u64) -> bool {
     counter < REKEY_AFTER_MESSAGES
 }
 
-/// La taille d'un vrai Transport Data, pour la sonde aveugle : le paquet
-/// clair (message moins en-tete et tag) est un multiple de seize octets, ou
-/// s'arrete a une MTU d'au moins 576 octets.
+/// La taille d'un Transport Data de Linux ou de wireguard-go, pour la sonde
+/// aveugle : le paquet clair (message moins en-tete
+/// et tag) est un multiple de seize octets, ou s'arrete a une MTU d'au moins
+/// [`MIN_TUNNEL_MTU`] octets. boringtun (Cloudflare) et ses derives
+/// (NordSecurity neptun, Firezone) ne completent pas le paquet clair
+/// (« spec requires padding to 16 bytes, but actually works fine without
+/// it », `noise/session.rs`) : hors de 51820 et des ports declares, seuls
+/// leurs handshakes, leurs keepalives et les paquets dont la taille tombe
+/// juste sont reconnus.
 pub fn is_padded_transport_length(length: usize) -> bool {
     let Some(plaintext) = length.checked_sub(TRANSPORT_DATA_MIN_LENGTH) else {
         return false;
@@ -154,14 +164,19 @@ mod tests {
         assert!(!is_plausible_counter(u64::MAX));
     }
 
-    /// Keepalive (32), paquets clairs de 48 a 1 392 octets, et les messages
-    /// de 1 452 octets dont le clair s'arrete a la MTU 1420 de wg-quick.
+    /// Acceptes : le keepalive (32), des paquets clairs de 48, 64 et 256
+    /// octets, le message de 1 452 octets dont le clair s'arrete a la MTU
+    /// 1420 de wg-quick, et des clairs de 552 (la PMTU plancher de Linux),
+    /// 553 et 1 468 octets. Refuses : un clair de 551 octets ni multiple de
+    /// seize ni a une MTU plausible, et les messages de boringtun, qui ne
+    /// complete pas — 116 octets pour un ping de 84 octets, 89 pour une
+    /// requete DNS de 57.
     #[test]
     fn test_padding_rule() {
-        for length in [32usize, 80, 96, 288, 1452, 608, 609, 1500] {
+        for length in [32usize, 80, 96, 288, 1452, 584, 585, 1500] {
             assert!(is_padded_transport_length(length), "{length}");
         }
-        for length in [0usize, 31, 33, 81, 100, 607] {
+        for length in [0usize, 31, 33, 81, 100, 583, 116, 89] {
             assert!(!is_padded_transport_length(length), "{length}");
         }
     }

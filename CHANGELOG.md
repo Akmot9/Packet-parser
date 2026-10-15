@@ -167,15 +167,28 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   nonce, cookie chiffre) et `TransportData` (index du destinataire,
   compteur, paquet chiffre emprunte, `is_keepalive`) ; tailles fixes de 148,
   92 et 64 octets, au moins 32 pour les donnees ; rien n'est dechiffre.
-  Detection : WireGuard n'a pas de port IANA ; sur UDP 51820, le port de
-  `wg-quick`, et par `DecodeAsProtocol::WireGuard` (fin d'enum), la forme
-  du message suffit, octets reserves compris (Cloudflare WARP s'en sert) ;
-  ailleurs, la sonde aveugle — derniere des sondes UDP, apres QUIC — exige
-  des octets reserves nuls et, pour les donnees, un compteur sous 2^60
-  (`REKEY_AFTER_MESSAGES`) et un paquet clair complete a seize octets ou
-  arrete a une MTU d'au moins 576 octets : l'heuristique de tshark, qui
-  n'exige que le type et la taille, prend 59 datagrammes Zoom, TeamViewer et
-  League of Legends du corpus de nDPI pour du WireGuard, la crate aucun.
+  Detection : WireGuard n'a pas de port IANA. Par
+  `DecodeAsProtocol::WireGuard` (fin d'enum), la forme du message suffit,
+  octets reserves compris. Sur UDP 51820, le port des exemples de `wg(8)`
+  et `wg-quick(8)` (sans `ListenPort`, le port est tire au hasard), la
+  regle suit l'heuristique de tshark : la forme suffit a une initiation ou
+  une reponse, octets reserves compris (Cloudflare s'en sert pour repartir
+  la charge), un cookie et des donnees ont des octets reserves nuls ; c'est
+  la derniere regle de port avant NTP, pour qu'un paquet ESP, IKE ou DNS
+  dont le pair a tire 51820 garde son etiquette. Ailleurs, la sonde
+  aveugle — derniere des sondes UDP, apres QUIC — exige des octets reserves
+  nuls et, pour les donnees, un compteur sous 2^60 (`REKEY_AFTER_MESSAGES`)
+  et un paquet clair complete a seize octets ou arrete a une MTU d'au moins
+  552 octets, le plancher de la PMTU IPv4 de Linux : l'heuristique de
+  tshark, qui n'exige que le type, la taille et, pour le cookie et les
+  donnees, des octets reserves nuls, prend 59 datagrammes Zoom, TeamViewer
+  et League of Legends du corpus de nDPI pour du WireGuard (des Transport
+  Data aux octets reserves nuls, que seuls le compteur et le bourrage
+  ecartent), la crate aucun. boringtun (Cloudflare) et ses derives
+  (NordSecurity neptun, Firezone) ne completent pas leurs donnees : hors de
+  51820 et des ports declares, seuls leurs handshakes, leurs keepalives et
+  leurs paquets de taille ronde sont reconnus. Le client WARP officiel
+  change aussi l'octet de type (0xC1 a 0xC4) : il n'est pas decode.
   Corpus `pcaps_exemple/protocols/wireguard/` : 128 messages de Linux
   (depot Wireshark, GPL-2.0), NordVPN, ProtonVPN sur UDP 443, Mullvad sur
   UDP 5060 et TunnelBear (nDPI, LGPL-3.0), Tailscale/wireguard-go sur UDP
@@ -186,8 +199,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   datagrammes Zoom et LoL que tshark accepte nommes comme ecarts, aucun des
   voisins (disco de Tailscale, handshakes etendus de TunnelBear, OpenVPN
   obfusque de NordVPN) etiquete WireGuard ; les 128 messages sont reconnus
-  hors de leur port, et, octets reserves non nuls, sur 51820 et par Decode
-  As seulement. Cible de fuzz `parse_wireguard`.
+  hors de leur port ; alteres d'octets reserves non nuls, ils ne le sont
+  plus qu'en handshake sur 51820, et tous par Decode As ; un keepalive dans
+  une trame IPv6 suit les memes regles. Cible de fuzz `parse_wireguard`.
 - **PPPoE** (#172) : la session PPPoE (EtherType `0x8864`, RFC 2516 §5)
   etait seulement nommee ; une liaison fibre ou xDSL d'abonne porte pourtant
   tout son trafic IP. La couche liaison pele desormais la session comme un
