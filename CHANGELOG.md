@@ -6,6 +6,36 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [11.6.0] - 2026-10-16
+
+Quatorze decodeurs de plus et la fin de faux positifs connus. Le lot defense
+(#125) est solde — IKE et ESP, DIS, STANAG 5066 SIS, RTPS, ASTERIX
+multi-categories —, l'epopee #102 aussi — IEC 60870-5-104, BACnet/IP, GOOSE
+—, et DNP3 (#99), RDP (#100), RADIUS (#101), WireGuard (#103), PPPoE (#172)
+et LLDP (#177) s'y ajoutent, chacun en parite avec tshark sur trames
+reelles. Un consommateur qui exporte les etiquettes les verra bouger : sur
+les 367 108 trames du corpus de la 11.5.0, 40 664 changent — 30 768
+datagrammes ASTERIX, 1 254 IKE, 544 NTP, 390 DIS, 322 ESP, 242 RADIUS, 231
+RTPS, 34 STANAG 5066 et 7 RDP quittent `Unknown` ; les trames IP de la
+session PPPoE de l'Ultimate PCAP ont desormais leur couche internet et leur
+transport (6 482 passent de « sans application » a `Unknown`, 196 a
+`DHCPv6`, 78 a un tunnel IP-in-IP) ; 57 segments LDAP d'Active Directory ne
+sont plus `ModbusTCP` ; une trame TSO de l'Ultimate PCAP sort `TLS`. Sur les
+corpus verses depuis, les faux positifs NTP (#164) et Modbus (#167) hors de
+leur port disparaissent, et les trames LLDP gagnent une couche internet
+(`protocol_internet` = `LLDP`) sans changer d'etiquette.
+
+Mineure et non patch : l'API publique gagne des modules (les quatorze
+decodeurs et huit categories ASTERIX), des types, des variantes, toutes en
+fin d'enums `#[non_exhaustive]` (`NetworkProtocol::Goose` et `::Lldp`,
+`InternetDetails::Goose` et `::Lldp`, `TransportDetails::Esp`, les
+`DecodeAsProtocol` de RDP, IEC 104, IKE, ESP, DIS, STANAG 5066 et
+WireGuard...), et un champ, `DataLink::pppoe` (structure
+`#[non_exhaustive]`). `cargo semver-checks` contre la 11.5.0 : aucune
+rupture. Par rapport a l'archive 11.5.0, le paquet gagne 48 fichiers, tous
+des sources nouvelles (decodeurs, verifications et erreurs) ; 47 fichiers de
+`src/` changent.
+
 ### Corrige
 
 - **IPv4** (#168) : une longueur totale nulle rendait la couche internet

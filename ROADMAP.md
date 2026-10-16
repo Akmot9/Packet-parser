@@ -1,6 +1,18 @@
 # Roadmap packet_parser
 
-Etat au 2026-10-09 : la **11.5.0 est publiee** (tag `v11.5.0`, publication
+Etat au 2026-10-16 : la **11.6.0 est publiee** (tag `v11.6.0`, publication
+par le workflow, semver-checks vert). Mineure : le lot defense (#125 : IKE
+et ESP, DIS, STANAG 5066 SIS, RTPS, ASTERIX multi-categories) et l'epopee
+#102 (IEC 60870-5-104, BACnet/IP, GOOSE) soldes, DNP3 (#99), RDP (#100),
+RADIUS (#101), WireGuard (#103), PPPoE (#172) et LLDP (#177), chacun en
+parite avec tshark sur trames reelles ; corrections des faux positifs NTP
+(#161, #162, #164, #165) et Modbus (#167), des paquets TSO (#168), de
+PROFINET (#133, #141), de PostgreSQL (#98) et de FTP, SMTP et NNTP (#109).
+Aucune rupture. Restent a faire : le livre et l'integration Sonar. Restent
+ouvertes : les epopees #103 (DTLS, SIP, SMB2/3), #105 et #177 (S7CommPlus,
+MELSOFT), et #176 (reponses HTTP).
+
+Etat anterieur (2026-10-09) : la **11.5.0 est publiee** (tag `v11.5.0`, publication
 par le workflow, semver-checks vert). Mineure : **PTP** (#121, premier
 protocole du lot defense), sur UDP 319/320 et en couche 2 (EtherType
 `0x88F7`), en parite exacte avec tshark sur les 3 328 messages du corpus,
