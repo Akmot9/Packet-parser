@@ -191,8 +191,10 @@ pub fn object_size(group: u8, variation: u8) -> Option<ObjectSize> {
 /// Les fonctions dont les en-tetes d'objets ne sont suivis d'aucune
 /// donnee (§4.2.2.7) : lectures, confirmations, gels immediats,
 /// redemarrages, messages non sollicites, mesures de delai, assignation de
-/// classe, horodatage. Exception, traitee par le decodeur : un objet
-/// prefixe par sa taille porte toujours ses donnees, meme dans une lecture.
+/// classe, horodatage. Exceptions, traitees par le decodeur : un objet
+/// prefixe par sa taille porte toujours ses donnees, meme dans une lecture,
+/// et un prefixe d'index y donne la liste des points demandes, sans objets
+/// (#182).
 pub fn function_carries_object_data(function_code: u8) -> bool {
     !matches!(
         function_code,

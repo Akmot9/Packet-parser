@@ -347,14 +347,26 @@ pub enum RangeSpecifier {
 }
 
 impl RangeSpecifier {
-    /// Le nombre d'objets que la plage annonce, quand elle en annonce un.
+    /// Le nombre d'objets que la plage annonce, quand elle en annonce un,
+    /// `fin - depart + 1` pour une plage : `None` pour `All` et `Reserved`,
+    /// pour une plage inversee, dont la fin precede le depart de plus d'un
+    /// index (#181), et pour la plage complete de 0 a `0xFFFFFFFF`, dont les
+    /// 2^32 objets ne tiennent pas dans un `u32` (#180). Une fin qui precede
+    /// le depart d'un seul index, de 5 a 4, annonce zero objet, comme chez
+    /// tshark pour les codes de plage 0 a 2 (il lit les codes 3 a 5 comme une
+    /// adresse unique, soit un objet).
     pub fn object_count(&self) -> Option<u32> {
+        u32::try_from(self.wide_object_count()?).ok()
+    }
+
+    /// Le meme compte sur 64 bits, ou tient celui de la plage complete.
+    fn wide_object_count(&self) -> Option<u64> {
         match self {
             Self::StartStop { start, stop, .. } | Self::Absolute { start, stop, .. } => {
-                stop.checked_sub(*start).map(|span| span + 1)
+                (u64::from(*stop) + 1).checked_sub(u64::from(*start))
             }
-            Self::Count { count, .. } => Some(*count),
-            Self::VariableCount { count } => Some(u32::from(*count)),
+            Self::Count { count, .. } => Some(u64::from(*count)),
+            Self::VariableCount { count } => Some(u64::from(*count)),
             Self::All | Self::Reserved(_) => None,
         }
     }
@@ -371,8 +383,14 @@ pub struct ObjectHeader {
     pub qualifier: u8,
     pub prefix: PrefixCode,
     pub range: RangeSpecifier,
-    /// Les octets des objets (prefixes compris), dans `user_data` ; vide
-    /// quand la fonction n'en porte pas ou que la plage n'en annonce pas.
+    /// Les octets des objets (prefixes compris), dans `user_data`. Dans une
+    /// requete sans donnees d'objets (lecture, gel...), seulement les objets
+    /// prefixes de leur taille (lecture d'un bloc de fichier, g70v5
+    /// qualificatif `0x5b`) ou, quand le qualificatif prefixe des index, la
+    /// liste des index des points demandes (#182) ; rien sinon. Vide aussi
+    /// quand la plage n'annonce aucun objet, ou quand les donnees ne se
+    /// delimitent pas : elles restent alors dans
+    /// [`ApplicationFragment::undecoded`].
     pub data: Range<usize>,
 }
 
@@ -385,8 +403,11 @@ pub struct ApplicationFragment {
     /// Les en-tetes d'objets decodes, dans l'ordre.
     pub objects: Vec<ObjectHeader>,
     /// Ce qui n'a pas ete decode dans `user_data` : vide quand tout a ete
-    /// lu ; sinon un en-tete inconnu, une plage reservee, ou la suite d'un
-    /// fragment coupe par le transport.
+    /// lu ; sinon ce qui suit un en-tete dont les donnees ne se delimitent
+    /// pas — prefixe ou plage reserves, plage inversee (#181), groupe
+    /// inconnu qui annonce des objets, donnees ou index manquants, dont ceux
+    /// de la plage complete (#180) —, ou la suite d'un fragment coupe par le
+    /// transport.
     pub undecoded: Range<usize>,
 }
 
@@ -536,10 +557,22 @@ fn parse_application(fragment: &[u8], base: usize) -> Result<ApplicationFragment
 
 /// Un en-tete d'objets a `offset` dans `fragment`, et si la chaine peut
 /// continuer apres lui. `None` quand l'en-tete ou sa plage sont coupes ;
-/// `(header, false)` quand l'en-tete se lit mais pas ses donnees — prefixe
-/// ou plage reserves (le qualificatif `0x6d` d'un vieux maitre du corpus),
-/// groupe inconnu, donnees manquantes : tshark l'affiche et s'arrete, le
-/// decodeur aussi.
+/// `(header, false)` quand l'en-tete se lit mais que ses donnees ne se
+/// delimitent pas : prefixe ou plage reserves (le qualificatif `0xed` d'un
+/// vieux maitre du corpus), plage inversee (#181), groupe inconnu qui
+/// annonce des objets, donnees ou index manquants — dont ceux des 2^32
+/// objets de la plage complete, de 0 a `0xFFFFFFFF`, qu'aucune trame ne
+/// tient (#180). Le decodeur s'arrete alors sur cet en-tete. tshark 4.6.6
+/// aussi sur des donnees manquantes, un groupe inconnu qui annonce des
+/// objets ou un compte negatif (« Negative number of items »). Il lit en
+/// revanche l'en-tete suivant apres une plage reservee (zero objet), un
+/// prefixe reserve (objets lus sans prefixe), et une plage de quatre octets
+/// dont le compte, calcule sur 32 bits, revient a zero (la plage complete)
+/// ou redevient positif (un depart qui depasse la fin de plus de 2^31 + 1,
+/// de `0xFFFFFFFF` a 5). A l'inverse, ce compte est negatif pour une plage
+/// de 2^31 objets ou plus (de 0 a `0xFFFFFFFE`) : tshark s'arrete, la ou le
+/// decodeur continue quand rien ne suit l'en-tete. Il lit enfin les codes
+/// de plage 3 a 5 comme une adresse unique.
 fn parse_object_header(
     fragment: &[u8],
     offset: usize,
@@ -603,20 +636,48 @@ fn parse_object_header(
     if matches!(range, RangeSpecifier::Reserved(_)) || matches!(prefix, PrefixCode::Reserved(_)) {
         return Some((header, false));
     }
-    let Some(count) = range.object_count() else {
-        return Some((header, true));
-    };
-    // Une lecture ne porte pas de donnees d'objets, sauf quand le prefixe
-    // de taille en annonce : la lecture d'un bloc de fichier (g70v5,
-    // qualificatif 0x5b) transporte l'identifiant et le numero de bloc.
-    if !with_data && !matches!(prefix, PrefixCode::Size { .. }) {
+    // Ni champ de plage ni objets.
+    if range == RangeSpecifier::All {
         return Some((header, true));
     }
-    let Some(data_len) = object_data_length(bytes, cursor, prefix, group, variation, count) else {
+    // Sans compte, la plage est inversee (#181). Celui de la plage complete,
+    // 2^32, est compte sur 64 bits : seule la taille de ses donnees decide
+    // (#180).
+    let Some(count) = range.wide_object_count() else {
+        return Some((header, false));
+    };
+    // Zero objet, de 5 a 4 ou par un compte nul : rien ne suit l'en-tete,
+    // quel que soit le groupe, et la chaine continue, comme chez tshark.
+    if count == 0 {
+        return Some((header, true));
+    }
+    // Une lecture ne porte pas de donnees d'objets, sauf quand le prefixe
+    // de taille en annonce : la lecture d'un bloc de fichier (g70v5,
+    // qualificatif 0x5b) transporte l'identifiant et le numero de bloc. Un
+    // prefixe d'index y donne la liste des points demandes, sans objets
+    // (qualificatifs 0x17, 0x28, 0x39) : le decodeur l'enjambe (#182).
+    // tshark aussi dans une lecture ou un gel, sauf pour les variations par
+    // defaut et les classes (g1v0, g20v0, g30v0, g60v1...), dont il
+    // n'enjambe que le premier index.
+    let data_len = if with_data || matches!(prefix, PrefixCode::Size { .. }) {
+        object_data_length(bytes, cursor, prefix, group, variation, count)
+    } else if let PrefixCode::Index { octets } = prefix {
+        index_list_length(bytes, cursor, octets, count)
+    } else {
+        return Some((header, true));
+    };
+    let Some(data_len) = data_len else {
         return Some((header, false));
     };
     header.data = data_start..data_start + data_len;
     Some((header, true))
+}
+
+/// La longueur de la liste des `count` index de `octets` octets qui suit un
+/// en-tete sans objets, a partir de `cursor` dans `bytes`.
+fn index_list_length(bytes: &[u8], cursor: usize, octets: u8, count: u64) -> Option<usize> {
+    let len = usize::try_from(count.checked_mul(u64::from(octets))?).ok()?;
+    (cursor.checked_add(len)? <= bytes.len()).then_some(len)
 }
 
 /// La longueur des `count` objets qui suivent un en-tete, prefixes compris,
@@ -627,7 +688,7 @@ fn object_data_length(
     prefix: PrefixCode,
     group: u8,
     variation: u8,
-    count: u32,
+    count: u64,
 ) -> Option<usize> {
     let data_len = match prefix {
         PrefixCode::Size { octets } => {
@@ -645,7 +706,6 @@ fn object_data_length(
             len
         }
         _ => {
-            let count = usize::try_from(count).ok()?;
             let per_object = match object_size(group, variation)? {
                 ObjectSize::Bytes(size) => Some(size),
                 ObjectSize::Bits(_) => None,
@@ -654,8 +714,13 @@ fn object_data_length(
                 // pas delimitable.
                 ObjectSize::Prefixed => return None,
             };
+            // La longueur se calcule sur 64 bits, comme le compte : sur une
+            // cible 32 bits aussi, les 2^32 objets de taille nulle de la
+            // plage complete tiennent en zero octet (#180).
             let data = match per_object {
-                Some(size) => count.checked_mul(prefix.octets().checked_add(size)?)?,
+                Some(size) => {
+                    count.checked_mul(u64::try_from(prefix.octets().checked_add(size)?).ok()?)?
+                }
                 None => {
                     let ObjectSize::Bits(bits) = object_size(group, variation)? else {
                         return None;
@@ -664,9 +729,10 @@ fn object_data_length(
                         // Les objets tasses ne sont jamais prefixes.
                         return None;
                     }
-                    count.checked_mul(usize::from(bits))?.div_ceil(8)
+                    count.checked_mul(u64::from(bits))?.div_ceil(8)
                 }
             };
+            let data = usize::try_from(data).ok()?;
             if bytes.len() < cursor.checked_add(data)? {
                 return None;
             }
@@ -677,7 +743,7 @@ fn object_data_length(
 }
 
 fn read_at(bytes: &[u8], offset: usize, octets: u8) -> Option<u32> {
-    let field = bytes.get(offset..offset + usize::from(octets))?;
+    let field = bytes.get(offset..offset.checked_add(usize::from(octets))?)?;
     Some(match octets {
         1 => u32::from(field[0]),
         2 => u32::from(u16::from_le_bytes([field[0], field[1]])),
@@ -697,6 +763,282 @@ mod tests {
     /// sa reponse, sans donnees utilisateur.
     const REQUEST_LINK_STATUS: &str = "05640549640001007e5f";
     const LINK_STATUS: &str = "0564058b01006400a097";
+
+    /// #180 : trames synthetiques dont un en-tete d'objets annonce la plage
+    /// complete, de 0 a `0xFFFFFFFF` sur quatre octets (qualificatif `0x02`),
+    /// seul ou suivi de la lecture de la classe 0 (g60v1). tshark 4.6.6
+    /// compte zero objet et lit chaque fois l'en-tete suivant.
+    const FULL_RANGE_RESPONSE: &str = "0564154401000200d976c0c08100001e010200000000ffffffff4424";
+    const FULL_RANGE_RESPONSE_THEN_CLASS_0: &str =
+        "05641844010002008c14c0c48100001e010200000000ffffffff5dd13c0106277c";
+    const FULL_RANGE_READ_THEN_CLASS_0: &str =
+        "056416c402000100173ec0c1011e010200000000ffffffff3c018ef4063b4a";
+    /// Reponse : plage complete d'objets de taille nulle (g60v1).
+    const FULL_RANGE_OF_CLASS_0_THEN_CLASS_0: &str =
+        "05641844010002008c14c0c28100003c010200000000ffffffff5a9e3c0106277c";
+    /// Lecture prefixee d'index sur un octet (qualificatif `0x12`).
+    const FULL_RANGE_INDEX_READ_THEN_CLASS_0: &str =
+        "056416c402000100173ec0c8011e011200000000ffffffff3c014418063b4a";
+
+    /// #181 : lectures et reponse synthetiques de plages inversees (g30v1),
+    /// puis de la classe 0. tshark 4.6.6 signale 5 a 2 et 10 a 5 sur quatre
+    /// octets (« Negative number of items ») et s'arrete ; il compte zero
+    /// objet pour 5 a 4 et continue ; de 0xFFFFFFFF a 5, son compte, calcule
+    /// sur 32 bits, redevient positif (7 objets) et il continue.
+    const INVERTED_RANGE_READ_THEN_CLASS_0: &str = "056410c402000100ce55c0c5011e010005023c01061031";
+    const EMPTY_RANGE_READ_THEN_CLASS_0: &str = "056410c402000100ce55c0c0011e010005043c0106f33c";
+    const EMPTY_RANGE_RESPONSE_THEN_CLASS_0: &str =
+        "0564124401000200e7a8c0c18100001e010005043c01064195";
+    const INVERTED_32_BIT_RANGE_READ_THEN_CLASS_0: &str =
+        "056416c402000100173ec0c6011e01020a000000050000003c0144b7063b4a";
+    const WRAPPED_RANGE_READ_THEN_CLASS_0: &str =
+        "056416c402000100173ec0c5011e0102ffffffff050000003c01fade063b4a";
+    /// Reponses : plage vide (5 a 4) puis compte nul (qualificatif `0x07`)
+    /// d'un groupe inconnu (g200v1), puis la classe 0 ; tshark 4.6.6 compte
+    /// zero objet et continue.
+    const EMPTY_RANGE_OF_UNKNOWN_GROUP_THEN_CLASS_0: &str =
+        "0564124401000200e7a8c0c1810000c8010005043c0106a153";
+    const ZERO_COUNT_OF_UNKNOWN_GROUP_THEN_CLASS_0: &str =
+        "0564114401000200b73bc0c2810000c80107003c0106cb1d";
+    /// Plages d'adresses (codes 3 a 5), que tshark lit comme une adresse
+    /// unique : lectures de 5 a 2 et de 5 a 4 (qualificatif `0x03`), reponse
+    /// sur la plage complete (`0x05`), chacune suivie de la classe 0.
+    const INVERTED_ADDRESS_RANGE_READ_THEN_CLASS_0: &str =
+        "056410c402000100ce55c0c3011e010305023c0106feb3";
+    const EMPTY_ADDRESS_RANGE_READ_THEN_CLASS_0: &str =
+        "056410c402000100ce55c0c4011e010305043c0106a075";
+    const FULL_ADDRESS_RANGE_RESPONSE_THEN_CLASS_0: &str =
+        "05641844010002008c14c0c58100001e010500000000fffffffff03d3c0106277c";
+
+    /// #182 : requetes synthetiques de points choisis. tshark 4.6.6 enjambe
+    /// les index (« Point Number 3 », « Point Number 7 »...) et lit l'en-tete
+    /// suivant.
+    const READ_BY_INDEX_THEN_CLASS_0: [(&str, u8, u32, &[u8]); 3] = [
+        // g30v1, qualificatif 0x17 : index 3 et 7 sur un octet.
+        (
+            "056411c40200010029e0c0c3011e01170203073c0106d12a",
+            0x17,
+            2,
+            &[3, 7],
+        ),
+        // Qualificatif 0x28 : index 258 sur deux octets.
+        (
+            "056412c4020001007973c0c4011e0128010002013c0106d102",
+            0x28,
+            1,
+            &[0x02, 0x01],
+        ),
+        // Qualificatif 0x39 : index 5 sur quatre octets.
+        (
+            "056416c402000100173ec0c7011e013901000000050000003c01b5c9063b4a",
+            0x39,
+            1,
+            &[5, 0, 0, 0],
+        ),
+    ];
+    /// Gel immediat de deux compteurs (g20v1, qualificatif `0x17`).
+    const FREEZE_BY_INDEX: &str = "05640ec4020001000adcc0c607140117020104824a";
+    /// Lecture de deux points choisis en variation par defaut (g30v0,
+    /// qualificatif `0x17`, index 3 et 7), puis de la classe 0. tshark 4.6.6
+    /// n'enjambe que l'index 3 (« Number of items is invalid for normally
+    /// empty object ») et lit la suite comme un en-tete ; le decodeur
+    /// enjambe les deux.
+    const READ_BY_INDEX_DEFAULT_VARIATION_THEN_CLASS_0: &str =
+        "056411c40200010029e0c0c7011e00170203073c0106fb66";
+    /// Lecture qui annonce trois index et n'en porte que deux.
+    const TRUNCATED_INDEX_LIST: &str = "05640ec4020001000adcc0c9011e01170303078df2";
+
+    /// Un en-tete d'objets decode : groupe, variation, plage et octets de
+    /// donnees.
+    type DecodedObject = (u8, u8, RangeSpecifier, Vec<u8>);
+
+    /// Les en-tetes d'objets d'une trame synthetique, et ce qui reste non
+    /// decode.
+    fn decode_objects(hex_frame: &str) -> (Vec<DecodedObject>, Vec<u8>) {
+        let bytes = hex::decode(hex_frame).unwrap();
+        let packet = Dnp3Packet::try_from(bytes.as_slice()).expect("trame valide");
+        let frame = &packet.frames[0];
+        let application = frame.application.as_ref().expect("application");
+        let objects = application
+            .objects
+            .iter()
+            .map(|o| (o.group, o.variation, o.range, frame.object_data(o).to_vec()))
+            .collect();
+        (
+            objects,
+            frame.user_data[application.undecoded.clone()].to_vec(),
+        )
+    }
+
+    fn start_stop(start: u32, stop: u32, octets: u8) -> RangeSpecifier {
+        RangeSpecifier::StartStop {
+            start,
+            stop,
+            octets,
+        }
+    }
+
+    const CLASS_0: DecodedObject = (60, 1, RangeSpecifier::All, Vec::new());
+
+    #[test]
+    fn test_full_range_does_not_overflow_the_object_count() {
+        let full = start_stop(0, u32::MAX, 4);
+        assert_eq!(hex::decode(FULL_RANGE_RESPONSE).unwrap().len(), 28);
+        // Le compte debordait : panique avec les controles de debordement,
+        // `Some(0)` en release.
+        assert_eq!(full.object_count(), None);
+        assert_eq!(
+            decode_objects(FULL_RANGE_RESPONSE),
+            (vec![(30, 1, full, vec![])], vec![])
+        );
+        // Les donnees de 2^32 objets de cinq octets ne tiennent pas : la
+        // chaine s'arrete, la ou tshark lit la classe 0.
+        assert_eq!(
+            decode_objects(FULL_RANGE_RESPONSE_THEN_CLASS_0),
+            (vec![(30, 1, full, vec![])], vec![60, 1, 0x06])
+        );
+        // Une lecture sans prefixe ne porte rien apres l'en-tete, et 2^32
+        // objets de taille nulle tiennent en zero octet : la chaine
+        // continue, comme chez tshark.
+        for hex_frame in [
+            FULL_RANGE_READ_THEN_CLASS_0,
+            FULL_RANGE_OF_CLASS_0_THEN_CLASS_0,
+        ] {
+            let (objects, undecoded) = decode_objects(hex_frame);
+            assert_eq!(objects[0].2, full, "{hex_frame}");
+            assert_eq!(objects[1..], [CLASS_0], "{hex_frame}");
+            assert!(undecoded.is_empty(), "{hex_frame}");
+        }
+        // 2^32 index ne tiennent pas non plus.
+        let (objects, undecoded) = decode_objects(FULL_RANGE_INDEX_READ_THEN_CLASS_0);
+        assert_eq!(objects, vec![(30, 1, full, vec![])]);
+        assert_eq!(undecoded, [60, 1, 0x06]);
+        // Les plages ordinaires gardent leur compte.
+        assert_eq!(start_stop(0, 0, 4).object_count(), Some(1));
+        assert_eq!(
+            start_stop(0, u32::MAX - 1, 4).object_count(),
+            Some(u32::MAX)
+        );
+    }
+
+    #[test]
+    fn test_an_inverted_range_stops_the_chain() {
+        let inverted = start_stop(5, 2, 1);
+        assert_eq!(inverted.object_count(), None);
+        assert_eq!(
+            decode_objects(INVERTED_RANGE_READ_THEN_CLASS_0),
+            (vec![(30, 1, inverted, vec![])], vec![60, 1, 0x06])
+        );
+        // De 5 a 4, la plage est vide : zero objet, et la chaine continue
+        // dans une lecture comme dans une reponse, comme chez tshark.
+        let empty = start_stop(5, 4, 1);
+        assert_eq!(empty.object_count(), Some(0));
+        for hex_frame in [
+            EMPTY_RANGE_READ_THEN_CLASS_0,
+            EMPTY_RANGE_RESPONSE_THEN_CLASS_0,
+        ] {
+            assert_eq!(
+                decode_objects(hex_frame),
+                (vec![(30, 1, empty, vec![]), CLASS_0], vec![]),
+                "{hex_frame}"
+            );
+        }
+        // Sur quatre octets aussi, une plage inversee arrete la chaine. De
+        // 10 a 5, tshark compte -4 et s'arrete ; de 0xFFFFFFFF a 5, son
+        // compte, calcule sur 32 bits, redevient positif et il continue.
+        let inverted_32 = start_stop(10, 5, 4);
+        assert_eq!(
+            decode_objects(INVERTED_32_BIT_RANGE_READ_THEN_CLASS_0),
+            (vec![(30, 1, inverted_32, vec![])], vec![60, 1, 0x06])
+        );
+        let wrapped = start_stop(u32::MAX, 5, 4);
+        assert_eq!(wrapped.object_count(), None);
+        assert_eq!(
+            decode_objects(WRAPPED_RANGE_READ_THEN_CLASS_0),
+            (vec![(30, 1, wrapped, vec![])], vec![60, 1, 0x06])
+        );
+    }
+
+    #[test]
+    fn test_a_header_without_objects_never_stops_the_chain() {
+        // Une plage vide ou un compte nul : rien ne suit l'en-tete, meme
+        // d'un groupe inconnu, et la chaine continue, comme chez tshark. La
+        // 11.6.0 s'arretait sur le compte nul.
+        assert_eq!(
+            decode_objects(EMPTY_RANGE_OF_UNKNOWN_GROUP_THEN_CLASS_0),
+            (vec![(200, 1, start_stop(5, 4, 1), vec![]), CLASS_0], vec![])
+        );
+        let zero = RangeSpecifier::Count {
+            count: 0,
+            octets: 1,
+        };
+        assert_eq!(
+            decode_objects(ZERO_COUNT_OF_UNKNOWN_GROUP_THEN_CLASS_0),
+            (vec![(200, 1, zero, vec![]), CLASS_0], vec![])
+        );
+    }
+
+    #[test]
+    fn test_address_ranges_are_counted_like_index_ranges() {
+        let address = |start, stop, octets| RangeSpecifier::Absolute {
+            start,
+            stop,
+            octets,
+        };
+        // tshark lit les codes 3 a 5 comme une adresse unique, puis la suite
+        // comme un nouvel en-tete ; la crate y lit un depart et une fin.
+        assert_eq!(
+            decode_objects(INVERTED_ADDRESS_RANGE_READ_THEN_CLASS_0),
+            (vec![(30, 1, address(5, 2, 1), vec![])], vec![60, 1, 0x06])
+        );
+        assert_eq!(address(5, 4, 1).object_count(), Some(0));
+        assert_eq!(
+            decode_objects(EMPTY_ADDRESS_RANGE_READ_THEN_CLASS_0),
+            (vec![(30, 1, address(5, 4, 1), vec![]), CLASS_0], vec![])
+        );
+        let full = address(0, u32::MAX, 4);
+        assert_eq!(full.object_count(), None);
+        assert_eq!(
+            decode_objects(FULL_ADDRESS_RANGE_RESPONSE_THEN_CLASS_0),
+            (vec![(30, 1, full, vec![])], vec![60, 1, 0x06])
+        );
+    }
+
+    #[test]
+    fn test_a_request_by_index_skips_the_index_list() {
+        for (hex_frame, qualifier, count, indexes) in READ_BY_INDEX_THEN_CLASS_0 {
+            let bytes = hex::decode(hex_frame).unwrap();
+            let packet = Dnp3Packet::try_from(bytes.as_slice()).expect("lecture");
+            let frame = &packet.frames[0];
+            let application = frame.application.as_ref().expect("application");
+            assert_eq!(application.objects.len(), 2, "{hex_frame}");
+            let points = &application.objects[0];
+            assert_eq!(
+                (points.group, points.variation, points.qualifier),
+                (30, 1, qualifier)
+            );
+            assert_eq!(points.range.object_count(), Some(count));
+            assert_eq!(frame.object_data(points), indexes, "{hex_frame}");
+            let class_0 = &application.objects[1];
+            assert_eq!((class_0.group, class_0.variation), (60, 1));
+            assert!(application.undecoded.is_empty(), "{hex_frame}");
+        }
+        let count = |count| RangeSpecifier::Count { count, octets: 1 };
+        assert_eq!(
+            decode_objects(FREEZE_BY_INDEX),
+            (vec![(20, 1, count(2), vec![1, 4])], vec![])
+        );
+        assert_eq!(
+            decode_objects(READ_BY_INDEX_DEFAULT_VARIATION_THEN_CLASS_0),
+            (vec![(30, 0, count(2), vec![3, 7]), CLASS_0], vec![])
+        );
+        // Une liste coupee arrete la chaine, et ses index restent non
+        // decodes.
+        assert_eq!(
+            decode_objects(TRUNCATED_INDEX_LIST),
+            (vec![(30, 1, count(3), vec![])], vec![3, 7])
+        );
+    }
 
     #[test]
     fn test_decodes_a_read_request_against_tshark() {

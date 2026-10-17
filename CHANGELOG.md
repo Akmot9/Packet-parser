@@ -6,6 +6,58 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Corrige
+
+- **DNP3** (#180) : `RangeSpecifier::object_count` debordait sur la plage
+  complete, de 0 a `0xFFFFFFFF` (codes de plage 2 et 5) — panique avec les
+  controles de debordement (builds de debug, `cargo fuzz`), compte
+  `Some(0)` en release. La sonde DNP3 etant aveugle, une trame de 28 octets
+  aux CRC valides suffisait a faire paniquer `parse()` sur tout segment TCP
+  et presque tout datagramme UDP. Le compte vaut desormais `None` ; le
+  decodeur compte les 2^32 objets sur 64 bits, et la taille de leurs
+  donnees, calculee sur 64 bits elle aussi, decide de la suite. Quand rien
+  ne suit l'en-tete — une lecture sans prefixe, des objets de taille nulle
+  comme la classe 0 —, la chaine des en-tetes continue, comme chez tshark ;
+  quand des objets, des tailles ou des index doivent suivre, ils ne
+  tiennent dans aucune trame, et la chaine s'arrete sur cet en-tete, la ou
+  tshark, dont le compte sur 32 bits revient a zero, lit l'en-tete suivant.
+  Ces comparaisons valent pour le code de plage 2 : tshark lit le code 5
+  comme une adresse unique, la crate comme un depart et une fin. La cible
+  de fuzz `parse_dnp3` mute aussi les seules donnees utilisateur en
+  recalculant les CRC : ses mutations atteignent enfin transport,
+  application et en-tetes d'objets, et les trames de #180 et #182 en
+  deviennent des graines.
+- **DNP3** (#181) : une plage inversee, dont la fin precede le depart de
+  plus d'un index, laissait la chaine continuer et lire la suite comme un
+  nouvel en-tete. Elle l'arrete, comme tshark (« Negative number of
+  items ») pour les codes de plage 0 a 2 — sauf sur quatre octets quand le
+  depart depasse la fin de plus de 2^31 + 1 (de `0xFFFFFFFF` a 5), ou le
+  compte de tshark, calcule sur 32 bits, redevient positif ; de 10 a 5, il
+  vaut -4 et tshark s'arrete aussi. tshark lit les codes 3 a 5 comme une
+  adresse unique ; la crate y lit un depart et une fin, et une plage
+  inversee l'arrete de meme. De 5 a 4, la plage est vide : `object_count`
+  vaut desormais `Some(0)` (`None` en 11.6.0), et la chaine continue.
+  Plus generalement, un en-tete qui n'annonce aucun objet — plage vide,
+  compte nul — laisse la chaine continuer quel que soit le groupe, comme
+  chez tshark ; la 11.6.0 s'arretait sur le compte nul d'un groupe inconnu
+  ou d'objets qu'elle ne sait pas delimiter.
+- **DNP3** (#182) : dans une requete sans donnees d'objets (lecture, gel,
+  assignation de classe...), un en-tete prefixe d'index porte la liste des
+  points demandes (qualificatifs `0x17`, `0x28`, `0x39`). Le decodeur ne
+  l'enjambait pas et lisait les index comme l'en-tete suivant, inventant
+  des en-tetes. `ObjectHeader::data` couvre desormais cette liste, et la
+  chaine continue, comme chez tshark dans les lectures et les gels d'une
+  variation precise (g30v1, g20v1...). D'une variation par defaut ou d'une
+  classe (g1v0, g20v0, g60v1...), tshark n'enjambe que le premier index et
+  lit les suivants comme un en-tete ; il ne decode aucun objet d'une
+  assignation de classe.
+- **DNP3** : sur une cible 32 bits, un objet prefixe de sa taille sur
+  quatre octets, proche de `0xFFFFFFFF`, faisait deborder le calcul de la
+  position de la taille suivante — panique avec les controles de
+  debordement, atteignable par `parse()`, la sonde etant aveugle. Ce calcul
+  est desormais controle, et la chaine s'arrete sur cet en-tete, comme en
+  release.
+
 ## [11.6.0] - 2026-10-16
 
 Quatorze decodeurs de plus et la fin de faux positifs connus. Le lot defense
