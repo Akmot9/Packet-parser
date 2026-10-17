@@ -373,9 +373,11 @@ incluent notamment:
   CredSSP, la connexion est etiquetee TLS, par decision
 - RADIUS (RFC 2865, comptabilite RFC 2866, CoA RFC 5176) : en-tete (code
   nomme, identifiant, longueur, authentificateur) et liste des attributs
-  (type nomme pour les codes assignes de 1 a 125 et de 241 a 246, comme au
+  (type nomme pour les codes assignes de 1 a 190 et de 241 a 246, comme au
   registre IANA sauf 89, 101 et 241 a 246, qui portent le nom de leur RFC,
-  et 124 et 125, qui portent ceux de deux AVP Diameter ; valeur empruntee,
+  et 124 et 125, dont les variantes depreciees portent ceux de deux AVP
+  Diameter derriere les constantes `Mip6FeatureVector` et
+  `Mip6HomeLinkPrefix` ; valeur empruntee,
   accesseurs pour les entiers, adresses IPv4, textes et Vendor-Specific) ;
   reconnu sur UDP 1812/1813/1645/1646/3799 et a l'aveugle sur tout port
   (code connu, longueur egale au datagramme, attributs qui le pavent)

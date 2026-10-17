@@ -70,10 +70,14 @@ impl RadiusCode {
     }
 }
 
-/// Types d'attributs du registre IANA « RADIUS Attribute Types », definis par
-/// les RFC 2865, 2866, 2867, 2868, 2869, 3162, 4072, 4372, 4675, 4818, 4849,
-/// 5090, 5176 (Error-Cause, que le registre rattache a la RFC 3576, qu'elle
-/// remplace), 5447, 6929 et 7155.
+/// Types d'attributs du registre IANA « RADIUS Attribute Types » : tous les
+/// codes assignes, 1 a 190 (sauf 17, 21, 54 et 93, non assignes) et 241 a
+/// 246, definis par les RFC 2865, 2866, 2867, 2868, 2869, 3162, 4072, 4372,
+/// 4675, 4818, 4849, 5090, 5176 (Error-Cause, que le registre rattache a la
+/// RFC 3576, qu'elle remplace), 5447, 5580, 5607, 5904, 6519, 6572, 6677,
+/// 6911, 6929, 6930, 7055, 7155 et 7268. Les codes 191 (non assigne), 192 a
+/// 223 (experimentaux), 224 a 240 (propres a chaque implementation) et 247 a
+/// 255 (reserves) rendent `None`.
 ///
 /// Les variantes portent les noms du registre, sauf pour dix types : 89, 101
 /// et 241 a 246 portent ceux de leur RFC (Chargeable-User-Identity, RFC 4372
@@ -81,8 +85,12 @@ impl RadiusCode {
 /// Attribute » ; Extended-Type-1 a -4, Long-Extended-Type-1 et -2, RFC 6929
 /// §3), 124 et 125 ceux de deux AVP Diameter (voir
 /// [`AttributeType::MipHomeAgentAddress`] et
-/// [`AttributeType::MipHomeAgentHost`]). Le nom que le registre donne a 89,
-/// 124, 125 et 241 a 246 est un alias de recherche de la documentation.
+/// [`AttributeType::MipHomeAgentHost`], depreciees au profit des constantes
+/// [`AttributeType::Mip6FeatureVector`] et
+/// [`AttributeType::Mip6HomeLinkPrefix`]). Le nom que le registre donne a
+/// 89, 124, 125, 173 et 241 a 246 est un alias de recherche de la
+/// documentation. Les variantes ajoutees apres la 11.6.0 (126 a 190) sont
+/// en fin d'enum, apres 241 a 246, pour garder les discriminants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AttributeType {
@@ -213,6 +221,10 @@ pub enum AttributeType {
     /// MIP-Home-Agent-Address (code 334 de la RFC 4004, §4.2.2), qui n'existe
     /// pas en RADIUS : la valeur n'est pas une adresse.
     #[doc(alias = "MIP6-Feature-Vector")]
+    #[deprecated(
+        since = "11.7.0",
+        note = "le type 124 est MIP6-Feature-Vector (RFC 5447), pas une adresse ; utiliser `AttributeType::Mip6FeatureVector`"
+    )]
     MipHomeAgentAddress,
     /// Type 125, MIP6-Home-Link-Prefix au registre IANA (RFC 5447 §4.2.4 et
     /// §7.1) : la longueur du prefixe sur un octet, puis les seize octets du
@@ -221,6 +233,10 @@ pub enum AttributeType {
     /// la RFC 4004, §4.2.3), qui n'existe pas en RADIUS : la valeur n'est pas
     /// un nom d'hote.
     #[doc(alias = "MIP6-Home-Link-Prefix")]
+    #[deprecated(
+        since = "11.7.0",
+        note = "le type 125 est MIP6-Home-Link-Prefix (RFC 5447), pas un nom d'hote ; utiliser `AttributeType::Mip6HomeLinkPrefix`"
+    )]
     MipHomeAgentHost,
     #[doc(alias = "Extended-Attribute-1")]
     ExtendedType1,
@@ -234,9 +250,99 @@ pub enum AttributeType {
     LongExtendedType1,
     #[doc(alias = "Extended-Attribute-6")]
     LongExtendedType2,
+    // Variantes ajoutees apres la 11.6.0 (#192), en fin d'enum pour garder
+    // les discriminants : leur place logique est entre 125 et 241.
+    /// RFC 5580 (126 a 132).
+    OperatorName,
+    LocationInformation,
+    LocationData,
+    BasicLocationPolicyRules,
+    ExtendedLocationPolicyRules,
+    LocationCapable,
+    RequestedLocationInfo,
+    /// RFC 5607 (133 a 136).
+    /// tshark 4.6.6 l'abrege « Framed-Management ».
+    #[doc(alias = "Framed-Management")]
+    FramedManagementProtocol,
+    ManagementTransportProtection,
+    ManagementPolicyId,
+    ManagementPrivilegeLevel,
+    /// RFC 5904 (137 a 143).
+    PkmSsCert,
+    PkmCaCert,
+    PkmConfigSettings,
+    PkmCryptosuiteList,
+    PkmSaid,
+    PkmSaDescriptor,
+    PkmAuthKey,
+    /// RFC 6519 (144).
+    DsLiteTunnelName,
+    /// RFC 6572 (145 a 162).
+    MobileNodeIdentifier,
+    ServiceSelection,
+    Pmip6HomeLmaIpv6Address,
+    Pmip6VisitedLmaIpv6Address,
+    Pmip6HomeLmaIpv4Address,
+    Pmip6VisitedLmaIpv4Address,
+    Pmip6HomeHnPrefix,
+    Pmip6VisitedHnPrefix,
+    Pmip6HomeInterfaceId,
+    Pmip6VisitedInterfaceId,
+    Pmip6HomeIpv4Hoa,
+    Pmip6VisitedIpv4Hoa,
+    Pmip6HomeDhcp4ServerAddress,
+    Pmip6VisitedDhcp4ServerAddress,
+    Pmip6HomeDhcp6ServerAddress,
+    Pmip6VisitedDhcp6ServerAddress,
+    Pmip6HomeIpv4Gateway,
+    Pmip6VisitedIpv4Gateway,
+    /// RFC 6677 (163).
+    EapLowerLayer,
+    /// RFC 7055 (164 a 167).
+    GssAcceptorServiceName,
+    GssAcceptorHostName,
+    GssAcceptorServiceSpecifics,
+    GssAcceptorRealmName,
+    /// RFC 6911 (168 a 172).
+    FramedIpv6Address,
+    DnsServerIpv6Address,
+    RouteIpv6Information,
+    DelegatedIpv6PrefixPool,
+    StatefulIpv6AddressPool,
+    /// RFC 6930 (173).
+    #[doc(alias = "IPv6-6rd-Configuration")]
+    Ipv6SixRdConfiguration,
+    /// RFC 7268 (174 a 190).
+    AllowedCalledStationId,
+    EapPeerId,
+    EapServerId,
+    MobilityDomainId,
+    PreauthTimeout,
+    NetworkIdName,
+    EapolAnnouncement,
+    WlanHessid,
+    WlanVenueInfo,
+    WlanVenueLanguage,
+    WlanVenueName,
+    WlanReasonCode,
+    WlanPairwiseCipher,
+    WlanGroupCipher,
+    WlanAkmSuite,
+    WlanGroupMgmtCipher,
+    WlanRfBand,
 }
 
 impl AttributeType {
+    /// Type 124, MIP6-Feature-Vector (RFC 5447 §4.2.5) : le nom que prendra
+    /// la variante en 12.0, utilisable des maintenant en argument comme en
+    /// motif de `match`.
+    #[allow(non_upper_case_globals, deprecated)]
+    pub const Mip6FeatureVector: Self = Self::MipHomeAgentAddress;
+    /// Type 125, MIP6-Home-Link-Prefix (RFC 5447 §4.2.4) : le nom que
+    /// prendra la variante en 12.0.
+    #[allow(non_upper_case_globals, deprecated)]
+    pub const Mip6HomeLinkPrefix: Self = Self::MipHomeAgentHost;
+
     pub fn from_code(code: u8) -> Option<Self> {
         Some(match code {
             1 => Self::UserName,
@@ -358,14 +464,79 @@ impl AttributeType {
             121 => Self::DigestHa1,
             122 => Self::SipAor,
             123 => Self::DelegatedIpv6Prefix,
-            124 => Self::MipHomeAgentAddress,
-            125 => Self::MipHomeAgentHost,
+            124 => Self::Mip6FeatureVector,
+            125 => Self::Mip6HomeLinkPrefix,
             241 => Self::ExtendedType1,
             242 => Self::ExtendedType2,
             243 => Self::ExtendedType3,
             244 => Self::ExtendedType4,
             245 => Self::LongExtendedType1,
             246 => Self::LongExtendedType2,
+            126 => Self::OperatorName,
+            127 => Self::LocationInformation,
+            128 => Self::LocationData,
+            129 => Self::BasicLocationPolicyRules,
+            130 => Self::ExtendedLocationPolicyRules,
+            131 => Self::LocationCapable,
+            132 => Self::RequestedLocationInfo,
+            133 => Self::FramedManagementProtocol,
+            134 => Self::ManagementTransportProtection,
+            135 => Self::ManagementPolicyId,
+            136 => Self::ManagementPrivilegeLevel,
+            137 => Self::PkmSsCert,
+            138 => Self::PkmCaCert,
+            139 => Self::PkmConfigSettings,
+            140 => Self::PkmCryptosuiteList,
+            141 => Self::PkmSaid,
+            142 => Self::PkmSaDescriptor,
+            143 => Self::PkmAuthKey,
+            144 => Self::DsLiteTunnelName,
+            145 => Self::MobileNodeIdentifier,
+            146 => Self::ServiceSelection,
+            147 => Self::Pmip6HomeLmaIpv6Address,
+            148 => Self::Pmip6VisitedLmaIpv6Address,
+            149 => Self::Pmip6HomeLmaIpv4Address,
+            150 => Self::Pmip6VisitedLmaIpv4Address,
+            151 => Self::Pmip6HomeHnPrefix,
+            152 => Self::Pmip6VisitedHnPrefix,
+            153 => Self::Pmip6HomeInterfaceId,
+            154 => Self::Pmip6VisitedInterfaceId,
+            155 => Self::Pmip6HomeIpv4Hoa,
+            156 => Self::Pmip6VisitedIpv4Hoa,
+            157 => Self::Pmip6HomeDhcp4ServerAddress,
+            158 => Self::Pmip6VisitedDhcp4ServerAddress,
+            159 => Self::Pmip6HomeDhcp6ServerAddress,
+            160 => Self::Pmip6VisitedDhcp6ServerAddress,
+            161 => Self::Pmip6HomeIpv4Gateway,
+            162 => Self::Pmip6VisitedIpv4Gateway,
+            163 => Self::EapLowerLayer,
+            164 => Self::GssAcceptorServiceName,
+            165 => Self::GssAcceptorHostName,
+            166 => Self::GssAcceptorServiceSpecifics,
+            167 => Self::GssAcceptorRealmName,
+            168 => Self::FramedIpv6Address,
+            169 => Self::DnsServerIpv6Address,
+            170 => Self::RouteIpv6Information,
+            171 => Self::DelegatedIpv6PrefixPool,
+            172 => Self::StatefulIpv6AddressPool,
+            173 => Self::Ipv6SixRdConfiguration,
+            174 => Self::AllowedCalledStationId,
+            175 => Self::EapPeerId,
+            176 => Self::EapServerId,
+            177 => Self::MobilityDomainId,
+            178 => Self::PreauthTimeout,
+            179 => Self::NetworkIdName,
+            180 => Self::EapolAnnouncement,
+            181 => Self::WlanHessid,
+            182 => Self::WlanVenueInfo,
+            183 => Self::WlanVenueLanguage,
+            184 => Self::WlanVenueName,
+            185 => Self::WlanReasonCode,
+            186 => Self::WlanPairwiseCipher,
+            187 => Self::WlanGroupCipher,
+            188 => Self::WlanAkmSuite,
+            189 => Self::WlanGroupMgmtCipher,
+            190 => Self::WlanRfBand,
             _ => return None,
         })
     }
@@ -600,6 +771,193 @@ mod tests {
                 .as_ptr_range()
                 .contains(&packet.attributes[0].value.as_ptr())
         );
+    }
+
+    /// #191 : Access-Request synthetique (UDP 50000 -> 1812) qui porte
+    /// MIP6-Feature-Vector (124) et MIP6-Home-Link-Prefix (125) ; tshark
+    /// 4.6.6 : `t=MIP6-Feature-Vector(124) l=10`,
+    /// `t=MIP6-Home-Link-Prefix(125) l=19`.
+    const MIP6_ACCESS_REQUEST: &str = concat!(
+        "01010031000102030405060708090a0b0c0d0e0f7c0a00000000000000017d13402001",
+        "0db8000100000000000000000000"
+    );
+    /// #192 : Access-Accept synthetique (UDP 1812 -> 50000) qui porte
+    /// Operator-Name (126), Framed-IPv6-Address (168) et WLAN-RF-Band (190) ;
+    /// tshark 4.6.6 les nomme tous trois.
+    const ACCESS_ACCEPT_126_168_190: &str = concat!(
+        "0207003a000102030405060708090a0b0c0d0e0f7e0e316578616d706c652e6e6574a8",
+        "1220010db8000000000000000000000001be0600000001"
+    );
+
+    /// Registre IANA « RADIUS Attribute Types » (version du 2026-10-09),
+    /// codes 126 a 190 : le nom de la variante est celui du registre, tirets
+    /// et casse mis a part, sauf 173 (IPv6-6rd-Configuration, dont le nom
+    /// ne peut pas commencer par un chiffre apres `Ipv6`).
+    const IANA_126_TO_190: [(u8, &str); 65] = [
+        (126, "Operator-Name"),
+        (127, "Location-Information"),
+        (128, "Location-Data"),
+        (129, "Basic-Location-Policy-Rules"),
+        (130, "Extended-Location-Policy-Rules"),
+        (131, "Location-Capable"),
+        (132, "Requested-Location-Info"),
+        (133, "Framed-Management-Protocol"),
+        (134, "Management-Transport-Protection"),
+        (135, "Management-Policy-Id"),
+        (136, "Management-Privilege-Level"),
+        (137, "PKM-SS-Cert"),
+        (138, "PKM-CA-Cert"),
+        (139, "PKM-Config-Settings"),
+        (140, "PKM-Cryptosuite-List"),
+        (141, "PKM-SAID"),
+        (142, "PKM-SA-Descriptor"),
+        (143, "PKM-Auth-Key"),
+        (144, "DS-Lite-Tunnel-Name"),
+        (145, "Mobile-Node-Identifier"),
+        (146, "Service-Selection"),
+        (147, "PMIP6-Home-LMA-IPv6-Address"),
+        (148, "PMIP6-Visited-LMA-IPv6-Address"),
+        (149, "PMIP6-Home-LMA-IPv4-Address"),
+        (150, "PMIP6-Visited-LMA-IPv4-Address"),
+        (151, "PMIP6-Home-HN-Prefix"),
+        (152, "PMIP6-Visited-HN-Prefix"),
+        (153, "PMIP6-Home-Interface-ID"),
+        (154, "PMIP6-Visited-Interface-ID"),
+        (155, "PMIP6-Home-IPv4-HoA"),
+        (156, "PMIP6-Visited-IPv4-HoA"),
+        (157, "PMIP6-Home-DHCP4-Server-Address"),
+        (158, "PMIP6-Visited-DHCP4-Server-Address"),
+        (159, "PMIP6-Home-DHCP6-Server-Address"),
+        (160, "PMIP6-Visited-DHCP6-Server-Address"),
+        (161, "PMIP6-Home-IPv4-Gateway"),
+        (162, "PMIP6-Visited-IPv4-Gateway"),
+        (163, "EAP-Lower-Layer"),
+        (164, "GSS-Acceptor-Service-Name"),
+        (165, "GSS-Acceptor-Host-Name"),
+        (166, "GSS-Acceptor-Service-Specifics"),
+        (167, "GSS-Acceptor-Realm-Name"),
+        (168, "Framed-IPv6-Address"),
+        (169, "DNS-Server-IPv6-Address"),
+        (170, "Route-IPv6-Information"),
+        (171, "Delegated-IPv6-Prefix-Pool"),
+        (172, "Stateful-IPv6-Address-Pool"),
+        (173, "IPv6-6rd-Configuration"),
+        (174, "Allowed-Called-Station-Id"),
+        (175, "EAP-Peer-Id"),
+        (176, "EAP-Server-Id"),
+        (177, "Mobility-Domain-Id"),
+        (178, "Preauth-Timeout"),
+        (179, "Network-Id-Name"),
+        (180, "EAPoL-Announcement"),
+        (181, "WLAN-HESSID"),
+        (182, "WLAN-Venue-Info"),
+        (183, "WLAN-Venue-Language"),
+        (184, "WLAN-Venue-Name"),
+        (185, "WLAN-Reason-Code"),
+        (186, "WLAN-Pairwise-Cipher"),
+        (187, "WLAN-Group-Cipher"),
+        (188, "WLAN-AKM-Suite"),
+        (189, "WLAN-Group-Mgmt-Cipher"),
+        (190, "WLAN-RF-Band"),
+    ];
+
+    #[test]
+    fn test_attribute_types_126_to_190_follow_the_iana_registry() {
+        for (code, iana_name) in IANA_126_TO_190 {
+            let kind = AttributeType::from_code(code).unwrap_or_else(|| panic!("{code}"));
+            let expected = match iana_name {
+                "IPv6-6rd-Configuration" => "ipv6sixrdconfiguration".to_string(),
+                name => name.replace('-', "").to_ascii_lowercase(),
+            };
+            assert_eq!(format!("{kind:?}").to_ascii_lowercase(), expected, "{code}");
+        }
+        // Ni les non assignes, ni les experimentaux, ni les reserves.
+        for code in [0, 17, 21, 54, 93]
+            .into_iter()
+            .chain(191..=240)
+            .chain(247..=255)
+        {
+            assert_eq!(AttributeType::from_code(code), None, "{code}");
+        }
+
+        let bytes = hex::decode(ACCESS_ACCEPT_126_168_190).unwrap();
+        assert_eq!(bytes.len(), 58);
+        let packet = RadiusPacket::try_from(bytes.as_slice()).expect("Access-Accept");
+        assert_eq!(packet.kind, RadiusCode::AccessAccept);
+        let kinds: Vec<_> = packet
+            .attributes
+            .iter()
+            .map(|a| (a.attribute_type, a.length, a.kind))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                (126, 14, Some(AttributeType::OperatorName)),
+                (168, 18, Some(AttributeType::FramedIpv6Address)),
+                (190, 6, Some(AttributeType::WlanRfBand)),
+            ]
+        );
+        assert_eq!(
+            packet
+                .attribute(AttributeType::OperatorName)
+                .and_then(|a| a.as_text()),
+            Some("1example.net")
+        );
+        assert_eq!(
+            packet
+                .attribute(AttributeType::WlanRfBand)
+                .and_then(|a| a.as_u32()),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn test_types_124_and_125_are_mip6_feature_vector_and_home_link_prefix() {
+        let bytes = hex::decode(MIP6_ACCESS_REQUEST).unwrap();
+        assert_eq!(bytes.len(), 49);
+        let packet = RadiusPacket::try_from(bytes.as_slice()).expect("Access-Request");
+        assert_eq!(
+            AttributeType::from_code(124),
+            Some(AttributeType::Mip6FeatureVector)
+        );
+        assert_eq!(
+            AttributeType::from_code(125),
+            Some(AttributeType::Mip6HomeLinkPrefix)
+        );
+        // Les anciens noms restent les memes valeurs jusqu'a la 12.0.
+        #[allow(deprecated)]
+        {
+            assert_eq!(
+                AttributeType::Mip6FeatureVector,
+                AttributeType::MipHomeAgentAddress
+            );
+            assert_eq!(
+                AttributeType::Mip6HomeLinkPrefix,
+                AttributeType::MipHomeAgentHost
+            );
+        }
+        let feature_vector = packet
+            .attribute(AttributeType::Mip6FeatureVector)
+            .expect("124");
+        assert_eq!((feature_vector.length, feature_vector.value.len()), (10, 8));
+        assert_eq!(feature_vector.value, [0, 0, 0, 0, 0, 0, 0, 1]);
+        let prefix = packet
+            .attribute(AttributeType::Mip6HomeLinkPrefix)
+            .expect("125");
+        assert_eq!((prefix.length, prefix.value.len()), (19, 17));
+        assert_eq!(prefix.value[0], 64);
+        assert_eq!(prefix.as_text(), None);
+        // En motif de `match`, comme le fera la variante de la 12.0.
+        let names: Vec<&str> = packet
+            .attributes
+            .iter()
+            .map(|a| match a.kind {
+                Some(AttributeType::Mip6FeatureVector) => "MIP6-Feature-Vector",
+                Some(AttributeType::Mip6HomeLinkPrefix) => "MIP6-Home-Link-Prefix",
+                _ => "?",
+            })
+            .collect();
+        assert_eq!(names, ["MIP6-Feature-Vector", "MIP6-Home-Link-Prefix"]);
     }
 
     #[test]

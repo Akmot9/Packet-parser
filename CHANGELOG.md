@@ -172,6 +172,39 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   du `correlationId` de la correlation info, et
   `NegotiationRequest::correlation_info_present()`. `RdpParseError` gagne
   `InvalidCorrelationInfo { structure_type, length }`, en fin d'enum.
+- **RADIUS** (#192) : `AttributeType` nomme les 65 types assignes de 126 a
+  190 du registre IANA « RADIUS Attribute Types » (version du 2026-10-09),
+  qui rendaient `None` : Operator-Name et la localisation (RFC 5580, 126 a
+  132), la gestion (RFC 5607, 133 a 136), PKM (RFC 5904, 137 a 143),
+  DS-Lite-Tunnel-Name (RFC 6519, 144), PMIPv6 (RFC 6572, 145 a 162),
+  EAP-Lower-Layer (RFC 6677, 163), GSS-EAP (RFC 7055, 164 a 167), IPv6
+  (RFC 6911, 168 a 172 ; RFC 6930, 173) et IEEE 802 (RFC 7268, 174 a 190).
+  Les noms sont ceux du registre (173, IPv6-6rd-Configuration, devient
+  `Ipv6SixRdConfiguration`) ; les variantes s'ajoutent en fin d'enum, apres
+  241 a 246, et `RadiusAttribute::kind` passe de `None` a `Some(..)` pour
+  ces 65 codes, que tshark 4.6.6 nomme tous. Un test fige la table 126 a
+  190 contre le registre, et verifie que 17, 21, 54, 93, 191 a 240 et 247 a
+  255 restent `None`. Aucune des 265 trames RADIUS du corpus ne porte un
+  type superieur a 95.
+- **RADIUS** (#191) : `AttributeType::Mip6FeatureVector` et
+  `AttributeType::Mip6HomeLinkPrefix`, les noms IANA des types 124 et 125
+  (RFC 5447 §4.2.5 et §4.2.4), comme constantes associees egales aux
+  variantes `MipHomeAgentAddress` et `MipHomeAgentHost`, depreciees.
+  Elles s'emploient en argument de `RadiusPacket::attribute` comme en motif
+  de `match`, et compileront telles quelles en 12.0, quand elles
+  deviendront les variantes. `from_code(124)` et `from_code(125)` rendent
+  les memes valeurs qu'avant ; seul `{:?}` affiche encore l'ancien nom.
+
+### Deprecie
+
+- **RADIUS** (#191) : `AttributeType::MipHomeAgentAddress` (type 124) et
+  `AttributeType::MipHomeAgentHost` (type 125) portent les noms de deux AVP
+  Diameter de la RFC 5447 (codes 334 et 348 de la RFC 4004), qui n'existent
+  pas en RADIUS : le 124 est MIP6-Feature-Vector, un champ de 64 drapeaux,
+  pas une adresse ; le 125 MIP6-Home-Link-Prefix, un prefixe IPv6, pas un
+  nom d'hote. Utiliser `AttributeType::Mip6FeatureVector` et
+  `AttributeType::Mip6HomeLinkPrefix`. Les variantes seront renommees sur
+  place en 12.0, a la meme position.
 
 ### Documentation
 
