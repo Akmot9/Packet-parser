@@ -448,9 +448,10 @@ static RULES: &[Rule] = &[
     // octets a version et longueur plausibles n'est pas une signature
     // suffisante pour sonder tout datagramme (#124).
     port_rule("IKE", Guard::Udp, is_ike_udp_port, ProbeId::Ike),
-    // ESP dans UDP 4500 (RFC 3948 §2.1) : SPI non nul en tete, le reste est
-    // chiffre ; puis le NAT-keepalive d'un octet (§2.3). ESP natif
-    // (protocole IP 50) est decode par la couche transport.
+    // ESP dans UDP 4500 (RFC 3948 §2.1) : SPI non nul en tete, la suite ne
+    // se decoupe qu'avec l'association de securite ; puis le NAT-keepalive
+    // d'un octet (§2.3). ESP natif (protocole IP 50) est decode par la couche
+    // transport.
     port_rule("ESP", Guard::Udp, is_nat_t_udp_port, ProbeId::EspNatT),
     port_rule(
         "NAT-keepalive",

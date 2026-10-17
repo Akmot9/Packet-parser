@@ -1,7 +1,8 @@
 # Provenance
 
 Quatorze captures **PostgreSQL** versées le 2026-10-12 pour l'issue #98 —
-le plus gros décodeur du dépôt n'avait pas une trame réelle pour l'exercer.
+le plus long fichier de décodeur du dépôt, `postgresql.rs`, n'avait pas une
+trame réelle pour l'exercer.
 Toutes viennent du corpus de tests de [Zeek](https://github.com/zeek/zeek),
 dossier `testing/btest/Traces/postgresql/`, branche `master` au commit
 `66194af53d66b0d7b70f45321fbf47ad6451c34d` (2026-10-12). Aucune n'est

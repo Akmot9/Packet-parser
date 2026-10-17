@@ -9,7 +9,8 @@
 - Encapsulation **Ethernet** (LINKTYPE 1), 86 trames, toutes en **double tag
   802.1Q** : tag externe `0x8100` VID **3704**, tag interne `0x8100` VID
   **2474**, puis **PPPoE session** (`0x8864`, session 0x0f07) portant du PPP
-  IPv4 (`0x0021`) — une session TCP 1.1.1.1:443 ↔ 2.2.2.2.
+  IPv4 (`0x0021`) — une session TCP 1.1.1.1:20394 → 2.2.2.2:443 (le SYN de
+  la trame 1 part de 1.1.1.1).
 - Sert de source au golden test `tests/qinq_golden.rs` : la pile de tags est
   consommée entière, `vlan` retient le tag interne (2474) et l'EtherType
   atteint est PPPoE. Depuis #172, la session PPPoE est pelée à son tour

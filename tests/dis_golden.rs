@@ -6,18 +6,19 @@
 //! Golden tests DIS (IEEE 1278.1) sur trames reelles (#123).
 //!
 //! Captures : `pcaps_exemple/protocols/dis/` (voir son `SOURCE.md`), cinq
-//! fichiers, versions 4 a 7, PDU Transmitter, Signal, Underwater Acoustic
-//! et Set Data, sur UDP 3000, 6993 et 22999.
+//! fichiers, versions 4 a 7, PDU Transmitter, Signal, Underwater Acoustic,
+//! Set Data, Data Query et Data, sur UDP 3000, 6993 et 22999.
 //!
 //! L'oracle est tshark 4.6.6 avec le decodage force sur ces trois ports
 //! (`tools/dis_oracle.sh`) : pour chaque trame, l'en-tete (version,
 //! exercice, type, famille, longueur, PDU Status) et le premier identifiant
 //! d'entite du corps, figes dans `tests/data/dis_tshark_oracle.tsv` et
 //! compares ici trame par trame. La crate est interrogee comme tshark, les
-//! ports 6993 et 22999 declares par Decode As ; sans declaration, la sonde
-//! aveugle etiquette toute trame dont les PDU pavent le datagramme — toutes
-//! sauf les trois de `wireshark_3492_dis_test2.pcap` (Data Query, Set Data,
-//! Data), qui annoncent 48 octets pour 160.
+//! ports 6993 et 22999 declares par Decode As ; sans declaration, la regle
+//! de port UDP 3000 (lecture tolerante) puis la sonde aveugle (pavage exact)
+//! etiquettent toutes les trames sauf les trois de
+//! `wireshark_3492_dis_test2.pcap` (Data Query, Set Data, Data ; UDP 6993),
+//! qui annoncent 48 octets pour 160.
 
 use std::{collections::BTreeMap, fs, path::Path};
 
@@ -58,7 +59,8 @@ fn read_oracle(path: &Path) -> BTreeMap<String, BTreeMap<usize, OracleRow>> {
 }
 
 /// Le premier identifiant d'entite du corps : tous les types du corpus
-/// (Transmitter, Signal, Underwater Acoustic, Set Data) commencent par un.
+/// (Transmitter, Signal, Underwater Acoustic, Set Data, Data Query, Data)
+/// commencent par un.
 fn entity_id(packet: &DisPacket<'_>) -> Option<(u16, u16, u16)> {
     let pdu = packet.pdus.first()?;
     let raw = match pdu.body {

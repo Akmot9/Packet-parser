@@ -358,11 +358,13 @@ Application detection is intentionally best-effort. Parser modules include:
   decoded as far as it goes. After a TLS or CredSSP negotiation the
   connection is labelled TLS, by decision
 - RADIUS (RFC 2865, accounting RFC 2866, CoA RFC 5176): header (code named,
-  identifier, length, authenticator) and the attribute list (type named from
-  the IANA registry, value borrowed, accessors for integers, IPv4 addresses,
-  texts and Vendor-Specific); recognised on UDP 1812/1813/1645/1646/3799 and
-  blindly on any port (known code, length equal to the datagram, attributes
-  tiling it)
+  identifier, length, authenticator) and the attribute list (type named for
+  the assigned codes 1-125 and 241-246, as in the IANA registry except 89,
+  101 and 241-246, which carry their RFC names, and 124 and 125, which carry
+  the names of two Diameter AVPs; value borrowed, accessors for integers,
+  IPv4 addresses, texts and Vendor-Specific); recognised on UDP
+  1812/1813/1645/1646/3799 and blindly on any port (known code, length equal
+  to the datagram, attributes tiling it)
 - WireGuard: the four messages (handshake initiation and response, cookie
   reply, transport data) with their reserved bytes, session indexes, data
   counter and fixed fields (ephemeral key, encrypted fields, mac1, mac2),
@@ -382,12 +384,13 @@ Application detection is intentionally best-effort. Parser modules include:
   Recognised blindly on TCP and UDP, the CRCs are the signature
 - IKE (ISAKMP/IKEv1 RFC 2408, IKEv2 RFC 7296) on UDP 500 and 4500: 28-byte
   header (SPIs, version, exchange type named, flags, message ID, length),
-  chain of top-level payloads with named types, encrypted bytes kept as such
-  (IKEv1 E flag, IKEv2 SK payload); UDP 4500 demultiplexed per RFC 3948
-  (non-ESP marker, NAT-keepalive, ESP)
+  chain of top-level payloads with named types, protected bytes kept as such
+  (IKEv1 E flag; IKEv2 SK or SKF payload body, clear IV and integrity data
+  included); UDP 4500 demultiplexed per RFC 3948 (non-ESP marker,
+  NAT-keepalive, ESP)
 - ESP (RFC 4303): SPI and sequence number, native (IP protocol 50, exposed as
   `TransportDetails::Esp`) and UDP-encapsulated on 4500 (`EspPacket`), the
-  rest kept as encrypted bytes
+  rest (IV, ciphertext, ICV, sized by the negotiated algorithm) kept as bytes
 - DIS (IEEE 1278.1, Distributed Interactive Simulation): PDU header
   (versions 1 to 7, the 72 standard PDU types named, family, timestamp,
   length, PDU Status), Entity State, Transmitter and Signal bodies typed,

@@ -6,7 +6,7 @@
 use crate::errors::application::asterix::AsterixError;
 
 /// En-tete d'un data block : CAT (1 octet) et LEN (2 octets, big-endian,
-/// en-tete compris) — EUROCONTROL-SPEC-0149 Part 1, §5.1.
+/// en-tete compris) — EUROCONTROL-SPEC-0149 Part 1, ed. 3.1, §5.2.2.
 pub const ASTERIX_BLOCK_HEADER_LEN: usize = 3;
 
 /// Plus petit data block decodable : en-tete, un octet de FSPEC et au moins

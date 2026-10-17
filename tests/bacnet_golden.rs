@@ -7,10 +7,10 @@
 //! #102).
 //!
 //! Captures : `pcaps_exemple/protocols/bacnet/` (voir son `SOURCE.md`) : des
-//! lectures de propriete entre deux automates (ITI, 2015) et, du corpus
-//! nDPI (2023), les sondes readProperty que des scanners d'Internet envoient
-//! a un equipement expose, puis un reseau local avec ses Who-Is, I-Am et
-//! messages de routage.
+//! lectures de propriete qu'un poste adresse a un automate Johnson Controls
+//! (ITI, 2015) et, du corpus nDPI (2023), les sondes readProperty que des
+//! scanners d'Internet envoient a un equipement expose, puis un reseau local
+//! avec ses Who-Is, I-Am et messages de routage.
 //!
 //! L'oracle est tshark 4.6.6 (`tools/bacnet_oracle.sh`) : pour chaque
 //! datagramme, BVLC (fonction, longueur), NPDU (version, controle,

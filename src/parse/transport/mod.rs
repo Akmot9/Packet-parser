@@ -135,7 +135,9 @@ impl<'a> Transport<'a> {
                     .map(TransportDetails::Icmpv6),
             }),
             // ESP (RFC 4303, protocole IP 50) : le SPI et le numero de
-            // sequence sont en clair, le reste est chiffre. `payload` reste
+            // sequence ont une place fixe ; la suite (IV et ICV en clair,
+            // donnees et trailer chiffres sous confidentialite) ne se
+            // decoupe qu'avec l'association de securite. `payload` reste
             // None comme pour ICMP : rien de lisible ne s'empile au-dessus,
             // et le probing applicatif etiquetterait du chiffre (#124).
             Some(TransportProtocol::Esp) => Ok(Transport {

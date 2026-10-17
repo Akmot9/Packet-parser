@@ -14,10 +14,10 @@ trame, 43 trames d'un fragment réparti sur plusieurs.
 
 | Fichier | Trames | Contenu | SHA-256 |
 |---|---|---|---|
-| `dnp3.pcap` | 214 | trois sessions TCP 20000 (2004) : lectures de classes, écritures, select/operate, redémarrages, confirmations, réponses sollicitées et non sollicitées | `7a30496184c93b12ef57fd0877acbead85975b20a8db35d8ac7b5c45e4f9f305` |
+| `dnp3.pcap` | 214 | neuf sessions TCP 20000 (huit en 2004, une en 2007) : lectures de classes et d'objets, écritures, cinq select de CROB (g12v1) sans operate, redémarrages, arrêts d'application, activations et désactivations des messages non sollicités, confirmations, réponses sollicitées et non sollicitées | `7a30496184c93b12ef57fd0877acbead85975b20a8db35d8ac7b5c45e4f9f305` |
 | `dnp3_read.pcap` | 10 | lecture des classes 1, 2, 3 et 0, réponse avec entrées binaires, sorties binaires et analogiques | `1e39be441983fcf9acb4ee4a60ee986c4a9009bd8c1cc1f1de1b40e4e70fad65` |
 | `dnp3_read_p20001.pcap` | 10 | mêmes octets que `dnp3_read.pcap`, port réécrit en 20001 : la preuve du sondage sans port | `e17324b454c07ea1112077db39af36eb20c9667429d3acc083c745ae462b3a9f` |
-| `dnp3_write.pcap` | 10 | écriture (g80v1, remise à zéro de l'indication de redémarrage) | `8e8c08175097d5b04a824ec10d5e02daff89f2fba1aa0763ecacb2131ddbf28f` |
+| `dnp3_write.pcap` | 10 | écriture de l'heure (g50v1, Time and Date, un point) | `8e8c08175097d5b04a824ec10d5e02daff89f2fba1aa0763ecacb2131ddbf28f` |
 | `dnp3_select_operate.pcap` | 13 | select puis operate d'une commande binaire (g12v1, CROB) | `06de51c8d6f32fb5991c547c7ba94fc824daf34422ebb86cbb5e07fd4be93ba1` |
 | `dnp3_en_spon.pcap` | 10 | activation des messages non sollicités (g60v2-4) | `d5c33a7d99bfe60fa7f5afa9bddee52afcba8a9ed6065e309fb8878209f2266c` |
 | `dnp3_del_measure.pcap` | 10 | mesure de délai, réponse g52v2 | `83e398ef4d8b908a76a582ef761e53f8ae029d3595ced3f80cdf700fc9ff62e0` |
@@ -25,10 +25,10 @@ trame, 43 trames d'un fragment réparti sur plusieurs.
 | `dnp3_file_read.pcap` | 30 | ouverture, lecture par blocs (g70v5, objets préfixés par leur taille), fermeture | `3c75fc6e9378a793ab80b6bd7a555497f9c7bf74419c87bc596f7d38efe7b982` |
 | `dnp3_file_write.pcap` | 22 | écriture d'un fichier | `169f828684c38cf20964a435f9a69580f8470fa032cbaf8f52a1b21f568c1c72` |
 | `dnp3_file_del.pcap` | 10 | suppression d'un fichier | `de903a543056985d94eaaa19a7d42cf64a9f2d3c992bf316f2d18396e62cdfb2` |
-| `dnp3_link_only.pcap` | 35 | demandes d'état de liaison, puis une lecture dont la réponse de 2 300 octets tient en dix trames de liaison de 255 octets | `1f71b67c07836072d522fbdc8688199a2482093aeef2c406e39b9f7b5991f254` |
+| `dnp3_link_only.pcap` | 35 | demandes d'état de liaison, puis une lecture de la classe 0 dont la réponse, deux fragments applicatifs de 2 045 et 1 636 octets, tient en seize trames de liaison : quatorze de LENGTH 255 et une plus courte en fin de chaque fragment (59 et 148) | `1f71b67c07836072d522fbdc8688199a2482093aeef2c406e39b9f7b5991f254` |
 | `dnp3_udp_read.pcap` | 23 | la même lecture sur UDP 20000 | `4787acb645e088ddabfcec437c3adeee30b51a445c064b62c0a85c48280ee8ba` |
-| `dnp3_udp_write.pcap` | 2 | écriture sur UDP | `62ff4d916c295ab81825d3d22419c44855d528529ed72c9f76b88567f6b07219` |
-| `dnp3_udp_select_operate.pcap` | 10 | select/operate sur UDP, avec confirmations applicatives | `152cf07ee031b6c85a854ff1a3005e3ddc7612e109d380f1093ee66f85e3321a` |
+| `dnp3_udp_write.pcap` | 2 | écriture sur UDP (g80v1, remise à zéro de l'indication de redémarrage, IIN1.7) | `62ff4d916c295ab81825d3d22419c44855d528529ed72c9f76b88567f6b07219` |
+| `dnp3_udp_select_operate.pcap` | 10 | select/operate sur UDP (g12v1), puis une lecture et une demande d'état de liaison ; aucune confirmation applicative | `152cf07ee031b6c85a854ff1a3005e3ddc7612e109d380f1093ee66f85e3321a` |
 | `dnp3_udp_en_spon.pcap` | 4 | messages non sollicités sur UDP | `6e2d07f5ee3d5c2545456b5612565b604fcc13d9aab30192bab64ff233f2a650` |
 
 ## Ces trames sont-elles réelles ?
@@ -46,11 +46,12 @@ tranchée sur les octets :
 - **`dnp3_link_only.pcap` (2013) et `dnp3_udp_*.pcap` (2014)** : une carte
   Intel (`00:16:76:c7:ce:db`, TTL 128) face à un équipement embarqué
   (`00:50:c2:4f:94:64`, bloc IEEE RA, TTL 64) sur le port 1128 ; la station
-  répond par des fragments de 2 300 octets en trames de 255 octets, la
-  signature d'une vraie RTU ;
-- **`dnp3.pcap` (2004)** : trois sessions entre `10.0.0.3`, `10.0.0.8`,
-  `10.0.0.9`, `192.168.66.33` et `192.168.66.34`, quatre cartes (Intel,
-  Apple, 3Com), TTL 128 ; des requêtes variées dont six (trames 154, 156,
+  répond par des fragments de 2 045 et 1 636 octets en trames de liaison de
+  LENGTH 255, la signature d'une vraie RTU ;
+- **`dnp3.pcap` (2004 et 2007)** : neuf sessions TCP, huit le 2004-10-11 de
+  `10.0.0.8` et `10.0.0.9` vers `10.0.0.3`, une le 2007-05-03 de
+  `192.168.66.33` vers `192.168.66.34`, quatre cartes (Intel, Apple, 3Com),
+  TTL 128 ; des requêtes variées dont six (trames 154, 156,
   163, 166, 174 et 176) portent un qualificatif `0xed` (bit 7 réservé mis
   à 1, code de plage 13) que la norme ne définit pas — ce qu'un générateur
   ne produirait pas et qu'un vieux maître produit ; tshark ne le montre que
