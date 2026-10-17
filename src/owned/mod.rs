@@ -36,6 +36,8 @@ pub struct PacketFlowOwned {
     pub corrupted: Option<CorruptedLayer>,
 }
 
+// L'ordre des champs est celui du JSON, qui fait foi et que lit Sonar :
+// `DataLink` le suit (#193), pas l'inverse.
 #[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
 pub struct DataLinkOwned {
     pub destination_mac: MacAddress,
@@ -418,6 +420,7 @@ pub struct InternetOwned {
     pub protocol: String,
 }
 
+// Comme pour `DataLinkOwned` : `Transport` suit cet ordre (#193).
 #[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
 pub struct TransportOwned {
     pub source_port: Option<u16>,

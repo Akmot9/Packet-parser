@@ -32,9 +32,16 @@ pub enum TransportDetails<'a> {
 }
 
 /// Represents a transport layer packet (UDP, TCP, etc.)
+// serde ecrit les champs dans l'ordre de leur declaration : celui de
+// `TransportOwned`, dont le schema fait foi, pour que les deux modeles
+// rendent le meme texte JSON, pas seulement les memes valeurs (#193).
 #[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
 pub struct Transport<'a> {
+    /// Source port
+    pub source_port: Option<u16>,
+    /// Destination port
+    pub destination_port: Option<u16>,
     /// The transport layer protocol name
     // Meme cle et meme valeur que `TransportOwned` : le `Display` du
     // protocole ("TCP", "UDP", ...), pas le nom de la variante Rust (#22).
@@ -43,10 +50,6 @@ pub struct Transport<'a> {
         serialize_with = "serialize_protocol_name"
     )]
     pub protocol: TransportProtocol,
-    /// Source port
-    pub source_port: Option<u16>,
-    /// Destination port
-    pub destination_port: Option<u16>,
     /// The payload of the transport packet
     #[serde(skip_serializing)]
     pub payload: Option<&'a [u8]>,
