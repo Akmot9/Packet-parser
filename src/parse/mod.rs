@@ -2531,6 +2531,12 @@ mod tests {
             serde_json::to_value(&borrowed_inner.data_link).unwrap(),
             serde_json::to_value(&inner.data_link).unwrap()
         );
+        // Meme texte JSON, ordre des membres compris (#193) : aucune trame du
+        // corpus de `tests/json_schema_parity.rs` ne rend de `Ieee80211Link`.
+        assert_eq!(
+            serde_json::to_string(&flow).unwrap(),
+            serde_json::to_string(&owned).unwrap()
+        );
         let inner_transport = inner.transport.as_ref().expect("inner transport");
         assert_eq!(inner_transport.source_port, Some(56699));
         assert_eq!(inner_transport.destination_port, Some(445));

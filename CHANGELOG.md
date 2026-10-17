@@ -57,6 +57,26 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   debordement, atteignable par `parse()`, la sonde etant aveugle. Ce calcul
   est desormais controle, et la chaine s'arrete sur cet en-tete, comme en
   release.
+- **JSON** (#193) : `PacketFlow` (borrowed) et `PacketFlowOwned`
+  serialisaient les memes cles avec les memes valeurs, mais pas dans le
+  meme ordre : serde ecrit les champs dans l'ordre de leur declaration, et
+  `Transport` declarait `protocol` avant les ports, `DataLink` `ethertype`
+  apres `vlan` et `vlan_stack`. Le modele borrowed s'aligne sur le modele
+  owned, dont le schema fait foi (11.0.0) : `protocol_transport` suit
+  desormais `destination_port`, a la racine du flux comme dans chaque
+  `inner`, et `ethertype` suit `source_mac` dans `link_details`. Le texte
+  JSON du modele borrowed change donc d'ordre pour toute trame a couche
+  transport ou a tag VLAN (362 336 des 375 552 trames du corpus), sans
+  qu'une cle ni une valeur change : un lecteur JSON n'y voit rien, mais qui
+  compare, hache ou deduplique ce texte le verra. Tout format serde voit le
+  nouvel ordre (en CSV, `Transport` seul s'ecrit desormais
+  `source_port,destination_port,protocol_transport`), le `Debug` derive
+  aussi ; `PartialEq` et `Hash`, ecrits a la main, ne changent pas. Le JSON
+  du modele owned, celui que lit Sonar, ne change pas d'un octet.
+  `tests/json_schema_parity.rs`, qui comparait des `Value` dont l'egalite
+  ignore l'ordre des membres, compare aussi le texte sur tout le corpus, et
+  un test fige le texte owned d'un flux qui porte chaque membre du schema,
+  pour chaque forme de liaison.
 
 ## [11.6.0] - 2026-10-16
 

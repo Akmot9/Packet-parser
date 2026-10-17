@@ -105,6 +105,9 @@ const VLAN_TAG_LEN: usize = 4;
 /// length, which drops the Ethernet padding of a short frame, then by the
 /// end of the frame: a PPPoE length shorter than the IP packet it carries
 /// truncates it, and the Internet layer reports it corrupted.
+// serde ecrit les champs dans l'ordre de leur declaration : celui de
+// `DataLinkOwned`, dont le schema fait foi, pour que les deux modeles rendent
+// le meme texte JSON, pas seulement les memes valeurs (#193).
 #[derive(Debug, Clone, Serialize, Eq)]
 #[non_exhaustive]
 pub struct DataLink<'a> {
@@ -112,6 +115,10 @@ pub struct DataLink<'a> {
     pub destination_mac: MacAddress,
     /// The source MAC address (serialized as a string).
     pub source_mac: MacAddress,
+    /// The Ethertype of the packet, indicating the protocol in the payload
+    /// (serialized as its name, e.g. "IPv4").
+    #[serde(serialize_with = "ethertype::serialize_name")]
+    pub ethertype: Ethertype,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vlan: Option<VlanTag>,
     /// The whole VLAN tag stack, outermost first (802.1ad / QinQ: S-tag then
@@ -125,10 +132,6 @@ pub struct DataLink<'a> {
     /// JSON.
     #[serde(skip_serializing)]
     pub pppoe: Option<PppoeSession>,
-    /// The Ethertype of the packet, indicating the protocol in the payload
-    /// (serialized as its name, e.g. "IPv4").
-    #[serde(serialize_with = "ethertype::serialize_name")]
-    pub ethertype: Ethertype,
     /// The payload of the Ethernet frame.
     #[serde(skip_serializing)]
     pub payload: &'a [u8],

@@ -36,6 +36,8 @@ pub struct PacketFlowOwned {
     pub corrupted: Option<CorruptedLayer>,
 }
 
+// L'ordre des champs est celui du JSON, qui fait foi et que lit Sonar :
+// `DataLink` le suit (#193), pas l'inverse.
 #[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
 pub struct DataLinkOwned {
     pub destination_mac: MacAddress,
@@ -418,6 +420,7 @@ pub struct InternetOwned {
     pub protocol: String,
 }
 
+// Comme pour `DataLinkOwned` : `Transport` suit cet ordre (#193).
 #[derive(Debug, Clone, Serialize, PartialEq, Hash, Eq)]
 pub struct TransportOwned {
     pub source_port: Option<u16>,
@@ -821,6 +824,119 @@ mod tests {
         assert!(json.contains("\"destination_ip\":null"));
         assert!(json.contains("\"protocol_internet\":\"UDP\""));
         assert!(!json.contains("\"protocol\":\"UDP\""));
+    }
+
+    /// Le JSON du modele owned fait foi (CHANGELOG 11.0.0) et Sonar le lit ;
+    /// le modele borrowed suit son ordre (#193). `tests/json_schema_parity.rs`
+    /// compare les deux modeles entre eux : un reordonnancement des deux a la
+    /// fois y passerait inapercu. Ce test fige donc le texte owned, et avec lui
+    /// la place de chaque membre : celui d'un flux synthetique qui les porte
+    /// tous (tag VLAN et pile de tags, couches IP, transport et application,
+    /// flux encapsule en RAW IP, corruption), puis celui des autres formes de
+    /// liaison.
+    #[test]
+    fn owned_json_member_order_is_pinned() {
+        use crate::parse::CorruptedLayerKind;
+
+        // QinQ : le S-tag annonce le C-tag (0x8100), qui annonce IPv4.
+        let tag = |id, next| VlanTag {
+            id,
+            pcp: 0,
+            dei: false,
+            inner_ethertype: Ethertype(next),
+        };
+        let flow = PacketFlowOwned {
+            data_link: LinkLayerOwned::ethernet(DataLinkOwned {
+                vlan: Some(tag(2474, 0x0800)),
+                vlan_stack: vec![tag(3704, 0x8100), tag(2474, 0x0800)],
+                ..sample_data_link_without_vlan()
+            }),
+            inner: Some(Box::new(PacketFlowOwned {
+                data_link: LinkLayerOwned::raw_ipv4(),
+                internet: None,
+                transport: None,
+                application: None,
+                inner: None,
+                corrupted: None,
+            })),
+            corrupted: Some(CorruptedLayer {
+                layer: CorruptedLayerKind::Transport,
+                error: "TCP error: Invalid TCP flags 0x03: SYN and FIN are both set".to_string(),
+            }),
+            ..sample_packet_flow_owned()
+        };
+        assert_eq!(
+            serde_json::to_string(&flow).unwrap(),
+            concat!(
+                r#"{"data_link":{"link_type":1,"network_protocol":{"kind":"ipv4"},"#,
+                r#""link_kind":"ethernet","link_details":{"destination_mac":"aa:bb:cc:dd:ee:ff","#,
+                r#""source_mac":"11:22:33:44:55:66","ethertype":"IPv4","#,
+                r#""vlan":{"id":2474,"pcp":0,"dei":false},"#,
+                r#""vlan_stack":[{"id":3704,"pcp":0,"dei":false},"#,
+                r#"{"id":2474,"pcp":0,"dei":false}]}},"#,
+                r#""source_ip":"192.168.1.10","ip_source_type":null,"#,
+                r#""destination_ip":"8.8.8.8","ip_destination_type":null,"#,
+                r#""protocol_internet":"TCP","#,
+                r#""source_port":12345,"destination_port":80,"protocol_transport":"TCP","#,
+                r#""application_protocol":"HTTP","#,
+                r#""inner":{"data_link":{"link_type":101,"network_protocol":{"kind":"ipv4"},"#,
+                r#""link_kind":"raw_ip","link_details":{"ip_version":4}}},"#,
+                r#""corrupted":{"layer":"Transport","#,
+                r#""error":"TCP error: Invalid TCP flags 0x03: SYN and FIN are both set"}}"#,
+            )
+        );
+
+        let address = Some(vec![0xe0, 0xd5, 0x5e, 0x28, 0x9b, 0xd4]);
+        let links = [
+            (
+                LinkLayerOwned::linux_sll(LinuxSllLinkOwned::new(
+                    LinuxCookedPacketType::OUTGOING,
+                    LinuxArphrdType::ETHERNET,
+                    6,
+                    address.clone(),
+                    0x0800,
+                )),
+                concat!(
+                    r#"{"link_type":113,"network_protocol":{"kind":"ipv4"},"#,
+                    r#""link_kind":"linux_sll","link_details":{"packet_type":4,"#,
+                    r#""hardware_type":1,"address_length":6,"#,
+                    r#""source_address":[224,213,94,40,155,212],"protocol":2048}}"#,
+                ),
+            ),
+            (
+                LinkLayerOwned::linux_sll2(LinuxSll2LinkOwned::new(
+                    0x86dd,
+                    0,
+                    3,
+                    LinuxArphrdType::ETHERNET,
+                    LinuxCookedPacketType::HOST,
+                    6,
+                    address,
+                )),
+                concat!(
+                    r#"{"link_type":276,"network_protocol":{"kind":"ipv6"},"#,
+                    r#""link_kind":"linux_sll2","link_details":{"protocol":34525,"#,
+                    r#""reserved_mbz":0,"interface_index":3,"hardware_type":1,"packet_type":0,"#,
+                    r#""address_length":6,"source_address":[224,213,94,40,155,212]}}"#,
+                ),
+            ),
+            (
+                LinkLayerOwned::ieee80211(Ieee80211LinkOwned::new(
+                    MacAddress([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]),
+                    MacAddress([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]),
+                    Ethertype(0x0806),
+                )),
+                concat!(
+                    r#"{"link_type":105,"network_protocol":{"kind":"arp"},"#,
+                    r#""link_kind":"ieee80211","#,
+                    r#""link_details":{"destination_mac":"aa:bb:cc:dd:ee:ff","#,
+                    r#""source_mac":"11:22:33:44:55:66","snap_protocol":"ARP"}}"#,
+                ),
+            ),
+        ];
+        for (link, expected) in links {
+            assert_eq!(serde_json::to_string(&link).unwrap(), expected);
+        }
     }
 
     /// A consumer rebuilding an SLL link layer from serialized fields (e.g.
