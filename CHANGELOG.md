@@ -143,6 +143,35 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   (tshark marque le segment malforme). Aucune des 210 captures du corpus ne
   porte de correlation info : `rdp_golden` inchange.
 
+- **dispatch** (#185) : au-dela de 18 432 octets (`PROBE_CAP`), 43 des 57
+  sondes ne jugeaient que ce prefixe du payload, la ou leur decodeur lit le
+  payload entier — pave jusqu'au dernier octet (SNMP, Modbus/TCP, OPC UA,
+  PostgreSQL, Bitcoin, AMS, EtherNet/IP, SRVLOC, PTP, MQTT, STANAG 5066,
+  SSDP) ou couvert par une longueur declaree qui doit y tenir (DNS sur UDP
+  53, mDNS, LLMNR, DNS sur TCP, NBSS, NBNS, COTP, S7Comm, UMAS, QUIC a
+  en-tete long, TLS). Dans un sens, des messages qui finissaient pile au
+  plafond suffisaient quoi qu'il y ait derriere : un GetResponse SNMP de
+  18 432 octets suivi de cent octets nuls sortait `SNMP`, 1 536 ADU Modbus
+  suivies d'un octet `ModbusTCP`, etiquettes que `SnmpPacket::try_from` et
+  `ModbusTcpPacket::try_from` refusent. Dans l'autre, un message complet
+  plus long que le plafond restait `Unknown` : un GetResponse SNMP exact de
+  20 050 octets, un NBSS de 30 000, un message DNS sur TCP de 20 041, 300
+  DataRow PostgreSQL et leur ReadyForQuery, un PUBLISH MQTT de 20 004, et
+  un record TLS 1.2 de 18 437 octets, le maximum de la RFC 5246 §6.2.3 que
+  le plafond ne couvre pas. Toutes ces sondes lisent desormais le payload
+  reel, comme les quatorze qui le faisaient deja et comme ASTERIX et DNS
+  aveugle depuis #184 : sur UDP il est borne par le datagramme ; sur TCP,
+  le cas des segments GRO que visait #20, le cout reste lineaire, chaque
+  decodeur s'arretant a la premiere erreur de structure — en release, un
+  segment de 60 000 octets coute au plus 31 µs a `parse()` (5 000 ADU
+  Modbus : 22 µs ; 60 000 octets nuls : 22 µs, comme avant). Seules les
+  sondes des protocoles texte (FTP, SMTP, NNTP, HTTP), qui valident tout
+  leur texte en UTF-8, gardent le plafond, que l'oracle du fuzz recopie ;
+  les reponses HTTP relevent de #176. La doc de `PROBE_CAP` et du module
+  dit desormais ce que le plafond couvre. Aucune des 210 captures du corpus
+  ne porte un payload de plus de 18 432 octets hors six datagrammes RTPS,
+  deja lus en entier : aucune etiquette ne change.
+
 ### Ajoute
 
 - **BACnet/IP** (#190) : `ConfirmedService` nomme les services confirmes
