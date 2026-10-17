@@ -18,10 +18,13 @@
 //! - chaque sonde s'execute **au plus une fois** par payload : les echecs
 //!   sont memoises par [`ProbeId`] (fin du double sondage PostgreSQL et
 //!   SNMP, issue #29) ;
-//! - le probing ne lit que [`PROBE_CAP`] octets : un payload heberge par un
-//!   segment jumbo (GRO 64 Ko) ne coute plus un parse integral par sonde
-//!   (issue #20). La borne depasse le plus grand message legitime qu'une
-//!   sonde doive voir en entier (un record TLS chiffre : 5 + 16 Ko + tag).
+//! - chaque sonde juge les octets que son decodeur lira : le payload entier,
+//!   que les decodeurs exigent souvent pave jusqu'au dernier octet (SNMP,
+//!   Modbus/TCP, ASTERIX...) ou couvert par une longueur declaree (NBSS,
+//!   DNS sur TCP, TLS...). Seules les sondes des protocoles texte (FTP, SMTP,
+//!   NNTP, HTTP), qui valident tout le texte en UTF-8, ne lisent que
+//!   [`PROBE_CAP`] octets : la borne de l'issue #20, qui plafonnait jadis
+//!   toutes les sondes (#184, #185), et que l'oracle du fuzz recopie.
 
 use super::application::Application;
 use super::application::protocols::ams::AmsPacket;
@@ -70,10 +73,23 @@ use super::transport::protocols::TransportProtocol;
 use super::transport::protocols::esp::EspPacket;
 use crate::checks::application::quic::is_plausible_short_header;
 
-/// Nombre d'octets soumis aux sondes. Au-dela, seul le prefixe est sonde :
-/// la classification est un verdict sur l'en-tete applicatif, pas sur la
-/// charge complete, et cette borne supprime le cout pathologique des
-/// segments jumbo hostiles mesures par l'audit (x2545).
+/// Nombre d'octets soumis aux sondes des protocoles texte (FTP, SMTP, NNTP,
+/// HTTP), qui valident tout leur texte en UTF-8 : au-dela, seul le prefixe
+/// est sonde. Jusqu'a la 11.6.0, toutes les sondes lisaient ce prefixe, pour
+/// supprimer le cout pathologique des segments jumbo hostiles mesures par
+/// l'audit (x2545, issue #20) ; mais un decodeur qui exige le pavage exact
+/// du buffer, ou une longueur declaree qui y tient, ne juge alors plus le
+/// payload qu'il lira : au-dela du plafond, la sonde etiquetait ce que le
+/// decodeur refuse (SNMP, Modbus/TCP) ou ratait un message complet (NBSS,
+/// DNS sur TCP, PostgreSQL, TLS) — #184 pour ASTERIX et DNS aveugle, #185
+/// pour les vingt-quatre autres. Les autres sondes lisent le payload reel
+/// depuis ; sur UDP il est borne par le datagramme, et sur TCP le cout
+/// reste lineaire dans la taille du segment, chaque decodeur s'arretant a
+/// la premiere erreur de structure.
+///
+/// La borne depasse un record TLS 1.3 (5 + 2^14 + 256, RFC 8446 §5.2) mais
+/// pas le maximum de TLS 1.2 (5 + 2^14 + 2048 = 18 437, RFC 5246 §6.2.3) :
+/// c'est pourquoi la sonde TLS lit le segment entier.
 ///
 /// Recopie par l'oracle FTP du fuzz : voir [`FTP_ONLY_VERBS`].
 const PROBE_CAP: usize = 18 * 1024;
@@ -165,85 +181,110 @@ enum ProbeId {
     WireGuardPort,
 }
 
-fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
+/// Sonde `probe` sur le payload reel. Les sondes des protocoles texte ne
+/// lisent que [`PROBE_CAP`] octets ; toutes les autres jugent les octets que
+/// leur decodeur lira (#184, #185).
+fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
+    let text = &payload[..payload.len().min(PROBE_CAP)];
     match probe {
+        // Le message doit paver exactement le datagramme ou le segment.
         ProbeId::Snmp => SnmpPacket::try_from(payload).is_ok(),
         ProbeId::Dhcpv6 => Dhcpv6Packet::try_from(payload).is_ok(),
+        // TPKT : la longueur declaree doit tenir dans le segment.
         ProbeId::S7Comm => S7CommPacket::try_from(payload).is_ok(),
         ProbeId::CotpTpkt => cotp_from_tpkt(payload).is_some(),
-        ProbeId::Ftp => FtpMessage::try_from(payload).is_ok(),
-        ProbeId::Smtp => SmtpMessage::try_from(payload).is_ok(),
-        ProbeId::Nntp => NntpMessage::try_from(payload).is_ok(),
+        // Protocoles texte : tout le prefixe est valide en UTF-8, et l'oracle
+        // du fuzz recopie le plafond.
+        ProbeId::Ftp => FtpMessage::try_from(text).is_ok(),
+        ProbeId::Smtp => SmtpMessage::try_from(text).is_ok(),
+        ProbeId::Nntp => NntpMessage::try_from(text).is_ok(),
+        // Les sections doivent consommer exactement le datagramme.
         ProbeId::Mdns => DnsPacket::try_from_mdns(payload).is_ok(),
         ProbeId::Llmnr => DnsPacket::try_from_llmnr(payload).is_ok(),
+        // Tout le payload est valide en UTF-8.
         ProbeId::Ssdp => SsdpPacket::try_from(payload).is_ok(),
         ProbeId::Nbns => NbnsPacket::try_from(payload).is_ok(),
+        // La longueur declaree doit tenir dans le segment.
         ProbeId::Nbss => NbssPacket::try_from(payload).is_ok(),
         ProbeId::OpenVpnUdp => OpenVpnPacket::try_from(payload).is_ok(),
-        // Le prefixe u16 du record TCP est verifie contre le payload REEL :
-        // le plafond de sondage tronquerait a tort un record legitime plus
-        // grand que PROBE_CAP pourtant entierement present dans le segment.
-        ProbeId::OpenVpnTcp => OpenVpnPacket::from_tcp_stream(full_payload).is_ok(),
-        ProbeId::FtpUnambiguous => is_unambiguous_ftp_command(payload),
-        ProbeId::SmtpUnambiguous => is_unambiguous_smtp_command(payload),
-        ProbeId::NntpUnambiguous => is_unambiguous_nntp_command(payload),
+        // Le prefixe u16 du record TCP est verifie contre le payload reel.
+        ProbeId::OpenVpnTcp => OpenVpnPacket::from_tcp_stream(payload).is_ok(),
+        ProbeId::FtpUnambiguous => is_unambiguous_ftp_command(text),
+        ProbeId::SmtpUnambiguous => is_unambiguous_smtp_command(text),
+        ProbeId::NntpUnambiguous => is_unambiguous_nntp_command(text),
+        // `cb_data` doit egaler ce qui suit l'en-tete.
         ProbeId::Ams => AmsPacket::try_from(payload).is_ok(),
         ProbeId::QuicShortHeader => is_plausible_short_header(payload),
         ProbeId::Ntp => NtpPacket::try_from(payload).is_ok(),
-        // Sur le payload reel : les champs d'extension et le MAC doivent
-        // finir exactement avec le datagramme.
-        ProbeId::NtpBlind => NtpPacket::is_blind_udp_match(full_payload),
-        // Sur le payload reel : tous les data blocks doivent paver le
-        // datagramme jusqu'a son dernier octet, au-dela de PROBE_CAP compris.
-        ProbeId::Asterix => AsterixPacket::try_from(full_payload).is_ok(),
+        // Les champs d'extension et le MAC doivent finir exactement avec le
+        // datagramme.
+        ProbeId::NtpBlind => NtpPacket::is_blind_udp_match(payload),
+        // Tous les data blocks doivent paver le datagramme jusqu'a son
+        // dernier octet.
+        ProbeId::Asterix => AsterixPacket::try_from(payload).is_ok(),
+        // La longueur declaree doit egaler le segment.
         ProbeId::Bitcoin => BitcoinPacket::try_from(payload).is_ok(),
+        // Les chunks doivent paver le segment.
         ProbeId::Opcua => OpcuaPacket::try_from(payload).is_ok(),
+        // La longueur declaree doit egaler ce qui suit l'en-tete.
         ProbeId::EthernetIp => EtherNetIpPacket::try_from(payload).is_ok(),
+        // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),
+        // Les sections doivent consommer exactement le datagramme ; sur TCP,
+        // la longueur prefixee doit tenir dans le segment.
         ProbeId::Dns => DnsPacket::try_from(payload).is_ok(),
         ProbeId::DnsTcp => DnsPacket::try_from_tcp(payload).is_ok(),
+        // Un record TLS 1.2 va jusqu'a 18 437 octets, au-dela de PROBE_CAP.
         ProbeId::Tls => TlsPacket::try_from(payload).is_ok(),
         ProbeId::Ssh => SshPacket::try_from(payload).is_ok(),
-        ProbeId::Http => HttpRequest::try_from(payload).is_ok(),
+        // Tout le prefixe est valide en UTF-8 ; les reponses et le corps
+        // binaire relevent de #176.
+        ProbeId::Http => HttpRequest::try_from(text).is_ok(),
         // Garde a cout constant : la sonde est tentee sur chaque paquet TCP, et
         // le Result d'un GiopPacket (qui porte desormais tout le message
         // decode) coute a construire et a liberer meme quand le magic echoue.
         ProbeId::Giop => payload.starts_with(b"GIOP") && GiopPacket::try_from(payload).is_ok(),
         ProbeId::Dhcp => DhcpPacket::try_from(payload).is_ok(),
+        // La longueur declaree doit egaler le payload.
         ProbeId::Srvloc => SrvlocPacket::try_from(payload).is_ok(),
+        // Les MBAP doivent paver le segment.
         ProbeId::Umas => UmasPacket::try_from(payload).is_ok(),
         ProbeId::ModbusTcp => ModbusTcpPacket::try_from(payload).is_ok(),
         ProbeId::ModbusTcpBlind => ModbusTcpPacket::is_blind_tcp_match(payload),
+        // La longueur de l'en-tete long doit tenir dans le datagramme.
         ProbeId::QuicLongHeader => QuicPacket::try_from(payload).is_ok(),
+        // Les paquets doivent paver le segment.
         ProbeId::Mqtt => MqttPacket::try_from(payload).is_ok(),
-        // Sur le payload reel, comme NTP aveugle : les sections doivent
-        // consommer exactement le datagramme, au-dela de PROBE_CAP compris.
-        // Les noms, bornes a 255 octets (RFC 1035 §3.1), gardent le decodage
-        // lineaire jusqu'a la taille maximale d'un datagramme.
-        ProbeId::DnsBlind => DnsPacket::is_blind_udp_match(full_payload),
+        // Les sections doivent consommer exactement le datagramme, au-dela de
+        // PROBE_CAP compris. Les noms, bornes a 255 octets (RFC 1035 §3.1),
+        // gardent le decodage lineaire jusqu'a la taille maximale d'un
+        // datagramme.
+        ProbeId::DnsBlind => DnsPacket::is_blind_udp_match(payload),
+        // Rien ne doit suivre le message.
         ProbeId::Ptp => PtpPacket::try_from_udp(payload).is_ok(),
+        // Le trailer est verifie a la fin du S_PDU declare.
         ProbeId::Stanag5066 => SisPdu::try_from(payload).is_ok(),
-        // Sur le payload reel : la sonde aveugle exige que les PDU pavent
-        // exactement le datagramme. Sur le port 3000 ou un port declare, la
-        // longueur declaree peut etre fausse (#123) : lecture tolerante.
-        ProbeId::Dis => DisPacket::try_from(full_payload).is_ok(),
-        ProbeId::DisLenient => DisPacket::try_from_lenient(full_payload).is_ok(),
-        // Sur le payload reel : les trames de liaison, chacune verifiee par
-        // ses CRC, doivent paver tout le segment ou datagramme.
-        ProbeId::Dnp3 => Dnp3Packet::try_from(full_payload).is_ok(),
-        // Sur le payload reel : la longueur declaree couvre tout le datagramme.
-        ProbeId::Radius => RadiusPacket::try_from(full_payload).is_ok(),
-        // Sur le payload reel : la longueur BVLC couvre tout le datagramme.
-        ProbeId::Bacnet => BacnetPacket::try_from(full_payload).is_ok(),
-        // TPKT, COTP X.224 et une connexion ou un PDU MCS lisibles ; sur le
-        // payload reel, un TPKT peut deborder du segment.
-        ProbeId::Rdp => RdpPacket::try_from(full_payload).is_ok(),
-        // Sur le payload reel : un APDU peut deborder du segment.
-        ProbeId::Iec104 => Iec104Packet::try_from(full_payload).is_ok(),
-        // Sur le payload reel : la longueur de l'en-tete IKE couvre tout le
-        // message. Nu (UDP 500) ou derriere le marqueur non-ESP (UDP 4500).
-        ProbeId::Ike => IkePacket::from_udp(full_payload).is_ok(),
+        // La sonde aveugle exige que les PDU pavent exactement le datagramme.
+        // Sur le port 3000 ou un port declare, la longueur declaree peut etre
+        // fausse (#123) : lecture tolerante.
+        ProbeId::Dis => DisPacket::try_from(payload).is_ok(),
+        ProbeId::DisLenient => DisPacket::try_from_lenient(payload).is_ok(),
+        // Les trames de liaison, chacune verifiee par ses CRC, doivent paver
+        // tout le segment ou datagramme.
+        ProbeId::Dnp3 => Dnp3Packet::try_from(payload).is_ok(),
+        // La longueur declaree couvre tout le datagramme.
+        ProbeId::Radius => RadiusPacket::try_from(payload).is_ok(),
+        // La longueur BVLC couvre tout le datagramme.
+        ProbeId::Bacnet => BacnetPacket::try_from(payload).is_ok(),
+        // TPKT, COTP X.224 et une connexion ou un PDU MCS lisibles ; un TPKT
+        // peut deborder du segment.
+        ProbeId::Rdp => RdpPacket::try_from(payload).is_ok(),
+        // Un APDU peut deborder du segment.
+        ProbeId::Iec104 => Iec104Packet::try_from(payload).is_ok(),
+        // La longueur de l'en-tete IKE couvre tout le message. Nu (UDP 500) ou
+        // derriere le marqueur non-ESP (UDP 4500).
+        ProbeId::Ike => IkePacket::from_udp(payload).is_ok(),
         ProbeId::EspNatT => matches!(
             UdpEncapsulation::classify(payload),
             Ok(UdpEncapsulation::Esp(esp)) if EspPacket::try_from(esp).is_ok()
@@ -252,17 +293,17 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
             UdpEncapsulation::classify(payload),
             Ok(UdpEncapsulation::Keepalive)
         ),
-        // Sur le payload reel : un message par datagramme, de taille fixe ou,
-        // pour les donnees, jusqu'a la fin du datagramme.
-        ProbeId::WireGuard => WireGuardPacket::try_from(full_payload).is_ok(),
-        ProbeId::WireGuardPort => WireGuardPacket::is_port_udp_match(full_payload),
-        ProbeId::WireGuardBlind => WireGuardPacket::is_blind_udp_match(full_payload),
-        // Garde a cout constant sur le magic, comme GIOP ; puis le payload REEL :
-        // les sous-messages doivent paver tout le datagramme, et un DATA_FRAG de
+        // Un message par datagramme, de taille fixe ou, pour les donnees,
+        // jusqu'a la fin du datagramme.
+        ProbeId::WireGuard => WireGuardPacket::try_from(payload).is_ok(),
+        ProbeId::WireGuardPort => WireGuardPacket::is_port_udp_match(payload),
+        ProbeId::WireGuardBlind => WireGuardPacket::is_blind_udp_match(payload),
+        // Garde a cout constant sur le magic, comme GIOP ; puis les
+        // sous-messages doivent paver tout le datagramme, et un DATA_FRAG de
         // 60 Ko depasse PROBE_CAP sans cesser d'etre du RTPS.
         ProbeId::Rtps => {
-            (full_payload.starts_with(b"RTPS") || full_payload.starts_with(b"RTPX"))
-                && RtpsPacket::try_from(full_payload).is_ok()
+            (payload.starts_with(b"RTPS") || payload.starts_with(b"RTPX"))
+                && RtpsPacket::try_from(payload).is_ok()
         }
     }
 }
@@ -677,8 +718,6 @@ pub(super) fn classify(
     if payload.is_empty() {
         return None;
     }
-    let probed = &payload[..payload.len().min(PROBE_CAP)];
-
     let mut failed_probes: u64 = 0;
 
     // Ports declares par l'appelant (« Decode As ») : evalues avant la
@@ -696,7 +735,7 @@ pub(super) fn classify(
                 continue;
             }
             let bit = 1u64 << probe as u64;
-            if failed_probes & bit == 0 && run_probe(probe, probed, payload) {
+            if failed_probes & bit == 0 && run_probe(probe, payload) {
                 return Some(Application {
                     application_protocol: label,
                 });
@@ -720,7 +759,7 @@ pub(super) fn classify(
         }
 
         let bit = 1u64 << rule.probe as u64;
-        let matched = failed_probes & bit == 0 && run_probe(rule.probe, probed, payload);
+        let matched = failed_probes & bit == 0 && run_probe(rule.probe, payload);
         if matched {
             return Some(Application {
                 application_protocol: rule.label,
@@ -1482,6 +1521,184 @@ mod tests {
         assert!(long.len() > PROBE_CAP);
         assert_eq!(label(&long), Some("DNS"));
         assert_eq!(label_from(53, &long), Some("DNS"));
+    }
+
+    /// #185 : au-dela de PROBE_CAP, chaque sonde juge le payload que son
+    /// decodeur lira. Payloads synthetiques des tableaux de l'issue : pour
+    /// les decodeurs qui exigent le pavage exact du buffer (SNMP, Modbus/TCP,
+    /// PostgreSQL, MQTT), un message exact de plus de PROBE_CAP octets est
+    /// etiquete et le meme message suivi d'octets en trop ne l'est plus ;
+    /// pour ceux dont une longueur declaree doit tenir (NBSS, DNS sur TCP,
+    /// TLS), un message complet de plus de PROBE_CAP octets est etiquete.
+    #[test]
+    fn whole_payload_probes_judge_the_payload_beyond_the_cap() {
+        let label = |protocol: TransportProtocol, source: u16, destination: u16, payload: &[u8]| {
+            let transport = Transport {
+                protocol,
+                source_port: Some(source),
+                destination_port: Some(destination),
+                payload: Some(payload),
+                details: None,
+            };
+            classify(&transport, &[]).map(|a| a.application_protocol)
+        };
+        let tcp = |destination: u16, payload: &[u8]| {
+            label(TransportProtocol::Tcp, 50_000, destination, payload)
+        };
+        let udp = |destination: u16, payload: &[u8]| {
+            label(TransportProtocol::Udp, 40_000, destination, payload)
+        };
+        let ber_length = |n: usize| -> Vec<u8> {
+            assert!(n < 65_536);
+            if n < 128 {
+                vec![n as u8]
+            } else if n < 256 {
+                vec![0x81, n as u8]
+            } else {
+                vec![0x82, (n >> 8) as u8, n as u8]
+            }
+        };
+        let tlv = |tag: u8, value: &[u8]| -> Vec<u8> {
+            let mut tlv = vec![tag];
+            tlv.extend(ber_length(value.len()));
+            tlv.extend_from_slice(value);
+            tlv
+        };
+
+        // SNMPv2c GetResponse, une seule variable OCTET STRING de `size`
+        // octets : la longueur du message vaut size + 45 au-dela de 256.
+        let snmp = |size: usize| -> Vec<u8> {
+            let mut varbind = tlv(0x06, &[0x2b, 0x06, 0x01]);
+            varbind.extend(tlv(0x04, &vec![b'v'; size]));
+            let varbinds = tlv(0x30, &tlv(0x30, &varbind));
+            let mut pdu = vec![0x02, 0x01, 0x01, 0x02, 0x01, 0x00, 0x02, 0x01, 0x00];
+            pdu.extend(varbinds);
+            let mut message = vec![0x02, 0x01, 0x01];
+            message.extend(tlv(0x04, b"public"));
+            message.extend(tlv(0xa2, &pdu));
+            tlv(0x30, &message)
+        };
+        let exact = snmp(20_005);
+        assert_eq!(exact.len(), 20_050);
+        assert!(exact.len() > PROBE_CAP);
+        assert_eq!(udp(161, &exact), Some("SNMP"));
+        assert_eq!(udp(40_001, &exact), Some("SNMP"));
+        assert_eq!(tcp(50_001, &exact), Some("SNMP"));
+        let mut trailing = snmp(PROBE_CAP - 45);
+        assert_eq!(trailing.len(), PROBE_CAP);
+        assert_eq!(udp(161, &trailing), Some("SNMP"));
+        trailing.extend_from_slice(&[0; 100]);
+        assert_eq!(udp(161, &trailing), Some("Unknown"));
+        assert_eq!(udp(40_001, &trailing), Some("Unknown"));
+        assert_eq!(tcp(50_001, &trailing), Some("Unknown"));
+
+        // Modbus/TCP : des ADU de douze octets (Read Holding Registers, dix
+        // registres), 1 536 pour PROBE_CAP.
+        let adus = |count: usize| -> Vec<u8> {
+            let mut adus = Vec::with_capacity(12 * count);
+            for i in 0..count {
+                adus.extend_from_slice(&(i as u16).to_be_bytes());
+                adus.extend_from_slice(&[0, 0, 0, 6, 1, 3, 0, 0, 0, 10]);
+            }
+            adus
+        };
+        let mut capped = adus(PROBE_CAP / 12);
+        assert_eq!(capped.len(), PROBE_CAP);
+        assert_eq!(tcp(502, &capped), Some("ModbusTCP"));
+        assert_eq!(tcp(50_001, &capped), Some("ModbusTCP"));
+        capped.push(0);
+        assert_eq!(tcp(502, &capped), Some("Unknown"));
+        assert_eq!(tcp(50_001, &capped), Some("Unknown"));
+        let straddling = adus(PROBE_CAP / 12 + 1);
+        assert!(straddling.len() > PROBE_CAP);
+        assert_eq!(tcp(502, &straddling), Some("ModbusTCP"));
+        assert_eq!(tcp(50_001, &straddling), Some("ModbusTCP"));
+
+        // PostgreSQL sur son port : 300 DataRow d'une colonne de 80 octets,
+        // puis ReadyForQuery (27 306 octets). A l'aveugle : un Query de
+        // 20 005 octets.
+        let mut rows = Vec::new();
+        for _ in 0..300 {
+            rows.push(b'D');
+            rows.extend_from_slice(&90u32.to_be_bytes());
+            rows.extend_from_slice(&1u16.to_be_bytes());
+            rows.extend_from_slice(&80u32.to_be_bytes());
+            rows.extend(std::iter::repeat_n(b'x', 80));
+        }
+        rows.extend_from_slice(&[b'Z', 0, 0, 0, 5, b'I']);
+        assert_eq!(rows.len(), 27_306);
+        assert_eq!(tcp(5432, &rows), Some("PostgreSQL"));
+        let mut query = vec![b'Q'];
+        query.extend_from_slice(&20_004u32.to_be_bytes());
+        query.extend_from_slice(b"SELECT '");
+        query.extend(std::iter::repeat_n(b'a', 20_004 - 4 - 8 - 2));
+        query.extend_from_slice(b"'\0");
+        assert_eq!(query.len(), 20_005);
+        assert_eq!(tcp(50_001, &query), Some("PostgreSQL"));
+
+        // MQTT : un PUBLISH exact de 20 004 octets, puis deux octets nuls.
+        let mut publish = vec![0x30, 0xa0, 0x9c, 0x01, 0x00, 0x01, b'a'];
+        publish.extend(std::iter::repeat_n(b'p', 20_004 - publish.len()));
+        assert_eq!(tcp(50_001, &publish), Some("MQTT"));
+        publish.extend_from_slice(&[0, 0]);
+        assert_eq!(tcp(50_001, &publish), Some("Unknown"));
+
+        // NBSS sur 445 : une longueur declaree de 30 000.
+        let mut nbss = vec![0x00, 0x00, 0x75, 0x30];
+        nbss.extend(std::iter::repeat_n(0x5a, 30_000));
+        assert_eq!(tcp(445, &nbss), Some("NBSS"));
+
+        // DNS sur TCP 53 : un message de 20 039 octets prefixe de sa
+        // longueur, une reponse TXT (la forme de #184).
+        let mut response = vec![0xbe, 0xef, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0];
+        response.extend_from_slice(b"\x07example\x03com\x00\x00\x10\x00\x01");
+        response.extend_from_slice(&[0xc0, 0x0c, 0x00, 0x10, 0x00, 0x01, 0, 0, 0, 60]);
+        let rdlength = 20_039 - response.len() - 2;
+        response.extend_from_slice(&(rdlength as u16).to_be_bytes());
+        let mut left = rdlength;
+        while left > 0 {
+            let chunk = (left - 1).min(255);
+            response.push(chunk as u8);
+            response.extend(std::iter::repeat_n(b'a', chunk));
+            left -= 1 + chunk;
+        }
+        assert_eq!(response.len(), 20_039);
+        let mut dns_tcp = (response.len() as u16).to_be_bytes().to_vec();
+        dns_tcp.extend_from_slice(&response);
+        assert_eq!(dns_tcp.len(), 20_041);
+        assert_eq!(tcp(53, &dns_tcp), Some("DNS"));
+        // Et la reponse exacte sur UDP 53, par la regle de port cette fois.
+        assert_eq!(udp(53, &response), Some("DNS"));
+
+        // TLS 1.2 : un record application_data de 2^14 + 2048 octets de
+        // fragment, le maximum de la RFC 5246 §6.2.3, 18 437 avec l'en-tete.
+        let mut record = vec![0x17, 0x03, 0x03, 0x48, 0x00];
+        record.extend(std::iter::repeat_n(0xc3, PROBE_CAP));
+        assert_eq!(record.len(), 18_437);
+        assert_eq!(tcp(50_001, &record), Some("TLS"));
+    }
+
+    /// #185 : les sondes des protocoles texte gardent le plafond, que
+    /// l'oracle du fuzz recopie — une commande FTP de plus de PROBE_CAP
+    /// octets est jugee sur son prefixe, donc refusee, et une commande qui
+    /// tient sous le plafond suivie d'octets au-dela est acceptee sur le
+    /// prefixe comme en 11.6.0.
+    #[test]
+    fn text_probes_keep_the_cap() {
+        let mut stor = b"STOR ".to_vec();
+        stor.extend(std::iter::repeat_n(b'a', 20_000));
+        stor.extend_from_slice(b"\r\n");
+        let transport = tcp_transport(&stor);
+        assert_eq!(
+            classify(&transport, &[]).map(|a| a.application_protocol),
+            Some("Unknown")
+        );
+        let mut stor = b"STOR a\r\n".to_vec();
+        stor.resize(PROBE_CAP, 0);
+        assert_ne!(
+            classify(&tcp_transport(&stor), &[]).map(|a| a.application_protocol),
+            Some("FTP")
+        );
     }
 
     /// #164 : la regle NTP est la derniere regle de port — un datagramme
