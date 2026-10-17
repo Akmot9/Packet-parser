@@ -45,9 +45,10 @@ d'analyse :
 - SAC 0 / SIC 2 sur 164 records, SAC 0 / SIC 0 sur les 39 records sans
   détection (`TYP` 0) ; adresses aéronef `0x00000a` à `0x0000e6`,
   identifications numériques (`0001000`...), Mode 3/A de 0070 à 7777 ;
-- les items composés I048/130 et I048/120 y ont un primary subfield vide
-  (un octet `0x00`) : le cas limite « composé sans sous-champ » est donc
-  couvert par une trame réelle.
+- l'item composé I048/120 y a un primary subfield vide (un octet `0x00`)
+  dans les 203 records, I048/130 dans les 50 de `10.0.2.11` seulement (les
+  153 de `10.0.2.18` portent `08 df`, le sous-champ PAM à -33 dBm) : le cas
+  limite « composé sans sous-champ » est donc couvert par une trame réelle.
 
 ## `cat_034_048.pcap`, `cat21_re.ast` et `cat_062_065.pcap` — échantillons CroatiaControlLtd
 

@@ -9,13 +9,13 @@ tronquée. Le trafic est du labo (adresses privées, pas de données sensibles).
 Contenu vérifié avec tshark 4.6.6 (`-Y pn_rt`) : 2 685 trames, dont **232
 PN-RT** — DCP Identify et Set, trafic cyclique RT_CLASS_1 (`0x8000`,
 `0x8010`) et `0xC000`/`0xC002`, alarmes `0xFE01`, PTCP `0xFF40`,
-fragments `0xFF85`–`0xFF8D` — plus 1 000 datagrammes DCE/RPC du
+fragments `0xFF83`–`0xFF8D` — plus 1 000 datagrammes DCE/RPC du
 PROFINET IO-CM sur UDP 34964, que le dispatch ne nomme pas.
 
 | Fichier | Trames | PN-RT | Contenu PROFINET | Origine | SHA-256 |
 |---|---|---|---|---|---|
 | `cisagov_profinet_io_cm_mixed_1.pcap` | 1 635 | 164 | 19 DCP Identify (18 req `0xFEFE`, 1 resp `0xFEFF`), 102 cycliques `0xC000`/`0xC002`, 41 PTCP `0xFF40`, 2 alarmes `0xFE01` ; 38 DCE/RPC IO-CM ; bruit Windows (NBNS, LLMNR, SSDP, DHCP, Dropbox) et 201 LLDP | CISA, [icsnpp-profinet-io-cm](https://github.com/cisagov/icsnpp-profinet-io-cm) | `e03c1937c33e95922e899d1e65a858292b61ca4a24040906de2c87935ba05f84` |
-| `cisagov_profinet_io_cm.pcap` | 960 | 10 | 10 fragments `0xFF85`–`0xFF8D` ; 950 DCE/RPC IO-CM (connect, read, write, control, release) | idem | `20ad38583549a2444f2eedcf6eb8b222794dced6982ba4999afa05d5006db4c1` |
+| `cisagov_profinet_io_cm.pcap` | 960 | 10 | 10 fragments `0xFF83`–`0xFF8D` (sans `0xFF8B`) ; 950 DCE/RPC IO-CM (connect, read, write, control, release) | idem | `20ad38583549a2444f2eedcf6eb8b222794dced6982ba4999afa05d5006db4c1` |
 | `iti_ChangeIPUsingDCP.pcap` | 6 | 4 | DCP Identify req/resp puis **Set** req/resp (`0xFEFD`, bloc IP) ; 2 ARP | wiki Wireshark, page PROFINET/DCP, via [ITI/ICS-Security-Tools](https://github.com/ITI/ICS-Security-Tools) | `aaba0d1492ca2cae77dcac3ae311bcc5c63b72e79b2a8fd04389c0f9d1d01c98` |
 | `iti_PROFINET-RT.pcap` | 14 | 14 | 14 DCP Identify requests multicast | [CloudShark 76038eaa4a3b](https://www.cloudshark.org/captures/76038eaa4a3b), via ITI | `55ceb6e5c1ca1490c24d51d23084a554cecb95bdd9e9ae82e04b97c237798bbb` |
 | `iti_profinet-wireshark-bug.pcap` | 4 | 4 | les mêmes Identify + Set, **taguées VLAN** | pièce jointe d'un rapport de bug Wireshark, via ITI | `ebb4ac34bda04ce0f3acadb947ff9be14fe07b0bb17a3bbbfff17223288caea5` |
@@ -69,9 +69,10 @@ PN-RT : 103 ressortent `internet = Profinet`, **129 en `corrupted`**,
 presque toutes saines :
 
 - 67 `UnknownFrameId` : 10 RT_CLASS_1, 41 PTCP, 6 alarmes, 10 fragments ;
-- 56 `InvalidDcpBlockLength` : les cycliques `0xC000`/`0xC002` de
-  `mixed_1` dont les données lues comme un bloc DCP ne tiennent pas dans
-  la trame (les 46 autres passent, avec des champs DCP qui sont du bruit) ;
+- 56 `InvalidDcpBlockLength` : les 56 cycliques `0xC000` de `mixed_1`,
+  dont les données lues comme un bloc DCP ne tiennent pas dans la trame
+  (les 46 cycliques `0xC002` passent, avec des champs DCP qui sont du
+  bruit) ;
 - 5 `InvalidNameOfStation` : 2 DCP de `ChangeIPUsingDCP` (le Set request
   dont le premier bloc est le bloc IP, l'Identify response dont le premier
   bloc est DeviceOptions) et 3 Identify responses de `pn_dcp` — le

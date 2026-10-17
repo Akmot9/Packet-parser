@@ -260,9 +260,10 @@ fn application_classification_histogram_is_frozen() {
     //
     // 2026-10-12 (#123, DIS) : "DIS" 0 -> 390 et "Unknown" 9 144 -> 8 754
     // (-390) : les trames de protocols/dis/ dont les PDU pavent exactement
-    // le datagramme, par la sonde aveugle (UDP 3000, 6993 et 22999). Les 3
-    // Set Data de wireshark_3492_dis_test2.pcap (UDP 6993) annoncent 48
-    // octets pour 160 : "Unknown" sans Decode As, DIS avec
+    // le datagramme, 263 sur UDP 3000 par la regle de port, 127 sur 6993 et
+    // 22999 par la sonde aveugle. Les 3 PDU de gestion de donnees de
+    // wireshark_3492_dis_test2.pcap (Set Data, Data Query, Data ; UDP 6993)
+    // annoncent 48 octets pour 160 : "Unknown" sans Decode As, DIS avec
     // (tests/dis_golden.rs, parite tshark sur les 393).
     //
     // 2026-10-12 (#124, IKE et ESP) : "IKE" 0 -> 535 (UDP 500 et 4500 de
@@ -296,12 +297,13 @@ fn application_classification_histogram_is_frozen() {
     //
     // 2026-10-12 (#100, corpus RDP de Zeek, 5 captures, 1 246 trames) :
     // "RDP" 0 -> 89 (83 segments de connexion X.224 et de PDU MCS, plus 6
-    // retransmissions de rdp-no-cookie-mstshash.pcap que tshark ne dissèque
-    // pas), "TLS" 613 -> 1 066 (+453 : les sessions apres la negociation
-    // CredSSP de rdp-to-ssl et rdp-no-cookie), "Unknown" 7 932 -> 8 251
-    // (+319 : suites de TPKT et de records TLS coupes par la segmentation,
-    // segments que tshark laisse en `data`), "(sans application)" 4 595 ->
-    // 4 980 (+385 : les ACK).
+    // retransmissions que tshark ne disseque pas, deux dans chacune de
+    // rdp-no-cookie-mstshash, rdp-unknown-keyboard et rdp-x509), "TLS" 613 ->
+    // 1 066 (+453 : les sessions apres la negociation CredSSP de rdp-to-ssl
+    // et rdp-no-cookie, dont 4 retransmissions de rdp-no-cookie), "Unknown"
+    // 7 932 -> 8 251 (+319 : suites de TPKT et de records TLS coupes par la
+    // segmentation, segments que tshark laisse en `data`),
+    // "(sans application)" 4 595 -> 4 980 (+385 : les ACK).
     //
     // 2026-10-12 (epopee #102, corpus IEC 60870-5-104, 5 captures, 651
     // trames : wiki Wireshark, nDPI, ITI) : "IEC 104" 0 -> 374 (373 segments

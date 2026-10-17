@@ -215,7 +215,7 @@ fn every_frame_matches_the_tshark_oracle() {
     );
     // IKEv1 : les huit messages apres l'echange des cles (trames 5 a 12) ;
     // IKEv2 : tout INFORMATIONAL et tout IKE_AUTH porte un SK, sauf la trame
-    // 192 du corpus nDPI, dont l'unique payload est de type prive 127.
+    // 192 du corpus nDPI, dont l'unique payload est de type 127, non assigne.
     assert_eq!(encrypted, 8 + 241);
 }
 

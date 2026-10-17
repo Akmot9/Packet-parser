@@ -112,6 +112,50 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   poursuit la dissection ; la crate n'etiquette plus le message. Aucune
   trame du corpus ne change.
 
+### Documentation
+
+- **Errata de la 11.6.0** (#194) : la section publiee reste telle quelle,
+  ses inexactitudes sont corrigees ici. RDP : 83 segments RDP et non 82 ;
+  des 481 segments TLS, 449 sont etiquetes TLS et 32 suites de records
+  coupes restent inconnues ; 287 suites de TPKT ou segments sans couche et
+  non 278 ; 10 retransmissions et non 20, que tshark ne disseque pas,
+  ecartees de la comparaison (la crate en etiquette 6 RDP et 4 TLS) ; le
+  TPDU est lu par `X224Tpdu`, pas par `CotpHeader`. DIS : des 390 trames
+  etiquetees sans declaration, 263 le sont par la regle de port UDP 3000 et
+  127 par la sonde aveugle ; les trois PDU de `wireshark_3492_dis_test2.pcap`
+  sont un Set Data, un Data Query et un Data. ASTERIX : `AsterixError`
+  gagne aussi `DuplicateRfsFrn` ; seuls des items de CAT 021 et 048 passent
+  a `Extended`, CAT 034 n'en ayant aucun. PPPoE : la session est decrite au
+  §6 de la RFC 2516, pas au §5, et l'Ultimate PCAP en porte cinq, pas une.
+  BACnet/IP : la capture ITI montre un poste qui interroge un automate, pas
+  deux automates. RADIUS : les types 124 et 125 ne portent pas les noms du
+  registre IANA (#191) — `MipHomeAgentAddress` et `MipHomeAgentHost` sont
+  ceux de deux AVP Diameter, pour MIP6-Feature-Vector et
+  MIP6-Home-Link-Prefix.
+- **Captures et doc du code** (#194, #188, #191) : les memes corrections
+  dans les `SOURCE.md` (RDP, DIS, BACnet), les tests golden et l'oracle
+  PPPoE, et d'autres faits reverifies avec tshark 4.6.6 : DNP3 (neuf
+  sessions, g50v1 dans `dnp3_write.pcap` et g80v1 dans
+  `dnp3_udp_write.pcap`, aucune confirmation applicative, seize trames de
+  liaison), IEC 104 (seuls les types impairs de 1 a 13), BACnet (TTL 119
+  cote automate), RADIUS (bouclage, interface non enregistree), STANAG 5066
+  (un envoi refuse, pas une connexion), PROFINET (fragments `0xFF83` a
+  `0xFF8D`, `0xC000` contre `0xC002`), VLAN (le port 443 est du cote de
+  2.2.2.2), ASTERIX (I048/130 et I048/120), PostgreSQL et l'index
+  `pcaps_exemple/README.md` (PROFINET depuis la 11.6.0). Dans le code : §6
+  de la RFC 2516 ; drapeau C, payload 127 non assigne, type 14 et
+  commentaire du test UDP 4500 d'IKE ; IV et ICV d'ESP en clair, README
+  compris ; sections de la Part 1 d'ASTERIX ; adresses de
+  `tests/rtps_golden.rs` ; couches basses et hautes de
+  `PacketFlow::corrupted` ; table `RULES` dans
+  `METHODE_AJOUT_PROTOCOLE.md`. RDP (#188) : codes d'echec 3, 4 et 6
+  corriges, 7 ajoute, `0x10` (RDS-AAD-Auth) dans `requested_protocols` et
+  `selected_protocol`, drapeaux de la demande et de la reponse documentes.
+  RADIUS (#191) : types 124 et 125 documentes avec leur nom IANA et leur
+  contenu (RFC 5447), alias de recherche rustdoc (MIP6-Feature-Vector,
+  MIP6-Home-Link-Prefix, CUI, Extended-Attribute-1 a -6), liste des RFC de
+  `AttributeType` completee. Ni l'API ni le comportement ne changent.
+
 ## [11.6.0] - 2026-10-16
 
 Quatorze decodeurs de plus et la fin de faux positifs connus. Le lot defense

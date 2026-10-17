@@ -90,8 +90,10 @@ impl IkeHeader {
         self.major_version() == IKE_MAJOR_V1 && self.flags & IKEV1_FLAG_ENCRYPTION != 0
     }
 
-    /// IKEv1, drapeau C : l'emetteur attend une confirmation avant d'user
-    /// de la SA. Faux en IKEv2.
+    /// IKEv1, drapeau C (RFC 2408 §3.1) : synchronisation de l'echange de
+    /// cles ; le pair qui ne l'a pas pose attend, avant d'user de la SA,
+    /// l'echange informationnel CONNECTED de celui qui l'a pose. Faux en
+    /// IKEv2.
     pub fn commit_flag(&self) -> bool {
         self.major_version() == IKE_MAJOR_V1 && self.flags & IKEV1_FLAG_COMMIT != 0
     }
@@ -190,7 +192,8 @@ pub enum PayloadType {
     Notification,
     Delete,
     VendorId,
-    /// IKEv1 (14, RFC 3547 et mode-config).
+    /// IKEv1 (14, mode-config, jamais normalise : le registre IANA le marque
+    /// « Reserved, not to be used »).
     Attributes,
     /// IKEv1 (15 brouillon, 20 RFC 3947, 130 brouillon).
     NatDetection,
@@ -303,9 +306,12 @@ pub struct IkePacket<'a> {
     /// Les payloads de premier niveau, dans l'ordre du message. Vide quand
     /// IKEv1 chiffre tout (drapeau E).
     pub payloads: Vec<IkePayload<'a>>,
-    /// Les octets chiffres : tout ce qui suit l'en-tete en IKEv1 sous le
-    /// drapeau E, le corps du payload SK (ou SKF) en IKEv2, qui est alors
-    /// aussi le dernier de `payloads`.
+    /// Les octets proteges : tout ce qui suit l'en-tete en IKEv1 sous le
+    /// drapeau E, tous chiffres ; en IKEv2, le corps du payload SK (ou SKF),
+    /// qui est alors aussi le dernier de `payloads` — IV en clair, payloads
+    /// chiffres avec leur bourrage, puis donnees d'integrite en clair (RFC
+    /// 7296 §3.14 ; SKF fait preceder l'IV de ses numeros de fragment, RFC
+    /// 7383 §2.5).
     pub encrypted_body: Option<&'a [u8]>,
 }
 
@@ -348,7 +354,7 @@ impl<'a> TryFrom<&'a [u8]> for IkePacket<'a> {
         let mut offset = IKE_HEADER_LENGTH;
         // Comme tshark, la chaine s'arrete a la fin du message, meme si le
         // dernier payload en annonce un autre (trame 192 du corpus nDPI : un
-        // payload prive 127 de 784 octets qui annonce 35).
+        // payload de type 127, non assigne, de 784 octets qui annonce 35).
         while next != 0 && offset < payload.len() {
             let payload_type = next;
             let available = payload.len() - offset;
@@ -646,7 +652,9 @@ mod tests {
     fn test_udp_4500_demultiplexing() {
         let bytes = hex::decode(NAT_T_INFORMATIONAL).unwrap();
         assert_eq!(bytes.len(), 80);
-        // Nu, le marqueur est pris pour un SPI et la version ne colle pas.
+        // Nu, le marqueur devient la moitie haute du SPI de l'initiateur : la
+        // version lue (0x24, majeure 2) passe, mais la longueur lue (0) ne
+        // couvre pas les 80 octets.
         assert!(IkePacket::try_from(bytes.as_slice()).is_err());
         let Ok(UdpEncapsulation::Ike(rest)) = UdpEncapsulation::classify(&bytes) else {
             panic!("marqueur non-ESP attendu");
@@ -742,7 +750,7 @@ mod tests {
         );
         // Le dernier payload annonce un suivant sans place pour lui : comme
         // tshark, la chaine s'arrete a la fin du message (trame 192 du corpus
-        // nDPI, payload prive 127 qui annonce 35).
+        // nDPI, payload de type 127, non assigne, qui annonce 35).
         let mut dangling = bytes.clone();
         dangling[354] = 41;
         let packet = IkePacket::try_from(dangling.as_slice()).expect("suivant pendant");

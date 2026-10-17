@@ -403,7 +403,8 @@ incluent notamment:
   NAT-keepalive, ESP)
 - ESP (RFC 4303) : SPI et numero de sequence, natif (protocole IP 50, expose
   en `TransportDetails::Esp`) comme encapsule dans UDP 4500 (`EspPacket`),
-  le reste garde en octets chiffres
+  le reste (IV, chiffre, ICV, de tailles propres a l'algorithme) garde en
+  octets
 - DIS (IEEE 1278.1, Distributed Interactive Simulation) : en-tete de PDU
   (versions 1 a 7, les 72 types de la norme nommes, famille, horodatage,
   longueur, PDU Status), corps Entity State, Transmitter et Signal types,

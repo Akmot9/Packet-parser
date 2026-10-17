@@ -23,7 +23,10 @@ continuation.
   HF Chat face à un nœud STANAG 5066 (`192.168.64.22:5066`), le 2005-10-26.
   L'adresse du client, `195.169.112.105`, appartient au bloc RIPE `NC3A-NL`
   (« NATO C3 Agency NL, Unclassified Internet LAN ») : le banc de référence
-  de l'agence C3 de l'OTAN. La seconde capture montre une connexion refusée.
+  de l'agence C3 de l'OTAN. La seconde capture montre un envoi refusé, pas
+  une connexion : le nœud accepte le bind (S_BIND_ACCEPTED, SAP 5, MTU 250),
+  puis rejette l'U_PDU de 19 octets destiné à `5.100.100.1`
+  (S_UNIDATA_REQUEST_REJECTED, motif 3, « Destination node not responding »).
   URL `https://wiki.wireshark.org/uploads/__moin_import__/attachments/SampleCaptures/<fichier>`.
 - **`S5066-Expedited.pcap`** — données expédiées en boucle locale, le
   2006-09-12 ; même URL de base.

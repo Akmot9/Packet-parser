@@ -4,7 +4,8 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 //! Golden test PPPoE (#172) sur `pcaps_exemple/The-Ultimate-PCAP.pcapng`, lue
-//! en place : 6 795 trames passent par la session PPPoE d'un abonne, sous
+//! en place : 6 795 trames passent par cinq sessions PPPoE (0x001e, 0x8f9e,
+//! 0xe579, 0x1f3d, 0x8f80) entre quatre paires d'adresses MAC, toutes sous
 //! VLAN 7 — RTP et SIP, DHCPv6, IPv4 dans IPv6, LCP, IPCP et IPv6CP.
 //!
 //! L'oracle est tshark 4.6.6 (`tools/pppoe_oracle.sh`) : pour chaque trame

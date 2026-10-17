@@ -27,8 +27,9 @@ les octets :
 - `rdp-no-cookie-mstshash.pcap` : une VMware et une carte Lenovo
   (`00:de:fb`), TTL 122 côté serveur (un vrai chemin réseau), un
   Connection Confirm aux drapeaux `0x1f` et un certificat X.509 dans le TLS ;
-- `rdp-to-ssl.pcap` : deux machines VirtualBox (`08:00:27`), 475 segments
-  TLS après la négociation ;
+- `rdp-to-ssl.pcap` : deux machines VirtualBox (`08:00:27`), 477 segments
+  TLS après la négociation, dont deux portent le certificat X.509 du
+  serveur ;
 - `rdp-proprietary-encryption.pcap` : un client Windows (`00:1b:2f`, TTL 125,
   port 1312) et un serveur IBM (`00:05:9a`), 2007, des TPKT de 1 421 octets
   que le réseau coupe en 1 260 + 161.
@@ -47,9 +48,12 @@ cette crate ne décode pas).
 y voit, le jeton X.224 et la négociation des Connection Request et Confirm,
 le ConnectMCSPDU ou le DomainMCSPDU des PDU MCS, et le marqueur de
 retransmission. `tests/rdp_golden.rs` rejoue l'oracle (#100) : parité sur
-les 82 segments RDP (connexions et MCS), les 481 segments TLS étiquetés
-**TLS** — c'est la décision pour l'après-bascule —, et les 278 suites de
-TPKT coupés ou segments sans couche laissés inconnus, comme chez tshark.
+les 83 segments RDP (connexions et MCS) ; des 481 segments où tshark voit du
+TLS, 449 sont étiquetés **TLS** — c'est la décision pour l'après-bascule —
+et les 32 suites d'un record coupé restent inconnues ; les 287 suites de
+TPKT coupés ou segments sans couche restent inconnus, comme chez tshark ;
+les 10 retransmissions, que tshark ne dissèque pas, sont écartées de la
+comparaison.
 
 ## Licence
 

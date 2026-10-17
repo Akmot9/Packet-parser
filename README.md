@@ -387,7 +387,7 @@ Application detection is intentionally best-effort. Parser modules include:
   (non-ESP marker, NAT-keepalive, ESP)
 - ESP (RFC 4303): SPI and sequence number, native (IP protocol 50, exposed as
   `TransportDetails::Esp`) and UDP-encapsulated on 4500 (`EspPacket`), the
-  rest kept as encrypted bytes
+  rest (IV, ciphertext, ICV, sized by the negotiated algorithm) kept as bytes
 - DIS (IEEE 1278.1, Distributed Interactive Simulation): PDU header
   (versions 1 to 7, the 72 standard PDU types named, family, timestamp,
   length, PDU Status), Entity State, Transmitter and Signal bodies typed,

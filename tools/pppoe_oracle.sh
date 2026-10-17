@@ -3,7 +3,7 @@
 #
 # Une ligne par trame de session PPPoE (tshark `pppoes`) de
 # pcaps_exemple/The-Ultimate-PCAP.pcapng, lue en place : 6 795 trames passent
-# par la session PPPoE d'un abonne (sous VLAN 7) (#172).
+# par cinq sessions PPPoE, toutes sous VLAN 7 (#172).
 #
 # Usage : tools/pppoe_oracle.sh > tests/data/pppoe_tshark_oracle.tsv
 # Colonnes (tabulation) : trame, identifiant de session, longueur PPPoE,

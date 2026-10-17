@@ -52,9 +52,18 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct NegotiationRequest {
+    /// Drapeaux bruts (§2.2.1.1.1) : `0x01` RESTRICTED_ADMIN_MODE_REQUIRED
+    /// (ouverture de session sans identifiants sur CredSSP, « restricted
+    /// admin mode »), `0x02` REDIRECTED_AUTHENTICATION_MODE_REQUIRED
+    /// (ouverture sans identifiants, l'authentification etant redirigee sur
+    /// CredSSP, « Remote Credential Guard »), `0x08` CORRELATION_INFO_PRESENT
+    /// (le Connection Request porte apres la demande une structure
+    /// RDP_NEG_CORRELATION_INFO, §2.2.1.1.2).
     pub flags: u8,
     /// Bits : 1 TLS, 2 CredSSP, 4 RDSTLS, 8 CredSSP avec Early User
-    /// Authorization Result ; zero pour la securite RDP standard seule.
+    /// Authorization Result, `0x10` RDS-AAD-Auth (PROTOCOL_RDSAAD,
+    /// authentification Entra ID, §5.4.5.4) ; zero pour la securite RDP
+    /// standard seule.
     pub requested_protocols: u32,
 }
 
@@ -83,16 +92,34 @@ impl NegotiationRequest {
 #[non_exhaustive]
 pub enum NegotiationResponse {
     Accepted {
+        /// Drapeaux bruts (§2.2.1.2.1) : `0x01`
+        /// EXTENDED_CLIENT_DATA_SUPPORTED (blocs de donnees client etendus
+        /// dans le GCC Conference Create Request), `0x02`
+        /// DYNVC_GFX_PROTOCOL_SUPPORTED (Graphics Pipeline Extension,
+        /// MS-RDPEGFX), `0x04` NEGRSP_FLAG_RESERVED (reserve, que le client
+        /// ignore), `0x08` RESTRICTED_ADMIN_MODE_SUPPORTED (ouverture de
+        /// session sans identifiants sur CredSSP), `0x10`
+        /// REDIRECTED_AUTHENTICATION_MODE_SUPPORTED (« Remote Credential
+        /// Guard »). Le Connection Confirm de la trame 9 de
+        /// `rdp-no-cookie-mstshash.pcap` les leve tous (`0x1f`).
         flags: u8,
         /// Le protocole retenu : 0 RDP standard, 1 TLS, 2 CredSSP, 4
-        /// RDSTLS, 8 CredSSP avec Early User Authorization Result.
+        /// RDSTLS, 8 CredSSP avec Early User Authorization Result, `0x10`
+        /// RDS-AAD-Auth (PROTOCOL_RDSAAD, authentification Entra ID,
+        /// §5.4.5.4).
         selected_protocol: u32,
     },
     Failure {
-        /// §2.2.1.2.2 : 1 TLS requis, 2 TLS non supporte, 3 TLS avec
-        /// certificat utilisateur non supporte, 4 Early User Authorization
-        /// Result non supporte, 5 CredSSP requis, 6 SSL certificat non
-        /// trouve.
+        /// §2.2.1.2.2 : 1 TLS ou CredSSP requis (SSL_REQUIRED_BY_SERVER),
+        /// 2 securite RDP standard seule, aucun protocole externe
+        /// (SSL_NOT_ALLOWED_BY_SERVER), 3 pas de certificat valide sur le
+        /// serveur (SSL_CERT_NOT_ON_SERVER), 4 protocoles demandes
+        /// incoherents avec celui deja en vigueur, approche directe
+        /// seulement (INCONSISTENT_FLAGS), 5 CredSSP requis
+        /// (HYBRID_REQUIRED_BY_SERVER), 6 TLS avec authentification du
+        /// client par certificat requis (SSL_WITH_USER_AUTH_REQUIRED_BY_SERVER),
+        /// 7 authentification Entra ID requise, par RDS-AAD-Auth
+        /// (ENTRA_AUTH_REQUIRED_BY_SERVER, que tshark 4.6.6 ne nomme pas).
         failure_code: u32,
     },
 }
