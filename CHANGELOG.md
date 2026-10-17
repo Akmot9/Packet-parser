@@ -112,6 +112,17 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   poursuit la dissection ; la crate n'etiquette plus le message. Aucune
   trame du corpus ne change.
 
+- **IKE** (#189) : en IKEv1, les codes de payload 15 et 16 etaient lus
+  NAT Discovery et NAT Original Address, d'apres les brouillons
+  draft-ietf-ipsec-nat-t-ike-04 a -08, qui les posaient sans
+  enregistrement. Le registre IANA « Next Payload Types » les donne a
+  GDOI depuis la RFC 3547 : 15 est SA KEK (SAK) et 16 SA TEK (SAT), et la
+  RFC 3947 a pris 20 et 21 pour NAT-T. `PayloadType::from_code(1, 15)`
+  rend desormais `Some(SaKek)` et `from_code(1, 16)` `Some(SaTek)`, comme
+  tshark (« SA KEK Payload », « SA TEK Payload »), libreswan et strongSwan ;
+  `NatDetection` reste pour 20 et 130, `NatOriginalAddress` pour 21 et 131.
+  Aucune des 1 254 trames ISAKMP du corpus ne porte ces codes en clair.
+
 ### Ajoute
 
 - **BACnet/IP** (#190) : `ConfirmedService` nomme les services confirmes
@@ -123,6 +134,19 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   Les deux variantes s'ajoutent en fin d'enum ; l'octet brut de
   `Apdu::service` ne change pas. Aucune des 45 trames BACnet du corpus ne
   porte ces services.
+
+- **IKE** (#189) : `ExchangeType::GsaInbandRekey` nomme l'echange 42 de
+  G-IKEv2 (RFC 9838 §2.4.2, registre IANA « IKEv2 Exchange Types »), seul
+  code assigne de 34 a 44 qui restait a `None` ; tshark 4.6.6 l'affiche
+  encore « Unassigned ». `ExchangeType::Transaction` nomme l'echange
+  IKEv1 6 du mode-config (draft-dukes-ike-mode-cfg-02, hors registre
+  IANA), comme tshark et comme la crate le fait deja du payload 14 du meme
+  brouillon. `PayloadType` gagne les types GDOI d'IKEv1 : `SaKek` (15),
+  `SaTek` (16), `SequenceNumber` (18), `ProofOfPossession` (19) et
+  `GroupAssociatedPolicy` (22), et `KeyDownload` couvre le 17 d'IKEv1 comme
+  le 52 d'IKEv2. Le 18 se voit sur le fil : l'en-tete en clair d'un
+  GROUPKEY-PUSH l'annonce comme premier payload. Toutes les variantes
+  s'ajoutent en fin d'enum.
 
 ### Documentation
 
