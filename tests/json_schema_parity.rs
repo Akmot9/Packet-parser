@@ -136,7 +136,9 @@ fn borrowed_and_owned_flows_serialize_to_the_same_json_on_the_whole_corpus() {
 /// Trame de #193 : Ethernet, 802.1Q VID 104, IPv4 192.168.1.10 -> 8.8.8.8,
 /// TCP SYN 12345 -> 80, 58 octets. tshark 4.6.6 la lit
 /// `eth:ethertype:vlan:ethertype:ip:tcp`, VLAN 104, sommes de controle IPv4
-/// et TCP « Good ».
+/// et TCP « Good » une fois la validation activee
+/// (`-o ip.check_checksum:TRUE -o tcp.check_checksum:TRUE`) ; avec les
+/// preferences par defaut, il les laisse « Unverified ».
 const VLAN_TCP_SYN_HEX: &str = concat!(
     "020000000002020000000001810000680800", // Ethernet, 802.1Q VID 104
     "45000028000100004006a90dc0a8010a08080808", // IPv4
@@ -144,9 +146,13 @@ const VLAN_TCP_SYN_HEX: &str = concat!(
 );
 
 /// Le JSON du modele owned, celui qui fait foi (CHANGELOG 11.0.0) et que lit
-/// Sonar. Fige ici, son ordre ne peut pas changer sans que ce test le dise :
-/// la comparaison des deux modeles laisserait passer un reordonnancement
-/// des deux a la fois.
+/// Sonar, pour cette trame. Fige ici, l'ordre des membres qu'elle porte
+/// (liaison Ethernet et tag VLAN, couche IP, ports puis `protocol_transport`)
+/// ne peut pas changer sans que ce test le dise : la comparaison des deux
+/// modeles laisserait passer un reordonnancement des deux a la fois.
+/// `vlan_stack`, `application_protocol`, `inner` et `corrupted` n'y figurent
+/// pas : `owned_json_member_order_is_pinned` (`src/owned/mod.rs`) fige leur
+/// place, et celle des autres formes de liaison.
 const VLAN_TCP_SYN_JSON: &str = concat!(
     r#"{"data_link":{"link_type":1,"network_protocol":{"kind":"ipv4"},"#,
     r#""link_kind":"ethernet","link_details":{"destination_mac":"02:00:00:00:00:02","#,
