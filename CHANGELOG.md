@@ -112,6 +112,18 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   poursuit la dissection ; la crate n'etiquette plus le message. Aucune
   trame du corpus ne change.
 
+### Ajoute
+
+- **BACnet/IP** (#190) : `ConfirmedService` nomme les services confirmes
+  34, `AuthRequest` (auth-request, addendum 135-2020cp, revision de
+  protocole 29, repris dans ANSI/ASHRAE 135-2024), et 35, `DirectoryQuery`
+  (directory-query, addendum 135-2024cu, revision 31). `from_code` rendait
+  `None` pour ces deux codes, et `Apdu::confirmed_service()` avec lui, la
+  ou tshark 4.6.6 lit « authRequest (34) » (il ne nomme pas encore le 35).
+  Les deux variantes s'ajoutent en fin d'enum ; l'octet brut de
+  `Apdu::service` ne change pas. Aucune des 45 trames BACnet du corpus ne
+  porte ces services.
+
 ### Documentation
 
 - **Errata de la 11.6.0** (#194) : la section publiee reste telle quelle,

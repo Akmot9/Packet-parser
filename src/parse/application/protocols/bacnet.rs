@@ -175,6 +175,12 @@ pub enum ConfirmedService {
     ConfirmedCovNotificationMultiple,
     ConfirmedAuditNotification,
     AuditLogQuery,
+    /// 34, auth-request (addendum 135-2020cp, revision de protocole 29,
+    /// repris dans 135-2024) : des jetons non confidentiels, qui circulent
+    /// en clair sur BACnet/IP (clause 17.6).
+    AuthRequest,
+    /// 35, directory-query (addendum 135-2024cu, revision de protocole 31).
+    DirectoryQuery,
 }
 
 impl ConfirmedService {
@@ -214,6 +220,8 @@ impl ConfirmedService {
             31 => Self::ConfirmedCovNotificationMultiple,
             32 => Self::ConfirmedAuditNotification,
             33 => Self::AuditLogQuery,
+            34 => Self::AuthRequest,
+            35 => Self::DirectoryQuery,
             _ => return None,
         })
     }
@@ -610,6 +618,61 @@ mod tests {
         assert_eq!((apdu.invoke_id, apdu.service), (Some(1), Some(12)));
         assert_eq!(apdu.segment, None);
         assert_eq!(apdu.data.len(), 14);
+    }
+
+    /// Services confirmes 34 et 35 (#190), payloads synthetiques sur UDP
+    /// 47808 : tshark 4.6.6 lit « authRequest (34) » sur les trois premiers
+    /// et « Unknown (35) » sur le dernier, en remplissant
+    /// `bacapp.confirmed_service` pour les quatre.
+    const AUTH_REQUEST: &str = "810a00130104000501220e0a04d21e31051f0f";
+    const AUTH_REQUEST_ACK: &str = "810a000d01003001220e09010f";
+    const AUTH_REQUEST_ERROR: &str = "810a000f01005001220e910591000f";
+    const DIRECTORY_QUERY: &str = "810a000e0104000502230e0f4900";
+
+    #[test]
+    fn test_auth_request_and_directory_query_are_named() {
+        for (hex, kind, invoke_id, code, service) in [
+            (
+                AUTH_REQUEST,
+                ApduType::ConfirmedRequest,
+                1,
+                34,
+                ConfirmedService::AuthRequest,
+            ),
+            (
+                AUTH_REQUEST_ACK,
+                ApduType::ComplexAck,
+                1,
+                34,
+                ConfirmedService::AuthRequest,
+            ),
+            (
+                AUTH_REQUEST_ERROR,
+                ApduType::Error,
+                1,
+                34,
+                ConfirmedService::AuthRequest,
+            ),
+            (
+                DIRECTORY_QUERY,
+                ApduType::ConfirmedRequest,
+                2,
+                35,
+                ConfirmedService::DirectoryQuery,
+            ),
+        ] {
+            let bytes = hex::decode(hex).unwrap();
+            let packet = BacnetPacket::try_from(bytes.as_slice()).expect(hex);
+            let NpduMessage::Apdu(apdu) = packet.npdu.expect("NPDU").message else {
+                panic!("APDU attendu");
+            };
+            assert_eq!(apdu.kind, kind, "{hex}");
+            assert_eq!(apdu.invoke_id, Some(invoke_id), "{hex}");
+            assert_eq!(apdu.service, Some(code), "{hex}");
+            assert_eq!(apdu.confirmed_service(), Some(service), "{hex}");
+            assert_eq!(apdu.unconfirmed_service(), None, "{hex}");
+        }
+        assert_eq!(ConfirmedService::from_code(36), None);
     }
 
     #[test]
