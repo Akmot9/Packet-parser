@@ -121,7 +121,11 @@ impl IkeHeader {
 }
 
 /// Type d'echange, selon la version (RFC 2408 §3.1, RFC 7296 §3.1 et le
-/// registre IANA IKEv2).
+/// registre IANA « IKEv2 Exchange Types », qui assigne 34 a 44).
+///
+/// En IKEv1, les codes 6 a 31 sont « ISAKMP Future Use » au registre ; le 6,
+/// Transaction du mode-config, vient d'un brouillon jamais normalise, comme
+/// le payload 14 ([`PayloadType::Attributes`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum ExchangeType {
@@ -140,11 +144,22 @@ pub enum ExchangeType {
     IkeAuth,
     CreateChildSa,
     IkeSessionResume,
+    /// G-IKEv2 (39, RFC 9838 §2.3).
     GsaAuth,
+    /// G-IKEv2 (40, RFC 9838 §2.3).
     GsaRegistration,
+    /// G-IKEv2 (41, RFC 9838 §2.4.1).
     GsaRekey,
     IkeIntermediate,
     IkeFollowupKe,
+    // Variantes ajoutees apres la 11.6.0, en fin d'enum pour garder les
+    // discriminants : leur place logique est plus haut.
+    /// G-IKEv2 (42, RFC 9838 §2.4.2), que tshark 4.6.6 affiche encore
+    /// « Unassigned ».
+    GsaInbandRekey,
+    /// IKEv1 (6), Transaction du mode-config
+    /// (draft-dukes-ike-mode-cfg-02 §3.1), hors registre IANA.
+    Transaction,
 }
 
 impl ExchangeType {
@@ -155,6 +170,7 @@ impl ExchangeType {
             (IKE_MAJOR_V1, 3) => Self::AuthenticationOnly,
             (IKE_MAJOR_V1, 4) => Self::Aggressive,
             (IKE_MAJOR_V1, 5) => Self::Informational,
+            (IKE_MAJOR_V1, 6) => Self::Transaction,
             (IKE_MAJOR_V1, 32) => Self::QuickMode,
             (IKE_MAJOR_V1, 33) => Self::NewGroupMode,
             (IKE_MAJOR_V2, 34) => Self::IkeSaInit,
@@ -165,6 +181,7 @@ impl ExchangeType {
             (IKE_MAJOR_V2, 39) => Self::GsaAuth,
             (IKE_MAJOR_V2, 40) => Self::GsaRegistration,
             (IKE_MAJOR_V2, 41) => Self::GsaRekey,
+            (IKE_MAJOR_V2, 42) => Self::GsaInbandRekey,
             (IKE_MAJOR_V2, 43) => Self::IkeIntermediate,
             (IKE_MAJOR_V2, 44) => Self::IkeFollowupKe,
             _ => return None,
@@ -172,9 +189,17 @@ impl ExchangeType {
     }
 }
 
-/// Type de payload, selon la version (RFC 2408 §3.1, RFC 3947 et le
-/// registre IANA IKEv2). Proposal et Transform n'apparaissent qu'a
-/// l'interieur d'un Security Association.
+/// Type de payload, selon la version : RFC 2408 §3.1, RFC 3947 (NAT-T),
+/// RFC 3547 et RFC 6407 (GDOI) et le registre IANA « Next Payload Types »
+/// pour IKEv1 ; RFC 7296 §3.2 et le registre IANA « IKEv2 Payload Types »
+/// pour IKEv2. Proposal et Transform n'apparaissent qu'a l'interieur d'un
+/// Security Association.
+///
+/// Les types GDOI (15 a 19, 22) ne circulent en clair au premier niveau
+/// que dans l'en-tete d'un message chiffre (le « next payload » d'un
+/// GROUPKEY-PUSH annonce une Sequence Number), ou chez un emetteur des
+/// brouillons NAT-T -04 a -08, qui prenaient 15 et 16 avant que la RFC 3947
+/// ne fixe 20 et 21.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum PayloadType {
@@ -195,9 +220,12 @@ pub enum PayloadType {
     /// IKEv1 (14, mode-config, jamais normalise : le registre IANA le marque
     /// « Reserved, not to be used »).
     Attributes,
-    /// IKEv1 (15 brouillon, 20 RFC 3947, 130 brouillon).
+    /// NAT Discovery, NAT-D : IKEv1 (20, RFC 3947 §3.2 ; 130, brouillons
+    /// draft-ietf-ipsec-nat-t-ike-00 a -03). Le nom de la variante date de la
+    /// 11.6.0 ; le registre dit « NAT-D ».
     NatDetection,
-    /// IKEv1 (16 brouillon, 21 RFC 3947, 131 brouillon).
+    /// NAT Original Address, NAT-OA : IKEv1 (21, RFC 3947 §5.2 ; 131,
+    /// brouillons -00 a -03).
     NatOriginalAddress,
     // IKEv2
     IdentificationInitiator,
@@ -212,10 +240,26 @@ pub enum PayloadType {
     GenericSecurePasswordMethod,
     GroupIdentification,
     GroupSecurityAssociation,
+    /// KD : IKEv2 (52, RFC 9838 §4.5) comme IKEv1 GDOI (17, RFC 6407 §5.4).
     KeyDownload,
     /// SKF (RFC 7383).
     EncryptedFragment,
     PuzzleSolution,
+    // Variantes ajoutees apres la 11.6.0, en fin d'enum pour garder les
+    // discriminants : leur place logique est apres `Attributes`.
+    /// SA KEK, SAK : IKEv1 GDOI (15, RFC 6407 §5.2). La 11.6.0 y lisait
+    /// une NAT Discovery, d'apres les brouillons NAT-T -04 a -08.
+    SaKek,
+    /// SA TEK, SAT : IKEv1 GDOI (16, RFC 6407 §5.3). La 11.6.0 y lisait une
+    /// NAT Original Address.
+    SaTek,
+    /// SEQ : IKEv1 GDOI (18, RFC 6407 §5.5).
+    SequenceNumber,
+    /// POP : IKEv1 GDOI (19, RFC 3547 §5.7 ; la RFC 6407 l'abandonne, le
+    /// registre le garde).
+    ProofOfPossession,
+    /// GAP : IKEv1 GDOI (22, RFC 6407 §5.6).
+    GroupAssociatedPolicy,
 }
 
 impl PayloadType {
@@ -235,8 +279,14 @@ impl PayloadType {
             (IKE_MAJOR_V1, 12) => Self::Delete,
             (IKE_MAJOR_V1, 13) => Self::VendorId,
             (IKE_MAJOR_V1, 14) => Self::Attributes,
-            (IKE_MAJOR_V1, 15 | 20 | 130) => Self::NatDetection,
-            (IKE_MAJOR_V1, 16 | 21 | 131) => Self::NatOriginalAddress,
+            (IKE_MAJOR_V1, 15) => Self::SaKek,
+            (IKE_MAJOR_V1, 16) => Self::SaTek,
+            (IKE_MAJOR_V1, 17) => Self::KeyDownload,
+            (IKE_MAJOR_V1, 18) => Self::SequenceNumber,
+            (IKE_MAJOR_V1, 19) => Self::ProofOfPossession,
+            (IKE_MAJOR_V1, 20 | 130) => Self::NatDetection,
+            (IKE_MAJOR_V1, 21 | 131) => Self::NatOriginalAddress,
+            (IKE_MAJOR_V1, 22) => Self::GroupAssociatedPolicy,
             (IKE_MAJOR_V2, 33) => Self::SecurityAssociation,
             (IKE_MAJOR_V2, 34) => Self::KeyExchange,
             (IKE_MAJOR_V2, 35) => Self::IdentificationInitiator,
@@ -531,6 +581,28 @@ mod tests {
         "390679acabb28be2"
     );
 
+    /// Messages synthetiques de #189, poses sur UDP 500 (tshark 4.6.6).
+    /// GSA_INBAND_REKEY (42, RFC 9838 §2.4.2) du GCKS, un seul payload SK
+    /// dont le suivant annonce GSA (51) : tshark affiche « Unassigned (42) ».
+    const IKEV2_GSA_INBAND_REKEY: &str = concat!(
+        "a1b2c3d4e5f6071818273645546372812e202a0000000000000000503300003410111213",
+        "1415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f3031323334353637",
+        "38393a3b3c3d3e3f"
+    );
+    /// IKEv1 main mode en clair, chaine SA KEK (15) puis SA TEK (16) :
+    /// tshark lit « SA KEK Payload » et « SA TEK Payload ».
+    const IKEV1_GDOI_SAK_SAT: &str = concat!(
+        "a1b2c3d4e5f6071800000000000000000f100200000000000000005c1000002800000000",
+        "000000000000000000000000000000000000000000000000000000000000000000000018",
+        "0000000000000000000000000000000000000000"
+    );
+    /// IKEv1 en clair, chaine Key Download (17), Sequence Number (18), Proof
+    /// of Possession (19), Group Associated Policy (22).
+    const IKEV1_GDOI_KD_SEQ_POP_GAP: &str = concat!(
+        "a1b2c3d4e5f607180000000000000000111002000000000000000040120000080000000013",
+        "000008000000001600000c00000000000000000000000800000000"
+    );
+
     fn types_and_lengths(packet: &IkePacket<'_>) -> (Vec<u8>, Vec<u16>) {
         (
             packet.payload_types().collect(),
@@ -613,6 +685,73 @@ mod tests {
             IkePacket::try_from(shorter.as_slice()),
             Err(IkeParseError::UnexpectedTrailingBytes { trailing: 10 })
         );
+    }
+
+    #[test]
+    fn test_gdoi_and_g_ikev2_codes_follow_the_iana_registries() {
+        let bytes = hex::decode(IKEV2_GSA_INBAND_REKEY).unwrap();
+        assert_eq!(bytes.len(), 80);
+        let packet = IkePacket::try_from(bytes.as_slice()).expect("GSA_INBAND_REKEY");
+        assert_eq!(packet.header.exchange_type, 42);
+        assert_eq!(packet.header.exchange(), Some(ExchangeType::GsaInbandRekey));
+        assert_eq!(types_and_lengths(&packet), (vec![46], vec![52]));
+        assert_eq!(packet.payloads[0].kind, Some(PayloadType::Encrypted));
+        assert_eq!(packet.payloads[0].next_payload, 51);
+
+        let bytes = hex::decode(IKEV1_GDOI_SAK_SAT).unwrap();
+        assert_eq!(bytes.len(), 92);
+        let packet = IkePacket::try_from(bytes.as_slice()).expect("SAK, SAT");
+        assert_eq!(types_and_lengths(&packet), (vec![15, 16], vec![40, 24]));
+        assert_eq!(
+            packet.payloads.iter().map(|p| p.kind).collect::<Vec<_>>(),
+            [Some(PayloadType::SaKek), Some(PayloadType::SaTek)]
+        );
+
+        let bytes = hex::decode(IKEV1_GDOI_KD_SEQ_POP_GAP).unwrap();
+        assert_eq!(bytes.len(), 64);
+        let packet = IkePacket::try_from(bytes.as_slice()).expect("KD, SEQ, POP, GAP");
+        assert_eq!(
+            types_and_lengths(&packet),
+            (vec![17, 18, 19, 22], vec![8, 8, 12, 8])
+        );
+        assert_eq!(
+            packet.payloads.iter().map(|p| p.kind).collect::<Vec<_>>(),
+            [
+                Some(PayloadType::KeyDownload),
+                Some(PayloadType::SequenceNumber),
+                Some(PayloadType::ProofOfPossession),
+                Some(PayloadType::GroupAssociatedPolicy),
+            ]
+        );
+
+        // L'en-tete en clair d'un GROUPKEY-PUSH annonce une Sequence Number.
+        assert_eq!(
+            PayloadType::from_code(IKE_MAJOR_V1, 18),
+            Some(PayloadType::SequenceNumber)
+        );
+        // NAT-T : les codes de la RFC 3947 et ceux des brouillons -00 a -03.
+        for code in [20, 130] {
+            assert_eq!(
+                PayloadType::from_code(IKE_MAJOR_V1, code),
+                Some(PayloadType::NatDetection)
+            );
+        }
+        for code in [21, 131] {
+            assert_eq!(
+                PayloadType::from_code(IKE_MAJOR_V1, code),
+                Some(PayloadType::NatOriginalAddress)
+            );
+        }
+        assert_eq!(PayloadType::from_code(IKE_MAJOR_V1, 23), None);
+        assert_eq!(PayloadType::from_code(IKE_MAJOR_V1, 132), None);
+        // Les codes GDOI n'existent pas en IKEv2, ni 42 en IKEv1.
+        assert_eq!(PayloadType::from_code(IKE_MAJOR_V2, 15), None);
+        assert_eq!(ExchangeType::from_code(IKE_MAJOR_V1, 42), None);
+        assert_eq!(
+            ExchangeType::from_code(IKE_MAJOR_V1, 6),
+            Some(ExchangeType::Transaction)
+        );
+        assert_eq!(ExchangeType::from_code(IKE_MAJOR_V1, 7), None);
     }
 
     #[test]
