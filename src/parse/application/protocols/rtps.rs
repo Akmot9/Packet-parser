@@ -15,8 +15,13 @@
 //! `octetsToNextHeader`. Le decodeur decoupe les sous-messages, identifie
 //! leur type et expose, en valeurs typees, les identifiants d'entite,
 //! numeros de sequence, compteurs et horodatages des types de la
-//! specification ; les donnees utilisateur (CDR), les QoS en ligne et les
-//! listes de locateurs restent en octets. RTI Connext emet aussi des
+//! specification, et les champs du HEADER_EXTENSION de la 2.5 (longueur du
+//! message, horodatage d'emission, extensions, somme de controle non
+//! verifiee) ; les donnees utilisateur (CDR), les QoS en ligne, les listes
+//! de locateurs et la ParameterList du HEADER_EXTENSION restent en octets.
+//! Un identifiant hors de la table de la 2.5, de DDS Security et de la
+//! plage vendeur refuse le message, la ou le §8.3.4.1 demande de l'ignorer
+//! et de continuer : c'est la signature de la sonde. RTI Connext emet aussi des
 //! « pings » de seize octets (`RTPS`, version, vendorId, `NDDSPING`), que
 //! tshark compte comme du RTPS : [`RtpsPacket::Ping`].
 //!
@@ -28,13 +33,17 @@ use std::convert::TryFrom;
 
 use crate::{
     checks::application::rtps::{
-        RTPS_FLAG_ENDIANNESS, RTPS_HEADER_LENGTH, RTPS_PING_LENGTH, RTPS_PING_TEXT,
-        RTPS_SUBMESSAGE_HEADER_LENGTH, SUBMESSAGE_ACKNACK, SUBMESSAGE_DATA, SUBMESSAGE_DATA_FRAG,
-        SUBMESSAGE_GAP, SUBMESSAGE_HEARTBEAT, SUBMESSAGE_HEARTBEAT_FRAG, SUBMESSAGE_INFO_DST,
+        HEADER_EXTENSION_FLAG_LENGTH, HEADER_EXTENSION_FLAG_PARAMETERS,
+        HEADER_EXTENSION_FLAG_TIMESTAMP, HEADER_EXTENSION_FLAG_UEXTENSION4,
+        HEADER_EXTENSION_FLAG_WEXTENSION8, RTPS_FLAG_ENDIANNESS, RTPS_HEADER_LENGTH,
+        RTPS_PING_LENGTH, RTPS_PING_TEXT, RTPS_SUBMESSAGE_HEADER_LENGTH, SUBMESSAGE_ACKNACK,
+        SUBMESSAGE_DATA, SUBMESSAGE_DATA_FRAG, SUBMESSAGE_GAP, SUBMESSAGE_HEADER_EXTENSION,
+        SUBMESSAGE_HEARTBEAT, SUBMESSAGE_HEARTBEAT_FRAG, SUBMESSAGE_INFO_DST,
         SUBMESSAGE_INFO_REPLY, SUBMESSAGE_INFO_REPLY_IP4, SUBMESSAGE_INFO_SRC, SUBMESSAGE_INFO_TS,
         SUBMESSAGE_NACK_FRAG, SUBMESSAGE_PAD, SUBMESSAGE_SEC_BODY, SUBMESSAGE_SEC_POSTFIX,
         SUBMESSAGE_SEC_PREFIX, SUBMESSAGE_SRTPS_POSTFIX, SUBMESSAGE_SRTPS_PREFIX, bitmap_length,
-        ensure_len, extract_magic, extract_version, read_sequence_number, read_u16, read_u32,
+        ensure_len, extract_magic, extract_version, header_extension_checksum_length,
+        header_extension_fixed_length, read_sequence_number, read_u16, read_u32,
         submessage_body_length, validate_body_length, validate_submessage_id,
     },
     errors::application::rtps::RtpsParseError,
@@ -68,7 +77,8 @@ pub struct RtpsHeader {
 
 /// Type d'un sous-message, d'apres son identifiant (§9.4.5.1.1 ; DDS
 /// Security 1.1 §7.3.6.2 pour les `Secure*` ; 0x80 a 0xff pour les
-/// vendeurs).
+/// vendeurs). `HeaderExtension` (0x00, DDSI-RTPS 2.5) est en fin d'enum,
+/// ajoutee apres la 11.6.0.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum SubmessageKind {
@@ -91,11 +101,15 @@ pub enum SubmessageKind {
     SecureRtpsPrefix,
     SecureRtpsPostfix,
     VendorSpecific(u8),
+    /// HEADER_EXTENSION (0x00, §9.4.5.2) : messageLength, horodatage
+    /// d'emission, extensions, somme de controle, parametres.
+    HeaderExtension,
 }
 
 impl SubmessageKind {
     fn from_id(id: u8) -> Self {
         match id {
+            SUBMESSAGE_HEADER_EXTENSION => Self::HeaderExtension,
             SUBMESSAGE_PAD => Self::Pad,
             SUBMESSAGE_ACKNACK => Self::AckNack,
             SUBMESSAGE_HEARTBEAT => Self::Heartbeat,
@@ -127,9 +141,43 @@ pub struct RtpsTime {
     pub fraction: u32,
 }
 
+/// Somme de controle du message portee par le HEADER_EXTENSION (§9.4.2.15,
+/// Table 9.8), lue en grand-boutiste quel que soit le flag E, et non
+/// verifiee par le decodeur.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum RtpsChecksum {
+    /// Flag C2 seul.
+    Crc32c(u32),
+    /// Flag C1 seul.
+    Crc64Xz(u64),
+    /// Flags C1 et C2.
+    Md5([u8; 16]),
+}
+
+/// Les champs du HEADER_EXTENSION (DDSI-RTPS 2.5 §8.3.7.3 et §9.4.5.2),
+/// chacun present selon un flag, dans l'ordre du fil : messageLength (L),
+/// rtpsSendTimestamp (T), uExtension4 (U), wExtension8 (W), la somme de
+/// controle (C1, C2), puis une ParameterList (P) qui occupe le reste du
+/// corps, voir [`RtpsSubmessage::header_extension_parameters`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct RtpsHeaderExtension {
+    /// Longueur du message entier, en-tete compris : celle du datagramme
+    /// (§9.5), ce que le decodeur verifie.
+    pub message_length: Option<u32>,
+    pub send_timestamp: Option<RtpsTime>,
+    pub u_extension: Option<[u8; 4]>,
+    pub w_extension: Option<[u8; 8]>,
+    pub checksum: Option<RtpsChecksum>,
+    /// Flag P : une ParameterList suit la partie fixe.
+    pub parameters: bool,
+}
+
 /// Les champs typees d'un sous-message, selon son type (§9.4.5). Les
 /// identifiants d'entite sont les quatre octets `EntityId_t` tels quels,
 /// `0x000003c2` pour le writer des publications par exemple.
+/// `HeaderExtension` est en fin d'enum, ajoutee apres la 11.6.0.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum SubmessageDetails {
@@ -208,6 +256,7 @@ pub enum SubmessageDetails {
     /// PAD, INFO_REPLY, INFO_REPLY_IP4, DDS Security et sous-messages
     /// vendeur : corps non interprete.
     Opaque,
+    HeaderExtension(RtpsHeaderExtension),
 }
 
 /// Un sous-message : son en-tete et son corps, zero-copie.
@@ -226,6 +275,21 @@ pub struct RtpsSubmessage<'a> {
     /// Le corps, apres les quatre octets d'en-tete.
     pub body: &'a [u8],
     pub details: SubmessageDetails,
+}
+
+impl<'a> RtpsSubmessage<'a> {
+    /// La ParameterList d'un HEADER_EXTENSION dont le flag P est leve
+    /// (§9.4.2.11), telle quelle : les parametres restent en octets, et le
+    /// PID_SENTINEL final est facultatif ici. `None` pour tout autre
+    /// sous-message, ou sans le flag.
+    pub fn header_extension_parameters(&self) -> Option<&'a [u8]> {
+        match self.details {
+            SubmessageDetails::HeaderExtension(extension) if extension.parameters => {
+                self.body.get(header_extension_fixed_length(self.flags)..)
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Un message RTPS : l'en-tete et ses sous-messages, dans l'ordre du wire.
@@ -317,6 +381,22 @@ impl<'a> TryFrom<&'a [u8]> for RtpsPacket<'a> {
         let mut offset = RTPS_HEADER_LENGTH;
         while offset < payload.len() {
             let (submessage, consumed) = parse_submessage(payload, offset)?;
+            // Le HEADER_EXTENSION suit immediatement l'en-tete (§8.3.3.2), et
+            // son messageLength, s'il est la, est la longueur du datagramme
+            // (§9.5 : un message par datagramme).
+            if let SubmessageDetails::HeaderExtension(extension) = submessage.details {
+                if offset != RTPS_HEADER_LENGTH {
+                    return Err(RtpsParseError::MisplacedHeaderExtension { offset });
+                }
+                if let Some(declared) = extension.message_length
+                    && usize::try_from(declared) != Ok(payload.len())
+                {
+                    return Err(RtpsParseError::HeaderExtensionLengthMismatch {
+                        declared,
+                        actual: payload.len(),
+                    });
+                }
+            }
             submessages.push(submessage);
             offset += consumed;
         }
@@ -364,7 +444,8 @@ fn parse_submessage(
 }
 
 /// Les champs typees d'un corps, apres verification de sa longueur
-/// minimale pour le type (§9.4.5.2 a §9.4.5.17).
+/// minimale pour le type (§9.4.5.2, HEADER_EXTENSION, a §9.4.5.15,
+/// INFO_REPLY_IP4).
 fn submessage_details(
     id: u8,
     flags: u8,
@@ -400,6 +481,47 @@ fn submessage_details(
     let needs = |expected: usize| validate_body_length(id, offset, expected, body.len());
 
     Ok(match id {
+        SUBMESSAGE_HEADER_EXTENSION => {
+            // Les champs que les flags annoncent, dans l'ordre du fil ; la
+            // somme de controle en grand-boutiste quel que soit E (Table
+            // 9.8) ; la ParameterList, s'il y en a une, occupe le reste.
+            needs(header_extension_fixed_length(flags))?;
+            let mut cursor = 0;
+            let mut field = |len: usize| {
+                let start = cursor;
+                cursor += len;
+                &body[start..start + len]
+            };
+            let message_length = (flags & HEADER_EXTENSION_FLAG_LENGTH != 0)
+                .then(|| read_u32(field(4).try_into().unwrap_or([0; 4]), little_endian));
+            let send_timestamp = (flags & HEADER_EXTENSION_FLAG_TIMESTAMP != 0).then(|| {
+                let seconds = read_u32(field(4).try_into().unwrap_or([0; 4]), little_endian);
+                let fraction = read_u32(field(4).try_into().unwrap_or([0; 4]), little_endian);
+                RtpsTime { seconds, fraction }
+            });
+            let u_extension = (flags & HEADER_EXTENSION_FLAG_UEXTENSION4 != 0)
+                .then(|| field(4).try_into().unwrap_or([0; 4]));
+            let w_extension = (flags & HEADER_EXTENSION_FLAG_WEXTENSION8 != 0)
+                .then(|| field(8).try_into().unwrap_or([0; 8]));
+            let checksum = match header_extension_checksum_length(flags) {
+                4 => Some(RtpsChecksum::Crc32c(u32::from_be_bytes(
+                    field(4).try_into().unwrap_or([0; 4]),
+                ))),
+                8 => Some(RtpsChecksum::Crc64Xz(u64::from_be_bytes(
+                    field(8).try_into().unwrap_or([0; 8]),
+                ))),
+                16 => Some(RtpsChecksum::Md5(field(16).try_into().unwrap_or([0; 16]))),
+                _ => None,
+            };
+            SubmessageDetails::HeaderExtension(RtpsHeaderExtension {
+                message_length,
+                send_timestamp,
+                u_extension,
+                w_extension,
+                checksum,
+                parameters: flags & HEADER_EXTENSION_FLAG_PARAMETERS != 0,
+            })
+        }
         SUBMESSAGE_DATA => {
             // extraFlags u16, octetsToInlineQos u16, readerId, writerId, writerSN.
             needs(20)?;
@@ -574,12 +696,191 @@ mod tests {
     /// ici, le DATA est reduit a son minimum (octets synthetiques).
     const RTPX_HEADER: &str = "52545058020101010a4601a700008c3800000002";
 
+    /// #186 : message synthetique RTPS 2.5 (vendorId eProsima) ouvert par un
+    /// HEADER_EXTENSION en petit-boutiste, flags L, T et C2 (0x27) :
+    /// messageLength 72, horodatage 2024-10-17 05:26:24.25 UTC, CRC-32C
+    /// 0xf6a73582 (que tshark 4.6.6 juge « correct » avec
+    /// `rtps.enable_rtps_checksum_check`), puis un DATA.
+    const HEADER_EXTENSION_L_T_CRC32C: &str = concat!(
+        "525450530205010f010faabbccddeeff00112233002710004800000000a0106700000040f6a73582",
+        "15051c000000100000000000000001020000000001000000000100002a000000"
+    );
+    /// Le meme DATA derriere un HEADER_EXTENSION en grand-boutiste, flags U,
+    /// W, C1 et C2 (0x78) : uExtension4, wExtension8 et MD5.
+    const HEADER_EXTENSION_U_W_MD5: &str = concat!(
+        "525450530205010f010faabbccddeeff001122330078001c0a0b0c0d1011121314151617",
+        "000102030405060708090a0b0c0d0e0f",
+        "15051c000000100000000000000001020000000001000000000100002a000000"
+    );
+    /// Flag P seul (0x81) : une ParameterList d'un parametre vendeur
+    /// (PID 0x8001, quatre octets) et son PID_SENTINEL.
+    const HEADER_EXTENSION_PARAMETERS: &str = concat!(
+        "525450530205010f010faabbccddeeff0011223300810c0001800400aabbccdd01000000",
+        "15051c000000100000000000000001020000000001000000000100002a000000"
+    );
+    /// Flags L et C1 (0x43) : messageLength 68 et CRC-64/XZ.
+    const HEADER_EXTENSION_L_CRC64: &str = concat!(
+        "525450530205010f010faabbccddeeff0011223300430c00440000000102030405060708",
+        "15051c000000100000000000000001020000000001000000000100002a000000"
+    );
+
     fn message(hex: &str) -> (Vec<u8>, RtpsMessage<'static>) {
         let bytes: &'static [u8] = Box::leak(hex::decode(hex).unwrap().into_boxed_slice());
         match RtpsPacket::try_from(bytes).expect("message RTPS") {
             RtpsPacket::Message(message) => (bytes.to_vec(), message),
             other => panic!("ping inattendu : {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_header_extension_of_rtps_2_5_is_decoded() {
+        let (_, msg) = message(HEADER_EXTENSION_L_T_CRC32C);
+        assert_eq!(msg.header.version_minor, 5);
+        assert_eq!(msg.header.vendor_id, 0x010f);
+        assert_eq!(msg.submessages.len(), 2);
+        let extension = &msg.submessages[0];
+        assert_eq!(extension.kind, SubmessageKind::HeaderExtension);
+        assert_eq!((extension.id, extension.flags), (0x00, 0x27));
+        assert!(extension.little_endian);
+        assert_eq!(extension.octets_to_next_header, 16);
+        assert_eq!(extension.body.len(), 16);
+        assert_eq!(
+            extension.details,
+            SubmessageDetails::HeaderExtension(RtpsHeaderExtension {
+                message_length: Some(72),
+                send_timestamp: Some(RtpsTime {
+                    seconds: 0x6710_a000,
+                    fraction: 0x4000_0000,
+                }),
+                u_extension: None,
+                w_extension: None,
+                checksum: Some(RtpsChecksum::Crc32c(0xf6a7_3582)),
+                parameters: false,
+            })
+        );
+        assert_eq!(extension.header_extension_parameters(), None);
+        let data = &msg.submessages[1];
+        assert_eq!(data.kind, SubmessageKind::Data);
+        assert!(matches!(
+            data.details,
+            SubmessageDetails::Data {
+                writer_id: 0x0000_0102,
+                writer_sequence_number: 1,
+                ..
+            }
+        ));
+
+        let (_, msg) = message(HEADER_EXTENSION_U_W_MD5);
+        let extension = &msg.submessages[0];
+        assert!(!extension.little_endian);
+        assert_eq!(extension.octets_to_next_header, 28);
+        assert_eq!(
+            extension.details,
+            SubmessageDetails::HeaderExtension(RtpsHeaderExtension {
+                message_length: None,
+                send_timestamp: None,
+                u_extension: Some([0x0a, 0x0b, 0x0c, 0x0d]),
+                w_extension: Some([0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17]),
+                checksum: Some(RtpsChecksum::Md5([
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+                ])),
+                parameters: false,
+            })
+        );
+        assert_eq!(msg.submessages[1].kind, SubmessageKind::Data);
+
+        let (_, msg) = message(HEADER_EXTENSION_PARAMETERS);
+        let extension = &msg.submessages[0];
+        let SubmessageDetails::HeaderExtension(details) = extension.details else {
+            panic!("HEADER_EXTENSION attendu");
+        };
+        assert!(details.parameters);
+        assert_eq!((details.message_length, details.checksum), (None, None));
+        assert_eq!(
+            extension.header_extension_parameters(),
+            Some(
+                &[
+                    0x01, 0x80, 0x04, 0x00, 0xaa, 0xbb, 0xcc, 0xdd, 0x01, 0x00, 0x00, 0x00
+                ][..]
+            )
+        );
+        assert_eq!(msg.submessages[1].kind, SubmessageKind::Data);
+
+        let (_, msg) = message(HEADER_EXTENSION_L_CRC64);
+        assert_eq!(
+            msg.submessages[0].details,
+            SubmessageDetails::HeaderExtension(RtpsHeaderExtension {
+                message_length: Some(68),
+                send_timestamp: None,
+                u_extension: None,
+                w_extension: None,
+                checksum: Some(RtpsChecksum::Crc64Xz(0x0102_0304_0506_0708)),
+                parameters: false,
+            })
+        );
+
+        // Et la sonde aveugle etiquette le datagramme RTPS.
+        let bytes = hex::decode(HEADER_EXTENSION_L_T_CRC32C).unwrap();
+        let transport = crate::parse::transport::Transport {
+            protocol: crate::parse::transport::protocols::TransportProtocol::Udp,
+            source_port: Some(7400),
+            destination_port: Some(7400),
+            payload: Some(bytes.as_slice()),
+            details: None,
+        };
+        assert_eq!(
+            crate::parse::dispatch::classify(&transport, &[]).map(|a| a.application_protocol),
+            Some("RTPS")
+        );
+    }
+
+    #[test]
+    fn test_header_extension_validity() {
+        let bytes = hex::decode(HEADER_EXTENSION_L_T_CRC32C).unwrap();
+        // Un corps trop court d'un octet pour les champs que les flags
+        // annoncent.
+        let mut short = bytes.clone();
+        short[22] = 15;
+        short.remove(39);
+        assert_eq!(
+            RtpsPacket::try_from(short.as_slice()),
+            Err(RtpsParseError::SubmessageTooShort {
+                id: 0x00,
+                offset: 20,
+                expected: 16,
+                actual: 15,
+            })
+        );
+        // Un messageLength qui n'est pas la longueur du datagramme.
+        let mut mismatch = bytes.clone();
+        mismatch[24] = 71;
+        assert_eq!(
+            RtpsPacket::try_from(mismatch.as_slice()),
+            Err(RtpsParseError::HeaderExtensionLengthMismatch {
+                declared: 71,
+                actual: 72,
+            })
+        );
+        // Un HEADER_EXTENSION en deuxieme position, apres un INFO_TS (tshark
+        // 4.6.6 ne s'en plaint pas).
+        let mut misplaced = bytes[..20].to_vec();
+        misplaced.extend_from_slice(&hex::decode("0901080000a0106700000040").unwrap());
+        misplaced.extend_from_slice(&bytes[20..]);
+        misplaced[24 + 12] = 84;
+        assert_eq!(
+            RtpsPacket::try_from(misplaced.as_slice()),
+            Err(RtpsParseError::MisplacedHeaderExtension { offset: 32 })
+        );
+        // Les autres identifiants hors table restent reserves.
+        let mut reserved = bytes.clone();
+        reserved[20] = 0x05;
+        assert_eq!(
+            RtpsPacket::try_from(reserved.as_slice()),
+            Err(RtpsParseError::ReservedSubmessageId {
+                id: 0x05,
+                offset: 20,
+            })
+        );
     }
 
     #[test]

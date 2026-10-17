@@ -26,8 +26,9 @@ pub enum RtpsParseError {
     #[error("RTPS message carries no submessage")]
     NoSubmessage,
 
-    /// Un submessageId reserve (hors de ceux de la specification, de DDS
-    /// Security et de la plage vendeur 0x80 a 0xff).
+    /// Un submessageId reserve (hors de ceux de la specification 2.5,
+    /// HEADER_EXTENSION compris, de DDS Security et de la plage vendeur 0x80
+    /// a 0xff).
     #[error("Reserved RTPS submessageId {id:#04x} at offset {offset}")]
     ReservedSubmessageId { id: u8, offset: usize },
 
@@ -53,4 +54,18 @@ pub enum RtpsParseError {
         expected: usize,
         actual: usize,
     },
+
+    /// Un HEADER_EXTENSION ailleurs qu'en premier sous-message, juste apres
+    /// l'en-tete (DDSI-RTPS 2.5 §8.3.3.2). En fin d'enum : ajoutee apres la
+    /// 11.6.0.
+    #[error("RTPS HEADER_EXTENSION at offset {offset}, not right after the header")]
+    MisplacedHeaderExtension { offset: usize },
+
+    /// Le `messageLength` du HEADER_EXTENSION ne vaut pas la longueur du
+    /// message, qui est celle du datagramme (§9.5 : un message par
+    /// datagramme UDP). En fin d'enum : ajoutee apres la 11.6.0.
+    #[error(
+        "RTPS HEADER_EXTENSION declares a message of {declared} bytes, the datagram has {actual}"
+    )]
+    HeaderExtensionLengthMismatch { declared: u32, actual: usize },
 }

@@ -332,9 +332,10 @@ Application detection is intentionally best-effort. Parser modules include:
 - Bitcoin
 - RTPS (OMG DDSI-RTPS 2.x, the wire protocol of DDS): header, submessages
   split and typed (DATA, DATA_FRAG, HEARTBEAT, ACKNACK, GAP, INFO_TS,
-  INFO_DST, INFO_SRC, fragment submessages, DDS Security and vendor ones),
-  entity ids, sequence numbers and counts; user data (CDR) and inline QoS
-  stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
+  INFO_DST, INFO_SRC, fragment submessages, the 2.5 HEADER_EXTENSION with
+  its message length, send timestamp, extensions and checksum, DDS Security
+  and vendor ones), entity ids, sequence numbers and counts; user data
+  (CDR), inline QoS and the HEADER_EXTENSION parameter list stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
   exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
   `NDDSPING` pings are reported too
 - BACnet/IP (ASHRAE 135 annex J) on UDP 47808: BVLC (function named,

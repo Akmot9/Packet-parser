@@ -224,6 +224,30 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   deviendront les variantes. `from_code(124)` et `from_code(125)` rendent
   les memes valeurs qu'avant ; seul `{:?}` affiche encore l'ancien nom.
 
+- **RTPS** (#186) : le HEADER_EXTENSION de DDSI-RTPS 2.5 (submessageId
+  `0x00`, §8.3.7.3 et §9.4.5.2) est decode. `validate_submessage_id` le
+  refusait comme identifiant reserve, alors que le module se reclame de la
+  2.5 : tout message qui en portait un — RTI Connext 7.2.0 et suivantes y
+  transportent la somme de controle de `wire_protocol.compute_crc`, les
+  pieces jointes des tickets Wireshark #20971 et !20878 en montrent quatre
+  — sortait `ReservedSubmessageId { id: 0, offset: 20 }` et `Unknown`, la
+  ou tshark le decode. `SubmessageKind::HeaderExtension`,
+  `SubmessageDetails::HeaderExtension(RtpsHeaderExtension)`, en fin d'enum,
+  et `RtpsHeaderExtension` : `message_length` (L), `send_timestamp` (T),
+  `u_extension` (U), `w_extension` (W), `checksum` (C1 et C2 :
+  `RtpsChecksum::Crc32c`, `Crc64Xz` ou `Md5`, lue en grand-boutiste quel que
+  soit E, Table 9.8, non verifiee) et `parameters` (P), la ParameterList
+  restant en octets derriere `RtpsSubmessage::header_extension_parameters`.
+  Validite : un corps trop court pour les champs annonces est
+  `SubmessageTooShort` ; un HEADER_EXTENSION ailleurs qu'en premier
+  sous-message (§8.3.3.2) la nouvelle `MisplacedHeaderExtension`, et un
+  `messageLength` autre que la longueur du datagramme (§9.5) la nouvelle
+  `HeaderExtensionLengthMismatch`, deux controles que tshark 4.6.6 ne fait
+  pas. Les autres identifiants hors table restent refuses, et la doc du
+  module dit cet ecart avec le §8.3.4.1. Aucune des 210 captures du corpus
+  ne porte de HEADER_EXTENSION (`rtps.sm.id == 0x00` : 0 trame) :
+  `rtps_golden` et l'histogramme de `golden_pcaps` ne bougent pas.
+
 ### Deprecie
 
 - **RADIUS** (#191) : `AttributeType::MipHomeAgentAddress` (type 124) et
