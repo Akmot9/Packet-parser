@@ -269,6 +269,35 @@ mod tests {
         assert!(!DnsPacket::is_blind_udp_match(&data));
     }
 
+    /// #184 : chaque RR dont le nom est le pointeur `c0 0c` relisait le
+    /// QNAME en entier. Avec un QNAME de 16 370 labels et 2 728 RR (65 493
+    /// octets), le decodage prenait 1,7 s en release, en temps quadratique
+    /// dans la taille du message. La borne de 255 octets (RFC 1035 §3.1)
+    /// l'arrete des la question, et un QNAME de 255 octets reste accepte.
+    /// Synthetique, en plus petit : cent RR.
+    #[test]
+    fn pointers_to_a_name_longer_than_255_octets_are_rejected() {
+        let message = |labels: usize| {
+            let mut message = vec![0xbe, 0xef, 0x81, 0x80, 0, 1, 0, 100, 0, 0, 0, 0];
+            message.extend_from_slice(&[1, b'a'].repeat(labels));
+            message.extend_from_slice(&[0, 0, 1, 0, 1]);
+            for _ in 0..100 {
+                message.extend_from_slice(&[0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0]);
+            }
+            message
+        };
+
+        // 127 labels d'un octet : 255 octets avec le label racine.
+        let longest = message(127);
+        assert!(DnsPacket::is_blind_udp_match(&longest));
+        let packet = DnsPacket::try_from(longest.as_slice()).expect("QNAME de 255 octets");
+        assert_eq!(packet.answers.map(|answers| answers.len()), Some(100));
+
+        let too_long = message(128);
+        assert!(DnsPacket::try_from(too_long.as_slice()).is_err());
+        assert!(!DnsPacket::is_blind_udp_match(&too_long));
+    }
+
     #[test]
     fn test_dns_packet_parsing() {
         // Example DNS packet data

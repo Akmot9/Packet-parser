@@ -77,6 +77,40 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   ignore l'ordre des membres, compare aussi le texte sur tout le corpus, et
   un test fige le texte owned d'un flux qui porte chaque membre du schema,
   pour chaque forme de liaison.
+- **ASTERIX** et **DNS** (#184) : la sonde ASTERIX et la sonde DNS aveugle
+  ne jugeaient que les 18 432 premiers octets du payload (`PROBE_CAP`),
+  alors que leur regle porte sur le datagramme entier. Au-dela, des data
+  blocks ou des sections DNS qui finissaient pile au plafond suffisaient,
+  quoi qu'il y ait derriere : un octet de trop ou un bloc d'une categorie
+  non supportee sortait `ASTERIX`, que `AsterixPacket::try_from` refuse, et
+  cent octets nuls apres une reponse DNS sortaient `DNS`, quand #118 exige
+  des sections qui consomment exactement le datagramme. A l'inverse, un
+  datagramme ASTERIX valide dont un bloc chevauche le plafond, ou une
+  reponse DNS exacte de 20 041 octets, restait `Unknown`. Les deux sondes
+  lisent desormais le payload reel, comme la sonde NTP aveugle (#164),
+  RTPS et DIS. Sur le port 53, une reponse exacte de plus de 18 432
+  octets, que la regle de port refuse sur le prefixe plafonne, sort
+  desormais `DNS` par la sonde aveugle ; avec des octets en trop, elle
+  reste `Unknown`. Dans le corpus, seuls six datagrammes RTPS depassent le
+  plafond, etiquetes avant ces deux sondes : aucune etiquette ne change. Le
+  cout reste lineaire, borne par la taille d'un datagramme UDP (release) :
+  decoder 65 505 octets de records ASTERIX coute 2,7 ms, 3,8 fois les
+  18 432 octets du plafond ; cote DNS, grace a la borne des noms (#196), le
+  pire cas mesure, un QNAME de 255 octets vise par 10 871
+  questions-pointeurs, coute 39 ms sur 65 497 octets.
+- **DNS** (#196) : la longueur d'un nom de domaine n'etait pas bornee
+  (255 octets sur le fil, RFC 1035 §3.1). Chaque nom qui pointe vers un
+  meme QNAME relisait ce QNAME en entier, en temps quadratique dans la
+  taille du message : une reponse forgee de 18 425 octets (un QNAME de
+  4 602 labels, 767 enregistrements qui pointent vers lui) coutait 193 ms a
+  `DnsPacket::try_from`, sur le port UDP 53 comme sur tout port que la sonde
+  DNS aveugle atteint, et elle sortait `DNS`. Un nom de plus de 255 octets,
+  pointeurs suivis, fait desormais echouer `DnsPacket::try_from` et ses
+  variantes mDNS, LLMNR et TCP en quelques microsecondes, avec
+  `DnsQueryParseError::OutOfBoundParse`, deja produite pour un nom qui
+  deborde du message. tshark affiche un tel nom « <Name too long> » et
+  poursuit la dissection ; la crate n'etiquette plus le message. Aucune
+  trame du corpus ne change.
 
 ## [11.6.0] - 2026-10-16
 

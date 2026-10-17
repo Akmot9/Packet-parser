@@ -101,6 +101,26 @@ pub fn check_dns_label_bounds(
     Ok(())
 }
 
+/// Longueur maximale d'un nom de domaine sur le fil, octets de longueur des
+/// labels et label racine compris (RFC 1035 §2.3.4 et §3.1).
+pub const DNS_MAX_NAME_LENGTH: usize = 255;
+
+/// Verifie la longueur sur le fil d'un nom en cours de lecture, labels
+/// atteints par les pointeurs de compression compris. Au-dela de
+/// [`DNS_MAX_NAME_LENGTH`], le nom est invalide — tshark l'affiche
+/// « <Name too long> ».
+///
+/// C'est aussi la borne du travail par nom : sans elle, des noms qui
+/// pointent tous vers un QNAME de milliers de labels le faisaient relire en
+/// entier, en temps quadratique dans la taille du message (#184).
+pub fn check_dns_name_length(wire_length: usize) -> Result<(), DnsQueryParseError> {
+    if wire_length > DNS_MAX_NAME_LENGTH {
+        return Err(DnsQueryParseError::OutOfBoundParse);
+    }
+
+    Ok(())
+}
+
 pub fn verify_dns_flags(flags: u16) -> Result<u16, DnsFlagsError> {
     let (qr, opcode, aa, tc, _rd, ra, z, rcode) = extract_dns_flags(flags);
 

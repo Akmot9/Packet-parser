@@ -193,7 +193,9 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         // Sur le payload reel : les champs d'extension et le MAC doivent
         // finir exactement avec le datagramme.
         ProbeId::NtpBlind => NtpPacket::is_blind_udp_match(full_payload),
-        ProbeId::Asterix => AsterixPacket::try_from(payload).is_ok(),
+        // Sur le payload reel : tous les data blocks doivent paver le
+        // datagramme jusqu'a son dernier octet, au-dela de PROBE_CAP compris.
+        ProbeId::Asterix => AsterixPacket::try_from(full_payload).is_ok(),
         ProbeId::Bitcoin => BitcoinPacket::try_from(payload).is_ok(),
         ProbeId::Opcua => OpcuaPacket::try_from(payload).is_ok(),
         ProbeId::EthernetIp => EtherNetIpPacket::try_from(payload).is_ok(),
@@ -215,9 +217,11 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         ProbeId::ModbusTcpBlind => ModbusTcpPacket::is_blind_tcp_match(payload),
         ProbeId::QuicLongHeader => QuicPacket::try_from(payload).is_ok(),
         ProbeId::Mqtt => MqttPacket::try_from(payload).is_ok(),
-        // Sur le payload plafonne : un datagramme plus long que PROBE_CAP ne
-        // peut pas prouver qu'il est consomme exactement, et reste Unknown.
-        ProbeId::DnsBlind => DnsPacket::is_blind_udp_match(payload),
+        // Sur le payload reel, comme NTP aveugle : les sections doivent
+        // consommer exactement le datagramme, au-dela de PROBE_CAP compris.
+        // Les noms, bornes a 255 octets (RFC 1035 §3.1), gardent le decodage
+        // lineaire jusqu'a la taille maximale d'un datagramme.
+        ProbeId::DnsBlind => DnsPacket::is_blind_udp_match(full_payload),
         ProbeId::Ptp => PtpPacket::try_from_udp(payload).is_ok(),
         ProbeId::Stanag5066 => SisPdu::try_from(payload).is_ok(),
         // Sur le payload reel : la sonde aveugle exige que les PDU pavent
@@ -1375,6 +1379,108 @@ mod tests {
         assert_eq!(label(&datagram), Some("NTP"));
         datagram.extend_from_slice(&[0; 100]);
         assert_ne!(label(&datagram), Some("NTP"));
+    }
+
+    /// #184 : la sonde ASTERIX lit tout le datagramme, comme la sonde NTP
+    /// aveugle (#164) : des blocs qui finissent au plafond, suivis d'un octet
+    /// ou d'un bloc d'une categorie non supportee, ne font pas un datagramme
+    /// ASTERIX ; un bloc valide a cheval sur le plafond en fait un, comme
+    /// sept blocs dont le dernier le chevauche. Synthetique : records CAT 048
+    /// minimaux, FSPEC `80` et I048/010.
+    #[test]
+    fn asterix_probe_reads_the_whole_datagram() {
+        let block = |records: usize| {
+            let mut block = vec![0x30];
+            block.extend_from_slice(&((3 + 3 * records) as u16).to_be_bytes());
+            for _ in 0..records {
+                block.extend_from_slice(&[0x80, 0x19, 0xc9]);
+            }
+            block
+        };
+        let label = |payload: &[u8]| {
+            let transport = Transport {
+                protocol: TransportProtocol::Udp,
+                source_port: Some(40_000),
+                destination_port: Some(8600),
+                payload: Some(payload),
+                details: None,
+            };
+            classify(&transport, &[]).map(|a| a.application_protocol)
+        };
+        let exact = block((PROBE_CAP - 3) / 3);
+        assert_eq!(exact.len(), PROBE_CAP);
+        assert_eq!(label(&exact), Some("ASTERIX"));
+
+        let mut trailing = exact.clone();
+        trailing.push(0x00);
+        assert_ne!(label(&trailing), Some("ASTERIX"));
+
+        let mut unsupported = exact.clone();
+        unsupported.extend_from_slice(&[0x0a, 0x00, 0x06, 0x80, 0x19, 0xc9]);
+        assert_ne!(label(&unsupported), Some("ASTERIX"));
+
+        // Un bloc valide a cheval sur le plafond, puis sept blocs dont seul
+        // le dernier le chevauche.
+        let straddling = block(7000);
+        assert!(straddling.len() > PROBE_CAP);
+        assert_eq!(label(&straddling), Some("ASTERIX"));
+
+        let thousand = block(1000);
+        let seven = thousand.repeat(7);
+        assert!(6 * thousand.len() < PROBE_CAP && PROBE_CAP < seven.len());
+        assert_eq!(label(&seven), Some("ASTERIX"));
+    }
+
+    /// #184 : hors port 53, la sonde DNS aveugle exige des sections qui
+    /// consomment exactement le datagramme (#118), lu en entier comme par la
+    /// sonde NTP aveugle (#164) : des sections qui finissent au plafond et des
+    /// octets au-dela ne font pas un message DNS ; une reponse exacte plus
+    /// longue que le plafond en fait un, sur le port 53 aussi, ou la regle de
+    /// port, qui ne lit que le plafond, la refuse. Synthetique : une reponse
+    /// `example.com TXT` de PROBE_CAP octets, puis cent octets nuls ; la meme
+    /// a 20 000 octets de TXT.
+    #[test]
+    fn dns_blind_probe_does_not_accept_a_capped_prefix() {
+        let label_from = |source_port: u16, payload: &[u8]| {
+            let transport = Transport {
+                protocol: TransportProtocol::Udp,
+                source_port: Some(source_port),
+                destination_port: Some(40_001),
+                payload: Some(payload),
+                details: None,
+            };
+            classify(&transport, &[]).map(|a| a.application_protocol)
+        };
+        let label = |payload: &[u8]| label_from(40_000, payload);
+        // Une question, une reponse TXT de `rdlength` octets de chaines.
+        let response = |rdlength: usize| {
+            let mut response = vec![0xbe, 0xef, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0];
+            response.extend_from_slice(b"\x07example\x03com\x00\x00\x10\x00\x01");
+            response.extend_from_slice(&[0xc0, 0x0c, 0x00, 0x10, 0x00, 0x01, 0, 0, 0, 60]);
+            response.extend_from_slice(&(rdlength as u16).to_be_bytes());
+            let mut left = rdlength;
+            while left > 0 {
+                let chunk = (left - 1).min(255);
+                response.push(chunk as u8);
+                response.extend(std::iter::repeat_n(b'a', chunk));
+                left -= 1 + chunk;
+            }
+            response
+        };
+        // 41 octets precedent les chaines : en-tete, question, puis la
+        // reponse jusqu'a RDLENGTH.
+        let mut capped = response(PROBE_CAP - response(0).len());
+        assert_eq!(capped.len(), PROBE_CAP);
+        assert_eq!(label(&capped), Some("DNS"));
+
+        capped.extend_from_slice(&[0; 100]);
+        assert_ne!(label(&capped), Some("DNS"));
+
+        let long = response(20_000);
+        assert_eq!(long.len(), 20_041);
+        assert!(long.len() > PROBE_CAP);
+        assert_eq!(label(&long), Some("DNS"));
+        assert_eq!(label_from(53, &long), Some("DNS"));
     }
 
     /// #164 : la regle NTP est la derniere regle de port — un datagramme

@@ -8,7 +8,7 @@
 
 use crate::{
     checks::application::dns::{
-        check_dns_label_bounds, check_dns_name_offset, check_dns_query_size,
+        check_dns_label_bounds, check_dns_name_length, check_dns_name_offset, check_dns_query_size,
     },
     errors::application::dns::DnsQueryParseError,
 };
@@ -28,6 +28,10 @@ const MAX_POINTER_JUMPS: usize = 8;
 ///
 /// Retourne le nom reconstruit et l'offset du premier octet suivant le nom
 /// dans le flux d'origine (c.-à-d. après le premier pointeur rencontré).
+///
+/// Un nom de plus de 255 octets sur le fil, labels atteints par les
+/// pointeurs compris (RFC 1035 §3.1), est refusé :
+/// [`DnsQueryParseError::OutOfBoundParse`].
 pub fn parse_dns_name(message: &[u8], start: usize) -> Result<(String, usize), DnsQueryParseError> {
     // Allocation justifiée (METHODE_AJOUT_PROTOCOLE.md) : un nom DNS est
     // découpé en labels potentiellement non contigus (compression) — il doit
@@ -37,6 +41,10 @@ pub fn parse_dns_name(message: &[u8], start: usize) -> Result<(String, usize), D
     // Offset de reprise dans le flux : figé au premier pointeur rencontré.
     let mut resume_offset: Option<usize> = None;
     let mut jumps = 0usize;
+    // Longueur du nom sur le fil, label racine compris. Bornée à 255 octets,
+    // elle borne aussi le travail par nom, si nombreux que soient les noms
+    // qui pointent vers le même suffixe.
+    let mut wire_length = 1usize;
 
     loop {
         check_dns_name_offset(message, offset)?;
@@ -70,6 +78,8 @@ pub fn parse_dns_name(message: &[u8], start: usize) -> Result<(String, usize), D
         }
         offset += 1;
 
+        wire_length += 1 + len;
+        check_dns_name_length(wire_length)?;
         check_dns_label_bounds(message, offset, len)?;
         let label = String::from_utf8(message[offset..offset + len].to_vec())?;
         labels.push(label);
@@ -228,6 +238,59 @@ mod tests {
         let data = [0xC0u8];
 
         let result = parse_dns_name(&data, 0);
+
+        assert!(matches!(result, Err(DnsQueryParseError::OutOfBoundParse)));
+    }
+
+    /// RFC 1035 §3.1 : 255 octets sur le fil au plus, label racine compris
+    /// — 127 labels d'un octet. Un octet de plus, et tshark affiche
+    /// « <Name too long> ».
+    #[test]
+    fn test_parse_dns_name_is_bounded_to_255_octets() {
+        let mut longest = [1u8, b'a'].repeat(127);
+        longest.push(0);
+        assert_eq!(longest.len(), 255);
+
+        let (name, offset) = parse_dns_name(&longest, 0).unwrap();
+
+        assert_eq!(name.len(), 253);
+        assert_eq!(offset, 255);
+
+        let mut too_long = [1u8, b'a'].repeat(126);
+        too_long.extend_from_slice(&[2, b'b', b'b', 0]);
+        assert_eq!(too_long.len(), 256);
+
+        let result = parse_dns_name(&too_long, 0);
+
+        assert!(matches!(result, Err(DnsQueryParseError::OutOfBoundParse)));
+    }
+
+    /// #184 : la borne porte sur le nom developpe, pointeurs suivis. Un
+    /// label de 54 octets suivi d'un pointeur vers un nom de 200 octets en
+    /// fait 255 ; un label de 60 octets, 261 (tshark : « <Name too long> »).
+    #[test]
+    fn test_parse_dns_name_bound_counts_octets_behind_pointers() {
+        let mut suffix = Vec::new();
+        for (byte, len) in [(b'a', 62), (b'b', 62), (b'c', 62), (b'd', 9)] {
+            suffix.push(len);
+            suffix.extend(std::iter::repeat_n(byte, usize::from(len)));
+        }
+        suffix.push(0);
+        assert_eq!(suffix.len(), 200);
+        let pointing = |label: u8| {
+            let mut message = suffix.clone();
+            message.push(label);
+            message.extend(std::iter::repeat_n(b'e', usize::from(label)));
+            message.extend_from_slice(&[0xC0, 0x00]);
+            message
+        };
+
+        let (name, offset) = parse_dns_name(&pointing(54), 200).unwrap();
+
+        assert_eq!(name.len(), 253);
+        assert_eq!(offset, 200 + 1 + 54 + 2);
+
+        let result = parse_dns_name(&pointing(60), 200);
 
         assert!(matches!(result, Err(DnsQueryParseError::OutOfBoundParse)));
     }
