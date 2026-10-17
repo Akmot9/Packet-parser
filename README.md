@@ -350,7 +350,8 @@ Application detection is intentionally best-effort. Parser modules include:
   originator and common addresses, and the information objects (address,
   element sized from the standard, in sequence or not)
 - RDP (MS-RDPBCGR) on TCP 3389: TPKT and COTP X.224 Connection Request
-  (routing token or `mstshash` cookie, negotiation request) and Confirm
+  (routing token or `mstshash` cookie, negotiation request and its
+  correlation info) and Confirm
   (negotiation response or failure), then the MCS PDUs of the standard RDP
   security path (Connect-Initial/Response, Erect Domain, Attach User,
   Channel Join, Send Data with user and channel, Disconnect Provider

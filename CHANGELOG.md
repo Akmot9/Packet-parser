@@ -123,6 +123,26 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   `NatDetection` reste pour 20 et 130, `NatOriginalAddress` pour 21 et 131.
   Aucune des 1 254 trames ISAKMP du corpus ne porte ces codes en clair.
 
+- **RDP** (#187) : un Connection Request dont la demande de negociation
+  leve CORRELATION_INFO_PRESENT (`0x08`) est suivi d'un
+  RDP_NEG_CORRELATION_INFO de 36 octets (MS-RDPBCGR §2.2.1.1.2).
+  `connection_request` n'acceptait apres le jeton que zero ou exactement
+  huit octets : la demande et sa correlation info tombaient dans le bras
+  qui refuse une longueur declaree fausse, d'ou le message contradictoire
+  « RDP negotiation structure 1 declares 8 bytes, not 8 », la sonde
+  echouait et le segment sortait `Unknown`, cookie `mstshash` et protocoles
+  demandes perdus, la ou tshark et FreeRDP lisent la structure. Elle est
+  desormais lue quand le drapeau est leve, et son `correlationId` expose.
+  `InvalidNegotiation` ne sort plus que pour une longueur declaree autre
+  que 8 : une structure de negociation coupee par la segmentation donne
+  `Truncated`, des octets en trop derriere une demande sans le drapeau ou
+  derriere la reponse d'un Connection Confirm `UnexpectedX224Data(n)`, et
+  une correlation info d'un autre type ou d'une autre longueur que 0x06 et
+  36 la nouvelle `InvalidCorrelationInfo`. Le drapeau leve sans la
+  structure reste accepte, comme en 11.6.0, avec `correlation_id` a `None`
+  (tshark marque le segment malforme). Aucune des 210 captures du corpus ne
+  porte de correlation info : `rdp_golden` inchange.
+
 ### Ajoute
 
 - **BACnet/IP** (#190) : `ConfirmedService` nomme les services confirmes
@@ -147,6 +167,11 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   le 52 d'IKEv2. Le 18 se voit sur le fil : l'en-tete en clair d'un
   GROUPKEY-PUSH l'annonce comme premier payload. Toutes les variantes
   s'ajoutent en fin d'enum.
+
+- **RDP** (#187) : `NegotiationRequest::correlation_id`, les seize octets
+  du `correlationId` de la correlation info, et
+  `NegotiationRequest::correlation_info_present()`. `RdpParseError` gagne
+  `InvalidCorrelationInfo { structure_type, length }`, en fin d'enum.
 
 ### Documentation
 
