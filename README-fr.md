@@ -372,10 +372,12 @@ incluent notamment:
   CredSSP, la connexion est etiquetee TLS, par decision
 - RADIUS (RFC 2865, comptabilite RFC 2866, CoA RFC 5176) : en-tete (code
   nomme, identifiant, longueur, authentificateur) et liste des attributs
-  (type nomme d'apres le registre IANA, valeur empruntee, accesseurs pour
-  les entiers, adresses IPv4, textes et Vendor-Specific) ; reconnu sur UDP
-  1812/1813/1645/1646/3799 et a l'aveugle sur tout port (code connu,
-  longueur egale au datagramme, attributs qui le pavent)
+  (type nomme pour les codes assignes de 1 a 125 et de 241 a 246, comme au
+  registre IANA sauf 89, 101 et 241 a 246, qui portent le nom de leur RFC,
+  et 124 et 125, qui portent ceux de deux AVP Diameter ; valeur empruntee,
+  accesseurs pour les entiers, adresses IPv4, textes et Vendor-Specific) ;
+  reconnu sur UDP 1812/1813/1645/1646/3799 et a l'aveugle sur tout port
+  (code connu, longueur egale au datagramme, attributs qui le pavent)
 - WireGuard : les quatre messages (initiation et reponse du handshake,
   cookie, donnees) avec leurs octets reserves, index de session, compteur
   des donnees et champs de taille fixe (cle ephemere, champs chiffres, mac1,
@@ -398,12 +400,14 @@ incluent notamment:
 - IKE (ISAKMP/IKEv1 RFC 2408, IKEv2 RFC 7296) sur UDP 500 et 4500 : en-tete
   de 28 octets (SPI, version, type d'echange nomme, drapeaux, identifiant de
   message, longueur), chaine des payloads de premier niveau avec leurs types
-  nommes, octets chiffres gardes tels quels (drapeau E d'IKEv1, payload SK
-  d'IKEv2) ; UDP 4500 demultiplexe selon la RFC 3948 (marqueur non-ESP,
-  NAT-keepalive, ESP)
+  nommes, octets proteges gardes tels quels (drapeau E d'IKEv1 ; corps du
+  payload SK ou SKF d'IKEv2, IV et donnees d'integrite en clair compris) ;
+  UDP 4500 demultiplexe selon la RFC 3948 (marqueur non-ESP, NAT-keepalive,
+  ESP)
 - ESP (RFC 4303) : SPI et numero de sequence, natif (protocole IP 50, expose
   en `TransportDetails::Esp`) comme encapsule dans UDP 4500 (`EspPacket`),
-  le reste garde en octets chiffres
+  le reste (IV, chiffre, ICV, de tailles propres a l'algorithme) garde en
+  octets
 - DIS (IEEE 1278.1, Distributed Interactive Simulation) : en-tete de PDU
   (versions 1 a 7, les 72 types de la norme nommes, famille, horodatage,
   longueur, PDU Status), corps Entity State, Transmitter et Signal types,

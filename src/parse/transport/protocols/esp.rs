@@ -4,11 +4,15 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 //! ESP, Encapsulating Security Payload (RFC 4303) : le paquet IPsec qui
-//! chiffre et authentifie. Seuls le SPI et le numero de sequence sont en
-//! clair ; tout ce qui suit — vecteur d'initialisation, donnees, bourrage,
-//! en-tete suivant, ICV — depend de l'algorithme negocie par IKE et reste
-//! des octets. Porte par le protocole IP 50 (`TransportDetails::Esp`), ou
-//! par UDP 4500 derriere un NAT (RFC 3948, voir `ike::UdpEncapsulation`).
+//! chiffre et authentifie. Seuls le SPI et le numero de sequence ont une
+//! place fixe ; tout ce qui suit — vecteur d'initialisation, donnees,
+//! bourrage, en-tete suivant, ICV — depend de l'algorithme negocie par IKE
+//! et reste des octets. Quand la confidentialite est retenue, le chiffre ne
+//! couvre que les donnees et le trailer (bourrage, sa longueur, en-tete
+//! suivant) : le vecteur d'initialisation, en general, et l'ICV circulent en
+//! clair (RFC 4303 §2, §2.3 et §2.8), mais seule l'association de securite
+//! en donne la taille. Porte par le protocole IP 50 (`TransportDetails::Esp`),
+//! ou par UDP 4500 derriere un NAT (RFC 3948, voir `ike::UdpEncapsulation`).
 
 use std::convert::TryFrom;
 
@@ -26,7 +30,7 @@ use crate::{
 /// packet-beta
 /// 0-31: "Security Parameters Index (SPI) u32"
 /// 32-63: "Sequence Number u32"
-/// 64-127: "Payload Data, Padding, Pad Length, Next Header, ICV (chiffres)"
+/// 64-127: "IV (clair), Payload Data, Padding, Pad Length, Next Header (chiffres), ICV (clair)"
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -35,8 +39,9 @@ pub struct EspPacket<'a> {
     pub spi: u32,
     /// Compteur anti-rejeu, croissant par association.
     pub sequence: u32,
-    /// Tout ce qui suit le numero de sequence : donnees chiffrees, bourrage,
-    /// en-tete suivant et ICV, indissociables sans la cle.
+    /// Tout ce qui suit le numero de sequence : IV eventuel, donnees,
+    /// bourrage, longueur du bourrage, en-tete suivant et ICV eventuel, que
+    /// seule l'association de securite permet de decouper.
     pub payload: &'a [u8],
 }
 

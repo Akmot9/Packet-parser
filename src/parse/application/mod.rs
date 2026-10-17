@@ -177,8 +177,8 @@ impl TryFrom<&[u8]> for Application {
             });
         }
         // DHCPv6, AMS et COTP ont des signatures trop faibles pour un probing
-        // à l'aveugle (risque de faux positifs) : ils sont détectés avec un
-        // garde-fou de port dans PacketFlow::parse_application_from_transport.
+        // a l'aveugle (risque de faux positifs) : PacketFlow les detecte par
+        // leurs regles a port de la table RULES (src/parse/dispatch.rs).
         if QuicPacket::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "QUIC",

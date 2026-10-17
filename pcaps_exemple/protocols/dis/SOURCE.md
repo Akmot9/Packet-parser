@@ -48,9 +48,10 @@ trames portent du DIS, aucune n'est malformée.
 ligne, en-tête du PDU (version, exercice, type, famille, longueur, PDU
 Status) et premier identifiant d'entité du corps. `tests/dis_golden.rs`
 rejoue l'oracle avec les mêmes ports déclarés par Decode As (#123) ; sans
-déclaration, la sonde aveugle étiquette les 390 trames dont les PDU pavent
-exactement le datagramme, et les trois Set Data à longueur fausse restent
-`Unknown`.
+déclaration, les 390 trames dont les PDU pavent exactement le datagramme
+sont étiquetées DIS — 263 sur UDP 3000 par la règle de port, 127 sur 6993
+et 22999 par la sonde aveugle —, et les trois PDU de gestion de données à
+longueur fausse (Set Data, Data Query, Data) restent `Unknown`.
 
 ## Écartés
 

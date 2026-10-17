@@ -24,7 +24,8 @@
 //! editions 0.2x de CAT 021, d'ordre entierement different, ne sont pas
 //! decrites — rien dans les octets ne permet de les distinguer.
 
-/// Format structurel d'un data item (Part 1, §5.2.5 a §5.2.9).
+/// Format structurel d'un data item (Part 1, ed. 3.1, §5.2.5.1.1 a
+/// §5.2.5.1.5 ; SP et RE, §5.2.5.4 et §5.2.5.5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ItemFormat {
@@ -52,9 +53,10 @@ pub enum ItemFormat {
     /// nombre non borne (`repetitive fx` d'elements de plus de sept bits :
     /// I062/510, trois octets par unite).
     RepetitiveFx(usize),
-    /// Random Field Sequencing (Part 1, §5.3) : un octet N, puis N data
-    /// items introduits chacun par leur FRN sur un octet, dans un ordre
-    /// quelconque. CAT 001, 002 et 008 le reservent en fin d'UAP.
+    /// Random Field Sequencing (Part 1, ed. 1.0 de novembre 1997, §4.3.5.3 ;
+    /// retire de la Part 1 des le brouillon 1.1 d'aout 1998) : un octet N,
+    /// puis N data items introduits chacun par leur FRN sur un octet, dans un
+    /// ordre quelconque. CAT 001, 002 et 008 le reservent en fin d'UAP.
     Rfs,
 }
 

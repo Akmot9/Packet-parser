@@ -3,7 +3,7 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-//! PPPoE Session (RFC 2516 §5) : la liaison d'un abonne fibre ou xDSL a son
+//! PPPoE Session (RFC 2516 §6) : la liaison d'un abonne fibre ou xDSL a son
 //! fournisseur. Apres l'EtherType `0x8864`, six octets d'en-tete PPPoE
 //! (version et type 1, code 0, identifiant de session, longueur), puis le
 //! protocole PPP sur deux octets (RFC 1661 §2) et son paquet. Comme les tags
@@ -12,13 +12,13 @@
 
 use serde::Serialize;
 
-/// EtherType d'une session PPPoE (RFC 2516 §5).
+/// EtherType d'une session PPPoE (RFC 2516 §4 et §6).
 pub const PPPOE_SESSION_ETHERTYPE: u16 = 0x8864;
 
 /// Version (1) et type (1) d'une session PPPoE, sur un octet.
 const PPPOE_VERSION_TYPE: u8 = 0x11;
 
-/// Code d'une trame de donnees de session (RFC 2516 §5).
+/// Code d'une trame de donnees de session (RFC 2516 §6).
 const PPPOE_SESSION_DATA: u8 = 0x00;
 
 /// En-tete PPPoE : version et type, code, session, longueur.

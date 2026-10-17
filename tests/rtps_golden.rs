@@ -325,9 +325,10 @@ fn every_frame_matches_the_tshark_oracle() {
 }
 
 /// `talker-listener-rtps.pcapng` trame 9 (Cyclone DDS, LINKTYPE_NULL,
-/// 127.0.0.1:54020 -> 127.0.0.1:58584) : la detection ne doit rien au
-/// port. tshark : INFO_DST, INFO_TS, DATA (writerSN 1) et HEARTBEAT
-/// (1..1, count 2) du writer P2P_BUILTIN_PARTICIPANT_MESSAGE.
+/// 10.0.0.46:54020 -> 10.0.0.46:58584, l'adresse de l'hote sur la boucle
+/// locale macOS) : la detection ne doit rien au port. tshark : INFO_DST,
+/// INFO_TS, DATA (writerSN 1) et HEARTBEAT (1..1, count 2) du writer
+/// P2P_BUILTIN_PARTICIPANT_MESSAGE.
 #[test]
 fn packet_flow_labels_rtps_on_a_random_port_over_linktype_null() {
     let base = Path::new(env!("CARGO_MANIFEST_DIR"));

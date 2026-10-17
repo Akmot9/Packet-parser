@@ -141,16 +141,17 @@ pub enum CorruptedLayerKind {
 /// A layer that was **recognized** (by the EtherType or the IP protocol
 /// field) but whose bytes are invalid.
 ///
-/// Parsing degrades gracefully instead of failing: every layer *above* the
-/// reported one stays filled, and the problem is reported here. Two cases:
+/// Parsing degrades gracefully instead of failing: every layer *below* the
+/// reported one (closer to the wire) stays filled, and the problem is
+/// reported here. Two cases:
 ///
 /// - **structural corruption** — the bytes cannot be read as this protocol
 ///   (truncated header, impossible length): the reported layer and
-///   everything below it are `None`;
+///   everything above it are `None`;
 /// - **semantic anomaly** — the header reads fine but says something no
 ///   conforming stack emits (TCP SYN+FIN, non-zero reserved bits): the
 ///   reported layer is **kept**, so its ports remain available for flow
-///   correlation, and only the layers below it are `None`.
+///   correlation, and only the layers above it are `None`.
 ///
 /// To tell them apart, check whether the layer named by `layer` is `Some`.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
@@ -168,7 +169,7 @@ pub struct CorruptedLayer {
 ///
 /// Unsupported or unrecognized protocols do **not** fail parsing and instead
 /// result in `None` for the corresponding layer. A **recognized but corrupt**
-/// layer does not fail parsing either: the layers above it are kept and the
+/// layer does not fail parsing either: the layers below it are kept and the
 /// problem is reported in [`PacketFlow::corrupted`]. Parsing only returns an
 /// error when the data-link layer itself cannot be read.
 ///
@@ -206,8 +207,10 @@ pub struct PacketFlow<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inner: Option<Box<PacketFlow<'a>>>,
 
-    /// Present when a recognized layer carried invalid bytes: that layer and
-    /// the ones below are `None`, the layers above stay filled. `None` on
+    /// Present when a recognized layer carried invalid bytes: the layers
+    /// below it stay filled, that layer and the ones above are `None` —
+    /// except after a semantic anomaly (TCP SYN+FIN, reserved bits), where
+    /// the reported layer is kept (see [`CorruptedLayer`]). `None` on
     /// healthy packets.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub corrupted: Option<CorruptedLayer>,

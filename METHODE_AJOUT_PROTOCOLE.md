@@ -323,31 +323,73 @@ Exemple application :
 pub mod foo;
 ```
 
-Exporter le module et son type principal. Ne pas ajouter automatiquement un
-variant a une enum publique exhaustive : cela casse les `match` exhaustifs des
-utilisateurs et exige donc une version majeure. Pour une version mineure,
-garder le nouveau parseur accessible par son module et exposer son nom via
-`Application`/`PacketFlow`.
+Exporter le module et son type principal. L'etiquette applicative est une
+chaine (`Application::application_protocol: &'static str`) : nommer un
+nouveau protocole n'ajoute aucune variante publique (l'enum
+`ApplicationProtocol` et son `Display` ont ete supprimes en 11.0.0, voir
+`MIGRATION-11.md`). Les types publics que seule la crate construit sont
+`#[non_exhaustive]`, ce que verifie `tests/public_types_are_non_exhaustive.rs` :
+une variante ou un champ ajoute a l'un d'eux est additif (version mineure) ;
+renommer ou retirer reste une version majeure.
 
-Exemple compatible avec une version mineure dans
-`src/parse/application/protocols/mod.rs` :
+Exemple dans `src/parse/application/protocols/mod.rs` :
 
 ```rust
 pub mod foo;
 ```
 
-Lors d'une version majeure qui autorise l'ajout d'un variant a
-`ApplicationProtocol`, ajouter simultanement son bras dans
-`src/displays/application/mod.rs` (`impl fmt::Display for ApplicationProtocol`).
-
 ### Choisir la voie de detection
+
+Hors tunnels et STP, la classification applicative de `PacketFlow` passe par
+une seule table ordonnee, `RULES` dans `src/parse/dispatch.rs`, que parcourt
+`dispatch::classify` apres les ports declares par Decode As
+(`PacketFlow::parse_application_from_transport`, dans `src/parse/mod.rs`, ne
+fait que lui deleguer). Les tunnels (`src/parse/tunnel/` : GRE et IP-in-IP au
+niveau IP, CAPWAP, VXLAN, Geneve et GTP-U sur UDP) sont detectes avant la
+table et donnent leur nom a l'etiquette ; STP (`detect_stp`, BPDU de la
+couche liaison) n'est essaye que si aucune etiquette n'a ete posee. Chaque
+`Rule` porte une etiquette, une garde de transport (`Guard::Tcp`,
+`Guard::Udp` ou `Guard::Any`), une garde de port optionnelle (`ports`), des
+ports qui l'interdisent (`ports_veto`), une sonde (`ProbeId`, executee par
+`run_probe`) et `terminal_on_port`. L'ordre du tableau est la priorite : les
+regles a port d'abord, parmi lesquelles s'intercalent quatre regles sans port
+(S7Comm, et les verbes non ambigus de FTP, SMTP et NNTP), puis la cascade
+aveugle. Une sonde s'execute au plus une fois par payload (memoisation par
+`ProbeId`, un bit d'un `u64` : 57 identifiants sur 64 en 11.6.0, borne
+verifiee par `probe_ids_fit_the_memoization_bitmask`) et ne voit que les
+`PROBE_CAP` premiers octets (18 Kio), sauf si elle lit `full_payload`.
 
 Trois voies existent, selon la force de la signature du protocole sur le wire
 et les transports sur lesquels il est defini.
 
-**Voie 1 — probing a l'aveugle** (`Application::try_from` dans `src/parse/application/mod.rs`) : reservee aux protocoles dont les octets s'identifient eux-memes. Exemples de signatures fortes : un marqueur litteral (`HTTP/`, `GIOP`), un en-tete binaire a contraintes serrees (DNS, NTP), une longueur annoncee qui doit correspondre exactement aux octets restants (PostgreSQL).
+**Voie 1 — probing a l'aveugle** (`rule(...)` dans la cascade aveugle de
+`RULES`) : reservee aux protocoles dont les octets s'identifient eux-memes.
+Exemples de signatures fortes : un marqueur litteral (`HTTP/`, `GIOP`,
+`RTPS`), un en-tete binaire a contraintes serrees (DNS, NTP), une longueur
+annoncee qui doit correspondre exactement aux octets restants (PostgreSQL).
+La garde de transport reste celle que la specification impose : `Guard::Any`
+est reserve aux protocoles reellement bi-transport (DNP3, EtherNet/IP, SNMP,
+SRVLOC). Ajouter le meme test au meme rang dans `Application::try_from`
+(`src/parse/application/mod.rs`), le probing public sans transport, et le nom
+du protocole dans `blind_rules_mirror_the_public_cascade_order`, qui fige la
+liste aveugle de la table dans l'ordre de cette cascade.
 
 ```rust
+// src/parse/dispatch.rs
+enum ProbeId {
+    // ...
+    Foo,
+}
+
+// dans run_probe
+ProbeId::Foo => FooPacket::try_from(payload).is_ok(),
+
+// dans RULES, a son rang dans la cascade aveugle
+rule("Foo", Guard::Udp, ProbeId::Foo),
+```
+
+```rust
+// src/parse/application/mod.rs, Application::try_from, au meme rang
 if FooPacket::try_from(packet).is_ok() {
     return Ok(Application {
         application_protocol: "Foo",
@@ -355,20 +397,68 @@ if FooPacket::try_from(packet).is_ok() {
 }
 ```
 
-Attention : l'ordre de detection compte. Un parseur trop permissif peut capturer des paquets qui appartiennent a un autre protocole. Les contraintes d'ordre existantes sont documentees en commentaire dans la chaine (DHCP avant SRVLOC — issue #3 ; MQTT en dernier car son en-tete fixe est peu discriminant).
+Attention : l'ordre de detection compte. Un parseur trop permissif peut
+capturer des paquets qui appartiennent a un autre protocole. Les contraintes
+d'ordre existantes sont documentees en commentaire dans la table (S7Comm avant
+COTP, ASTERIX avant DNS, SSH avant HTTP, DHCP avant SRVLOC — issue #3, UMAS
+avant ModbusTCP, WireGuard derniere sonde UDP, MQTT en dernier car son
+en-tete fixe est peu discriminant).
 
-**Voie 2 — detection gardee par port** (`PacketFlow::parse_application_from_transport` dans `src/parse/mod.rs`) : pour les protocoles a signature faible ou ambigue, que des checks meme parfaits ne peuvent pas distinguer d'un autre protocole. Exemples : les reponses FTP/SMTP/NNTP sont octet pour octet identiques (`2xx texte CRLF`) ; DHCPv6, AMS, COTP et QUIC short header ont des en-tetes trop peu contraints ; mDNS partage le format DNS mais avec une validation assouplie. Le port standard sert alors de garde-fou EN PLUS des checks du parseur, jamais a leur place.
+**Voie 2 — detection gardee par port** (`port_rule(...)` parmi les regles a
+port de `RULES`, avec sa fonction `is_foo_tcp_port` a cote des autres dans
+`dispatch.rs`) : pour les protocoles a signature faible ou ambigue, que des
+checks meme parfaits ne peuvent pas distinguer d'un autre protocole. Exemples :
+les reponses FTP/SMTP/NNTP sont octet pour octet identiques (`2xx texte
+CRLF`) ; DHCPv6, AMS, COTP et QUIC short header ont des en-tetes trop peu
+contraints ; mDNS partage le format DNS mais avec une validation assouplie. Le
+port standard sert alors de garde-fou EN PLUS des checks du parseur, jamais a
+leur place : une regle a port porte toujours une garde de transport
+(`port_rules_carry_a_transport_guard`) et n'etiquette que si la sonde accepte
+le contenu (issue #25).
 
-**Voie 3 — signature forte avec contrainte de transport** : lorsque le
-protocole s'identifie suffisamment pour etre reconnu hors de son port standard,
-mais n'est defini que sur un transport donne. `PacketFlow` applique alors le
-parseur strict sur ce transport uniquement. S7Comm suit cette voie :
-l'enveloppe complete TPKT + COTP-DT + S7 permet le probing sur n'importe quel
-port TCP, tandis que les memes octets sur UDP ne doivent jamais produire le
-label S7Comm. Tester explicitement le port standard, un port non standard et
-un transport interdit.
+```rust
+port_rule("Foo", Guard::Tcp, is_foo_tcp_port, ProbeId::Foo),
+```
+
+Les autres champs de `Rule` couvrent les cas particuliers : `terminal_on_port`
+quand le port est reserve et qu'un echec ne doit retomber sur aucune autre
+sonde (mDNS 5353, LLMNR 5355) ; `ports_veto` quand la regle ne doit pas jouer
+sur certains ports (verbes FTP/SMTP/NNTP non ambigus, detectes hors des ports
+de la famille, issue #66). Un protocole qui se reconnait aussi hors de son
+port garde sa regle a port et revient dans la cascade aveugle, avec la meme
+sonde (SNMP, OPC UA, RADIUS, BACnet/IP, UMAS), une sonde plus stricte (NTP,
+DIS, PostgreSQL, DNS, ModbusTCP, WireGuard) ou celle d'une autre forme du
+protocole (QUIC : en-tete court sur le port, en-tete long partout). Une
+regle dont le port peut aussi porter le trafic d'une autre regle passe apres
+les autres regles de port : NTP (un datagramme du port source 123 vers le
+port d'une autre regle, DNS 53 dans
+`ntp_port_rule_comes_after_the_other_port_rules`) et WireGuard (51820 est un
+port ephemere, `wireguard_port_rule_comes_after_the_other_udp_port_rules`).
+Pour qu'un appelant declare un autre port (« Decode As »,
+`ParseConfig::decode_as`), ajouter une variante en fin de `DecodeAsProtocol`
+(`#[non_exhaustive]` : ajout additif, version mineure) et son bras dans
+`DecodeAsProtocol::rule`, puis l'ajouter a la liste `all` de
+`decode_as_protocols_resolve_to_table_rules`, qui verifie alors que la table
+connait l'etiquette et la sonde.
+
+**Voie 3 — signature forte avec contrainte de transport** (`rule(...)` sans
+port, gardee par le seul transport ou le protocole est defini) : lorsque le
+protocole s'identifie suffisamment pour etre reconnu hors de son port
+standard, mais n'est defini que sur un transport donne. S7Comm suit cette voie
+(`rule("S7Comm", Guard::Tcp, ProbeId::S7Comm)`, placee avant la regle COTP
+pour l'emporter sur l'etiquette generique, port 102 compris) : l'enveloppe
+complete TPKT + COTP-DT + S7 permet le probing sur n'importe quel port TCP,
+tandis que les memes octets sur UDP ne doivent jamais produire le label
+S7Comm. Tester explicitement le port standard, un port non standard et un
+transport interdit.
 
 Critere de decision : si un payload valide du protocole peut aussi etre un payload valide d'un autre protocole deja detecte (ou d'un texte quelconque), le probing a l'aveugle est interdit — passer par la garde de port et documenter la raison en commentaire. Pour un protocole textuel, verifier aussi si une commande apparemment distinctive peut apparaitre dans le corps libre d'un autre protocole : sans etat de session, ce cas impose lui aussi une garde de port.
+
+Une nouvelle regle deplace en general l'histogramme fige par
+`tests/golden_pcaps.rs` : le mettre a jour et expliquer chaque ecart en
+commentaire. Les verbes et les ports des protocoles textuels, et `PROBE_CAP`,
+sont recopies par l'oracle du fuzz (`fuzz/oracles/text_protocols.rs`) :
+`tests/fuzz_policy_parity.rs` echoue tant que les deux copies divergent.
 
 ## 6. Ajouter les tests
 
@@ -447,7 +537,7 @@ tshark -r capture.pcap -Y "frame.number==5" -T fields -e tcp.payload
 - Les validations et extractions sont dans un fichier separe sous `src/checks` (pas de validation inline dans le parseur).
 - Le type principal a une rustdoc avec un schema Mermaid `packet-beta`.
 - Les `mod.rs` necessaires exportent le nouveau module.
-- La compatibilite semver de l'API publique est preservee ; un variant d'enum publique exhaustive n'est ajoute que dans une version majeure, avec son bras `Display`. Verifiable par `cargo semver-checks check-release`, que le workflow de publication execute avant tout `cargo publish`.
+- La compatibilite semver de l'API publique est preservee : une variante ajoutee a un type `#[non_exhaustive]` est additive (mineure) ; renommer, retirer, ou ajouter une variante a un enum public exhaustif exige une version majeure. Verifiable par `cargo semver-checks check-release`, que le workflow de publication execute avant tout `cargo publish`.
 - La voie de detection est choisie et justifiee : probing a l'aveugle si la
   signature et les transports le permettent, contrainte de transport si elle
   est necessaire, garde de port si la signature reste ambigue.

@@ -70,8 +70,19 @@ impl RadiusCode {
     }
 }
 
-/// Types d'attributs des RFC 2865, 2866, 2868, 2869, 3162 et 5176 (registre
-/// IANA « RADIUS Attribute Types »).
+/// Types d'attributs du registre IANA « RADIUS Attribute Types », definis par
+/// les RFC 2865, 2866, 2867, 2868, 2869, 3162, 4072, 4372, 4675, 4818, 4849,
+/// 5090, 5176 (Error-Cause, que le registre rattache a la RFC 3576, qu'elle
+/// remplace), 5447, 6929 et 7155.
+///
+/// Les variantes portent les noms du registre, sauf pour dix types : 89, 101
+/// et 241 a 246 portent ceux de leur RFC (Chargeable-User-Identity, RFC 4372
+/// §2.1 ; Error-Cause, RFC 5176 §3.5, que le registre ecrit « Error-Cause
+/// Attribute » ; Extended-Type-1 a -4, Long-Extended-Type-1 et -2, RFC 6929
+/// §3), 124 et 125 ceux de deux AVP Diameter (voir
+/// [`AttributeType::MipHomeAgentAddress`] et
+/// [`AttributeType::MipHomeAgentHost`]). Le nom que le registre donne a 89,
+/// 124, 125 et 241 a 246 est un alias de recherche de la documentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AttributeType {
@@ -160,6 +171,7 @@ pub enum AttributeType {
     AcctTunnelPacketsLost,
     NasPortId,
     FramedPool,
+    #[doc(alias = "CUI")]
     ChargeableUserIdentity,
     TunnelClientAuthId,
     TunnelServerAuthId,
@@ -194,13 +206,33 @@ pub enum AttributeType {
     DigestHa1,
     SipAor,
     DelegatedIpv6Prefix,
+    /// Type 124, MIP6-Feature-Vector au registre IANA (RFC 5447 §4.2.5 et
+    /// §7.1) : un champ de 64 drapeaux, les capacites Mobile IPv6 du NAS
+    /// (`MIP6_INTEGRATED` 1, `LOCAL_HOME_AGENT_ASSIGNMENT` 2, §7.2). Le nom
+    /// de la variante est celui d'une AVP Diameter que la meme RFC decrit,
+    /// MIP-Home-Agent-Address (code 334 de la RFC 4004, §4.2.2), qui n'existe
+    /// pas en RADIUS : la valeur n'est pas une adresse.
+    #[doc(alias = "MIP6-Feature-Vector")]
     MipHomeAgentAddress,
+    /// Type 125, MIP6-Home-Link-Prefix au registre IANA (RFC 5447 §4.2.4 et
+    /// §7.1) : la longueur du prefixe sur un octet, puis les seize octets du
+    /// prefixe IPv6 du reseau d'origine. Le nom de la variante est celui d'une
+    /// AVP Diameter que la meme RFC decrit, MIP-Home-Agent-Host (code 348 de
+    /// la RFC 4004, §4.2.3), qui n'existe pas en RADIUS : la valeur n'est pas
+    /// un nom d'hote.
+    #[doc(alias = "MIP6-Home-Link-Prefix")]
     MipHomeAgentHost,
+    #[doc(alias = "Extended-Attribute-1")]
     ExtendedType1,
+    #[doc(alias = "Extended-Attribute-2")]
     ExtendedType2,
+    #[doc(alias = "Extended-Attribute-3")]
     ExtendedType3,
+    #[doc(alias = "Extended-Attribute-4")]
     ExtendedType4,
+    #[doc(alias = "Extended-Attribute-5")]
     LongExtendedType1,
+    #[doc(alias = "Extended-Attribute-6")]
     LongExtendedType2,
 }
 
@@ -354,7 +386,8 @@ impl AttributeType {
 #[non_exhaustive]
 pub struct RadiusAttribute<'a> {
     pub attribute_type: u8,
-    /// Le type nomme, quand le registre le connait.
+    /// Le type nomme, quand [`AttributeType`] le connait ; `None` pour tout
+    /// autre code, dont les types 126 a 190 du registre.
     pub kind: Option<AttributeType>,
     /// Longueur declaree, en-tete compris.
     pub length: u8,

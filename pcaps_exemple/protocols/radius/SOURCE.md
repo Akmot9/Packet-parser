@@ -9,7 +9,7 @@ modifiée : ni anonymisée, ni tronquée.
 | Fichier | Trames | Contenu | SHA-256 |
 |---|---|---|---|
 | `radius.pcap` | 4 | un commutateur Cisco (`00:19:06:ea:b8:c0`, port 1645) authentifie `John.McGuirk` en EAP auprès d'un serveur (port 1812) : Access-Request, Access-Challenge, Access-Request, Access-Accept | `50a03f558dc07d53e9059f60a2d03ba2ebe3f633148fde36cf59703d2bf05600` |
-| `radius_localhost.pcap` | 19 | sur `lo` (LINKTYPE_NULL, 2015) : requêtes EAP vers le port 1812, Access-Challenge et Access-Reject | `4822c70dbd72d5501cb82ce0f829ed8b0c2ef7fd55b6a878419147e863e96958` |
+| `radius_localhost.pcap` | 19 | en bouclage, `127.0.0.1` vers `127.0.0.1` (LINKTYPE_NULL, 2015 ; un pcap classique n'enregistre pas l'interface) : onze Access-Request vers le port 1812 (quatre EAP, six PAP, un CHAP), deux Access-Challenge, quatre Access-Accept et deux Access-Reject | `4822c70dbd72d5501cb82ce0f829ed8b0c2ef7fd55b6a878419147e863e96958` |
 
 `The-Ultimate-PCAP.pcapng`, à la racine de `pcaps_exemple/` (Johannes Weber,
 voir le `SOURCE.md` de la racine), porte aussi **72 paquets RADIUS** de
@@ -27,7 +27,8 @@ celles qui le sont. Aucun `.py` ici, et les octets le confirment :
 un TTL 255 côté commutateur et 64 côté serveur, un EAP-Message et un
 Message-Authenticator cohérents, des identifiants de station au format
 Cisco ; `radius_localhost.pcap` est une capture sur l'interface de bouclage
-d'un poste (sept ports éphémères successifs du client EAP, 2015).
+d'un poste (un client qui essaie EAP, PAP et CHAP depuis sept ports
+éphémères, un par authentification, 2015).
 
 ## Oracle tshark
 
@@ -35,7 +36,7 @@ d'un poste (sept ports éphémères successifs du client EAP, 2015).
 (tshark 4.6.6) : un paquet par ligne, en-tête (code, identifiant, longueur,
 authentificateur) et attributs (types, longueurs, identifiants de vendeur),
 sur les deux captures et sur `The-Ultimate-PCAP.pcapng`. `tests/radius_golden.rs`
-rejoue l'oracle (#101) : parité sur les 95 paquets, et aucune des 51 328
+rejoue l'oracle (#101) : parité sur les 95 paquets, et aucune des 51 256
 trames de l'Ultimate PCAP qui ne sont pas du RADIUS n'est étiquetée
 RADIUS par la sonde aveugle.
 
