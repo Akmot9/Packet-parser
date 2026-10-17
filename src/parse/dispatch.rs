@@ -219,6 +219,8 @@ fn run_probe(probe: ProbeId, payload: &[u8], full_payload: &[u8]) -> bool {
         ProbeId::Mqtt => MqttPacket::try_from(payload).is_ok(),
         // Sur le payload reel, comme NTP aveugle : les sections doivent
         // consommer exactement le datagramme, au-dela de PROBE_CAP compris.
+        // Les noms, bornes a 255 octets (RFC 1035 §3.1), gardent le decodage
+        // lineaire jusqu'a la taille maximale d'un datagramme.
         ProbeId::DnsBlind => DnsPacket::is_blind_udp_match(full_payload),
         ProbeId::Ptp => PtpPacket::try_from_udp(payload).is_ok(),
         ProbeId::Stanag5066 => SisPdu::try_from(payload).is_ok(),
@@ -1417,29 +1419,39 @@ mod tests {
         unsupported.extend_from_slice(&[0x0a, 0x00, 0x06, 0x80, 0x19, 0xc9]);
         assert_ne!(label(&unsupported), Some("ASTERIX"));
 
-        assert_eq!(label(&block(7000)), Some("ASTERIX"));
-        assert_eq!(label(&block(1000).repeat(7)), Some("ASTERIX"));
+        // Un bloc valide a cheval sur le plafond, puis sept blocs dont seul
+        // le dernier le chevauche.
+        let straddling = block(7000);
+        assert!(straddling.len() > PROBE_CAP);
+        assert_eq!(label(&straddling), Some("ASTERIX"));
+
+        let thousand = block(1000);
+        let seven = thousand.repeat(7);
+        assert!(6 * thousand.len() < PROBE_CAP && PROBE_CAP < seven.len());
+        assert_eq!(label(&seven), Some("ASTERIX"));
     }
 
     /// #184 : hors port 53, la sonde DNS aveugle exige des sections qui
     /// consomment exactement le datagramme (#118), lu en entier comme par la
     /// sonde NTP aveugle (#164) : des sections qui finissent au plafond et des
     /// octets au-dela ne font pas un message DNS ; une reponse exacte plus
-    /// longue que le plafond en fait un. Synthetique : une reponse
+    /// longue que le plafond en fait un, sur le port 53 aussi, ou la regle de
+    /// port, qui ne lit que le plafond, la refuse. Synthetique : une reponse
     /// `example.com TXT` de PROBE_CAP octets, puis cent octets nuls ; la meme
     /// a 20 000 octets de TXT.
     #[test]
     fn dns_blind_probe_does_not_accept_a_capped_prefix() {
-        let label = |payload: &[u8]| {
+        let label_from = |source_port: u16, payload: &[u8]| {
             let transport = Transport {
                 protocol: TransportProtocol::Udp,
-                source_port: Some(40_000),
+                source_port: Some(source_port),
                 destination_port: Some(40_001),
                 payload: Some(payload),
                 details: None,
             };
             classify(&transport, &[]).map(|a| a.application_protocol)
         };
+        let label = |payload: &[u8]| label_from(40_000, payload);
         // Une question, une reponse TXT de `rdlength` octets de chaines.
         let response = |rdlength: usize| {
             let mut response = vec![0xbe, 0xef, 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0];
@@ -1466,7 +1478,9 @@ mod tests {
 
         let long = response(20_000);
         assert_eq!(long.len(), 20_041);
+        assert!(long.len() > PROBE_CAP);
         assert_eq!(label(&long), Some("DNS"));
+        assert_eq!(label_from(53, &long), Some("DNS"));
     }
 
     /// #164 : la regle NTP est la derniere regle de port — un datagramme

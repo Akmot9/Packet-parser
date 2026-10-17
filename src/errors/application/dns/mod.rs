@@ -38,6 +38,8 @@ pub enum DnsQueryParseError {
         offset: usize,
         available: usize,
     },
+    /// Un nom ou un label deborde du message, ou un nom depasse 255 octets
+    /// sur le fil, pointeurs de compression suivis (RFC 1035 §3.1).
     #[error("Out of bound parse")]
     OutOfBoundParse,
     #[error("UTF-8 parsing error: {0}")]
