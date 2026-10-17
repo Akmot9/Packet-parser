@@ -27,8 +27,8 @@ celles qui le sont. Aucun `.py` ici, et les octets le confirment :
 un TTL 255 côté commutateur et 64 côté serveur, un EAP-Message et un
 Message-Authenticator cohérents, des identifiants de station au format
 Cisco ; `radius_localhost.pcap` est une capture sur l'interface de bouclage
-d'un poste (sept ports éphémères successifs du client, qui essaie EAP,
-PAP et CHAP, 2015).
+d'un poste (un client qui essaie EAP, PAP et CHAP depuis sept ports
+éphémères, un par authentification, 2015).
 
 ## Oracle tshark
 

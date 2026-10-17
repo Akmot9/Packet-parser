@@ -14,7 +14,7 @@ trame, 43 trames d'un fragment réparti sur plusieurs.
 
 | Fichier | Trames | Contenu | SHA-256 |
 |---|---|---|---|
-| `dnp3.pcap` | 214 | neuf sessions TCP 20000 (huit en 2004, une en 2007) : lectures de classes, écritures, select/operate, redémarrages, confirmations, réponses sollicitées et non sollicitées | `7a30496184c93b12ef57fd0877acbead85975b20a8db35d8ac7b5c45e4f9f305` |
+| `dnp3.pcap` | 214 | neuf sessions TCP 20000 (huit en 2004, une en 2007) : lectures de classes et d'objets, écritures, cinq select de CROB (g12v1) sans operate, redémarrages, arrêts d'application, activations et désactivations des messages non sollicités, confirmations, réponses sollicitées et non sollicitées | `7a30496184c93b12ef57fd0877acbead85975b20a8db35d8ac7b5c45e4f9f305` |
 | `dnp3_read.pcap` | 10 | lecture des classes 1, 2, 3 et 0, réponse avec entrées binaires, sorties binaires et analogiques | `1e39be441983fcf9acb4ee4a60ee986c4a9009bd8c1cc1f1de1b40e4e70fad65` |
 | `dnp3_read_p20001.pcap` | 10 | mêmes octets que `dnp3_read.pcap`, port réécrit en 20001 : la preuve du sondage sans port | `e17324b454c07ea1112077db39af36eb20c9667429d3acc083c745ae462b3a9f` |
 | `dnp3_write.pcap` | 10 | écriture de l'heure (g50v1, Time and Date, un point) | `8e8c08175097d5b04a824ec10d5e02daff89f2fba1aa0763ecacb2131ddbf28f` |

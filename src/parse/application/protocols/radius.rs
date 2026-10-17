@@ -75,12 +75,14 @@ impl RadiusCode {
 /// 5090, 5176 (Error-Cause, que le registre rattache a la RFC 3576, qu'elle
 /// remplace), 5447, 6929 et 7155.
 ///
-/// Les variantes portent les noms du registre, sauf trois groupes : 89 et 241
-/// a 246 ceux de leur RFC (Chargeable-User-Identity, RFC 4372 §2.1 ;
-/// Extended-Type-1 a -4, Long-Extended-Type-1 et -2, RFC 6929 §3), 124 et 125
-/// ceux de deux AVP Diameter (voir [`AttributeType::MipHomeAgentAddress`] et
-/// [`AttributeType::MipHomeAgentHost`]). Le nom que le registre donne a ces
-/// neuf types est un alias de recherche de la documentation.
+/// Les variantes portent les noms du registre, sauf pour dix types : 89, 101
+/// et 241 a 246 portent ceux de leur RFC (Chargeable-User-Identity, RFC 4372
+/// §2.1 ; Error-Cause, RFC 5176 §3.5, que le registre ecrit « Error-Cause
+/// Attribute » ; Extended-Type-1 a -4, Long-Extended-Type-1 et -2, RFC 6929
+/// §3), 124 et 125 ceux de deux AVP Diameter (voir
+/// [`AttributeType::MipHomeAgentAddress`] et
+/// [`AttributeType::MipHomeAgentHost`]). Le nom que le registre donne a 89,
+/// 124, 125 et 241 a 246 est un alias de recherche de la documentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AttributeType {
@@ -384,7 +386,8 @@ impl AttributeType {
 #[non_exhaustive]
 pub struct RadiusAttribute<'a> {
     pub attribute_type: u8,
-    /// Le type nomme, quand le registre le connait.
+    /// Le type nomme, quand [`AttributeType`] le connait ; `None` pour tout
+    /// autre code, dont les types 126 a 190 du registre.
     pub kind: Option<AttributeType>,
     /// Longueur declaree, en-tete compris.
     pub length: u8,

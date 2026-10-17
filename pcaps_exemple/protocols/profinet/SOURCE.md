@@ -62,20 +62,24 @@ sans licence), `f0rw4rd/oida` (copies ITI/CISA/nDPI),
 VLAN + 100 PTCP, sans licence), `automayt/ICS-pcap` (pas de PROFINET).
 Téléchargements du 2026-10-12.
 
-## Ce que la crate en fait aujourd'hui (11.5.0)
+## Ce que la crate en faisait en 11.5.0 (état de départ de #133)
 
-`tests/profinet_corpus.rs` fige l'état de départ de #133 sur les 232 trames
-PN-RT : 103 ressortent `internet = Profinet`, **129 en `corrupted`**,
-presque toutes saines :
+En 11.5.0, sur les 232 trames PN-RT, 103 ressortaient `internet = Profinet`
+et **129 en `corrupted`**, presque toutes saines :
 
 - 67 `UnknownFrameId` : 10 RT_CLASS_1, 41 PTCP, 6 alarmes, 10 fragments ;
 - 56 `InvalidDcpBlockLength` : les 56 cycliques `0xC000` de `mixed_1`,
-  dont les données lues comme un bloc DCP ne tiennent pas dans la trame
-  (les 46 cycliques `0xC002` passent, avec des champs DCP qui sont du
+  dont les données lues comme un bloc DCP ne tenaient pas dans la trame
+  (les 46 cycliques `0xC002` passaient, avec des champs DCP qui sont du
   bruit) ;
 - 5 `InvalidNameOfStation` : 2 DCP de `ChangeIPUsingDCP` (le Set request
   dont le premier bloc est le bloc IP, l'Identify response dont le premier
   bloc est DeviceOptions) et 3 Identify responses de `pn_dcp` — le
-  validateur lit le *premier* bloc comme le NameOfStation ;
+  validateur lisait le *premier* bloc comme le NameOfStation ;
 - 1 `PacketTooShort` : la trame sortante de 32 octets de `pn_dcp`, dont le
-  champ DCPDataLength annonce 4 octets de blocs absents de la capture.
+  champ DCPDataLength annonce 4 octets de blocs quand la capture n'en porte
+  que 2.
+
+Depuis la 11.6.0 (#133, #141), `tests/profinet_corpus.rs` fige 231
+`Profinet` et un `DcpDataOverflow` : cette trame de 32 octets
+(`miguelob_pn_dcp.pcapng`, trame 3), la seule que tshark déclare malformée.

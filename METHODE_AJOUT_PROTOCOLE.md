@@ -340,19 +340,24 @@ pub mod foo;
 
 ### Choisir la voie de detection
 
-Toute la classification applicative de `PacketFlow` passe par une seule table
-ordonnee, `RULES` dans `src/parse/dispatch.rs`, que parcourt
+Hors tunnels et STP, la classification applicative de `PacketFlow` passe par
+une seule table ordonnee, `RULES` dans `src/parse/dispatch.rs`, que parcourt
 `dispatch::classify` apres les ports declares par Decode As
 (`PacketFlow::parse_application_from_transport`, dans `src/parse/mod.rs`, ne
-fait que lui deleguer). Chaque `Rule` porte une etiquette, une garde de
-transport (`Guard::Tcp`, `Guard::Udp` ou `Guard::Any`), une garde de port
-optionnelle (`ports`), des ports qui l'interdisent (`ports_veto`), une sonde
-(`ProbeId`, executee par `run_probe`) et `terminal_on_port`. L'ordre du
-tableau est la priorite : les regles a port d'abord, puis la cascade aveugle.
-Une sonde s'execute au plus une fois par payload (memoisation par `ProbeId`,
-un bit d'un `u64` : 57 identifiants sur 64 en 11.6.0, borne verifiee par
-`probe_ids_fit_the_memoization_bitmask`) et ne voit que les `PROBE_CAP`
-premiers octets (18 Kio), sauf si elle lit `full_payload`.
+fait que lui deleguer). Les tunnels (`src/parse/tunnel/` : GRE et IP-in-IP au
+niveau IP, CAPWAP, VXLAN, Geneve et GTP-U sur UDP) sont detectes avant la
+table et donnent leur nom a l'etiquette ; STP (`detect_stp`, BPDU de la
+couche liaison) n'est essaye que si aucune etiquette n'a ete posee. Chaque
+`Rule` porte une etiquette, une garde de transport (`Guard::Tcp`,
+`Guard::Udp` ou `Guard::Any`), une garde de port optionnelle (`ports`), des
+ports qui l'interdisent (`ports_veto`), une sonde (`ProbeId`, executee par
+`run_probe`) et `terminal_on_port`. L'ordre du tableau est la priorite : les
+regles a port d'abord, parmi lesquelles s'intercalent quatre regles sans port
+(S7Comm, et les verbes non ambigus de FTP, SMTP et NNTP), puis la cascade
+aveugle. Une sonde s'execute au plus une fois par payload (memoisation par
+`ProbeId`, un bit d'un `u64` : 57 identifiants sur 64 en 11.6.0, borne
+verifiee par `probe_ids_fit_the_memoization_bitmask`) et ne voit que les
+`PROBE_CAP` premiers octets (18 Kio), sauf si elle lit `full_payload`.
 
 Trois voies existent, selon la force de la signature du protocole sur le wire
 et les transports sur lesquels il est defini.
@@ -395,8 +400,9 @@ if FooPacket::try_from(packet).is_ok() {
 Attention : l'ordre de detection compte. Un parseur trop permissif peut
 capturer des paquets qui appartiennent a un autre protocole. Les contraintes
 d'ordre existantes sont documentees en commentaire dans la table (S7Comm avant
-COTP, DHCP avant SRVLOC — issue #3, UMAS avant ModbusTCP, MQTT en dernier car
-son en-tete fixe est peu discriminant).
+COTP, ASTERIX avant DNS, SSH avant HTTP, DHCP avant SRVLOC — issue #3, UMAS
+avant ModbusTCP, WireGuard derniere sonde UDP, MQTT en dernier car son
+en-tete fixe est peu discriminant).
 
 **Voie 2 — detection gardee par port** (`port_rule(...)` parmi les regles a
 port de `RULES`, avec sa fonction `is_foo_tcp_port` a cote des autres dans
@@ -420,17 +426,20 @@ sonde (mDNS 5353, LLMNR 5355) ; `ports_veto` quand la regle ne doit pas jouer
 sur certains ports (verbes FTP/SMTP/NNTP non ambigus, detectes hors des ports
 de la famille, issue #66). Un protocole qui se reconnait aussi hors de son
 port garde sa regle a port et revient dans la cascade aveugle, avec la meme
-sonde (RADIUS, BACnet/IP) ou une sonde plus stricte (DNS, NTP, ModbusTCP,
-WireGuard). Une regle dont le port peut aussi porter le trafic d'une autre
-regle passe apres les autres regles de port : NTP (un datagramme du port
-source 123 vers le port d'une autre regle, DNS 53 dans
+sonde (SNMP, OPC UA, RADIUS, BACnet/IP, UMAS), une sonde plus stricte (NTP,
+DIS, PostgreSQL, DNS, ModbusTCP, WireGuard) ou celle d'une autre forme du
+protocole (QUIC : en-tete court sur le port, en-tete long partout). Une
+regle dont le port peut aussi porter le trafic d'une autre regle passe apres
+les autres regles de port : NTP (un datagramme du port source 123 vers le
+port d'une autre regle, DNS 53 dans
 `ntp_port_rule_comes_after_the_other_port_rules`) et WireGuard (51820 est un
 port ephemere, `wireguard_port_rule_comes_after_the_other_udp_port_rules`).
 Pour qu'un appelant declare un autre port (« Decode As »,
 `ParseConfig::decode_as`), ajouter une variante en fin de `DecodeAsProtocol`
 (`#[non_exhaustive]` : ajout additif, version mineure) et son bras dans
-`DecodeAsProtocol::rule` ; `decode_as_protocols_resolve_to_table_rules`
-verifie que la table connait la sonde.
+`DecodeAsProtocol::rule`, puis l'ajouter a la liste `all` de
+`decode_as_protocols_resolve_to_table_rules`, qui verifie alors que la table
+connait l'etiquette et la sonde.
 
 **Voie 3 — signature forte avec contrainte de transport** (`rule(...)` sans
 port, gardee par le seul transport ou le protocole est defini) : lorsque le

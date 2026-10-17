@@ -128,33 +128,44 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   a `Extended`, CAT 034 n'en ayant aucun. PPPoE : la session est decrite au
   §6 de la RFC 2516, pas au §5, et l'Ultimate PCAP en porte cinq, pas une.
   BACnet/IP : la capture ITI montre un poste qui interroge un automate, pas
-  deux automates. RADIUS : les types 124 et 125 ne portent pas les noms du
-  registre IANA (#191) — `MipHomeAgentAddress` et `MipHomeAgentHost` sont
-  ceux de deux AVP Diameter, pour MIP6-Feature-Vector et
-  MIP6-Home-Link-Prefix.
+  deux automates. RADIUS : `AttributeType` ne suit pas le registre IANA pour
+  tous les types — `MipHomeAgentAddress` et `MipHomeAgentHost` (124 et 125)
+  sont les noms de deux AVP Diameter, pour MIP6-Feature-Vector et
+  MIP6-Home-Link-Prefix (#191), et 89, 101 et 241 a 246 portent ceux de
+  leur RFC. IKE et ESP : les octets que garde `encrypted_body` ne sont pas
+  tous chiffres en IKEv2, le corps du payload SK ou SKF portant en clair
+  l'IV et les donnees d'integrite (RFC 7296 §3.14) ; derriere le SPI et le
+  numero de sequence d'ESP, l'IV, en general, et l'ICV circulent aussi en
+  clair (RFC 4303 §2.3 et §2.8).
 - **Captures et doc du code** (#194, #188, #191) : les memes corrections
   dans les `SOURCE.md` (RDP, DIS, BACnet), les tests golden et l'oracle
   PPPoE, et d'autres faits reverifies avec tshark 4.6.6 : DNP3 (neuf
-  sessions, g50v1 dans `dnp3_write.pcap` et g80v1 dans
-  `dnp3_udp_write.pcap`, aucune confirmation applicative, seize trames de
-  liaison), IEC 104 (seuls les types impairs de 1 a 13), BACnet (TTL 119
-  cote automate), RADIUS (bouclage, interface non enregistree), STANAG 5066
-  (un envoi refuse, pas une connexion), PROFINET (fragments `0xFF83` a
-  `0xFF8D`, `0xC000` contre `0xC002`), VLAN (le port 443 est du cote de
-  2.2.2.2), ASTERIX (I048/130 et I048/120), PostgreSQL et l'index
-  `pcaps_exemple/README.md` (PROFINET depuis la 11.6.0). Dans le code : §6
-  de la RFC 2516 ; drapeau C, payload 127 non assigne, type 14 et
-  commentaire du test UDP 4500 d'IKE ; IV et ICV d'ESP en clair, README
-  compris ; sections de la Part 1 d'ASTERIX ; adresses de
-  `tests/rtps_golden.rs` ; couches basses et hautes de
-  `PacketFlow::corrupted` ; table `RULES` dans
-  `METHODE_AJOUT_PROTOCOLE.md`. RDP (#188) : codes d'echec 3, 4 et 6
-  corriges, 7 ajoute, `0x10` (RDS-AAD-Auth) dans `requested_protocols` et
-  `selected_protocol`, drapeaux de la demande et de la reponse documentes.
-  RADIUS (#191) : types 124 et 125 documentes avec leur nom IANA et leur
-  contenu (RFC 5447), alias de recherche rustdoc (MIP6-Feature-Vector,
-  MIP6-Home-Link-Prefix, CUI, Extended-Attribute-1 a -6), liste des RFC de
-  `AttributeType` completee. Ni l'API ni le comportement ne changent.
+  sessions et des select sans operate dans `dnp3.pcap`, g50v1 dans
+  `dnp3_write.pcap` et g80v1 dans `dnp3_udp_write.pcap`, aucune confirmation
+  applicative dans `dnp3_udp_select_operate.pcap`, reponse de
+  `dnp3_link_only.pcap` en seize trames de liaison), IEC 104 (seuls les
+  types impairs de 1 a 13), BACnet (TTL 119 cote automate), RADIUS
+  (bouclage, interface non enregistree, ports du client non consecutifs),
+  STANAG 5066 (un envoi refuse, pas une connexion), PROFINET (fragments
+  `0xFF83` a `0xFF8D`, `0xC000` contre `0xC002`, l'etat de la 11.5.0
+  presente comme tel et complete par celui de la 11.6.0), VLAN (le port 443
+  est du cote de 2.2.2.2), ASTERIX (I048/130 et I048/120), PostgreSQL et
+  l'index `pcaps_exemple/README.md` (PROFINET depuis la 11.6.0). Dans le
+  code et les README : §6 de la RFC 2516 ; drapeau C, payload 127 non
+  assigne, type 14 et commentaire du test UDP 4500 d'IKE ; IV et ICV d'ESP
+  en clair, comme l'IV et les donnees d'integrite du payload SK d'IKEv2 ;
+  sections de la Part 1 d'ASTERIX ; adresses de `tests/rtps_golden.rs` ;
+  couches basses et hautes de `PacketFlow::corrupted` ; table `RULES` dans
+  `METHODE_AJOUT_PROTOCOLE.md`, hors tunnels et STP. RDP (#188) : codes
+  d'echec 3, 4 et 6 corriges, 7 ajoute, `0x10` (RDS-AAD-Auth) dans
+  `requested_protocols` et `selected_protocol`, drapeaux de la demande et de
+  la reponse documentes. RADIUS (#191) : types 124 et 125 documentes avec
+  leur nom IANA et leur contenu (RFC 5447), alias de recherche rustdoc
+  (MIP6-Feature-Vector, MIP6-Home-Link-Prefix, Extended-Attribute-1 a -6,
+  CUI), liste des RFC et ecarts de nommage (89, 101, 124, 125, 241 a 246) de
+  `AttributeType` documentes, comme les types 126 a 190 du registre, que
+  `RadiusAttribute::kind` ne nomme pas ; README compris. Ni l'API ni le
+  comportement ne changent.
 
 ## [11.6.0] - 2026-10-16
 
