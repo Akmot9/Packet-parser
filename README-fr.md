@@ -309,7 +309,7 @@ incluent notamment:
   si ce qui suit l'en-tete de 48 octets forme des champs d'extension et un
   MAC (NTS, MS-SNTP)
 - DHCP / DHCPv6
-- HTTP
+- HTTP/1.x (RFC 9112) : requetes et reponses, tete validee, corps en octets
 - MQTT
 - PostgreSQL
 - FTP

@@ -300,7 +300,7 @@ Application detection is intentionally best-effort. Parser modules include:
   bytes after the 48-byte header are well-formed extension fields and MAC
   (NTS, MS-SNTP)
 - DHCP / DHCPv6
-- HTTP
+- HTTP/1.x (RFC 9112): requests and responses, head validated, body as bytes
 - MQTT
 - PostgreSQL
 - FTP

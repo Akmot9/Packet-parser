@@ -5,7 +5,7 @@
 
 use crate::errors::application::http::HttpParseError;
 
-/// Separator between the head (request line + headers) and the body.
+/// Separator between the head (start line + headers) and the body.
 const HEAD_BODY_SEPARATOR: &str = "\r\n\r\n";
 
 /// Validates that the payload is UTF-8 and returns it as a borrowed `&str`.
@@ -16,19 +16,32 @@ pub fn parse_payload_as_utf8(payload: &[u8]) -> Result<&str, HttpParseError> {
     std::str::from_utf8(payload).map_err(|_| HttpParseError::InvalidUtf8)
 }
 
-/// Splits the payload into a borrowed head (request line + headers) and a
-/// borrowed body, around the first `CRLF CRLF` separator.
-///
-/// If the separator is absent, the whole payload is the head and the body
-/// is empty.
-pub fn split_head_body(payload: &str) -> (&str, &str) {
-    match payload.find(HEAD_BODY_SEPARATOR) {
-        Some(index) => (
-            &payload[..index],
-            &payload[index + HEAD_BODY_SEPARATOR.len()..],
-        ),
-        None => (payload, ""),
+/// Coupe le payload autour du premier `CRLF CRLF` : la tete (ligne de depart
+/// et en-tetes) et le corps, en octets. Sans separateur, tout le payload est
+/// la tete et le corps est vide. Seule la tete est ensuite validee en UTF-8
+/// (#176) : le corps peut etre binaire (image, gzip).
+pub fn split_head_body_bytes(payload: &[u8]) -> (&[u8], &[u8]) {
+    let separator = HEAD_BODY_SEPARATOR.as_bytes();
+    match payload
+        .windows(separator.len())
+        .position(|window| window == separator)
+    {
+        Some(index) => (&payload[..index], &payload[index + separator.len()..]),
+        None => (payload, &[]),
     }
+}
+
+/// Exige un code de statut de trois chiffres (RFC 9112 §4 : `status-code =
+/// 3DIGIT`), et le rend. Trois chiffres exactement, et pas une version
+/// stricte seule, gardent un texte quelconque commencant par `HTTP/1.1 `
+/// hors de HTTP.
+pub fn require_status_code(part: Option<&str>) -> Result<u16, HttpParseError> {
+    let code = part.ok_or(HttpParseError::MissingStatusCode)?;
+    if code.len() != 3 || !code.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(HttpParseError::InvalidStatusCode(code.to_string()));
+    }
+    code.parse()
+        .map_err(|_| HttpParseError::InvalidStatusCode(code.to_string()))
 }
 
 /// Standard HTTP request methods (RFC 9110) accepted by the parser.
@@ -113,27 +126,32 @@ mod tests {
     }
 
     #[test]
-    fn test_split_head_body_with_separator() {
-        let payload = "GET / HTTP/1.1\r\nHost: a\r\n\r\nbody";
-        let (head, body) = split_head_body(payload);
-        assert_eq!(head, "GET / HTTP/1.1\r\nHost: a");
-        assert_eq!(body, "body");
+    fn test_split_head_body_bytes() {
+        assert_eq!(
+            split_head_body_bytes(b"HTTP/1.1 200 OK\r\nA: b\r\n\r\n\xff\xfe"),
+            (&b"HTTP/1.1 200 OK\r\nA: b"[..], &b"\xff\xfe"[..])
+        );
+        assert_eq!(
+            split_head_body_bytes(b"HTTP/1.1 200 OK\r\n"),
+            (&b"HTTP/1.1 200 OK\r\n"[..], &b""[..])
+        );
     }
 
     #[test]
-    fn test_split_head_body_without_separator() {
-        let payload = "GET / HTTP/1.1\r\nHost: a";
-        let (head, body) = split_head_body(payload);
-        assert_eq!(head, payload);
-        assert_eq!(body, "");
-    }
-
-    #[test]
-    fn test_split_head_body_empty_body() {
-        let payload = "GET / HTTP/1.1\r\n\r\n";
-        let (head, body) = split_head_body(payload);
-        assert_eq!(head, "GET / HTTP/1.1");
-        assert_eq!(body, "");
+    fn test_require_status_code() {
+        assert_eq!(require_status_code(Some("200")), Ok(200));
+        assert_eq!(require_status_code(Some("404")), Ok(404));
+        assert_eq!(
+            require_status_code(None),
+            Err(HttpParseError::MissingStatusCode)
+        );
+        for code in ["20", "2000", "abc", "20a", " 200", "٢٠٠"] {
+            assert_eq!(
+                require_status_code(Some(code)),
+                Err(HttpParseError::InvalidStatusCode(code.to_string())),
+                "{code}"
+            );
+        }
     }
 
     #[test]
