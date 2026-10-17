@@ -360,9 +360,11 @@ Application detection is intentionally best-effort. Parser modules include:
   connection is labelled TLS, by decision
 - RADIUS (RFC 2865, accounting RFC 2866, CoA RFC 5176): header (code named,
   identifier, length, authenticator) and the attribute list (type named for
-  the assigned codes 1-125 and 241-246, as in the IANA registry except 89,
-  101 and 241-246, which carry their RFC names, and 124 and 125, which carry
-  the names of two Diameter AVPs; value borrowed, accessors for integers,
+  the assigned codes 1-190 and 241-246, as in the IANA registry except 89,
+  101 and 241-246, which carry their RFC names, and 124 and 125, whose
+  deprecated variants carry the names of two Diameter AVPs behind the
+  `Mip6FeatureVector` and `Mip6HomeLinkPrefix` constants; value borrowed,
+  accessors for integers,
   IPv4 addresses, texts and Vendor-Specific); recognised on UDP
   1812/1813/1645/1646/3799 and blindly on any port (known code, length equal
   to the datagram, attributes tiling it)
