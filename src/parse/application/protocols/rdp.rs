@@ -26,18 +26,20 @@ use std::convert::TryFrom;
 
 use crate::{
     checks::application::rdp::{
-        MCS_CONNECT_INITIAL_TAG, MCS_CONNECT_RESPONSE_TAG, MCS_USER_ID_BASE, PROTOCOL_HYBRID,
-        PROTOCOL_HYBRID_EX, PROTOCOL_RDP, PROTOCOL_RDSTLS, PROTOCOL_SSL, RDP_COOKIE_PREFIX,
-        RDP_NEG_FAILURE, RDP_NEG_REQUEST, RDP_NEG_RESPONSE, RDP_TOKEN_TERMINATOR,
-        TPKT_HEADER_LENGTH, ensure_len, extract_tpkt_length, validate_negotiation_length,
-        validate_tpkt_header,
+        CORRELATION_INFO_PRESENT, MCS_CONNECT_INITIAL_TAG, MCS_CONNECT_RESPONSE_TAG,
+        MCS_USER_ID_BASE, PROTOCOL_HYBRID, PROTOCOL_HYBRID_EX, PROTOCOL_RDP, PROTOCOL_RDSTLS,
+        PROTOCOL_SSL, RDP_COOKIE_PREFIX, RDP_NEG_CORRELATION_INFO_LENGTH, RDP_NEG_FAILURE,
+        RDP_NEG_LENGTH, RDP_NEG_REQUEST, RDP_NEG_RESPONSE, RDP_TOKEN_TERMINATOR,
+        TPKT_HEADER_LENGTH, ensure_len, extract_tpkt_length, validate_correlation_info,
+        validate_negotiation_length, validate_tpkt_header,
     },
     errors::application::rdp::RdpParseError,
     parse::application::protocols::{bounded_capacity, copt::CotpPduType},
 };
 
 /// Demande de negociation (MS-RDPBCGR §2.2.1.1.1), dans le Connection
-/// Request.
+/// Request, et la correlation info (§2.2.1.1.2) qui la suit quand elle
+/// leve CORRELATION_INFO_PRESENT.
 ///
 /// ```mermaid
 /// ---
@@ -48,6 +50,11 @@ use crate::{
 /// 8-15: "flags u8"
 /// 16-31: "length 8 (LE)"
 /// 32-63: "requestedProtocols u32 LE"
+/// 64-71: "type 0x06"
+/// 72-79: "flags 0"
+/// 80-95: "length 36 (LE)"
+/// 96-223: "correlationId (16 octets)"
+/// 224-351: "reserved (16 octets)"
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -65,9 +72,22 @@ pub struct NegotiationRequest {
     /// authentification Entra ID, §5.4.5.4) ; zero pour la securite RDP
     /// standard seule.
     pub requested_protocols: u32,
+    /// `correlationId` de la correlation info (§2.2.1.1.2), les seize
+    /// octets qui suivent son en-tete, quand `flags` leve
+    /// CORRELATION_INFO_PRESENT et que la structure est la. La norme veut
+    /// un premier octet autre que `0x00` et `0xF4` et aucun octet `0x0D`,
+    /// ce que le decodeur ne verifie pas, pas plus que tshark. `None` quand
+    /// le drapeau est bas, ou quand il est leve sans que rien ne suive la
+    /// demande (ce que tshark marque malforme et que la 11.6.0 acceptait).
+    pub correlation_id: Option<[u8; 16]>,
 }
 
 impl NegotiationRequest {
+    /// Drapeau CORRELATION_INFO_PRESENT (`0x08`).
+    pub fn correlation_info_present(&self) -> bool {
+        self.flags & CORRELATION_INFO_PRESENT != 0
+    }
+
     pub fn tls(&self) -> bool {
         self.requested_protocols & PROTOCOL_SSL != 0
     }
@@ -359,18 +379,26 @@ fn connection_request(user_data: &[u8]) -> Result<RdpPayload<'_>, RdpParseError>
     };
     let negotiation = match rest {
         [] => None,
-        [RDP_NEG_REQUEST, flags, l0, l1, p0, p1, p2, p3] => {
-            validate_negotiation_length(RDP_NEG_REQUEST, u16::from_le_bytes([*l0, *l1]))?;
+        [RDP_NEG_REQUEST, ..] => {
+            let (structure, tail) = negotiation_structure(rest)?;
+            let flags = structure[1];
+            let correlation_id = if flags & CORRELATION_INFO_PRESENT != 0 {
+                correlation_info(tail)?
+            } else if tail.is_empty() {
+                None
+            } else {
+                return Err(RdpParseError::UnexpectedX224Data(tail.len()));
+            };
             Some(NegotiationRequest {
-                flags: *flags,
-                requested_protocols: u32::from_le_bytes([*p0, *p1, *p2, *p3]),
+                flags,
+                requested_protocols: u32::from_le_bytes([
+                    structure[4],
+                    structure[5],
+                    structure[6],
+                    structure[7],
+                ]),
+                correlation_id,
             })
-        }
-        [RDP_NEG_REQUEST, _, l0, l1, ..] => {
-            return Err(RdpParseError::InvalidNegotiation {
-                structure_type: RDP_NEG_REQUEST,
-                length: u16::from_le_bytes([*l0, *l1]),
-            });
         }
         other => return Err(RdpParseError::UnexpectedX224Data(other.len())),
     };
@@ -380,34 +408,62 @@ fn connection_request(user_data: &[u8]) -> Result<RdpPayload<'_>, RdpParseError>
 fn connection_confirm(user_data: &[u8]) -> Result<RdpPayload<'_>, RdpParseError> {
     let negotiation = match user_data {
         [] => None,
-        [RDP_NEG_RESPONSE, flags, l0, l1, p0, p1, p2, p3] => {
-            validate_negotiation_length(RDP_NEG_RESPONSE, u16::from_le_bytes([*l0, *l1]))?;
-            Some(NegotiationResponse::Accepted {
-                flags: *flags,
-                selected_protocol: u32::from_le_bytes([*p0, *p1, *p2, *p3]),
+        [RDP_NEG_RESPONSE | RDP_NEG_FAILURE, ..] => {
+            let (structure, tail) = negotiation_structure(user_data)?;
+            if !tail.is_empty() {
+                return Err(RdpParseError::UnexpectedX224Data(tail.len()));
+            }
+            let value =
+                u32::from_le_bytes([structure[4], structure[5], structure[6], structure[7]]);
+            Some(if structure[0] == RDP_NEG_RESPONSE {
+                NegotiationResponse::Accepted {
+                    flags: structure[1],
+                    selected_protocol: value,
+                }
+            } else {
+                NegotiationResponse::Failure {
+                    failure_code: value,
+                }
             })
-        }
-        [RDP_NEG_FAILURE, _, l0, l1, c0, c1, c2, c3] => {
-            validate_negotiation_length(RDP_NEG_FAILURE, u16::from_le_bytes([*l0, *l1]))?;
-            Some(NegotiationResponse::Failure {
-                failure_code: u32::from_le_bytes([*c0, *c1, *c2, *c3]),
-            })
-        }
-        [
-            structure_type @ (RDP_NEG_RESPONSE | RDP_NEG_FAILURE),
-            _,
-            l0,
-            l1,
-            ..,
-        ] => {
-            return Err(RdpParseError::InvalidNegotiation {
-                structure_type: *structure_type,
-                length: u16::from_le_bytes([*l0, *l1]),
-            });
         }
         other => return Err(RdpParseError::UnexpectedX224Data(other.len())),
     };
     Ok(RdpPayload::ConnectionConfirm { negotiation })
+}
+
+/// Les huit octets d'une structure de negociation (type, drapeaux,
+/// longueur, valeur) et ce qui les suit. Une longueur declaree autre que 8
+/// est une [`RdpParseError::InvalidNegotiation`] ; une structure coupee
+/// avant ses huit octets, mais dont la longueur declaree est juste ou
+/// illisible, une [`RdpParseError::Truncated`].
+fn negotiation_structure(data: &[u8]) -> Result<(&[u8], &[u8]), RdpParseError> {
+    if let [_, _, l0, l1, ..] = data {
+        validate_negotiation_length(data[0], u16::from_le_bytes([*l0, *l1]))?;
+    }
+    ensure_len(data, usize::from(RDP_NEG_LENGTH))?;
+    Ok(data.split_at(usize::from(RDP_NEG_LENGTH)))
+}
+
+/// La correlation info annoncee par CORRELATION_INFO_PRESENT : type `0x06`,
+/// longueur 36, puis le `correlationId`. Rien a sa place reste accepte,
+/// comme en 11.6.0 ; une structure d'un autre type ou d'une autre longueur
+/// est refusee, une structure coupee aussi, et des octets apres elle de
+/// meme.
+fn correlation_info(data: &[u8]) -> Result<Option<[u8; 16]>, RdpParseError> {
+    if data.is_empty() {
+        return Ok(None);
+    }
+    if let [structure_type, _, l0, l1, ..] = data {
+        validate_correlation_info(*structure_type, u16::from_le_bytes([*l0, *l1]))?;
+    }
+    let length = usize::from(RDP_NEG_CORRELATION_INFO_LENGTH);
+    ensure_len(data, length)?;
+    if data.len() > length {
+        return Err(RdpParseError::UnexpectedX224Data(data.len() - length));
+    }
+    let mut correlation_id = [0; 16];
+    correlation_id.copy_from_slice(&data[4..20]);
+    Ok(Some(correlation_id))
 }
 
 fn mcs_pdu(user_data: &[u8]) -> Result<McsPdu<'_>, RdpParseError> {
@@ -547,6 +603,127 @@ mod tests {
         let negotiation = negotiation.expect("negociation");
         assert_eq!(negotiation.requested_protocols, 0x0b);
         assert!(negotiation.tls() && negotiation.credssp() && !negotiation.rdstls());
+    }
+
+    /// #187 : Connection Request avec RDP_NEG_CORRELATION_INFO (drapeau
+    /// `0x08`), synthetiques, conformes a §2.2.1.1.2. tshark 4.6.6 lit les
+    /// deux structures (`rdp.neg_type` 0x01 puis 0x06, `rdp.neg_length` 8
+    /// puis 36) et `rdp.correlationInfo.correlationId`.
+    const CR_CORRELATION_WITH_COOKIE: &str = concat!(
+        "0300004b46e00000000000436f6f6b69653a206d737473686173683d780d0a010808000b",
+        "00000006002400a1b2c3d4e5f60718293a4b5c6d7e8f9000000000000000000000000000000000"
+    );
+    const CR_CORRELATION_WITHOUT_COOKIE: &str = concat!(
+        "0300003732e00000000000010808000b00000006002400a1b2c3d4e5f60718293a4b5c6d",
+        "7e8f9000000000000000000000000000000000"
+    );
+    const CORRELATION_ID: [u8; 16] = [
+        0xa1, 0xb2, 0xc3, 0xd4, 0xe5, 0xf6, 0x07, 0x18, 0x29, 0x3a, 0x4b, 0x5c, 0x6d, 0x7e, 0x8f,
+        0x90,
+    ];
+
+    #[test]
+    fn test_connection_request_with_correlation_info() {
+        for (hex, expected_token) in [
+            (CR_CORRELATION_WITH_COOKIE, Some(&b"Cookie: mstshash=x"[..])),
+            (CR_CORRELATION_WITHOUT_COOKIE, None),
+        ] {
+            let packet = parse(hex);
+            assert_eq!(packet.pdus.len(), 1);
+            assert!(!packet.truncated);
+            let RdpPayload::ConnectionRequest { token, negotiation } = &packet.pdus[0].payload
+            else {
+                panic!("CR attendu");
+            };
+            assert_eq!(*token, expected_token);
+            let negotiation = negotiation.expect("negociation");
+            assert_eq!(negotiation.flags, 0x08);
+            assert!(negotiation.correlation_info_present());
+            assert_eq!(negotiation.requested_protocols, 0x0b);
+            assert!(negotiation.tls() && negotiation.credssp());
+            assert_eq!(negotiation.correlation_id, Some(CORRELATION_ID));
+        }
+
+        // Le drapeau sans la structure : accepte, comme en 11.6.0 (tshark :
+        // malforme).
+        let packet = parse("030000130ee00000000000010808000b000000");
+        let RdpPayload::ConnectionRequest { negotiation, .. } = &packet.pdus[0].payload else {
+            panic!("CR attendu");
+        };
+        let negotiation = negotiation.expect("negociation");
+        assert!(negotiation.correlation_info_present());
+        assert_eq!(negotiation.correlation_id, None);
+
+        // Sans le drapeau, la demande de negociation est faite de ses huit
+        // octets : la 11.6.0 repondait « declares 8 bytes, not 8 ».
+        let bytes = hex::decode(CR_CORRELATION_WITHOUT_COOKIE).unwrap();
+        let mut without_flag = bytes.clone();
+        without_flag[12] = 0x00;
+        assert_eq!(
+            RdpPacket::try_from(without_flag.as_slice()),
+            Err(RdpParseError::UnexpectedX224Data(36))
+        );
+        // Longueur 32 (tshark : « RDP Correlation Info length is 32, not
+        // 36 ») ou type autre que 0x06.
+        let mut length_32 = bytes.clone();
+        length_32[21] = 0x20;
+        assert_eq!(
+            RdpPacket::try_from(length_32.as_slice()),
+            Err(RdpParseError::InvalidCorrelationInfo {
+                structure_type: 0x06,
+                length: 32
+            })
+        );
+        let mut other_type = bytes.clone();
+        other_type[19] = 0x07;
+        assert_eq!(
+            RdpPacket::try_from(other_type.as_slice()),
+            Err(RdpParseError::InvalidCorrelationInfo {
+                structure_type: 0x07,
+                length: 36
+            })
+        );
+        // Structure coupee par la segmentation : le TPKT et le LI couvrent
+        // 51 octets, la correlation info n'en a que 32.
+        let mut cut = bytes[..51].to_vec();
+        cut[3] = 51;
+        cut[4] = 46;
+        assert_eq!(
+            RdpPacket::try_from(cut.as_slice()),
+            Err(RdpParseError::Truncated {
+                expected: 36,
+                actual: 32
+            })
+        );
+        // Un octet apres la correlation info.
+        let mut extra = bytes.clone();
+        extra.push(0);
+        extra[3] = 56;
+        extra[4] = 51;
+        assert_eq!(
+            RdpPacket::try_from(extra.as_slice()),
+            Err(RdpParseError::UnexpectedX224Data(1))
+        );
+
+        // Une demande de negociation coupee au milieu de ses huit octets
+        // (longueur declaree juste) : Truncated, plus « declares 8 bytes,
+        // not 8 ».
+        let bytes = hex::decode(CR_WITH_COOKIE).unwrap();
+        let packet = RdpPacket::try_from(&bytes[..43]);
+        assert_eq!(
+            packet,
+            Err(RdpParseError::Truncated {
+                expected: 8,
+                actual: 4
+            })
+        );
+        // Un Connection Confirm dont le LI couvre quatre octets apres la
+        // reponse.
+        let bytes = hex::decode("0300001712d00000123400020008000000000000000000").unwrap();
+        assert_eq!(
+            RdpPacket::try_from(bytes.as_slice()),
+            Err(RdpParseError::UnexpectedX224Data(4))
+        );
     }
 
     #[test]

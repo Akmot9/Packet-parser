@@ -363,7 +363,8 @@ incluent notamment:
   d'information (adresse, element dimensionne par la norme, en sequence ou
   non)
 - RDP (MS-RDPBCGR) sur TCP 3389 : TPKT et COTP X.224, Connection Request
-  (jeton de routage ou cookie `mstshash`, demande de negociation) et Confirm
+  (jeton de routage ou cookie `mstshash`, demande de negociation et sa
+  correlation info) et Confirm
   (reponse ou echec de negociation), puis les PDU MCS de la securite RDP
   standard (Connect-Initial/Response, Erect Domain, Attach User, Channel
   Join, Send Data avec utilisateur et canal, Disconnect Provider

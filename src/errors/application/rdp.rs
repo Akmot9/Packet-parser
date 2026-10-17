@@ -30,7 +30,9 @@ pub enum RdpParseError {
     #[error("COTP TPDU {0:#04x} is not a connection request, confirm or data TPDU")]
     UnexpectedTpdu(u8),
 
-    /// Les structures de negociation font exactement huit octets.
+    /// Une structure de negociation declare une autre longueur que ses huit
+    /// octets. Une structure coupee donne [`Self::Truncated`], des octets en
+    /// trop [`Self::UnexpectedX224Data`].
     #[error("RDP negotiation structure {structure_type} declares {length} bytes, not 8")]
     InvalidNegotiation { structure_type: u8, length: u16 },
 
@@ -46,4 +48,13 @@ pub enum RdpParseError {
     /// Longueur BER d'un Connect-Initial ou Connect-Response illisible.
     #[error("Invalid BER length in MCS connect PDU")]
     InvalidBerLength,
+
+    /// La demande de negociation annonce une correlation info
+    /// (CORRELATION_INFO_PRESENT), mais ce qui la suit n'a pas le type
+    /// `0x06` et la longueur 36 d'un RDP_NEG_CORRELATION_INFO
+    /// (MS-RDPBCGR §2.2.1.1.2). En fin d'enum : ajoutee apres la 11.6.0.
+    #[error(
+        "RDP correlation info has type {structure_type:#04x} and declares {length} bytes, not 0x06 and 36"
+    )]
+    InvalidCorrelationInfo { structure_type: u8, length: u16 },
 }

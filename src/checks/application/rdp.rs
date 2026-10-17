@@ -23,6 +23,13 @@ pub const RDP_NEG_REQUEST: u8 = 0x01;
 pub const RDP_NEG_RESPONSE: u8 = 0x02;
 pub const RDP_NEG_FAILURE: u8 = 0x03;
 
+/// Correlation info (§2.2.1.1.2) : type `0x06`, drapeaux nuls, longueur 36,
+/// `correlationId` sur seize octets, seize octets reserves. Presente apres
+/// la demande de negociation quand celle-ci leve CORRELATION_INFO_PRESENT.
+pub const RDP_NEG_CORRELATION_INFO: u8 = 0x06;
+pub const RDP_NEG_CORRELATION_INFO_LENGTH: u16 = 36;
+pub const CORRELATION_INFO_PRESENT: u8 = 0x08;
+
 /// Protocoles de securite (§2.2.1.1.1) : bits de `requestedProtocols`.
 pub const PROTOCOL_RDP: u32 = 0x0000_0000;
 pub const PROTOCOL_SSL: u32 = 0x0000_0001;
@@ -66,6 +73,17 @@ pub fn extract_tpkt_length(bytes: [u8; 2]) -> Result<u16, RdpParseError> {
 pub fn validate_negotiation_length(structure_type: u8, length: u16) -> Result<(), RdpParseError> {
     if length != RDP_NEG_LENGTH {
         return Err(RdpParseError::InvalidNegotiation {
+            structure_type,
+            length,
+        });
+    }
+    Ok(())
+}
+
+/// Une correlation info declare 36 octets, et porte le type `0x06`.
+pub fn validate_correlation_info(structure_type: u8, length: u16) -> Result<(), RdpParseError> {
+    if structure_type != RDP_NEG_CORRELATION_INFO || length != RDP_NEG_CORRELATION_INFO_LENGTH {
+        return Err(RdpParseError::InvalidCorrelationInfo {
             structure_type,
             length,
         });
