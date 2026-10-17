@@ -4,7 +4,11 @@
 // infinie ; quand le decodage reussit, les trames pavent exactement l'entree,
 // les donnees utilisateur ont la longueur annoncee, chaque objet tient dans
 // les donnees utilisateur, et toute alteration d'un seul octet d'une graine
-// reelle est rejetee : c'est le CRC qui rend le sondage aveugle sur.
+// reelle est rejetee : c'est le CRC qui rend le sondage aveugle sur. Les
+// paires (position, masque XOR) du fuzz, appliquees aux seules donnees
+// utilisateur avec des CRC recalcules, atteignent transport, application et
+// en-tetes d'objets. Elles ne forgent pas en pratique la plage complete de
+// #180, de 0 a 0xFFFFFFFF : sa trame, FULL_RANGE, est l'une de leurs graines.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
@@ -29,7 +33,8 @@ const RESPONSE: &[u8] = &[
     0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
 ];
 
-// dnp3_udp_write.pcap, trame 1 : ecriture d'une heure (g50v1) sur UDP.
+// dnp3_udp_write.pcap, trame 1 : ecriture de g80v1 sur UDP, qui efface
+// l'indication de redemarrage (IIN1.7).
 const UDP_WRITE: &[u8] = &[
     0x05, 0x64, 0x0e, 0xc4, 0x01, 0x00, 0x64, 0x00, 0xcd, 0x12, 0xcc, 0xce, 0x02, 0x50, 0x01, 0x00,
     0x07, 0x07, 0x00, 0x38, 0x35,
@@ -39,6 +44,67 @@ const UDP_WRITE: &[u8] = &[
 const LINK_STATUS: &[u8] = &[
     0x05, 0x64, 0x05, 0x8b, 0x01, 0x00, 0x64, 0x00, 0xa0, 0x97,
 ];
+
+// #180 : reponse dont l'en-tete d'objets annonce la plage complete, de 0 a
+// 0xFFFFFFFF sur quatre octets (g30v1, qualificatif 0x02).
+const FULL_RANGE: &[u8] = &[
+    0x05, 0x64, 0x15, 0x44, 0x01, 0x00, 0x02, 0x00, 0xd9, 0x76, 0xc0, 0xc0, 0x81, 0x00, 0x00, 0x1e,
+    0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x44, 0x24,
+];
+
+// #180 : lecture de la plage complete, puis de la classe 0 (g60v1) : sans
+// donnees, la chaine continue.
+const FULL_RANGE_READ: &[u8] = &[
+    0x05, 0x64, 0x16, 0xc4, 0x02, 0x00, 0x01, 0x00, 0x17, 0x3e, 0xc0, 0xc1, 0x01, 0x1e, 0x01, 0x02,
+    0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x3c, 0x01, 0x8e, 0xf4, 0x06, 0x3b, 0x4a,
+];
+
+// #182 : lecture de deux points choisis (g30v1, qualificatif 0x17, index 3
+// et 7), puis de la classe 0.
+const READ_BY_INDEX: &[u8] = &[
+    0x05, 0x64, 0x11, 0xc4, 0x02, 0x00, 0x01, 0x00, 0x29, 0xe0, 0xc0, 0xc3, 0x01, 0x1e, 0x01, 0x17,
+    0x02, 0x03, 0x07, 0x3c, 0x01, 0x06, 0xd1, 0x2a,
+];
+
+/// CRC-16/DNP, comme la crate le calcule : polynome 0x3D65 reflechi
+/// (0xA6BC), complemente.
+fn crc16(data: &[u8]) -> u16 {
+    let mut crc: u16 = 0;
+    for &byte in data {
+        crc ^= u16::from(byte);
+        for _ in 0..8 {
+            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xA6BC } else { crc >> 1 };
+        }
+    }
+    !crc
+}
+
+/// Une trame de liaison seule : ses donnees utilisateur, mutees par paires
+/// (position, masque XOR), puis tous ses CRC recalcules. L'en-tete de
+/// liaison n'est pas mute : la longueur et le decoupage en blocs restent
+/// ceux de la graine.
+fn with_fresh_crcs(frame: &[u8], mutations: &[[u8; 2]]) -> Vec<u8> {
+    let user_len = usize::from(frame[2]).saturating_sub(5);
+    let mut user: Vec<u8> = frame[10..]
+        .chunks(18)
+        .flat_map(|block| block[..block.len().saturating_sub(2)].to_vec())
+        .collect();
+    user.truncate(user_len);
+    if !user.is_empty() {
+        for [offset, mask] in mutations {
+            let offset = usize::from(*offset) % user.len();
+            user[offset] ^= mask;
+        }
+    }
+    let mut out = frame[..8].to_vec();
+    let header_crc = crc16(&out);
+    out.extend(header_crc.to_le_bytes());
+    for block in user.chunks(16) {
+        out.extend(block);
+        out.extend(crc16(block).to_le_bytes());
+    }
+    out
+}
 
 fn exercise(data: &[u8]) {
     let Ok(packet) = Dnp3Packet::try_from(data) else {
@@ -92,5 +158,17 @@ fuzz_target!(|data: &[u8]| {
             seeded[offset] ^= mask;
         }
         exercise(seeded.as_slice());
+    }
+
+    // Les memes mutations sur les seules donnees utilisateur, CRC
+    // recalcules : la trame passe la couche liaison, et les mutations
+    // atteignent transport, application et en-tetes d'objets.
+    for seed in [READ_REQUEST, RESPONSE, UDP_WRITE, FULL_RANGE, FULL_RANGE_READ, READ_BY_INDEX] {
+        let frame = with_fresh_crcs(seed, data.as_chunks::<2>().0);
+        // Au moins neuf octets de donnees utilisateur : l'en-tete applicatif
+        // tient toujours, et rien apres la liaison ne fait echouer le
+        // decodage.
+        assert!(Dnp3Packet::try_from(frame.as_slice()).is_ok(), "rebuilt frame rejected: {frame:02x?}");
+        exercise(&frame);
     }
 });

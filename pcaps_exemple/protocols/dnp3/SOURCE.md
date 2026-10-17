@@ -50,9 +50,12 @@ tranchée sur les octets :
   signature d'une vraie RTU ;
 - **`dnp3.pcap` (2004)** : trois sessions entre `10.0.0.3`, `10.0.0.8`,
   `10.0.0.9`, `192.168.66.33` et `192.168.66.34`, quatre cartes (Intel,
-  Apple, 3Com), TTL 128 ; des requêtes variées dont deux (trames 154 et 156)
-  portent un qualificatif `0x6d` que la norme ne définit pas — ce qu'un
-  générateur ne produirait pas et qu'un vieux maître produit ;
+  Apple, 3Com), TTL 128 ; des requêtes variées dont six (trames 154, 156,
+  163, 166, 174 et 176) portent un qualificatif `0xed` (bit 7 réservé mis
+  à 1, code de plage 13) que la norme ne définit pas — ce qu'un générateur
+  ne produirait pas et qu'un vieux maître produit ; tshark ne le montre que
+  dans les deux premières, les quatre autres étant des arrêts d'application
+  (fonction 18), dont il ne lit pas les objets ;
 - **`dnp3_read_p20001.pcap`** : les octets de `dnp3_read.pcap`, port
   réécrit ; gardé parce que l'issue demande de prouver le sondage sans port.
 
