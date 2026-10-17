@@ -31,6 +31,9 @@ pub const RTPS_FLAG_ENDIANNESS: u8 = 0x01;
 
 /// Identifiants de sous-message (§9.4.5.1.1), DDS Security 1.1 (§7.3.6.2)
 /// compris. Les valeurs 0x80 a 0xff sont reservees aux vendeurs.
+/// HEADER_EXTENSION (DDSI-RTPS 2.5 §9.4.5.2) : premier sous-message, juste
+/// apres l'en-tete, dont les flags annoncent les champs.
+pub const SUBMESSAGE_HEADER_EXTENSION: u8 = 0x00;
 pub const SUBMESSAGE_PAD: u8 = 0x01;
 pub const SUBMESSAGE_ACKNACK: u8 = 0x06;
 pub const SUBMESSAGE_HEARTBEAT: u8 = 0x07;
@@ -49,6 +52,51 @@ pub const SUBMESSAGE_SEC_PREFIX: u8 = 0x31;
 pub const SUBMESSAGE_SEC_POSTFIX: u8 = 0x32;
 pub const SUBMESSAGE_SRTPS_PREFIX: u8 = 0x33;
 pub const SUBMESSAGE_SRTPS_POSTFIX: u8 = 0x34;
+
+/// Flags du HEADER_EXTENSION (§9.4.5.2) : L messageLength, T
+/// rtpsSendTimestamp, U uExtension4, W wExtension8, C1 et C2 la somme de
+/// controle (C2 seul CRC-32C, C1 seul CRC-64/XZ, les deux MD5, Table 9.8),
+/// P une ParameterList jusqu'a la fin du corps.
+pub const HEADER_EXTENSION_FLAG_LENGTH: u8 = 0x02;
+pub const HEADER_EXTENSION_FLAG_TIMESTAMP: u8 = 0x04;
+pub const HEADER_EXTENSION_FLAG_UEXTENSION4: u8 = 0x08;
+pub const HEADER_EXTENSION_FLAG_WEXTENSION8: u8 = 0x10;
+pub const HEADER_EXTENSION_FLAG_CHECKSUM2: u8 = 0x20;
+pub const HEADER_EXTENSION_FLAG_CHECKSUM1: u8 = 0x40;
+pub const HEADER_EXTENSION_FLAG_PARAMETERS: u8 = 0x80;
+
+/// Longueur de la somme de controle qu'annoncent les flags C1 et C2 : zero
+/// sans somme, 4 (CRC-32C), 8 (CRC-64/XZ) ou 16 (MD5).
+pub const fn header_extension_checksum_length(flags: u8) -> usize {
+    match (
+        flags & HEADER_EXTENSION_FLAG_CHECKSUM1 != 0,
+        flags & HEADER_EXTENSION_FLAG_CHECKSUM2 != 0,
+    ) {
+        (false, false) => 0,
+        (false, true) => 4,
+        (true, false) => 8,
+        (true, true) => 16,
+    }
+}
+
+/// Longueur de la partie fixe du corps d'un HEADER_EXTENSION, celle que les
+/// flags annoncent avant la ParameterList optionnelle.
+pub const fn header_extension_fixed_length(flags: u8) -> usize {
+    let mut length = header_extension_checksum_length(flags);
+    if flags & HEADER_EXTENSION_FLAG_LENGTH != 0 {
+        length += 4;
+    }
+    if flags & HEADER_EXTENSION_FLAG_TIMESTAMP != 0 {
+        length += 8;
+    }
+    if flags & HEADER_EXTENSION_FLAG_UEXTENSION4 != 0 {
+        length += 4;
+    }
+    if flags & HEADER_EXTENSION_FLAG_WEXTENSION8 != 0 {
+        length += 8;
+    }
+    length
+}
 
 pub fn ensure_len(buf: &[u8], needed: usize) -> Result<(), RtpsParseError> {
     if buf.len() < needed {
@@ -89,7 +137,8 @@ pub fn extract_version(major: u8, minor: u8) -> Result<(u8, u8), RtpsParseError>
 /// vendeur ; les autres valeurs sont reservees.
 pub fn validate_submessage_id(id: u8, offset: usize) -> Result<u8, RtpsParseError> {
     match id {
-        SUBMESSAGE_PAD
+        SUBMESSAGE_HEADER_EXTENSION
+        | SUBMESSAGE_PAD
         | SUBMESSAGE_ACKNACK
         | SUBMESSAGE_HEARTBEAT
         | SUBMESSAGE_GAP
@@ -213,18 +262,34 @@ mod tests {
     #[test]
     fn test_submessage_ids() {
         for id in [
-            0x01, 0x06, 0x07, 0x08, 0x09, 0x0c, 0x0d, 0x0e, 0x0f, 0x12, 0x13, 0x15, 0x16, 0x30,
-            0x34, 0x80, 0xff,
+            0x00, 0x01, 0x06, 0x07, 0x08, 0x09, 0x0c, 0x0d, 0x0e, 0x0f, 0x12, 0x13, 0x15, 0x16,
+            0x30, 0x34, 0x80, 0xff,
         ] {
             assert_eq!(validate_submessage_id(id, 20), Ok(id), "{id:#04x}");
         }
-        for id in [0x00, 0x02, 0x05, 0x0a, 0x10, 0x14, 0x17, 0x2f, 0x35, 0x7f] {
+        for id in [0x02, 0x05, 0x0a, 0x10, 0x14, 0x17, 0x2f, 0x35, 0x7f] {
             assert_eq!(
                 validate_submessage_id(id, 20),
                 Err(RtpsParseError::ReservedSubmessageId { id, offset: 20 }),
                 "{id:#04x}"
             );
         }
+    }
+
+    #[test]
+    fn test_header_extension_fixed_length_follows_the_flags() {
+        assert_eq!(header_extension_fixed_length(0x01), 0);
+        // L, T et CRC-32C (la trame de #186).
+        assert_eq!(header_extension_fixed_length(0x27), 16);
+        // U, W et MD5.
+        assert_eq!(header_extension_fixed_length(0x78), 28);
+        // L et CRC-64/XZ.
+        assert_eq!(header_extension_fixed_length(0x43), 12);
+        // P seul : rien de fixe.
+        assert_eq!(header_extension_fixed_length(0x81), 0);
+        assert_eq!(header_extension_checksum_length(0x20), 4);
+        assert_eq!(header_extension_checksum_length(0x40), 8);
+        assert_eq!(header_extension_checksum_length(0x60), 16);
     }
 
     #[test]

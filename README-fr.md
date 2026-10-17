@@ -343,9 +343,12 @@ incluent notamment:
 - Bitcoin
 - RTPS (OMG DDSI-RTPS 2.x, le protocole filaire de DDS) : en-tete,
   sous-messages decoupes et types (DATA, DATA_FRAG, HEARTBEAT, ACKNACK, GAP,
-  INFO_TS, INFO_DST, INFO_SRC, sous-messages de fragments, DDS Security et
-  vendeur), identifiants d'entite, numeros de sequence et compteurs ; les
-  donnees utilisateur (CDR) et les QoS en ligne restent opaques. Reconnu par
+  INFO_TS, INFO_DST, INFO_SRC, sous-messages de fragments, HEADER_EXTENSION
+  de la 2.5 avec sa longueur de message, son horodatage d'emission, ses
+  extensions et sa somme de controle, DDS Security et vendeur), identifiants
+  d'entite, numeros de sequence et compteurs ; les donnees utilisateur
+  (CDR), les QoS en ligne et la ParameterList du HEADER_EXTENSION restent
+  opaques. Reconnu par
   son magic (`RTPS`, ou `RTPX` chez RTI) et le pavage exact de ses
   sous-messages, sur tout port UDP ; les pings RTI de seize octets
   (`NDDSPING`) sont signales aussi
