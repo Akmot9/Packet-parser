@@ -6,6 +6,8 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [11.7.0] - 2026-10-18
+
 ### Corrige
 
 - **DNP3** (#180) : `RangeSpecifier::object_count` debordait sur la plage
