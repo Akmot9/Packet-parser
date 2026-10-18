@@ -1,6 +1,19 @@
 # Roadmap packet_parser
 
-Etat au 2026-10-16 : la **11.6.0 est publiee** (tag `v11.6.0`, publication
+Etat au 2026-10-18 : la **11.7.0 est publiee** (tag `v11.7.0`, publication
+par le workflow, semver-checks vert). Mineure : les constats de la relecture
+du livre 11.6.0 soldes — reponses HTTP reconnues et decodees (#176), sondes
+sur le payload entier au-dela de `PROBE_CAP` (#184, #185), noms DNS bornes
+(#196), HEADER_EXTENSION RTPS 2.5 (#186), correlation info RDP (#187), IKE
+et BACnet alignes sur les registres (#189, #190), RADIUS complet jusqu'au
+type 190 avec les noms IANA de 124 et 125 en constantes (#191, #192), DNP3
+(#180, #181, #182), ordre JSON du modele borrowed (#193), errata de la
+documentation (#194, #188). Deprecie : `AttributeType::MipHomeAgentAddress`
+et `MipHomeAgentHost`, a renommer sur place en 12.0 (#191). Aucune rupture.
+Restent a faire : le livre et l'integration Sonar. Restent ouvertes : les
+epopees #103 (DTLS, SIP, SMB2/3), #105 et #177 (S7CommPlus, MELSOFT).
+
+Etat anterieur (2026-10-16) : la **11.6.0 est publiee** (tag `v11.6.0`, publication
 par le workflow, semver-checks vert). Mineure : le lot defense (#125 : IKE
 et ESP, DIS, STANAG 5066 SIS, RTPS, ASTERIX multi-categories) et l'epopee
 #102 (IEC 60870-5-104, BACnet/IP, GOOSE) soldes, DNP3 (#99), RDP (#100),
