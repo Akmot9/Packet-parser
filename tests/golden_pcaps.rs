@@ -374,6 +374,16 @@ fn application_classification_histogram_is_frozen() {
     // ses 2 handshakes etendus et 26 segments TLS ; les 8 datagrammes de
     // League of Legends ; dans 18 de ces trames TCP, tshark termine un record
     // TLS qu'il a reassemble — sans reassemblage, dans aucune).
+    //
+    // 2026-10-18 (#176, reponses HTTP) : "HTTP" 72 -> 146, "Unknown" 9 579
+    // -> 9 505 (-74) : les 72 reponses HTTP/1.x que la sonde, requetes
+    // seules jusque-la, laissait inconnues (41 de `tcp_ports.pcapng`, 15 de
+    // `arppoison.pcapng`, 5 de `dns_isp_hijack.pcapng`, 10 de
+    // `wireshark_11616_locate_fragment.pcap`, 1 de `http-on-port-5432.pcap`,
+    // toutes dissequees par tshark 4.6.6 sans reassemblage, la derniere avec
+    // un « Decode As »), et 2 retransmissions de reponses que tshark ne
+    // dissèque pas (`dns_isp_hijack.pcapng` trame 41, `tcp_ports.pcapng`
+    // trame 503). Parite trame par trame dans `tests/http_golden.rs`.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 6307),
@@ -389,7 +399,7 @@ fn application_classification_histogram_is_frozen() {
         ("EtherNet/IP", 4),
         ("FTP", 5),
         ("GIOP", 123),
-        ("HTTP", 72),
+        ("HTTP", 146),
         ("IEC 104", 374),
         ("IKE", 535),
         ("IP-in-IP", 5),
@@ -415,7 +425,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 9_579),
+        ("Unknown", 9_505),
         ("WireGuard", 128),
         ("mDNS", 12),
     ]

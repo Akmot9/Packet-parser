@@ -172,6 +172,29 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   ne porte un payload de plus de 18 432 octets hors six datagrammes RTPS,
   deja lus en entier : aucune etiquette ne change.
 
+- **HTTP** (#176) : la sonde ne reconnaissait que les requetes
+  (`HttpRequest::try_from`, une methode standard en tete de ligne) : une
+  reponse — `HTTP/1.1 200 OK`, `HTTP/1.1 302 Moved Temporarily`... —
+  sortait `Unknown` quand la requete qui l'avait provoquee sortait HTTP, et
+  tout le payload devait etre de l'UTF-8 valide, si bien qu'une requete dont
+  le corps binaire tenait dans le meme segment sortait `Unknown` aussi. La
+  sonde accepte desormais une reponse (ligne de statut `HTTP/<chiffre>[.<chiffre>]
+  SP <code a trois chiffres> SP [phrase]`, RFC 9112 §4, puis des en-tetes
+  valides), et seule la tete — ligne de depart et en-tetes, jusqu'au
+  premier `CRLF CRLF` — est validee en UTF-8, pour les requetes comme pour
+  les reponses : le corps est pris tel quel, image, gzip ou morceau
+  `chunked`. `HttpRequest::body` reste le corps en texte, vide quand il
+  n'est pas de l'UTF-8 ; `HttpRequest::body_bytes` porte toujours les
+  octets. Sur le corpus, 152 reponses et 144 requetes sont a parite avec
+  tshark 4.6.6 sans reassemblage (`tests/http_golden.rs`, oracle
+  `tools/http_oracle.sh`) : genre, version, methode et URI ou code et
+  phrase, trame par trame, toutes les captures de `pcaps_exemple/protocols/`
+  et l'Ultimate PCAP comprises. L'histogramme de `golden_pcaps` passe de 72
+  a 146 etiquettes HTTP (+72 reponses, +2 retransmissions de reponses que
+  tshark ne dissèque pas), et de 9 579 a 9 505 `Unknown`. Les deux reponses
+  que tshark dechiffre dans `tls12-dsb.pcapng` restent TLS : la crate ne
+  dechiffre pas.
+
 ### Ajoute
 
 - **BACnet/IP** (#190) : `ConfirmedService` nomme les services confirmes
@@ -247,6 +270,12 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   module dit cet ecart avec le §8.3.4.1. Aucune des 210 captures du corpus
   ne porte de HEADER_EXTENSION (`rtps.sm.id == 0x00` : 0 trame) :
   `rtps_golden` et l'histogramme de `golden_pcaps` ne bougent pas.
+- **HTTP** (#176) : `HttpResponse<'a>` (`version`, `status_code: u16`,
+  `reason`, `headers: HttpHeaders`, `body: &[u8]`), `TryFrom<&[u8]>`,
+  `parse_http_response` et son `Display` ; `HttpRequest::body_bytes` ;
+  `HttpParseError::MissingStatusCode` et `InvalidStatusCode(String)`, en fin
+  d'enum. `HttpHeaders` est la vue commune aux requetes et aux reponses.
+  C'est aussi la brique d'en-tete que SIP (#103) reutilisera.
 
 ### Deprecie
 

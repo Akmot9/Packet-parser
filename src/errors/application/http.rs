@@ -8,7 +8,9 @@ use thiserror::Error;
 #[derive(Debug, Error, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum HttpParseError {
-    #[error("Invalid UTF-8 in HTTP request")]
+    /// La tete du message (ligne de depart et en-tetes) n'est pas de l'UTF-8
+    /// valide. Le corps n'est pas valide : il peut etre binaire (#176).
+    #[error("Invalid UTF-8 in HTTP message head")]
     InvalidUtf8,
 
     #[error("Missing HTTP method")]
@@ -28,4 +30,14 @@ pub enum HttpParseError {
 
     #[error("Invalid HTTP header")]
     InvalidHeader,
+
+    /// Ligne de statut d'une reponse sans code (RFC 9112 §4). En fin d'enum :
+    /// ajoutee apres la 11.6.0.
+    #[error("Missing HTTP status code")]
+    MissingStatusCode,
+
+    /// Le code de statut n'est pas fait de trois chiffres. En fin d'enum :
+    /// ajoutee apres la 11.6.0.
+    #[error("Invalid HTTP status code: {0}")]
+    InvalidStatusCode(String),
 }

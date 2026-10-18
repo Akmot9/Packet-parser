@@ -39,7 +39,7 @@ use super::application::protocols::dns::DnsPacket;
 use super::application::protocols::ethernet_ip::EtherNetIpPacket;
 use super::application::protocols::ftp::FtpMessage;
 use super::application::protocols::giop::GiopPacket;
-use super::application::protocols::http::HttpRequest;
+use super::application::protocols::http::{HttpRequest, HttpResponse};
 use super::application::protocols::iec104::Iec104Packet;
 use super::application::protocols::ike::{IkePacket, UdpEncapsulation};
 use super::application::protocols::modbus_tcp::ModbusTcpPacket;
@@ -238,9 +238,12 @@ fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         // Un record TLS 1.2 va jusqu'a 18 437 octets, au-dela de PROBE_CAP.
         ProbeId::Tls => TlsPacket::try_from(payload).is_ok(),
         ProbeId::Ssh => SshPacket::try_from(payload).is_ok(),
-        // Tout le prefixe est valide en UTF-8 ; les reponses et le corps
-        // binaire relevent de #176.
-        ProbeId::Http => HttpRequest::try_from(text).is_ok(),
+        // Requete ou reponse (#176) : la tete, jusqu'au premier CRLF CRLF,
+        // est validee en UTF-8 et ligne par ligne ; sans separateur, tout le
+        // prefixe est la tete.
+        ProbeId::Http => {
+            HttpRequest::try_from(text).is_ok() || HttpResponse::try_from(text).is_ok()
+        }
         // Garde a cout constant : la sonde est tentee sur chaque paquet TCP, et
         // le Result d'un GiopPacket (qui porte desormais tout le message
         // decode) coute a construire et a liberer meme quand le magic echoue.

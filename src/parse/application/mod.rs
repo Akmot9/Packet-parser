@@ -13,11 +13,24 @@ use serde::Serialize;
 use crate::{
     errors::application::ApplicationError,
     parse::application::protocols::{
-        asterix::AsterixPacket, bacnet::BacnetPacket, dhcp::DhcpPacket, dis::DisPacket,
-        dnp3::Dnp3Packet, giop::GiopPacket, http::HttpRequest, modbus_tcp::ModbusTcpPacket,
-        mqtt::MqttPacket, ntp::NtpPacket, opcua::OpcuaPacket,
-        postgresql::is_likely_postgresql_payload, quic::QuicPacket, radius::RadiusPacket,
-        rtps::RtpsPacket, srvloc::SrvlocPacket, umas::UmasPacket, wireguard::WireGuardPacket,
+        asterix::AsterixPacket,
+        bacnet::BacnetPacket,
+        dhcp::DhcpPacket,
+        dis::DisPacket,
+        dnp3::Dnp3Packet,
+        giop::GiopPacket,
+        http::{HttpRequest, HttpResponse},
+        modbus_tcp::ModbusTcpPacket,
+        mqtt::MqttPacket,
+        ntp::NtpPacket,
+        opcua::OpcuaPacket,
+        postgresql::is_likely_postgresql_payload,
+        quic::QuicPacket,
+        radius::RadiusPacket,
+        rtps::RtpsPacket,
+        srvloc::SrvlocPacket,
+        umas::UmasPacket,
+        wireguard::WireGuardPacket,
     },
 };
 
@@ -137,7 +150,7 @@ impl TryFrom<&[u8]> for Application {
                 application_protocol: "SSH",
             });
         }
-        if HttpRequest::try_from(packet).is_ok() {
+        if HttpRequest::try_from(packet).is_ok() || HttpResponse::try_from(packet).is_ok() {
             return Ok(Application {
                 application_protocol: "HTTP",
             });
