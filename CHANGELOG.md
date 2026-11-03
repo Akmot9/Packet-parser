@@ -6,6 +6,8 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [11.8.0] - 2026-11-03
+
 ### Ajoute
 
 - **Valmet DNA** : le reseau de process des systemes de controle distribue
