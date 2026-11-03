@@ -1,6 +1,20 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-03 : la **11.7.0** est toujours la derniere version publiee
+Etat au 2026-11-03 : la **11.8.0 est publiee** (tag `v11.8.0`, publication
+par le workflow, semver-checks vert). Mineure : le decodeur **Valmet DNA**
+(8ffdec1) — le reseau de process des systemes de controle distribue
+Metso/Valmet, protocole proprietaire sans specification ni dissecteur public,
+decode a partir de la seule observation du trafic, en lecture seule, sur une
+capture du mainteneur anonymisee versee au corpus. En-tete, telegramme d'etat
+(adresse du noeud, horloge BCD, compteurs), message a etiquette, balise ;
+sonde de port tolerante sur UDP 2517/4516/4517, sonde aveugle stricte apres
+RTPS, `DecodeAsProtocol::ValmetDna` ; faute d'oracle tshark, le golden
+verifie la structure contre les en-tetes IP et la coherence des horloges et
+des compteurs. `cargo audit` au vert (#227). Aucune rupture. Restent a faire :
+le livre et la montee de Sonar_desktop_app (11.6.0 -> 11.8.0). Le seul
+chantier ouvert reste l'epopee **#207** (§1).
+
+Etat anterieur (2026-11-03, avant la 11.8.0) : la **11.7.0** est toujours la derniere version publiee
 (2026-10-18). La section « Non publie » du CHANGELOG est vide et aucune PR
 n'est ouverte. Les epopees #103, #105 et #177 ont ete fermees le 2026-10-18,
 sans etre soldees : leur reliquat est consigne au §3, a rouvrir protocole par
