@@ -1,6 +1,16 @@
 # Roadmap packet_parser
 
-Etat au 2026-10-18 : la **11.7.0 est publiee** (tag `v11.7.0`, publication
+Etat au 2026-11-03 : la **11.7.0** est toujours la derniere version publiee
+(2026-10-18). La section « Non publie » du CHANGELOG est vide et aucune PR
+n'est ouverte. Les epopees #103, #105 et #177 ont ete fermees le 2026-10-18,
+sans etre soldees : leur reliquat est consigne au §3, a rouvrir protocole par
+protocole quand les captures existent. Le seul chantier ouvert est l'epopee
+**#207** (§1) : une API L7 typee et la crate rangee. Ses correctifs sans
+rupture passent d'abord, et la 12.0 ne partira pas avant mars 2027. Hors de
+ce depot, le livre (epopee `Akmot9/packet-parser-book#66`) et
+Sonar_desktop_app sont encore epingles en 11.6.0.
+
+Etat anterieur (2026-10-18) : la **11.7.0 est publiee** (tag `v11.7.0`, publication
 par le workflow, semver-checks vert). Mineure : les constats de la relecture
 du livre 11.6.0 soldes — reponses HTTP reconnues et decodees (#176), sondes
 sur le payload entier au-dela de `PROBE_CAP` (#184, #185), noms DNS bornes
@@ -164,19 +174,26 @@ signature est forte, garde de port sinon).
 ## 1. Chantiers ouverts (issues GitHub)
 
 Les epics et leurs sous-issues sont sur GitHub, chacune avec fichiers
-concernes et critere d'acceptation.
+concernes et critere d'acceptation. Au 2026-11-03, une seule epopee est
+ouverte : **#207**, « Une API L7 a la hauteur de la verification, et la
+crate rangee ». Elle se divise en quatre features, et aucune de leurs
+taches n'est commencee.
 
-| Epic | Sujet | Etat |
-|---|---|---|
-| #38 | Nettoyage d'API pour la 10.0.0 | ✅ clos (livre en 10.0.0) |
-| #46 | Durcissements de validation (http, quic, dhcp, srvloc) | ouvert — #47 clos, #48 clos ; restent #49 et #50 |
-| #51 | Completer les parseurs (dispatch GIOP, body SLPv2, Retry QUIC) | ouvert |
-| #56 | Golden tests manquants (ethernet_ip, giop, quic) | ouvert — debloque, corpus partiellement rendu |
-| #60 | Zero-copy integral (rdata DNS, Vec postgresql/opcua/http) | ouvert |
-| #64 | Detection hors port standard : API « Decode As » + verbes non-ambigus FTP/SMTP/NNTP | ouvert |
-| #67 | Nouveaux protocoles : LLMNR (#68) et SSDP (#69) | ouvert |
-| #70 | Generaliser la regression tshark (modbus, dns, tls) | ouvert — debloque, corpus partiellement rendu |
-| #79 | Decodeur IEEE 802.3br mPackets (LINKTYPE 274) | ouvert |
+| Feature | Sujet | Priorite | Taches |
+|---|---|---|---|
+| #208 | Correctifs immediats | P1, patch ou mineure | #212 memoisation des sondes sur un `u64` (57 `ProbeId` sur 64 bits), #213 `cargo semver-checks` sur chaque PR (il ne tourne qu'au publish), #214 bench criterion sur le corpus, `perf_by_version` regenere ou retire, #215 schemas mermaid rendus sur docs.rs, #216 `Application::try_from` derive de `RULES` |
+| #210 | Forme du code | P2, aucun chemin public ne change | #221 decouper `parse/mod.rs` (2 886 lignes) et `dispatch.rs` (1 948), #222 mesurer la triplication parse/checks/errors |
+| #211 | Depot range, README reduit, releve preparee | P2 | #223 sortir l'etabli de la racine, #224 README en deux ecrans, #225 `CONTRIBUTING.md` |
+| #209 | 12.0 : API L7 typee, une seule table, les noms justes | P1, pas avant mars 2027 | #217 enum `ApplicationProtocol`, #218 `details` au L7, #219 retrait de `TryFrom<&[u8]> for Application`, #220 renommages groupes (`copt`, `mac_addres`, `NatDetection`, RADIUS 124 et 125) et `MIGRATION-12.md` |
+
+Ordre fixe par #207 : #208 d'abord, puis #210 et #211, enfin #209 en une
+seule majeure quand la fenetre de stabilite ouverte par la 11.0.0 le
+permet. Le guide de migration sera ecrit avant le premier renommage.
+
+Les epopees de l'ete 2026 qui occupaient ce tableau sont toutes closes :
+#38 le 2026-08-03 (10.0.0), #46, #51, #70 et #79 le 2026-08-19, #56, #60,
+#64 et #67 le 2026-08-20. Les paragraphes ci-dessous sont gardes pour
+l'historique des comptes de trames.
 
 **#74 est clos le 2026-08-15.** `scan_pcaps` resout desormais le LINKTYPE par
 paquet au lieu d'appeler `get_datalink()` une fois par fichier. Trois captures
@@ -192,8 +209,8 @@ trames portent 2 403 ICMPv6, 1 841 ICMP, 1 237 TCP, 818 VRRP, 777 GLBP,
 678 IS-IS et 599 NTP — autant de sources de trames reelles nouvelles pour
 #56.
 
-Priorite : **#56**, dette vis-a-vis de la regle « trames reelles
-obligatoires », desormais sans prealable.
+Priorite d'alors : **#56**, dette vis-a-vis de la regle « trames reelles
+obligatoires ». Elle est soldee le 2026-08-20.
 
 #55 a ete ferme le 2026-08-12 : il decrivait un etat perime. La detection
 TLS est cablee depuis le commit 5b12cf7 (2025-11-20) par probing aveugle
@@ -237,6 +254,10 @@ Criteres de priorisation : coherence avec le positionnement ICS/OT et
 analyse securite, force de la signature wire, disponibilite des captures,
 synergie avec le code existant.
 
+Au 2026-11-03, tous les protocoles de ces trois tableaux sont livres, sauf
+quatre : Sampled Values (Tier 2), SMB2/3, DTLS et SIP (Tier 3). Leur
+reliquat est decrit au §3.
+
 ### Tier 1 — les evidences (captures deja dans le repo ou dossier prepare)
 
 | Protocole | Detection | Notes |
@@ -279,8 +300,8 @@ Livres et **publies en 10.1.0** depuis le cadrage de cette liste :
   CHANGELOG : un parseur stateless en identifie huit sur les 542 trames
   qu'un dissecteur a etat etiquette SSH dans `The-Ultimate-PCAP`.
 
-Reste a faire, dans l'ordre. Chaque ligne porte desormais son issue : le
-suivi vit sur GitHub, pas dans ce fichier.
+La liste qui suit etait l'ordre de travail du 2026-09-20. Chaque ligne
+porte son issue : le suivi vit sur GitHub, pas dans ce fichier.
 
 > Liste rafraichie deux fois le 2026-09-20. D'abord parce que **#79** y
 > figurait en tete alors qu'il etait livre et ferme, et que la numerotation
@@ -288,29 +309,72 @@ suivi vit sur GitHub, pas dans ce fichier.
 > **NetBIOS, LLMNR (#68) et SSDP (#69)** comme restant a faire : les trois
 > sont livres, et les deux issues fermees depuis. Seul RADIUS en restait.
 > Une liste de priorites fausse coute plus cher que le temps de la relire.
+> Rafraichie de nouveau le 2026-11-03 : les six lignes sont livrees ou
+> fermees.
 
-1. **PostgreSQL** (#98) — golden sur trames reelles. Le decodeur fait 2 000 lignes
-   et compte pres de cinquante tests internes, sans une seule trame reelle
-   pour l'exercer. Le blocage est leve : le corpus de Zeek porte dix-huit
-   captures, dont `greenhouse-app.pcap` (180 trames) et surtout deux
-   **negatifs construits expres**, `http-on-port-5432.pcap` et
-   `mysql-on-port-5432.pcap`. L'arbitrage sur les reponses d'un seul octet
-   cesse d'etre une devinette : il devient une mesure de faux positifs.
-2. **DNP3** (#99) — ouvre le secteur energie. Le corpus de Zeek en porte
-   dix-sept captures, TCP et UDP, dont un port non standard qui prouve le
-   probing aveugle.
-3. **RDP** (#100) — rentabilise TPKT/COTP. Quatre captures Zeek, dont une
-   sans le cookie `mstshash` et une qui bascule en TLS.
-4. **RADIUS** (#101) — seul restant de l'ancienne ligne « au fil de l'eau ».
-5. **Tier 2 restant** (#102) : IEC 104, BACnet/IP, GOOSE/SV.
-6. **Tier 3 restant** (#103) : SMB2/3, DTLS, WireGuard, SIP.
+1. **PostgreSQL** (#98) — golden sur trames reelles, a partir du corpus de
+   Zeek (dix-huit captures, dont deux negatifs construits expres :
+   `http-on-port-5432.pcap` et `mysql-on-port-5432.pcap`). Livre en 11.6.0.
+2. **DNP3** (#99) — sondage aveugle TCP et UDP par les CRC. Livre en
+   11.6.0, puis corrige en 11.7.0 (#180, #181, #182).
+3. **RDP** (#100) — sur TPKT/COTP, avec la bascule en TLS. Livre en 11.6.0.
+4. **RADIUS** (#101) — livre en 11.6.0, registre complet jusqu'au type 190
+   en 11.7.0 (#191, #192).
+5. **Tier 2 restant** (#102) : IEC 104, BACnet/IP et GOOSE livres en
+   11.6.0. Sampled Values est ecarte, faute de capture redistribuable.
+6. **Tier 3 restant** (#103) : WireGuard livre en 11.6.0. SMB2/3, DTLS et
+   SIP ne sont pas faits ; l'epopee est fermee le 2026-10-18 (voir
+   ci-dessous).
 
-**Lot defense** (epopee #125, 2026-10-08), a planifier sur un prochain
-sprint : ASTERIX multi-categories (#119), RTPS (#120), PTP (#121), STANAG
-5066 SIS (#122), DIS (#123), IKE/ESP (#124). Le choix et ses ecartes sont
-argumentes dans `docs/protocoles-defense.md`. Les 34 captures sont deja
-versees et comptees par `tests/golden_pcaps.rs` ; en les versant, deux faux
-positifs sont apparus, #117 (SRVLOC) et #118 (DNS), corriges depuis.
+**Lot defense** (epopee #125, 2026-10-08) : solde. PTP (#121) est publie en
+11.5.0. ASTERIX multi-categories (#119), RTPS (#120), STANAG 5066 SIS
+(#122), DIS (#123) et IKE/ESP (#124) sont publies en 11.6.0. Le choix et
+ses ecartes sont argumentes dans `docs/protocoles-defense.md`. Les 34
+captures sont versees et comptees par `tests/golden_pcaps.rs`. En les
+versant, deux faux positifs sont apparus, #117 (SRVLOC) et #118 (DNS),
+corriges en 11.4.0.
+
+### Reliquat des epopees fermees le 2026-10-18
+
+Les trois epopees ont ete fermees « not planned » a la 11.7.0. Ce qui suit
+n'a pas d'issue ouverte. Quand une capture reelle existe, on ouvre une
+issue par protocole.
+
+- **SMB2/3** (#103). Signature forte (magic `0xFE 'S' 'M' 'B'`), mais
+  plusieurs PDU peuvent tenir dans un meme segment (voir #105).
+- **DTLS** (#103). Une conception a ete faite le 2026-10-15, mais pas
+  versee : elle est a reverifier avant d'ecrire du code. Elle prevoyait :
+  - une sonde aveugle sur les records classiques ;
+  - les records `tls12_cid`, dont le CID est deduit du pavage ;
+  - l'en-tete unifie de DTLS 1.3 (C=0, S=1, L=1) ;
+  - des regles de port pour CAPWAP (5246/5247), CoAP sur DTLS (5684) et
+    EtherNet/IP securise (2221) ;
+  - une place dans `RULES` apres BACnet/IP et avant DNS.
+- **SIP** (#103). La brique d'en-tete existe depuis #205 : `HttpHeaders`
+  et `split_start_line`.
+- **S7CommPlus et MELSOFT** (#177). Ils attendent des captures reelles du
+  banc ICS, car la regle du depot interdit tout golden sans trame reelle.
+- **Sampled Values** (#102), EtherType `0x88BA`. Aucune capture
+  redistribuable n'existe : mgadelha/Sampled_Values est sans licence, et
+  4SICS comme l'Ultimate PCAP n'en ont pas. Le point d'entree est le meme
+  que GOOSE et PTP : `NetworkProtocol::from_link_protocol`, puis
+  `Internet::try_from_network_parts`.
+- **Couche a etat optionnelle** (#105). Rien n'a ete mesure ni concu. Les
+  huit limitations du parseur sans etat restent vraies :
+  - SSH : 8 trames reconnues sur 542 ;
+  - GTP-U : 32 G-PDU fragmentes sur 68 ;
+  - TLS 1.3 : records a cheval sur plusieurs segments ;
+  - S7Comm : 63 retransmissions etiquetees la ou tshark en compte 38 ;
+  - IEEE 802.3br : fragments preemptibles refuses ;
+  - IPv4 fragmente : pas de `payload_protocol` ;
+  - QUIC : Short Header indecidable hors contexte ;
+  - PostgreSQL : reponses d'un seul octet.
+
+  A la reouverture, on mesure d'abord le gain sur `The-Ultimate-PCAP` :
+  trames gagnees, et flux simultanes a tenir en memoire. Ensuite seulement,
+  on tranche l'eviction, la concurrence, l'empoisonnement de l'epinglage,
+  la bascule de protocole (STARTTLS, RDP vers TLS) et la frontiere d'API.
+  Le coeur de la crate reste sans etat, car Sonar en depend.
 
 **GTP-U est livre** (#15 close, 2026-09-20), et avec lui le dernier tunnel
 de l'issue. Il vient du corpus de **Zeek** (BSD 3-clause) et non de nDPI,
@@ -339,14 +403,15 @@ etant annotee « Not real traffic ». La regle du depot les interdit. Verifier
 la provenance sur les octets — horodatage, checksums, MAC, TTL — avant de
 verser quoi que ce soit.
 
-En parallele des protocoles : solder #56 (golden tests manquants), qui est
-de la dette plus que de la feature.
+#56 (golden tests manquants), qui etait de la dette plus que de la
+feature, est solde le 2026-08-20.
 
 Sprints : `sprint_01.md` (methode de travail) et `sprint_02.md`
 (architecture multi-LINKTYPE) sont tous deux soldes sur leur definition de
-termine. Aucun sprint actif. Le seul reliquat de sprint_02 — l'unification des
-deux chemins d'erreur de liaison — est une rupture d'API et vit desormais dans
-#76 (§1 bis).
+termine. Aucun sprint actif. Le seul reliquat de sprint_02, l'unification
+des deux chemins d'erreur de liaison, etait une rupture d'API. Elle est
+soldee en 11.0.0 (#76, lot A, PR #86, §1 bis). Le rangement de ces fichiers
+hors de la racine est la tache #223.
 
 ## 4. Regles de la fenetre de stabilite
 
