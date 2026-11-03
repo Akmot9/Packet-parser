@@ -96,10 +96,9 @@ pub struct SrvlocHeaderV1<'a> {
 
 /// Body brut du message, tel que porte par [`SrvlocPacket::payload`].
 ///
-/// Cette enum publique est exhaustive : lui ajouter des variantes casserait
-/// les `match` (et patterns irrefutables) des utilisateurs, rupture reservee
-/// a la prochaine majeure (epic #76). Le decodage typed du body passe donc
-/// par [`SrvlocPacket::body`], qui retourne [`SrvlocBody`].
+/// Le decodage type du body passe par [`SrvlocPacket::body`], qui retourne
+/// [`SrvlocBody`]. Cette enum est `non_exhaustive` depuis la 11.0.0 (epic
+/// #76) : une variante typee pourrait s'y ajouter sans rupture.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum SrvlocMessage<'a> {
