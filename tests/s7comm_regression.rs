@@ -730,14 +730,19 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // Corelight), 1 110 trames Ethernet et IP brut decodees sans erreur L2 :
     // 177 -> 186 captures, 176 -> 185 fichiers lus, 69 649 -> 70 759 trames,
     // 69 607 -> 70 717 flux. Aucune n'est etiquetee S7Comm ni COTP.
-    assert_eq!(captures.len(), 186);
-    assert_eq!(opened_files, 185);
-    assert_eq!(frame_count, 70_759);
+    // 2026-11-03 (Valmet DNA) : +1 capture dans protocols/valmet_dna/ (voir
+    // SOURCE.md : capture du mainteneur, anonymisee), 720 trames
+    // Ethernet/IPv4/UDP decodees sans erreur L2 : 186 -> 187 captures,
+    // 185 -> 186 fichiers lus, 70 759 -> 71 479 trames, 70 717 -> 71 437
+    // flux. Aucune n'est etiquetee S7Comm ni COTP.
+    assert_eq!(captures.len(), 187);
+    assert_eq!(opened_files, 186);
+    assert_eq!(frame_count, 71_479);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 70_717);
+    assert_eq!(parsed_flows, 71_437);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

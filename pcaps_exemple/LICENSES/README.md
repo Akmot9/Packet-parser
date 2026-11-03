@@ -83,7 +83,8 @@ ou les conditions que ces licences obligent à reproduire.
 - **`protocols/modbus/Modbus.pcap`** : copie de la collection
   automayt/ICS-pcap, sans licence et sans origine nommée ; aucune licence
   attribuable tant que l'origine première n'est pas établie.
-- **Captures du mainteneur** (`asterix/cat048_multicast.pcap`, `mqtt`,
+- **Captures du mainteneur** (`asterix/cat048_multicast.pcap`,
+  `valmet_dna/valmet-dna-multicast-anon.pcap`, `mqtt`,
   `tls/dump.pcapng`, le labo omniORB de `giop`, `vlan`, `tunnels/vxlan`,
   `tunnels/geneve`, `sll.pcap` et `capture_sll2.pcap` à la racine) : sous la
   licence MIT du dépôt.

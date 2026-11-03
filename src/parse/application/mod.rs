@@ -30,6 +30,7 @@ use crate::{
         rtps::RtpsPacket,
         srvloc::SrvlocPacket,
         umas::UmasPacket,
+        valmet_dna::ValmetDnaPacket,
         wireguard::WireGuardPacket,
     },
 };
@@ -70,6 +71,14 @@ impl TryFrom<&[u8]> for Application {
         {
             return Ok(Application {
                 application_protocol: "RTPS",
+            });
+        }
+        // Valmet DNA : magie `AB 01`, longueur egale au datagramme moins deux
+        // et une famille connue a sa taille exacte (telegramme d'etat de 126
+        // octets, message pave par son etiquette).
+        if ValmetDnaPacket::is_blind_udp_match(packet) {
+            return Ok(Application {
+                application_protocol: "Valmet DNA",
             });
         }
         // ASTERIX n'a ni magic ni port : sa sonde exige que tous les data
@@ -394,6 +403,26 @@ mod tests {
 
         let parsed = Application::try_from(packet).unwrap();
         assert_eq!(parsed.application_protocol, "MQTT");
+    }
+
+    /// pcaps_exemple/protocols/valmet_dna/valmet-dna-multicast-anon.pcap,
+    /// trame 1 : un telegramme d'etat Valmet DNA, reconnu a l'aveugle ; la
+    /// meme trame sous une famille inconnue ne l'est pas.
+    #[test]
+    fn test_detects_valmet_dna() {
+        let mut status = hex::decode(concat!(
+            "ab01801d00ff007c00000fff001003b00000048ace4818e03d0018803f000000",
+            "000000000a0002010005000000000003010120200000000000001d00018a0052",
+            "c59c00000001ef00ab0100000000000000000000000000000000000000000000",
+            "00000000000000000000540f5bf154059702000000000000000009d609d6",
+        ))
+        .expect("hex");
+        let parsed = Application::try_from(status.as_slice()).unwrap();
+        assert_eq!(parsed.application_protocol, "Valmet DNA");
+
+        status[11] = 0xFE;
+        let parsed = Application::try_from(status.as_slice()).unwrap();
+        assert_ne!(parsed.application_protocol, "Valmet DNA");
     }
 
     #[test]

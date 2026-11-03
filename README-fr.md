@@ -432,6 +432,19 @@ incluent notamment:
   corps des dix types de message, TLV listes sans decoder leur valeur), PTPv1
   reconnu par son en-tete. Garde par port : un Delay_Req a exactement la
   forme d'un en-tete SLPv1
+- Valmet DNA (le reseau de process des systemes de controle distribue
+  Metso/Valmet ; proprietaire, sans specification publique) : decode a
+  partir de la seule observation du trafic, en lecture seule. En-tete (magie
+  `AB 01`, noeud source `0x80NN`, destination, longueur egale au datagramme
+  moins deux, famille de message), le telegramme d'etat periodique de 126
+  octets (adresse IPv4 du noeud, horloge BCD de dix octets, numero du
+  noeud, groupe multicast, deux compteurs en microsecondes) et le message a
+  etiquette (en-tete de 72 octets, longueur de l'etiquette ecrite deux fois,
+  etiquette empruntee, accesseurs texte pour la forme `:e:<classe>:<chemin>`) ;
+  les autres familles gardent leur corps en octets. Reconnu sur UDP 2517
+  (messages, toute famille) et 4516/4517 (la balise de 42 octets qui porte
+  la meme horloge), et a l'aveugle sur tout port UDP pour les deux familles
+  connues a leur taille exacte
 
 Dans `PacketFlow`, la detection de FTP, SMTP et NNTP exige a la fois un payload
 valide et leur port de controle en clair (TCP 21, 25/587 et 119

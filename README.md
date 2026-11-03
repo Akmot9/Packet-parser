@@ -412,6 +412,17 @@ Application detection is intentionally best-effort. Parser modules include:
   ten message bodies, TLVs listed without decoding their value), PTPv1
   recognised by its header. Port-guarded: a Delay_Req has exactly the shape of
   an SLPv1 header
+- Valmet DNA (the process network of Metso/Valmet distributed control
+  systems; proprietary, no public specification): decoded from traffic
+  observation alone, read-only. Header (`AB 01` magic, source node `0x80NN`,
+  destination, length equal to the datagram minus two, message kind), the
+  126-byte periodic status telegram (node IPv4 address, ten-byte BCD clock,
+  node number, multicast group, two microsecond counters) and the tag
+  message (72-byte header, tag length written twice, tag borrowed, text
+  accessors for the `:e:<class>:<path>` form); other kinds keep their body
+  as bytes. Recognised on UDP 2517 (messages, any kind) and 4516/4517 (the
+  42-byte beacon that carries the same clock), and blindly on any UDP port
+  for the two known kinds at their exact size
 
 FTP, SMTP and NNTP detection in `PacketFlow` is both parser-validated and
 restricted to their plaintext control ports (TCP 21, 25/587 and 119

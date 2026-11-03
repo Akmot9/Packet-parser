@@ -6,6 +6,33 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **Valmet DNA** : le reseau de process des systemes de controle distribue
+  Metso/Valmet, protocole proprietaire sans specification ni dissecteur
+  public, decode a partir de la seule observation du trafic — une capture
+  anonymisee, `pcaps_exemple/protocols/valmet_dna/` — en lecture seule, sans
+  code ni documentation du fournisseur. `valmet_dna::ValmetDnaPacket` lit
+  l'en-tete (magie `AB 01`, noeud source `0x80NN`, destination, longueur
+  egale au datagramme moins deux, famille `MessageKind`), le telegramme
+  d'etat de 126 octets (`StatusTelegram` : adresse IPv4 du noeud, horloge
+  BCD `DnaClock` dont l'ordre des champs est etabli sur la capture, numero
+  du noeud, groupe multicast, deux compteurs en microsecondes dont le second
+  repete le premier du telegramme precedent) et le message a etiquette
+  (`TagMessage` : longueur ecrite deux fois, etiquette empruntee,
+  `tag_text`, `class` et `path` pour la forme `:e:<classe>:<chemin>`) ; les
+  autres familles gardent leur corps en octets (`ValmetDnaMessage::Unknown`).
+  `TimeBeacon` lit la balise de 42 octets d'UDP 4516 -> 4517 (code,
+  compteur, meme horloge, adresse du noeud). Detection : sur UDP 2517, 4516
+  et 4517, toute famille et la balise ; a l'aveugle sur tout port UDP
+  (`Application::try_from`, apres RTPS), les deux familles connues a leur
+  taille exacte seulement ; `DecodeAsProtocol::ValmetDna` pour un autre
+  port. tshark n'a pas de dissecteur : `tests/valmet_dna_golden.rs` verifie
+  la structure des 720 datagrammes contre les en-tetes IP (adresse du noeud
+  et groupe) et la coherence des horloges et des compteurs d'un telegramme
+  au suivant, et fige les comptes. Histogramme golden : « Valmet DNA »
+  0 -> 720, rien d'autre ne bouge. Cible de fuzz `parse_valmet_dna`.
+
 ## [11.7.0] - 2026-10-18
 
 ### Corrige

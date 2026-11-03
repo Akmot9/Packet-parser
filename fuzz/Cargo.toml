@@ -168,6 +168,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "parse_valmet_dna"
+path = "fuzz_targets/parse_valmet_dna.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "parse_wireguard"
 path = "fuzz_targets/parse_wireguard.rs"
 test = false

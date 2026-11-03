@@ -66,6 +66,7 @@ use super::application::protocols::ssh::SshPacket;
 use super::application::protocols::stanag5066::SisPdu;
 use super::application::protocols::tls::TlsPacket;
 use super::application::protocols::umas::UmasPacket;
+use super::application::protocols::valmet_dna::ValmetDnaPacket;
 use super::application::protocols::wireguard::WireGuardPacket;
 use super::cotp_from_tpkt;
 use super::transport::Transport;
@@ -179,6 +180,11 @@ enum ProbeId {
     WireGuard,
     WireGuardBlind,
     WireGuardPort,
+    /// Sur ses ports : en-tete coherent, famille connue ou non, ou la
+    /// balise de 42 octets. A l'aveugle : les deux familles connues a leur
+    /// taille exacte seulement.
+    ValmetDna,
+    ValmetDnaBlind,
 }
 
 /// Sonde `probe` sur le payload reel. Les sondes des protocoles texte ne
@@ -301,6 +307,10 @@ fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::WireGuard => WireGuardPacket::try_from(payload).is_ok(),
         ProbeId::WireGuardPort => WireGuardPacket::is_port_udp_match(payload),
         ProbeId::WireGuardBlind => WireGuardPacket::is_blind_udp_match(payload),
+        // La longueur declaree couvre tout le datagramme moins deux ; le
+        // telegramme d'etat fait 126 octets, l'etiquette pave le message.
+        ProbeId::ValmetDna => ValmetDnaPacket::is_port_udp_match(payload),
+        ProbeId::ValmetDnaBlind => ValmetDnaPacket::is_blind_udp_match(payload),
         // Garde a cout constant sur le magic, comme GIOP ; puis les
         // sous-messages doivent paver tout le datagramme, et un DATA_FRAG de
         // 60 Ko depasse PROBE_CAP sans cesser d'etre du RTPS.
@@ -467,6 +477,18 @@ static RULES: &[Rule] = &[
     // BACnet/IP (ASHRAE 135, annexe J) sur ses ports 47808 a 47823 ; la
     // meme sonde revient a l'aveugle plus bas (#102).
     port_rule("BACnet/IP", Guard::Udp, is_bacnet_udp_port, ProbeId::Bacnet),
+    // Valmet DNA (reseau de process Metso/Valmet, proprietaire) : UDP 2517
+    // pour les messages `AB 01`, 4516 -> 4517 pour la balise — les ports
+    // observes, le protocole n'en a pas d'enregistre a son nom. Sur ces
+    // ports, une famille de message inconnue est acceptee avec son corps en
+    // octets ; ailleurs, la sonde aveugle plus bas n'accepte que les deux
+    // familles connues.
+    port_rule(
+        "Valmet DNA",
+        Guard::Udp,
+        is_valmet_dna_udp_port,
+        ProbeId::ValmetDna,
+    ),
     // RDP (MS-RDPBCGR) : TCP 3389. Garde par port : TPKT, COTP et MCS sont
     // aussi la pile de T.120 et d'ISO sur TCP, un autre port se declare par
     // Decode As. Apres une negociation TLS ou CredSSP, les segments
@@ -558,6 +580,10 @@ static RULES: &[Rule] = &[
     // le datagramme. Sonde aveugle sur UDP : Cyclone DDS et Connext Micro
     // emploient des ports unicast aleatoires (#120).
     rule("RTPS", Guard::Udp, ProbeId::Rtps),
+    // Valmet DNA : magie `AB 01`, longueur egale au datagramme moins deux et
+    // une famille connue a sa taille exacte — plus de 64 bits de contrainte,
+    // assez pour se passer du port.
+    rule("Valmet DNA", Guard::Udp, ProbeId::ValmetDnaBlind),
     // ASTERIX (surveillance aerienne) circule en UDP, le plus souvent en
     // multicast et sans port fixe : sonde structurelle (tous les data
     // blocks d'une categorie connue, records decoupes exactement selon
@@ -664,6 +690,8 @@ pub enum DecodeAsProtocol {
     /// WireGuard sur UDP : la forme du message, octets reserves compris
     /// quel que soit le type.
     WireGuard,
+    /// Valmet DNA sur UDP : messages `AB 01` de toute famille, et la balise.
+    ValmetDna,
 }
 
 impl DecodeAsProtocol {
@@ -705,6 +733,7 @@ impl DecodeAsProtocol {
             Self::Rdp => ("RDP", Guard::Tcp, ProbeId::Rdp),
             Self::Iec104 => ("IEC 104", Guard::Tcp, ProbeId::Iec104),
             Self::WireGuard => ("WireGuard", Guard::Udp, ProbeId::WireGuard),
+            Self::ValmetDna => ("Valmet DNA", Guard::Udp, ProbeId::ValmetDna),
         }
     }
 }
@@ -933,6 +962,13 @@ fn is_bacnet_udp_port(port: Option<u16>) -> bool {
 /// RADIUS : UDP 1812/1813 (IANA), 1645/1646 (historiques), 3799 (RFC 5176).
 fn is_radius_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(1812 | 1813 | 1645 | 1646 | 3799))
+}
+
+/// Valmet DNA : UDP 2517 (messages) et 4516, 4517 (balise), les ports
+/// observes sur un reseau de process ; aucun n'est enregistre au nom du
+/// protocole.
+fn is_valmet_dna_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(2517 | 4516 | 4517))
 }
 
 /// IKE : UDP 500 (IANA `isakmp`) et 4500 (IANA `ipsec-nat-t`).
@@ -1791,6 +1827,83 @@ mod tests {
         assert_eq!(label(40000, 51820, &keepalive), Some("WireGuard"));
     }
 
+    /// Valmet DNA : sur UDP 2517, une famille de message inconnue a
+    /// l'en-tete coherent est acceptee, et la balise de 42 octets sur
+    /// 4516 -> 4517 ; hors de ces ports, seules les deux familles connues
+    /// passent a l'aveugle, la balise et les familles inconnues restent
+    /// « Unknown » sauf par Decode As. Trames reelles de
+    /// pcaps_exemple/protocols/valmet_dna/valmet-dna-multicast-anon.pcap
+    /// (telegramme d'etat de la trame 1, balise de la trame 591).
+    #[test]
+    fn valmet_dna_is_lenient_on_its_ports_and_strict_elsewhere() {
+        let label = |source: u16,
+                     destination: u16,
+                     payload: &[u8],
+                     decode_as: &[(u16, DecodeAsProtocol)]| {
+            let transport = Transport {
+                protocol: TransportProtocol::Udp,
+                source_port: Some(source),
+                destination_port: Some(destination),
+                payload: Some(payload),
+                details: None,
+            };
+            classify(&transport, decode_as).map(|a| a.application_protocol)
+        };
+        let status = hex::decode(concat!(
+            "ab01801d00ff007c00000fff001003b00000048ace4818e03d0018803f000000",
+            "000000000a0002010005000000000003010120200000000000001d00018a0052",
+            "c59c00000001ef00ab0100000000000000000000000000000000000000000000",
+            "00000000000000000000540f5bf154059702000000000000000009d609d6",
+        ))
+        .unwrap();
+        assert_eq!(label(2517, 2517, &status, &[]), Some("Valmet DNA"));
+        assert_eq!(label(40000, 40001, &status, &[]), Some("Valmet DNA"));
+
+        let mut unknown_kind = status.clone();
+        unknown_kind[11] = 0xFE;
+        assert_eq!(label(2517, 2517, &unknown_kind, &[]), Some("Valmet DNA"));
+        assert_eq!(label(40000, 40001, &unknown_kind, &[]), Some("Unknown"));
+        assert_eq!(
+            label(
+                40000,
+                40001,
+                &unknown_kind,
+                &[(40001, DecodeAsProtocol::ValmetDna)]
+            ),
+            Some("Valmet DNA")
+        );
+
+        let beacon = hex::decode(concat!(
+            "00000000abcc0006238000003e0f252702d8ffe0000000000000000086950900",
+            "0003010120200a000209",
+        ))
+        .unwrap();
+        assert_eq!(label(4516, 4517, &beacon, &[]), Some("Valmet DNA"));
+        assert_eq!(label(40000, 40001, &beacon, &[]), Some("Unknown"));
+        assert_eq!(
+            label(
+                40000,
+                40001,
+                &beacon,
+                &[(40000, DecodeAsProtocol::ValmetDna)]
+            ),
+            Some("Valmet DNA")
+        );
+        // La garde de transport reste : le meme telegramme sur TCP n'est pas
+        // du Valmet DNA, Decode As compris.
+        let tcp = Transport {
+            protocol: TransportProtocol::Tcp,
+            source_port: Some(2517),
+            destination_port: Some(2517),
+            payload: Some(&status),
+            details: None,
+        };
+        assert_ne!(
+            classify(&tcp, &[(2517, DecodeAsProtocol::ValmetDna)]).map(|a| a.application_protocol),
+            Some("Valmet DNA")
+        );
+    }
+
     /// Anti-derive (revue 10.4.0) : chaque protocole Decode-As doit se
     /// resoudre vers une etiquette et une sonde que la table connait — les
     /// deux encodages ne peuvent pas diverger silencieusement.
@@ -1825,6 +1938,7 @@ mod tests {
             DecodeAsProtocol::Rdp,
             DecodeAsProtocol::Iec104,
             DecodeAsProtocol::WireGuard,
+            DecodeAsProtocol::ValmetDna,
         ];
         // Decode As plus tolerant que la regle de port, a dessein : un port
         // declare est du WireGuard, octets reserves de Cloudflare compris
@@ -1916,6 +2030,7 @@ mod tests {
                 "NNTP",
                 "NTP",
                 "RTPS",
+                "Valmet DNA",
                 "ASTERIX",
                 "DIS",
                 "DNP3",

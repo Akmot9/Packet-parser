@@ -384,6 +384,18 @@ fn application_classification_histogram_is_frozen() {
     // un « Decode As »), et 2 retransmissions de reponses que tshark ne
     // dissèque pas (`dns_isp_hijack.pcapng` trame 41, `tcp_ports.pcapng`
     // trame 503). Parite trame par trame dans `tests/http_golden.rs`.
+    //
+    // 2026-11-03 (Valmet DNA) : +1 capture
+    // protocols/valmet_dna/valmet-dna-multicast-anon.pcap (capture du
+    // mainteneur, anonymisee : 720 datagrammes UDP multicast en douze
+    // secondes, 319 telegrammes d'etat de 17 noeuds et 400 messages a
+    // etiquette sur UDP 2517, une balise sur UDP 4516 -> 4517). Le decodeur
+    // les etiquette tous : "Valmet DNA" 0 -> 720. tshark n'a pas de
+    // dissecteur ; tests/valmet_dna_golden.rs verifie la structure contre
+    // les en-tetes IP et la coherence des horloges et des compteurs. La
+    // sonde aveugle exige la magie `AB 01`, une longueur egale au datagramme
+    // moins deux et une famille connue a sa taille exacte : rien d'autre ne
+    // bouge dans le reste du corpus.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 6307),
@@ -426,6 +438,7 @@ fn application_classification_histogram_is_frozen() {
         ("RTPS", 231),
         ("STANAG 5066", 34),
         ("Unknown", 9_505),
+        ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),
     ]
