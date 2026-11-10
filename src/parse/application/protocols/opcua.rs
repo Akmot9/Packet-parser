@@ -67,6 +67,8 @@ pub enum OpcuaMessageType {
 #[non_exhaustive]
 pub enum OpcuaChunkType {
     Final,
+    /// PR de test #213, a ne pas fusionner : variante inseree au milieu.
+    Reserved,
     Intermediate,
     Abort,
 }
