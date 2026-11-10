@@ -195,7 +195,7 @@ taches n'est commencee.
 
 | Feature | Sujet | Priorite | Taches |
 |---|---|---|---|
-| #208 | Correctifs immediats | P1, patch ou mineure | #212 memoisation des sondes sur un `u64` (57 `ProbeId` sur 64 bits), #213 `cargo semver-checks` sur chaque PR (il ne tourne qu'au publish), #214 bench criterion sur le corpus, `perf_by_version` regenere ou retire, #215 schemas mermaid rendus sur docs.rs, #216 `Application::try_from` derive de `RULES` |
+| #208 | Correctifs immediats | P1, patch ou mineure | #212 memoisation des sondes sur un `u64` (59 `ProbeId` sur 64 bits depuis la 11.8.0), #213 `cargo semver-checks` sur chaque PR (il ne tourne qu'au publish), #214 bench criterion sur le corpus, `perf_by_version` regenere ou retire, #215 schemas mermaid rendus sur docs.rs, #216 `Application::try_from` derive de `RULES` |
 | #210 | Forme du code | P2, aucun chemin public ne change | #221 decouper `parse/mod.rs` (2 886 lignes) et `dispatch.rs` (1 948), #222 mesurer la triplication parse/checks/errors |
 | #211 | Depot range, README reduit, releve preparee | P2 | #223 sortir l'etabli de la racine, #224 README en deux ecrans, #225 `CONTRIBUTING.md` |
 | #209 | 12.0 : API L7 typee, une seule table, les noms justes | P1, pas avant mars 2027 | #217 enum `ApplicationProtocol`, #218 `details` au L7, #219 retrait de `TryFrom<&[u8]> for Application`, #220 renommages groupes (`copt`, `mac_addres`, `NatDetection`, RADIUS 124 et 125) et `MIGRATION-12.md` |
