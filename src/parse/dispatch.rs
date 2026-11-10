@@ -114,10 +114,20 @@ impl Guard {
     }
 }
 
+/// Masque de memoisation de [`classify`] : un bit par [`ProbeId`].
+type ProbeMask = u128;
+
 /// Identite d'une sonde de contenu. Deux regles peuvent partager la meme
 /// sonde (port prioritaire puis repli aveugle) : la memoisation par identite
 /// garantit qu'elle ne s'execute qu'une fois par payload. Un bit du masque
-/// u64 par identifiant.
+/// [`ProbeMask`] par identifiant.
+///
+/// Limite : 128 identifiants (`ProbeMask::BITS`). Une variante s'ajoute en
+/// fin d'enum et devient [`ProbeId::LAST`]. L'assertion qui suit l'enum
+/// refuse de compiler au-dela de la limite, et le test
+/// `probe_count_is_the_number_of_variants` verifie que `LAST` est bien la
+/// derniere variante (#212). Au-dela, `1 << 128` paniquerait en debug et
+/// replierait le bit sur celui de `Snmp` en release.
 #[derive(Clone, Copy)]
 #[repr(u32)]
 enum ProbeId {
@@ -186,6 +196,23 @@ enum ProbeId {
     ValmetDna,
     ValmetDnaBlind,
 }
+
+impl ProbeId {
+    /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
+    const LAST: Self = Self::ValmetDnaBlind;
+    /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
+    const COUNT: u32 = Self::LAST as u32 + 1;
+
+    /// Le bit de cette sonde dans le masque de memoisation.
+    const fn bit(self) -> ProbeMask {
+        1 << self as u32
+    }
+}
+
+const _: () = assert!(
+    ProbeId::COUNT <= ProbeMask::BITS,
+    "ProbeId depasse la largeur du masque de memoisation (ProbeMask)"
+);
 
 /// Sonde `probe` sur le payload reel. Les sondes des protocoles texte ne
 /// lisent que [`PROBE_CAP`] octets ; toutes les autres jugent les octets que
@@ -750,7 +777,7 @@ pub(super) fn classify(
     if payload.is_empty() {
         return None;
     }
-    let mut failed_probes: u64 = 0;
+    let mut failed_probes: ProbeMask = 0;
 
     // Ports declares par l'appelant (« Decode As ») : evalues avant la
     // table, port ET contenu, garde de transport conservee. Un echec est
@@ -766,7 +793,7 @@ pub(super) fn classify(
             if !guard.admits(transport.protocol) {
                 continue;
             }
-            let bit = 1u64 << probe as u64;
+            let bit = probe.bit();
             if failed_probes & bit == 0 && run_probe(probe, payload) {
                 return Some(Application {
                     application_protocol: label,
@@ -790,7 +817,7 @@ pub(super) fn classify(
             continue;
         }
 
-        let bit = 1u64 << rule.probe as u64;
+        let bit = rule.probe.bit();
         let matched = failed_probes & bit == 0 && run_probe(rule.probe, payload);
         if matched {
             return Some(Application {
@@ -1904,42 +1931,46 @@ mod tests {
         );
     }
 
+    /// Toutes les variantes de [`DecodeAsProtocol`], pour les tests qui
+    /// parcourent ses regles.
+    const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 28] = [
+        DecodeAsProtocol::Ftp,
+        DecodeAsProtocol::Smtp,
+        DecodeAsProtocol::Nntp,
+        DecodeAsProtocol::Cotp,
+        DecodeAsProtocol::Dns,
+        DecodeAsProtocol::Mdns,
+        DecodeAsProtocol::Llmnr,
+        DecodeAsProtocol::Ssdp,
+        DecodeAsProtocol::Nbns,
+        DecodeAsProtocol::Nbss,
+        DecodeAsProtocol::Snmp,
+        DecodeAsProtocol::Dhcpv6,
+        DecodeAsProtocol::OpcUa,
+        DecodeAsProtocol::PostgreSql,
+        DecodeAsProtocol::ModbusTcp,
+        DecodeAsProtocol::EthernetIp,
+        DecodeAsProtocol::Ams,
+        DecodeAsProtocol::QuicShortHeader,
+        DecodeAsProtocol::OpenVpn,
+        DecodeAsProtocol::Ptp,
+        DecodeAsProtocol::Stanag5066,
+        DecodeAsProtocol::Dis,
+        DecodeAsProtocol::Ike,
+        DecodeAsProtocol::Esp,
+        DecodeAsProtocol::Rdp,
+        DecodeAsProtocol::Iec104,
+        DecodeAsProtocol::WireGuard,
+        DecodeAsProtocol::ValmetDna,
+    ];
+
     /// Anti-derive (revue 10.4.0) : chaque protocole Decode-As doit se
     /// resoudre vers une etiquette et une sonde que la table connait — les
     /// deux encodages ne peuvent pas diverger silencieusement.
     #[test]
     fn decode_as_protocols_resolve_to_table_rules() {
         use ProbeId as P;
-        let all = [
-            DecodeAsProtocol::Ftp,
-            DecodeAsProtocol::Smtp,
-            DecodeAsProtocol::Nntp,
-            DecodeAsProtocol::Cotp,
-            DecodeAsProtocol::Dns,
-            DecodeAsProtocol::Mdns,
-            DecodeAsProtocol::Llmnr,
-            DecodeAsProtocol::Ssdp,
-            DecodeAsProtocol::Nbns,
-            DecodeAsProtocol::Nbss,
-            DecodeAsProtocol::Snmp,
-            DecodeAsProtocol::Dhcpv6,
-            DecodeAsProtocol::OpcUa,
-            DecodeAsProtocol::PostgreSql,
-            DecodeAsProtocol::ModbusTcp,
-            DecodeAsProtocol::EthernetIp,
-            DecodeAsProtocol::Ams,
-            DecodeAsProtocol::QuicShortHeader,
-            DecodeAsProtocol::OpenVpn,
-            DecodeAsProtocol::Ptp,
-            DecodeAsProtocol::Stanag5066,
-            DecodeAsProtocol::Dis,
-            DecodeAsProtocol::Ike,
-            DecodeAsProtocol::Esp,
-            DecodeAsProtocol::Rdp,
-            DecodeAsProtocol::Iec104,
-            DecodeAsProtocol::WireGuard,
-            DecodeAsProtocol::ValmetDna,
-        ];
+        let all = DECODE_AS_PROTOCOLS;
         // Decode As plus tolerant que la regle de port, a dessein : un port
         // declare est du WireGuard, octets reserves de Cloudflare compris
         // (le recours que l'heuristique de Wireshark indique), la ou 51820
@@ -1989,12 +2020,27 @@ mod tests {
         );
     }
 
-    /// La memoisation exige un identifiant de sonde par bit d'un u64.
+    /// `ProbeId::COUNT` est le nombre de variantes (#212). Toute variante
+    /// est construite par une regle de `RULES` ou de Decode As (une variante
+    /// jamais construite echoue au lint `dead_code`, clippy `-D warnings`) :
+    /// le plus grand identifiant qu'elles portent est donc la derniere
+    /// variante. Une sonde ajoutee en fin d'enum sans deplacer
+    /// `ProbeId::LAST` fait echouer ce test.
     #[test]
-    fn probe_ids_fit_the_memoization_bitmask() {
-        for rule in RULES {
-            assert!((rule.probe as u32) < 64);
-        }
+    fn probe_count_is_the_number_of_variants() {
+        let decode_as = DECODE_AS_PROTOCOLS.iter().flat_map(|protocol| {
+            [TransportProtocol::Tcp, TransportProtocol::Udp]
+                .map(|transport| protocol.rule(transport).2 as u32)
+        });
+        let highest = RULES
+            .iter()
+            .map(|rule| rule.probe as u32)
+            .chain(decode_as)
+            .max()
+            .expect("la table a des regles");
+        assert_eq!(highest, ProbeId::LAST as u32);
+        assert_eq!(ProbeId::COUNT, highest + 1);
+        assert_eq!(ProbeId::LAST.bit(), 1 << (ProbeId::COUNT - 1));
     }
 
     /// L'invariant central de la table : une regle a port sans garde de

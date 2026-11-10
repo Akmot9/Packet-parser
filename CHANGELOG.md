@@ -6,6 +6,20 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Corrige
+
+- **Dispatch** (#212) : la memoisation des sondes tenait sur un `u64`,
+  alors que `ProbeId` compte 59 identifiants en 11.8.0. Au 65e, le
+  decalage aurait panique en debug et, en release, replie son bit sur celui
+  de SNMP : un echec de l'une aurait fait sauter l'autre sans qu'aucun test
+  ne le voie. Le masque passe a 128 bits. Une assertion de compilation
+  refuse un identifiant de plus, et un test verifie que `ProbeId::LAST`
+  est bien la derniere variante. Types internes : aucune API ne change, et
+  l'histogramme golden ne bouge pas.
+- **Fuzz** (#230) : `parse_valmet_dna` echouait la nuit sur un en-tete
+  seul de 12 octets. Le corps vide pointe sur la fin de l'entree, que
+  l'oracle excluait. Le decodeur etait correct.
+
 ## [11.8.0] - 2026-11-03
 
 ### Ajoute
