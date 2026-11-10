@@ -46,6 +46,13 @@ const BEACON: &[u8] = &[
     0x00, 0x03, 0x01, 0x01, 0x20, 0x20, 0x0a, 0x00, 0x02, 0x09,
 ];
 
+// #230 : un en-tete seul, de longueur coherente (10 = 12 - 2) et de famille
+// inconnue, est decode avec un corps vide. Entree du fuzz nocturne du
+// 2026-11-04, construite et non capturee : elle garde ce cas sous le fuzz.
+const HEADER_ONLY: &[u8] = &[
+    0xab, 0x01, 0x81, 0x15, 0x0c, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x00,
+];
+
 fn check_clock(clock: &DnaClock) {
     assert!(clock.fraction <= 9999);
     assert!(clock.second <= 59 && clock.minute <= 59 && clock.hour <= 23);
@@ -59,8 +66,10 @@ fn exercise(data: &[u8]) {
     let known_kind = match ValmetDnaPacket::try_from(data) {
         Ok(packet) => {
             assert_eq!(usize::from(packet.length) + 2, data.len());
-            assert_eq!(packet.body.len(), data.len() - 12);
-            assert!(data.as_ptr_range().contains(&packet.body.as_ptr()));
+            // Le corps est exactement la fin de l'entree, empruntee. Un corps
+            // vide pointe sur la fin de `data`, que `as_ptr_range()` exclut :
+            // comparer les deux tranches, adresse et longueur (#230).
+            assert!(std::ptr::eq(packet.body, &data[12..]));
             assert_eq!(packet.node_number(), (packet.source_node & 0xFF) as u8);
             match packet.message {
                 ValmetDnaMessage::Status(status) => {
@@ -110,9 +119,9 @@ fuzz_target!(|data: &[u8]| {
     exercise(data);
 
     // Deux octets de fuzz choisissent une position et une mutation XOR sur
-    // une graine reelle : en-tete, familles, longueurs, horloge et etiquette
-    // sont atteints des le depart.
-    for seed in [STATUS_TELEGRAM, TAG_MESSAGE, BEACON] {
+    // une graine (trois trames reelles, et l'en-tete seul de #230) : en-tete,
+    // familles, longueurs, horloge et etiquette sont atteints des le depart.
+    for seed in [STATUS_TELEGRAM, TAG_MESSAGE, BEACON, HEADER_ONLY] {
         let mut seeded = seed.to_vec();
         for [offset, mask] in data.as_chunks::<2>().0 {
             let offset = usize::from(*offset) % seeded.len();
