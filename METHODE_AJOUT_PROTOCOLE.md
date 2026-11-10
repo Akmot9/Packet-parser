@@ -355,9 +355,12 @@ ports qui l'interdisent (`ports_veto`), une sonde (`ProbeId`, executee par
 regles a port d'abord, parmi lesquelles s'intercalent quatre regles sans port
 (S7Comm, et les verbes non ambigus de FTP, SMTP et NNTP), puis la cascade
 aveugle. Une sonde s'execute au plus une fois par payload (memoisation par
-`ProbeId`, un bit d'un `u64` : 57 identifiants sur 64 en 11.6.0, borne
-verifiee par `probe_ids_fit_the_memoization_bitmask`) et ne voit que les
-`PROBE_CAP` premiers octets (18 Kio), sauf si elle lit `full_payload`.
+`ProbeId`, un bit d'un `u128` : 59 identifiants sur 128 en 11.8.0 ; une
+assertion de compilation refuse le 129e, et
+`probe_count_is_the_number_of_variants` verifie que `ProbeId::LAST` est la
+derniere variante, #212). Elle juge le payload entier, comme son decodeur ;
+seules les sondes des protocoles texte s'arretent aux `PROBE_CAP` premiers
+octets (18 Kio, #184, #185).
 
 Trois voies existent, selon la force de la signature du protocole sur le wire
 et les transports sur lesquels il est defini.
@@ -378,8 +381,12 @@ liste aveugle de la table dans l'ordre de cette cascade.
 // src/parse/dispatch.rs
 enum ProbeId {
     // ...
-    Foo,
+    Foo, // en fin d'enum
 }
+
+// impl ProbeId : la derniere variante, que verifie
+// probe_count_is_the_number_of_variants
+const LAST: Self = Self::Foo;
 
 // dans run_probe
 ProbeId::Foo => FooPacket::try_from(payload).is_ok(),
