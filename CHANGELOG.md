@@ -20,6 +20,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   seul de 12 octets. Le corps vide pointe sur la fin de l'entree, que
   l'oracle excluait. Le decodeur etait correct.
 
+### Infrastructure
+
+- **CI** (#213) : `cargo semver-checks` tourne sur chaque PR et sur main
+  (job `semver`), et plus seulement au tag. Deux discriminants decales
+  avaient deja passe tous les tests sans etre vus. L'API est comparee a la
+  derniere version publiee. Tant que Cargo.toml la repete, le job suppose
+  une mineure : seule une rupture echoue. Une fois Cargo.toml bumpe, c'est
+  le bump declare qui compte.
+
 ## [11.8.0] - 2026-11-03
 
 ### Ajoute

@@ -544,7 +544,7 @@ tshark -r capture.pcap -Y "frame.number==5" -T fields -e tcp.payload
 - Les validations et extractions sont dans un fichier separe sous `src/checks` (pas de validation inline dans le parseur).
 - Le type principal a une rustdoc avec un schema Mermaid `packet-beta`.
 - Les `mod.rs` necessaires exportent le nouveau module.
-- La compatibilite semver de l'API publique est preservee : une variante ajoutee a un type `#[non_exhaustive]` est additive (mineure) ; renommer, retirer, ou ajouter une variante a un enum public exhaustif exige une version majeure. Verifiable par `cargo semver-checks check-release`, que le workflow de publication execute avant tout `cargo publish`.
+- La compatibilite semver de l'API publique est preservee : une variante ajoutee a un type `#[non_exhaustive]` est additive (mineure) ; renommer, retirer, ou ajouter une variante a un enum public exhaustif exige une version majeure. Une variante s'ajoute en fin d'enum : inseree plus haut, elle decale le discriminant de toutes les suivantes, ce qui est une rupture meme pour un enum `#[non_exhaustive]`. Ces regles sont gatees : le job `semver` de la CI lance `cargo semver-checks check-release` sur chaque PR et sur main et refuse toute rupture non annoncee (#213), puis le workflow de publication le relance avant tout `cargo publish`. Tant que Cargo.toml repete la version publiee, le job suppose une mineure ; une rupture voulue s'annonce en passant Cargo.toml a la majeure suivante dans la PR qui casse.
 - La voie de detection est choisie et justifiee : probing a l'aveugle si la
   signature et les transports le permettent, contrainte de transport si elle
   est necessaire, garde de port si la signature reste ambigue.
@@ -570,5 +570,5 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo +nightly fuzz build
 cargo audit
 cargo deny check --hide-inclusion-graph
-cargo semver-checks check-release   # compare l'API publique a la derniere version publiee
+cargo semver-checks check-release -p packet_parser --release-type minor   # comme le job semver de la CI, tant que Cargo.toml n'est pas bumpe
 ```

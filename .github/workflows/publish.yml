@@ -39,6 +39,10 @@ jobs:
       # plus fort que celui annonce par Cargo.toml. Une majeure deliberee
       # passe donc sans obstacle ; c'est la mineure ou la patch qui casse
       # sans le dire qui est arretee ici.
+      #
+      # Le job `semver` de ci.yml fait le meme controle sur chaque PR, mais
+      # suppose une mineure tant que Cargo.toml n'est pas bumpe (#213). Ici,
+      # aucune hypothese : c'est le bump reel du tag qui est compare.
       - name: Install cargo-semver-checks
         run: cargo install cargo-semver-checks --locked
 
