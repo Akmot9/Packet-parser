@@ -53,6 +53,57 @@ jobs:
       - name: Build
         run: cargo build --release --all-features --locked
 
+  # L'API publique de chaque PR et de main est comparee a la derniere version
+  # publiee sur crates.io (#213). Le gate ne tournait qu'au tag
+  # (publish.yml) : deux discriminants decales (`IpType::Broadcast` pendant
+  # l'epic 11.0.0, `LinkLayerError::InvalidAddressFamily` sur #95) avaient
+  # compile et passe tous les tests, et ne s'etaient vus qu'a la main.
+  #
+  # Entre deux releases, Cargo.toml repete la version publiee, puisque le
+  # bump se fait dans la PR de release. L'outil supposerait alors un patch et
+  # refuserait une simple depreciation : le job annonce une mineure, et seule
+  # une rupture echoue. Des que Cargo.toml est bumpe, c'est le bump declare
+  # qui compte : 11.9.0 refuse une rupture, 12.0.0 l'accepte. Une majeure
+  # s'annonce donc dans Cargo.toml des la premiere PR qui casse. Le gate de
+  # publish.yml garde le dernier mot : il compare le tag au bump reel.
+  semver:
+    name: Semver checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Read the latest published version
+        id: baseline
+        shell: bash
+        run: |
+          published=$(curl -sSfL --retry 3 \
+            -A "packet_parser-ci (https://github.com/Akmot9/Packet-parser)" \
+            https://crates.io/api/v1/crates/packet_parser \
+            | jq -er '.crate.max_stable_version')
+          current=$(cargo metadata --no-deps --format-version 1 \
+            | jq -er '.packages[] | select(.name == "packet_parser") | .version')
+          echo "Cargo.toml : $current ; crates.io : $published"
+          echo "version=$published" >> "$GITHUB_OUTPUT"
+          if [ "$current" = "$published" ]; then
+            echo "release-type=minor" >> "$GITHUB_OUTPUT"
+          fi
+
+      # L'action telecharge le binaire precompile (pas de `cargo install`) et
+      # met en cache le rustdoc de la baseline. Un `release-type` vide n'est
+      # pas transmis : l'outil deduit alors le bump de Cargo.toml.
+      - name: Check API compatibility against the published version
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          package: packet_parser
+          baseline-version: ${{ steps.baseline.outputs.version }}
+          release-type: ${{ steps.baseline.outputs.release-type }}
+          rust-toolchain: manual
+
   # La MSRV declaree dans Cargo.toml (rust-version) doit rester vraie :
   # let-chains et is_multiple_of exigent 1.88. Seule la crate publiee est
   # verifiee — les membres du workspace ne sont pas publies.
