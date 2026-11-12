@@ -10,7 +10,7 @@ Ce document decrit la methode a suivre pour ajouter un protocole dans la librair
 - La strategie par defaut est zero-copy : aucune copie du paquet, du payload ou des champs variables.
 - Les erreurs doivent utiliser `thiserror`.
 - Les erreurs doivent etre dans un fichier dedie au protocole.
-- Les validations et extractions controlees doivent etre dans un fichier separe du parseur.
+- Les validations et extractions controlees doivent etre separees du parseur : dans un fichier de `src/checks`, ou, pour un petit decodeur, dans un module prive du fichier de parse (voir « Organisation des fichiers », #222).
 - Le parseur doit retourner une erreur specifique des qu'une valeur de structure est invalide.
 - La rustdoc du type principal doit documenter le format du paquet avec un schema Mermaid `packet-beta`.
 - Les tests doivent couvrir au minimum un paquet valide, les tailles invalides, et les champs invalides importants.
@@ -119,6 +119,76 @@ src/parse/application/protocols/foo/...
 
 Dans ce cas, garder la meme separation logique. Le fichier d'erreur peut s'appeler `error.rs` dans le dossier du protocole seulement si le protocole est autonome en sous-modules, mais la convention actuelle du projet est de centraliser les erreurs dans `src/errors/<couche>/<protocole>.rs`.
 
+### Petit decodeur : checks dans le fichier de parse (#222)
+
+La separation en trois fichiers a ete mesuree le 2026-11-12 sur les 53
+protocoles qui ont un fichier de checks (`python3 tools/measure_checks.py`,
+table jointe a l'issue #222). Sur 499 fonctions `pub` ou `pub(crate)` de
+`src/checks/`, 392 (79 %) n'ont qu'un site d'appel hors tests, et 312
+(63 %) sont des gardes d'une ou deux instructions. Trois seulement servent
+hors de leur protocole : les deux helpers communs aux protocoles texte
+(`find_text_line_fault` et `find_data_block_fault`, dans
+`src/checks/application/mod.rs`) et `is_plausible_short_header`, qu'appelle
+la sonde QUIC de `dispatch.rs`. Aucune ne sert a `tests/`, `fuzz/` ou
+`benches/` : `checks` est `pub(crate)` depuis la 11.0.0, et les oracles du
+fuzz recopient les regles au lieu de les importer, par principe (#108).
+Un test appelle directement 72 % des fonctions, ce qu'un module prive
+permet aussi : un `mod tests` voit les fonctions privees de son fichier.
+Pour un petit decodeur, le fichier separe ne rapporte donc rien, et il
+coute un troisieme fichier, un import par fonction dans le parseur et un
+nom visible de toute la crate pour chaque garde.
+
+Regle pour un nouveau protocole : ses checks vont dans un module prive
+`mod checks` de son fichier de parse quand les deux conditions tiennent :
+
+1. aucune fonction de checks n'est appelee hors de ce fichier, ni par une
+   sonde de `dispatch.rs`, ni par un autre protocole ;
+2. le fichier de parse, module `checks` compris, compte au plus 300 lignes
+   de code hors commentaires et tests
+   (`python3 tools/measure_checks.py --lines <fichier>`). C'est a peu pres
+   la mediane parseur + checks des decodeurs existants (310) : 26 sur 53
+   rempliraient les deux conditions.
+
+Sinon, et des que l'une des deux cesse de tenir, les checks passent dans
+`src/checks/<couche>/<protocole>.rs`, comme decrit a la section 2. Rien
+d'autre ne change : memes formes `extract_*` et `validate_*`, `TryFrom` qui
+ne fait qu'enchainer les appels, fonctions en `pub(super)` que le
+compilateur cantonne au fichier, tests des checks dans le `mod tests` du
+fichier. Les erreurs restent dans `src/errors/<couche>/<protocole>.rs` dans
+tous les cas : elles sont publiques (`packet_parser::errors::...`), et un
+consommateur doit les trouver au meme chemin pour tous les protocoles. Les
+decodeurs existants ne bougent pas : les deplacer ferait 26 diffs a relire
+sans rien changer au comportement.
+
+```rust
+// src/parse/application/protocols/foo.rs
+use crate::errors::application::foo::FooError;
+
+impl<'a> TryFrom<&'a [u8]> for FooPacket<'a> {
+    type Error = FooError;
+
+    fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
+        checks::validate_foo_min_length(packet)?;
+        let version = checks::extract_foo_version(packet[0])?;
+        // ...
+    }
+}
+
+mod checks {
+    use crate::errors::application::foo::FooError;
+
+    const FOO_MIN_LENGTH: usize = 8;
+
+    pub(super) fn validate_foo_min_length(packet: &[u8]) -> Result<(), FooError> {
+        // ...
+    }
+
+    pub(super) fn extract_foo_version(byte: u8) -> Result<u8, FooError> {
+        // ...
+    }
+}
+```
+
 ## 1. Creer le type d'erreur
 
 Les erreurs doivent etre precises et exploitables. Ne pas utiliser `String` comme erreur principale si une variante dediee est possible.
@@ -151,7 +221,7 @@ Exemple existant a suivre : `src/errors/transport/tcp.rs` et `src/errors/applica
 
 ## 2. Creer les validations dans `checks`
 
-Les controles de taille, de bornes et de coherence doivent etre sortis du parseur : la validation vit dans `checks`, le parseur ne fait qu'enchainer les appels.
+Les controles de taille, de bornes et de coherence doivent etre sortis du parseur : la validation vit dans `checks`, le parseur ne fait qu'enchainer les appels. Pour un petit decodeur, `checks` est le module prive du fichier de parse (voir « Petit decodeur » ci-dessus) : le contenu est le meme, seul l'emplacement change.
 
 Deux formes de fonctions, sur le modele de `src/checks/application/ntp.rs` :
 
@@ -196,7 +266,7 @@ pub fn validate_foo_announced_length(packet: &[u8], length: u16) -> Result<(), F
 }
 ```
 
-Puis exporter le module dans le `mod.rs` de la couche :
+Pour un fichier de `src/checks`, exporter le module dans le `mod.rs` de la couche :
 
 ```rust
 pub mod foo;
@@ -261,7 +331,7 @@ Points importants :
 
 - Toujours valider la longueur avant d'indexer dans la slice.
 - Ne pas faire de `unwrap()` dans le parseur. Un `expect` justifie par un invariant prouve juste au-dessus est tolere, mais la forme `extract_*` permet en general de s'en passer.
-- Une fonction `extract_*` par champ contraint ; pas de validation inline dans le fichier de parsing.
+- Une fonction `extract_*` par champ contraint ; pas de validation inline dans le parseur : elle vit dans `checks`, fichier ou module prive.
 - Utiliser `u16::from_be_bytes`, `u32::from_be_bytes`, etc. pour les valeurs reseau.
 - Garder les slices empruntees (`&'a [u8]`) pour eviter les allocations inutiles.
 - Les valeurs reservees, versions, flags, longueurs et types doivent etre verifies.
@@ -537,7 +607,7 @@ tshark -r capture.pcap -Y "frame.number==5" -T fields -e tcp.payload
 
 - Le protocole implemente `TryFrom<&[u8]>` en sequence lineaire : pre-check de longueur, `extract_*` par champ dans l'ordre du wire, validations croisees, construction.
 - Les erreurs sont dans un fichier dedie et utilisent `thiserror::Error`.
-- Les validations et extractions sont dans un fichier separe sous `src/checks` (pas de validation inline dans le parseur).
+- Les validations et extractions sont dans un fichier separe sous `src/checks`, ou dans le module prive `mod checks` du fichier de parse si le decodeur remplit les deux conditions du petit decodeur (#222) ; pas de validation inline dans le parseur.
 - Le type principal a une rustdoc avec un schema Mermaid `packet-beta`, dessine par `cargo doc-mermaid`.
 - Les `mod.rs` necessaires exportent le nouveau module.
 - La compatibilite semver de l'API publique est preservee : une variante ajoutee a un type `#[non_exhaustive]` est additive (mineure) ; renommer, retirer, ou ajouter une variante a un enum public exhaustif exige une version majeure. Une variante s'ajoute en fin d'enum : inseree plus haut, elle decale le discriminant de toutes les suivantes, ce qui est une rupture meme pour un enum `#[non_exhaustive]`. Ces regles sont gatees : le job `semver` de la CI lance `cargo semver-checks check-release` sur chaque PR et sur main et refuse toute rupture non annoncee (#213), puis le workflow de publication le relance avant tout `cargo publish`. Tant que Cargo.toml repete la version publiee, le job suppose une mineure ; une rupture voulue s'annonce en passant Cargo.toml a la majeure suivante dans la PR qui casse.
