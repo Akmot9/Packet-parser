@@ -6,6 +6,18 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Documentation
+
+- **README** (#224) : il passe de 608 a 149 lignes. Il garde le pitch,
+  l'installation, l'exemple, l'API principale, les LINKTYPE, la liste des
+  protocoles (43 etiquettes applicatives) et les garanties. Le detail par
+  protocole, par LINKTYPE, le schema JSON, les tunnels, `parse_timing` et
+  les mesures vont, sans changement, dans `docs/reference.md`.
+  `README-fr.md` (630 lignes) devient un pointeur de 18 lignes vers le
+  README anglais, le livre et docs.rs : il n'y a plus qu'une liste a tenir.
+  La methode et `CONTRIBUTING.md` demandent desormais l'entree du protocole
+  dans `docs/reference.md`.
+
 ### Infrastructure
 
 - **Depot** (#223) : l'etabli quitte la racine. `benchmark_db`, `ingestor`,

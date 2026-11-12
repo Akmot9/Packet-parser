@@ -621,7 +621,8 @@ tshark -r capture.pcap -Y "frame.number==5" -T fields -e tcp.payload
   fausse positive masque une fausse negative.
 - Les cibles de fuzz concernees contiennent au moins une graine structuree
   valide et verifient les invariants de transport et de classification.
-- Les listes de protocoles de `README.md` et `README-fr.md` sont mises a jour.
+- Le protocole a son entree dans `docs/reference.md` (section Protocol
+  Support) et son etiquette dans la liste de `README.md` (#224).
 - `cargo fmt --all -- --check` passe.
 - `cargo test --workspace --all-features` passe.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings` passe.

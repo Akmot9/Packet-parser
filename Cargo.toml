@@ -22,7 +22,7 @@ keywords = ["network", "packets", "parser", "cybersecurity", "Rust"]
 include = [
     "/src/**",
     "/examples/**",
-    "/images/packet_parser.png", # référencée par les deux README
+    "/images/packet_parser.png", # référencée par le README
     "/README.md",
     "/README-fr.md",
     "/CHANGELOG.md",
