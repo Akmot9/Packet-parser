@@ -40,7 +40,8 @@ cargo +nightly fuzz run <target> -- -max_total_time=600   # each target you touc
 - An entry under `## [Non publie]` in `CHANGELOG.md`, and the task struck through
   in the `ROADMAP.md` table: `~~#N~~ ... (fait, non publie)`.
 - For a decoder, the rest of the [METHODE checklist](METHODE_AJOUT_PROTOCOLE.md#7-checklist-avant-commit):
-  golden test on real frames, negative corpus, protocol lists of both READMEs.
+  golden test on real frames, negative corpus, the protocol's entry in
+  [`docs/reference.md`](docs/reference.md) and its label in the README list.
 - The crate needs no system library. The side tools live in [`tools/lab`](tools/lab/README.md),
   outside the workspace; they need libpcap and CI only checks that they compile (job `lab`).
 
@@ -61,7 +62,7 @@ As done for 11.7.0, 11.8.0 and 11.8.1 (#206, #229, #242):
 2. Set `version = "X.Y.Z"` in `Cargo.toml`, then run `cargo update -p packet_parser`
    and `cargo update -p packet_parser --manifest-path fuzz/Cargo.toml`. In
    `Cargo.lock` and `fuzz/Cargo.lock`, only the `packet_parser` line changes.
-3. Change the install line `packet_parser = "X.Y.Z"` in `README.md` and `README-fr.md`.
+3. Change the install line `packet_parser = "X.Y.Z"` in `README.md`.
 4. In `CHANGELOG.md`, insert `## [X.Y.Z] - YYYY-MM-DD` right below `## [Non publie]` (now empty).
 5. In `ROADMAP.md`, write a new `Etat au YYYY-MM-DD` paragraph at the top; the
    old one becomes `Etat anterieur (...)`.
