@@ -272,7 +272,7 @@ Exemples existants a suivre : `src/parse/transport/protocols/tcp.rs`, `src/parse
 
 Le type principal du protocole doit avoir une rustdoc qui decrit le format du paquet. Quand le format est fixe ou partiellement fixe, ajouter un schema Mermaid `packet-beta`, comme dans `src/parse/application/protocols/s7comm.rs`.
 
-Le schema doit servir a comprendre rapidement les offsets, tailles et champs importants avant de lire le code. Le bloc ```mermaid reste affiche comme du code par rustdoc : `aquamarine`, qui le rendait, a ete retire (RUSTSEC-2026-0173), et la feature `doc-diagrams` avec lui en 11.0.0.
+Le schema doit servir a comprendre rapidement les offsets, tailles et champs importants avant de lire le code. rustdoc ne sait pas dessiner un bloc ```mermaid : c'est `docs/rustdoc/mermaid.html` qui le fait (#215). Ce fragment est passe a rustdoc par `--html-in-header`, sur docs.rs via `[package.metadata.docs.rs]` de `Cargo.toml`. Il charge mermaid 11 depuis jsDelivr, a une version exacte et avec son empreinte SRI. `aquamarine`, qui dessinait les schemas avant la 11.0.0, a ete retire (RUSTSEC-2026-0173).
 
 Exemple :
 
@@ -307,11 +307,14 @@ pub struct FooPacket<'a> {
 Regles pour le schema :
 
 - Utiliser `packet-beta`.
-- Indiquer les plages de bits ou d'octets de facon coherente avec le protocole.
+- Compter en bits : le premier champ commence au bit 0, et chaque champ commence au bit qui suit la fin du precedent. Sinon, mermaid refuse le schema, qui reste affiche comme du code, sans avertissement de `cargo doc`. Un schema qui decrit la suite d'un en-tete commence donc par une zone pour cet en-tete (`0-95: "En-tete (12 octets)"`). Le test `tests/rustdoc_mermaid.rs` verifie ces regles pour tous les schemas de `src/`.
+- Mettre chaque libelle entre guillemets.
 - Nommer les champs avec leur taille (`u8`, `u16`, `u32`, `slice`, etc.) quand c'est utile.
 - Documenter les champs variables avec une zone explicite, par exemple `"Payload variable"` ou `"Options variable"`.
 - Garder le schema proche de la structure parsee.
 - Ne pas remplacer les validations par la documentation : la rustdoc explique, le code valide.
+
+Pour verifier le rendu d'un nouveau schema, lancer `cargo doc-mermaid`. Cet alias, defini dans `.cargo/config.toml`, lance rustdoc avec le meme en-tete que docs.rs. Ouvrir ensuite la page du type dans `target/doc/packet_parser/`, avec un acces reseau, puisque mermaid vient de jsDelivr. Le schema doit etre dessine, en theme clair comme en theme sombre (reglages de rustdoc). S'il reste affiche comme du code, la console du navigateur donne l'erreur de mermaid. `cargo doc` seul n'utilise pas l'en-tete, et les schemas y restent du code.
 
 ## 5. Integrer le protocole dans les modules
 
@@ -535,7 +538,7 @@ tshark -r capture.pcap -Y "frame.number==5" -T fields -e tcp.payload
 - Le protocole implemente `TryFrom<&[u8]>` en sequence lineaire : pre-check de longueur, `extract_*` par champ dans l'ordre du wire, validations croisees, construction.
 - Les erreurs sont dans un fichier dedie et utilisent `thiserror::Error`.
 - Les validations et extractions sont dans un fichier separe sous `src/checks` (pas de validation inline dans le parseur).
-- Le type principal a une rustdoc avec un schema Mermaid `packet-beta`.
+- Le type principal a une rustdoc avec un schema Mermaid `packet-beta`, dessine par `cargo doc-mermaid`.
 - Les `mod.rs` necessaires exportent le nouveau module.
 - La compatibilite semver de l'API publique est preservee : une variante ajoutee a un type `#[non_exhaustive]` est additive (mineure) ; renommer, retirer, ou ajouter une variante a un enum public exhaustif exige une version majeure. Une variante s'ajoute en fin d'enum : inseree plus haut, elle decale le discriminant de toutes les suivantes, ce qui est une rupture meme pour un enum `#[non_exhaustive]`. Ces regles sont gatees : le job `semver` de la CI lance `cargo semver-checks check-release` sur chaque PR et sur main et refuse toute rupture non annoncee (#213), puis le workflow de publication le relance avant tout `cargo publish`. Tant que Cargo.toml repete la version publiee, le job suppose une mineure ; une rupture voulue s'annonce en passant Cargo.toml a la majeure suivante dans la PR qui casse.
 - La voie de detection est choisie et justifiee : probing a l'aveugle si la

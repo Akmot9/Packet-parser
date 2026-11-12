@@ -1,0 +1,4 @@
+[alias]
+# La doc de la crate avec ses schemas mermaid dessines, comme sur docs.rs
+# (#215). Ouvrir ensuite target/doc/packet_parser/index.html.
+doc-mermaid = "rustdoc -p packet_parser --all-features -- --html-in-header docs/rustdoc/mermaid.html"

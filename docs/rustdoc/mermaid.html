@@ -1,0 +1,92 @@
+<!--
+  Dessine les schemas ```mermaid de la rustdoc (#215). rustdoc les sort en
+  <pre class="language-mermaid"><code>...</code></pre> ; ce fragment, passe par
+  --html-in-header (docs.rs : [package.metadata.docs.rs] de Cargo.toml ; en
+  local : `cargo doc-mermaid`), les remplace par le dessin.
+
+  mermaid n'est charge que sur les pages qui ont un schema, depuis jsDelivr, a
+  une version exacte et avec son empreinte SRI : un fichier servi different est
+  refuse par le navigateur, et le bloc reste affiche comme du code. Pour changer
+  de version, recalculer l'empreinte du fichier du paquet npm :
+    openssl dgst -sha384 -binary dist/mermaid.min.js | openssl base64 -A
+-->
+<style>
+  /* rustdoc range chaque bloc de code dans un .example-wrap en flex, ou le
+     <pre> s'etire ; le schema qui le remplace doit s'etirer de meme, sinon le
+     SVG (largeur 100 %) retombe a 300 px. */
+  .example-wrap > .mermaid {
+    flex-grow: 1;
+    min-width: 0;
+  }
+</style>
+<script>
+  (function () {
+    "use strict";
+    var MERMAID_URL = "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js";
+    var MERMAID_SRI = "sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2";
+
+    // Theme mermaid assorti au theme rustdoc (light, dark, ayu).
+    function mermaidTheme() {
+      var theme = document.documentElement.getAttribute("data-theme");
+      return theme === "dark" || theme === "ayu" ? "dark" : "default";
+    }
+
+    function draw(diagrams) {
+      window.mermaid.initialize({ startOnLoad: false, theme: mermaidTheme() });
+      diagrams.forEach(function (diagram) {
+        diagram.removeAttribute("data-processed");
+        diagram.textContent = diagram.getAttribute("data-source");
+      });
+      window.mermaid.run({ nodes: diagrams });
+    }
+
+    function start() {
+      var blocks = document.querySelectorAll("pre.language-mermaid > code");
+      if (blocks.length === 0) {
+        return;
+      }
+      var diagrams = [];
+      blocks.forEach(function (code) {
+        var diagram = document.createElement("div");
+        diagram.className = "mermaid";
+        diagram.setAttribute("data-source", code.textContent);
+        diagram.textContent = code.textContent;
+        code.parentNode.replaceWith(diagram);
+        diagrams.push(diagram);
+      });
+
+      var script = document.createElement("script");
+      script.src = MERMAID_URL;
+      script.integrity = MERMAID_SRI;
+      script.crossOrigin = "anonymous";
+      script.onload = function () {
+        draw(diagrams);
+        // Le lecteur change de theme dans les reglages de rustdoc : redessiner.
+        new MutationObserver(function () {
+          draw(diagrams);
+        }).observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ["data-theme"],
+        });
+      };
+      // Script refuse (SRI, reseau) : remettre les blocs de code d'origine.
+      script.onerror = function () {
+        diagrams.forEach(function (diagram) {
+          var pre = document.createElement("pre");
+          var code = document.createElement("code");
+          pre.className = "language-mermaid";
+          code.textContent = diagram.getAttribute("data-source");
+          pre.appendChild(code);
+          diagram.replaceWith(pre);
+        });
+      };
+      document.head.appendChild(script);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", start);
+    } else {
+      start();
+    }
+  })();
+</script>

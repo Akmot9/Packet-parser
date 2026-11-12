@@ -177,9 +177,10 @@ impl DnaClock {
 ///
 /// ```mermaid
 /// ---
-/// title: StatusTelegram (apres l'en-tete de 12 octets)
+/// title: StatusTelegram
 /// ---
 /// packet-beta
+/// 0-95: "En-tete Valmet DNA (12 octets)"
 /// 96-287: "Non identifie (24 octets)"
 /// 288-319: "Node IPv4 address"
 /// 320-335: "Non identifie"
