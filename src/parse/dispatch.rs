@@ -398,6 +398,8 @@ const fn port_rule(
 /// sondes aveugles dans l'ordre historique de `Application::try_from` — cet
 /// ordre est porteur de semantique (S7Comm avant COTP, DHCP avant SRVLOC,
 /// MQTT en dernier) et verrouille par le snapshot `tests/golden_pcaps.rs`.
+/// Les regles sans garde ni veto de port sont aussi, dans cet ordre, la
+/// cascade de `Application::try_from` ([`classify_blind`], #216).
 static RULES: &[Rule] = &[
     port_rule("SNMP", Guard::Udp, is_snmp_udp_port, ProbeId::Snmp),
     port_rule("DHCPv6", Guard::Udp, is_dhcpv6_udp_port, ProbeId::Dhcpv6),
@@ -765,10 +767,32 @@ impl DecodeAsProtocol {
     }
 }
 
+/// Classe un payload sans port ni transport : la cascade de
+/// `Application::try_from`, derivee de la table (#216). Ce sont les regles
+/// sans garde ni veto de port, dans l'ordre de la table, avec les memes
+/// sondes que [`classify`] et la meme memoisation. Faute de transport, leur
+/// garde de transport n'est pas appliquee : une signature TCP peut
+/// etiqueter un datagramme. Cette API est donc moins sure que `parse`, qui
+/// voit les ports et le transport ; elle le restera jusqu'a #209.
+pub(crate) fn classify_blind(payload: &[u8]) -> &'static str {
+    let mut failed_probes: ProbeMask = 0;
+    for rule in RULES {
+        if rule.ports.is_some() || rule.ports_veto.is_some() {
+            continue;
+        }
+        let bit = rule.probe.bit();
+        if failed_probes & bit == 0 && run_probe(rule.probe, payload) {
+            return rule.label;
+        }
+        failed_probes |= bit;
+    }
+    "Unknown"
+}
+
 /// Classifie le payload d'une couche transport. `None` signifie « rien a
 /// sonder » (pas de payload, payload vide, ou port mDNS sans contenu mDNS) ;
 /// un payload sonde sans succes reste etiquete `"Unknown"`, comme
-/// l'historique `Application::try_from`.
+/// `Application::try_from`.
 pub(super) fn classify(
     transport: &Transport<'_>,
     decode_as: &[(u16, DecodeAsProtocol)],
@@ -2057,9 +2081,9 @@ mod tests {
         }
     }
 
-    /// La cascade aveugle de la table couvre exactement les protocoles de
-    /// `Application::try_from`, dans le meme ordre — le dispatch transport
-    /// ne doit pas silencieusement diverger du probing public.
+    /// La liste aveugle de la table, figee : c'est aussi, sans les verbes
+    /// FTP/SMTP/NNTP (veto de port), la cascade de `Application::try_from`
+    /// (#216). Un protocole ajoute ou deplace s'y voit.
     #[test]
     fn blind_rules_mirror_the_public_cascade_order() {
         let blind: Vec<&str> = RULES
@@ -2102,8 +2126,8 @@ mod tests {
             ],
             "S7Comm est promu en tete (priorite sur COTP), les verbes \
              non-ambigus FTP/SMTP/NNTP sont propres au dispatch transport \
-             (issue #66), le reste suit l'ordre historique de \
-             Application::try_from"
+             (issue #66, veto de port), et Application::try_from suit cet \
+             ordre (#216)"
         );
     }
 }

@@ -372,10 +372,12 @@ Exemples de signatures fortes : un marqueur litteral (`HTTP/`, `GIOP`,
 annoncee qui doit correspondre exactement aux octets restants (PostgreSQL).
 La garde de transport reste celle que la specification impose : `Guard::Any`
 est reserve aux protocoles reellement bi-transport (DNP3, EtherNet/IP, SNMP,
-SRVLOC). Ajouter le meme test au meme rang dans `Application::try_from`
-(`src/parse/application/mod.rs`), le probing public sans transport, et le nom
-du protocole dans `blind_rules_mirror_the_public_cascade_order`, qui fige la
-liste aveugle de la table dans l'ordre de cette cascade.
+SRVLOC). `Application::try_from`, le probing public sans port ni transport,
+n'a plus de liste a lui : il parcourt les regles sans garde ni veto de port
+de la table, dans son ordre (`classify_blind`, #216). Il n'y a rien a y
+ajouter ; seul le nom du protocole va dans
+`blind_rules_mirror_the_public_cascade_order`, qui fige la liste aveugle de
+la table.
 
 ```rust
 // src/parse/dispatch.rs
@@ -393,15 +395,6 @@ ProbeId::Foo => FooPacket::try_from(payload).is_ok(),
 
 // dans RULES, a son rang dans la cascade aveugle
 rule("Foo", Guard::Udp, ProbeId::Foo),
-```
-
-```rust
-// src/parse/application/mod.rs, Application::try_from, au meme rang
-if FooPacket::try_from(packet).is_ok() {
-    return Ok(Application {
-        application_protocol: "Foo",
-    });
-}
 ```
 
 Attention : l'ordre de detection compte. Un parseur trop permissif peut
