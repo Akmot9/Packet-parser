@@ -19,7 +19,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 REPO_ROOT=$(cd ../.. && pwd)
-OUT_JSON=${1:-"$REPO_ROOT/perf_by_version.json"}
+OUT_JSON=${1:-"$REPO_ROOT/tools/verbench/perf_by_version.json"}
 RESULTS=results.jsonl
 : > "$RESULTS"
 

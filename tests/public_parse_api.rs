@@ -923,7 +923,7 @@ fn explicit_ethernet_errors_match_the_legacy_api() {
     }
 }
 
-/// Contrat d'erreur de `sprint_02.md`, verifie sur tous les LINKTYPE cables,
+/// Contrat d'erreur de `docs/archive/sprint_02.md`, verifie sur tous les LINKTYPE cables,
 /// Ethernet compris (epic #76) : un paquet trop court pour son en-tete de
 /// liaison rend `InvalidLinkLayer(Truncated)` avec **son** LINKTYPE, la
 /// taille requise et la taille reelle. Traiter une erreur de liaison ne

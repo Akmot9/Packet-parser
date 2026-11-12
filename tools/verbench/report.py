@@ -49,7 +49,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def default_input_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "perf_by_version.json"
+    return Path(__file__).resolve().parent / "perf_by_version.json"
 
 
 def version_sort_key(label: str) -> tuple[tuple[int, int, int], int, str]:
