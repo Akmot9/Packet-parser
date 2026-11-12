@@ -6,6 +6,8 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [11.8.1] - 2026-11-12
+
 ### Corrige
 
 - **Dispatch** (#212) : la memoisation des sondes tenait sur un `u64`,

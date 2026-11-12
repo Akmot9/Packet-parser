@@ -1,6 +1,20 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-03 : la **11.8.0 est publiee** (tag `v11.8.0`, publication
+Etat au 2026-11-12 : la **11.8.1 est publiee** (tag `v11.8.1`, publication
+par le workflow, semver-checks vert). Patch : les correctifs sans rupture de
+l'epopee #207. La memoisation des sondes passe a 128 bits (#212) ;
+`Application::try_from` est derive de la table `RULES` au lieu d'une cascade
+ecrite a la main (#216 : 168 etiquettes sur 243 566 changent, vers celle de
+`parse`) ; deux cibles de fuzz corrigees (#230, #235) ; les 74 schemas
+mermaid de la rustdoc sont dessines, sur docs.rs et en local (#215) ;
+`CONTRIBUTING.md` (#225) ; la triplication parse/checks/errors est mesuree
+(#222) ; `cargo semver-checks` tourne sur chaque PR (#213). `parse` et
+l'histogramme golden ne changent pas. Aucune rupture. Restent dans #207 :
+#214 (bench), #221 (decoupage), #223 et #224 (racine, README), #241 (FOSSA),
+puis la 12.0 (#209), pas avant mars 2027. Reste a faire hors de ce depot :
+le livre.
+
+Etat anterieur (2026-11-03) : la **11.8.0 est publiee** (tag `v11.8.0`, publication
 par le workflow, semver-checks vert). Mineure : le decodeur **Valmet DNA**
 (8ffdec1) — le reseau de process des systemes de controle distribue
 Metso/Valmet, protocole proprietaire sans specification ni dissecteur public,
@@ -188,16 +202,16 @@ signature est forte, garde de port sinon).
 ## 1. Chantiers ouverts (issues GitHub)
 
 Les epics et leurs sous-issues sont sur GitHub, chacune avec fichiers
-concernes et critere d'acceptation. Au 2026-11-03, une seule epopee est
+concernes et critere d'acceptation. Au 2026-11-12, une seule epopee est
 ouverte : **#207**, « Une API L7 a la hauteur de la verification, et la
-crate rangee ». Elle se divise en quatre features, et aucune de leurs
-taches n'est commencee.
+crate rangee ». Elle se divise en quatre features ; les taches barrees ci-dessous sont
+faites.
 
 | Feature | Sujet | Priorite | Taches |
 |---|---|---|---|
-| #208 | Correctifs immediats | P1, patch ou mineure | ~~#212~~ memoisation des sondes sur 128 bits (fait, non publie), ~~#213~~ `cargo semver-checks` sur chaque PR (fait : job `semver` de la CI), #214 bench criterion sur le corpus, `perf_by_version` regenere ou retire, ~~#215~~ schemas mermaid rendus sur docs.rs (fait, non publie : dessines en local, docs.rs a verifier a la publication), ~~#216~~ `Application::try_from` derive de `RULES` (fait, non publie) |
-| #210 | Forme du code | P2, aucun chemin public ne change | #221 decouper `parse/mod.rs` (2 886 lignes) et `dispatch.rs` (1 948), ~~#222~~ mesurer la triplication parse/checks/errors (fait, non publie : checks en module prive pour un petit decodeur) |
-| #211 | Depot range, README reduit, releve preparee | P2 | #223 sortir l'etabli de la racine, #224 README en deux ecrans, ~~#225~~ `CONTRIBUTING.md` (fait, non publie) |
+| #208 | Correctifs immediats | P1, patch ou mineure | ~~#212~~ memoisation des sondes sur 128 bits (fait, 11.8.1), ~~#213~~ `cargo semver-checks` sur chaque PR (fait : job `semver` de la CI), #214 bench criterion sur le corpus, `perf_by_version` regenere ou retire, ~~#215~~ schemas mermaid rendus sur docs.rs (fait, 11.8.1), ~~#216~~ `Application::try_from` derive de `RULES` (fait, 11.8.1) |
+| #210 | Forme du code | P2, aucun chemin public ne change | #221 decouper `parse/mod.rs` (2 886 lignes) et `dispatch.rs` (2 133), ~~#222~~ mesurer la triplication parse/checks/errors (fait, 11.8.1 : checks en module prive pour un petit decodeur) |
+| #211 | Depot range, README reduit, releve preparee | P2 | #223 sortir l'etabli de la racine, #224 README en deux ecrans, ~~#225~~ `CONTRIBUTING.md` (fait, 11.8.1), #241 controle FOSSA « License Compliance » rouge en permanence |
 | #209 | 12.0 : API L7 typee, une seule table, les noms justes | P1, pas avant mars 2027 | #217 enum `ApplicationProtocol`, #218 `details` au L7, #219 retrait de `TryFrom<&[u8]> for Application`, #220 renommages groupes (`copt`, `mac_addres`, `NatDetection`, RADIUS 124 et 125) et `MIGRATION-12.md` |
 
 Ordre fixe par #207 : #208 d'abord, puis #210 et #211, enfin #209 en une

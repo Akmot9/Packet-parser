@@ -32,7 +32,7 @@ next layers as `None` when parsing cannot safely continue.
 
 ```toml
 [dependencies]
-packet_parser = "11.8.0"
+packet_parser = "11.8.1"
 ```
 
 For examples that decode hexadecimal packet dumps:
