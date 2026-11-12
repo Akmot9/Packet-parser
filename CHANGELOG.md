@@ -19,6 +19,23 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 - **Fuzz** (#230) : `parse_valmet_dna` echouait la nuit sur un en-tete
   seul de 12 octets. Le corps vide pointe sur la fin de l'entree, que
   l'oracle excluait. Le decodeur etait correct.
+- **Fuzz** (#235) : `parse_packetflow` et `policy_dispatch` tiraient le
+  protocole declare parmi 27 variantes de `DecodeAsProtocol`, sans
+  `ValmetDna` (11.8.0) : Decode As vers Valmet DNA n'etait jamais fuzze.
+  Les deux listes ont les 28 variantes.
+
+### Documentation
+
+- **Constats de la relecture du livre en 11.8.0** (#235) : la doc de
+  `RadiusAttribute::kind` disait `None` pour les types 126 a 190, nommes
+  depuis #192 ; la section Documentation de la 11.7.0 le repete, a lire
+  ainsi corrigee. `StatusTelegram::tick` avancait de « 640 000 ± 2 000 » :
+  sur la capture, les ecarts vont de 639 111 a 642 481. La sonde Valmet DNA
+  de port exige une taille exacte pour une famille connue, ce que son
+  commentaire taisait. La doc de `FTP_ONLY_VERBS` designait l'ancien
+  oracle (`fuzz/oracles/text_protocols.rs` depuis #108), et le commentaire
+  DNP3 sur tshark visait les plages de 2^31 a 2^32 - 1 objets, pas « 2^31 ou
+  plus ».
 
 ### Infrastructure
 

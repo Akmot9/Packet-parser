@@ -839,7 +839,7 @@ pub(super) fn classify(
 /// l'issue #66 bien que POP3 le partage : la crate ne classe pas POP3, et le
 /// verbe est valide avec la syntaxe FTP. POST est exclu du set NNTP (HTTP).
 ///
-/// L'oracle de `fuzz/fuzz_targets/parse_packetflow.rs` recopie cette liste,
+/// L'oracle de `fuzz/oracles/text_protocols.rs` (#108) recopie cette liste,
 /// les ports de [`is_text_protocol_port`] et [`is_ftp_tcp_port`], et
 /// [`PROBE_CAP`] : toute modification s'y reporte. Elargir la detection sans
 /// lui fait echouer le fuzzing nocturne sur un comportement voulu ; la

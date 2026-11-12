@@ -558,7 +558,8 @@ impl AttributeType {
 pub struct RadiusAttribute<'a> {
     pub attribute_type: u8,
     /// Le type nomme, quand [`AttributeType`] le connait ; `None` pour tout
-    /// autre code, dont les types 126 a 190 du registre.
+    /// autre code : 0, 17, 21, 54, 93, 191 a 240 et 247 a 255. Les types
+    /// 126 a 190 sont nommes depuis la 11.7.0 (#192).
     pub kind: Option<AttributeType>,
     /// Longueur declaree, en-tete compris.
     pub length: u8,
