@@ -6,6 +6,21 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Infrastructure
+
+- **Depot** (#223) : l'etabli quitte la racine. `benchmark_db`, `ingestor`,
+  `integration_test`, `see_unparsable`, `dashboards`, `docker-compose.yml`
+  et `oui.csv` vont sous `tools/lab`, qui a son propre workspace Cargo et
+  son `Cargo.lock`. `sprint_01.md`, `sprint_02.md`, `analyse.md`,
+  `TODO_TUNNELS.md` et `article/` vont sous `docs/archive`.
+  `perf_by_version.json` rejoint `tools/verbench`, qui l'ecrit. La crate
+  est seule dans son workspace : son `Cargo.lock` passe de 174 a 76
+  paquets, et `cargo audit` ne lit plus les dependances de l'etabli
+  (tokio-postgres, pcap, pnet), dont un avis RustSec rendait rouge toute PR
+  (#227). Le job principal de la CI n'installe plus libpcap ; un job `lab`
+  verifie que l'etabli compile encore. Le paquet publie ne change pas :
+  `cargo package --list` est identique.
+
 ## [11.8.1] - 2026-11-12
 
 ### Corrige

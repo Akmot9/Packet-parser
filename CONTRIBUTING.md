@@ -41,7 +41,8 @@ cargo +nightly fuzz run <target> -- -max_total_time=600   # each target you touc
   in the `ROADMAP.md` table: `~~#N~~ ... (fait, non publie)`.
 - For a decoder, the rest of the [METHODE checklist](METHODE_AJOUT_PROTOCOLE.md#7-checklist-avant-commit):
   golden test on real frames, negative corpus, protocol lists of both READMEs.
-- The workspace members need libpcap: `sudo apt-get install libpcap-dev`.
+- The crate needs no system library. The side tools live in [`tools/lab`](tools/lab/README.md),
+  outside the workspace; they need libpcap and CI only checks that they compile (job `lab`).
 
 ## New enum variants go last
 

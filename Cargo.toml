@@ -57,8 +57,10 @@ hex = "0.4.3"
 serde_json = "1.0.150"
 
 [workspace]
-members = ["benchmark_db", "ingestor","integration_test", "see_unparsable"] # Spécifie que ta crate a un workspace avec d'autres projets
-exclude = ["tools/verbench", "fuzz"] # verbench : Cargo.toml généré par run.sh ; fuzz : nécessite cargo-fuzz/nightly
+# La crate est seule dans son workspace (#223). tools/lab : l'etabli (bench,
+# ingestion, capture live), avec son propre workspace et son Cargo.lock ;
+# verbench : Cargo.toml genere par run.sh ; fuzz : cargo-fuzz et nightly.
+exclude = ["tools/lab", "tools/verbench", "fuzz"]
 
 [profile.release]
 opt-level = 3         # Highest speed optimization

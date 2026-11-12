@@ -7,7 +7,7 @@ crates.io, plus la copie de travail locale, et produit un JSON comparatif.
 ## Usage
 
 ```bash
-tools/verbench/run.sh                 # écrit perf_by_version.json à la racine du repo
+tools/verbench/run.sh                 # écrit perf_by_version.json dans tools/verbench/
 tools/verbench/run.sh /chemin/out.json
 python3 tools/verbench/report.py      # génère perf_by_version.html depuis le JSON existant
 ```

@@ -508,8 +508,8 @@ cargo test --features parse_timing
 The main benchmark harness is `tools/verbench`. It compares published crate
 versions from crates.io with the local working copy, then generates:
 
-- `perf_by_version.json`
-- `perf_by_version.html`
+- `tools/verbench/perf_by_version.json`
+- `tools/verbench/perf_by_version.html`
 
 Run the full benchmark:
 
@@ -527,7 +527,7 @@ The HTML report is standalone. It opens directly in a browser and does not need
 Docker, Postgres, Grafana or any CDN.
 
 ```bash
-xdg-open perf_by_version.html
+xdg-open tools/verbench/perf_by_version.html
 ```
 
 `tools/verbench` reports average `l2_ns`, `l3_ns`, `l4_ns`, `l7_ns` and
@@ -537,7 +537,7 @@ latency claims.
 
 ## Optional PCAP Pipeline
 
-The workspace also contains `benchmark_db`, a binary that parses local PCAP
+[`tools/lab`](tools/lab) contains `benchmark_db`, a binary that parses local PCAP
 files and writes JSONL events containing:
 
 - `run_id`
@@ -551,7 +551,7 @@ files and writes JSONL events containing:
 Run it with:
 
 ```bash
-cargo run -p benchmark_db --release
+cd tools/lab && cargo run -p benchmark_db --release
 ```
 
 Output files are written to:
@@ -560,7 +560,7 @@ Output files are written to:
 ~/.local/share/packet_parser_bench/jsonl/
 ```
 
-The optional `docker-compose.yml` pipeline can ingest those JSONL files into
+The optional `tools/lab/docker-compose.yml` pipeline can ingest those JSONL files into
 Postgres and display them in Grafana. This is not required for the standalone
 `verbench` HTML report.
 
@@ -586,8 +586,8 @@ cargo test --all-features
 cargo build --release
 ```
 
-For binaries that read PCAP files through the `pcap` crate, install the system
-libpcap development package. On Debian/Ubuntu:
+The crate and its tests need no system library. Only the tools under
+`tools/lab` (`pcap`, `pnet`) need the system libpcap development package. On Debian/Ubuntu:
 
 ```bash
 sudo apt-get install libpcap-dev

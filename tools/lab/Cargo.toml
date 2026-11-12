@@ -1,0 +1,16 @@
+# Etabli : outils de mesure et de capture autour de la crate, hors du
+# workspace de la racine (#223). Leurs dependances (pcap, pnet,
+# tokio-postgres) ont leur propre Cargo.lock : elles ne passent plus par
+# `cargo audit` ni par `cargo clippy --workspace` de la crate publiee.
+[workspace]
+resolver = "3"
+members = ["benchmark_db", "ingestor", "integration_test", "see_unparsable"]
+
+# Meme profil que la crate : les mesures de benchmark_db en dependent.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+incremental = false
+debug = false

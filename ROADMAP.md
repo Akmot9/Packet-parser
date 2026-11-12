@@ -211,7 +211,7 @@ faites.
 |---|---|---|---|
 | #208 | Correctifs immediats | P1, patch ou mineure | ~~#212~~ memoisation des sondes sur 128 bits (fait, 11.8.1), ~~#213~~ `cargo semver-checks` sur chaque PR (fait : job `semver` de la CI), #214 bench criterion sur le corpus, `perf_by_version` regenere ou retire, ~~#215~~ schemas mermaid rendus sur docs.rs (fait, 11.8.1), ~~#216~~ `Application::try_from` derive de `RULES` (fait, 11.8.1) |
 | #210 | Forme du code | P2, aucun chemin public ne change | #221 decouper `parse/mod.rs` (2 886 lignes) et `dispatch.rs` (2 133), ~~#222~~ mesurer la triplication parse/checks/errors (fait, 11.8.1 : checks en module prive pour un petit decodeur) |
-| #211 | Depot range, README reduit, releve preparee | P2 | #223 sortir l'etabli de la racine, #224 README en deux ecrans, ~~#225~~ `CONTRIBUTING.md` (fait, 11.8.1), #241 controle FOSSA « License Compliance » rouge en permanence |
+| #211 | Depot range, README reduit, releve preparee | P2 | ~~#223~~ sortir l'etabli de la racine (fait, non publie : `tools/lab`, `docs/archive`), #224 README en deux ecrans, ~~#225~~ `CONTRIBUTING.md` (fait, 11.8.1), #241 controle FOSSA « License Compliance » rouge en permanence |
 | #209 | 12.0 : API L7 typee, une seule table, les noms justes | P1, pas avant mars 2027 | #217 enum `ApplicationProtocol`, #218 `details` au L7, #219 retrait de `TryFrom<&[u8]> for Application`, #220 renommages groupes (`copt`, `mac_addres`, `NatDetection`, RADIUS 124 et 125) et `MIGRATION-12.md` |
 
 Ordre fixe par #207 : #208 d'abord, puis #210 et #211, enfin #209 en une
@@ -434,12 +434,13 @@ verser quoi que ce soit.
 #56 (golden tests manquants), qui etait de la dette plus que de la
 feature, est solde le 2026-08-20.
 
-Sprints : `sprint_01.md` (methode de travail) et `sprint_02.md`
+Sprints : `docs/archive/sprint_01.md` (methode de travail) et
+`docs/archive/sprint_02.md`
 (architecture multi-LINKTYPE) sont tous deux soldes sur leur definition de
 termine. Aucun sprint actif. Le seul reliquat de sprint_02, l'unification
 des deux chemins d'erreur de liaison, etait une rupture d'API. Elle est
-soldee en 11.0.0 (#76, lot A, PR #86, §1 bis). Le rangement de ces fichiers
-hors de la racine est la tache #223.
+soldee en 11.0.0 (#76, lot A, PR #86, §1 bis). Ces fichiers sont ranges sous
+`docs/archive/` (#223).
 
 ## 4. Regles de la fenetre de stabilite
 
