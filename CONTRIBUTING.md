@@ -33,6 +33,7 @@ CI does not check these, so do them yourself:
 ```bash
 rustup update stable   # CI runs clippy on the latest stable: match it
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
+cargo doc-mermaid      # the docs with their mermaid diagrams drawn, as on docs.rs
 cargo +nightly fuzz run <target> -- -max_total_time=600   # each target you touched
 ```
 
