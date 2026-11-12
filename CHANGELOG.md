@@ -23,6 +23,22 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   protocole declare parmi 27 variantes de `DecodeAsProtocol`, sans
   `ValmetDna` (11.8.0) : Decode As vers Valmet DNA n'etait jamais fuzze.
   Les deux listes ont les 28 variantes.
+- **Application::try_from** (#216) : la cascade publique, sans port ni
+  transport, etait une liste de sondes ecrite a la main qui devait suivre
+  la table `RULES`. Elle en divergeait en trois points : S7Comm venait
+  apres HTTP au lieu d'etre en tete, DNS passait par `DnsPacket::try_from`
+  au lieu de la sonde aveugle stricte (#118), HTTP lisait le payload entier
+  au lieu du prefixe `PROBE_CAP`. Elle est desormais derivee de la table :
+  ses regles sans garde ni veto de port, dans son ordre, avec les memes
+  sondes et la meme memoisation. Leur garde de transport n'est pas
+  appliquee, faute de transport. Sur les 243 566 payloads de transport du
+  corpus versionne, 168 changent d'etiquette : 167 DNS -> Unknown et 1
+  DNS -> TLS. Chaque fois, la nouvelle etiquette est celle de `parse`, sauf
+  un datagramme que `parse` etiquette NTP par sa regle de port. L'ancienne
+  cascade lisait aussi en Access-Reject RADIUS des trames S7Comm (TPKT
+  `03 00` et longueur du datagramme, que RADIUS lit comme le code 3 et sa
+  longueur) ; elles sortent S7Comm. `parse` et l'histogramme golden ne
+  changent pas.
 
 ### Documentation
 

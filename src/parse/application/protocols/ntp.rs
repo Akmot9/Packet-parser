@@ -281,7 +281,7 @@ impl NtpPacket {
 #[cfg(test)]
 mod tests {
     use crate::errors::application::ntp::NtpPacketParseError;
-    use crate::parse::application::NtpPacket;
+    use crate::parse::application::protocols::ntp::NtpPacket;
     use crate::parse::application::protocols::ntp::*;
     // use chrono::TimeZone;
 
