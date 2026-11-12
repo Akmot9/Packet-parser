@@ -52,6 +52,10 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   oracle (`fuzz/oracles/text_protocols.rs` depuis #108), et le commentaire
   DNP3 sur tshark visait les plages de 2^31 a 2^32 - 1 objets, pas « 2^31 ou
   plus ».
+- **CONTRIBUTING.md** (#225), en anglais : ou vivent les regles, les
+  verifications que la CI ne fait pas, la procedure de release pas a pas,
+  les conventions d'issues, de commits et du corpus. Chaque regle renvoie a
+  sa source. Les deux README y renvoient.
 
 ### Infrastructure
 

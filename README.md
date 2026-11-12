@@ -26,6 +26,7 @@ next layers as `None` when parsing cannot safely continue.
   how the crate is designed, layer by layer, with diagrams and tested examples.
 - **The API reference**, [docs.rs/packet_parser](https://docs.rs/packet_parser):
   every public type and function.
+- **Contributing**, [CONTRIBUTING.md](CONTRIBUTING.md): the rules, the checks before a PR, the release steps.
 
 ## Installation
 
