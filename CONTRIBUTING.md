@@ -73,8 +73,8 @@ As done for 11.7.0 and 11.8.0 (#206, #229):
    tag checked against `Cargo.toml`, `cargo semver-checks check-release`, then
    `cargo publish`. **This cannot be undone**: crates.io can yank a version,
    never replace or delete it. Do not start the workflow by hand: that skips the tag check.
-10. Check the run, crates.io and docs.rs. There is no GitHub release. Then update
-    the book and Sonar_desktop_app (tracked in the ROADMAP).
+10. Check the run, crates.io and docs.rs. There is no GitHub release. Then move
+    [the book](https://github.com/Akmot9/packet-parser-book) to the new version.
 
 ## Issues
 
