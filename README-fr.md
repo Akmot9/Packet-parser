@@ -31,7 +31,7 @@ decodees et laisse les couches suivantes a `None` quand c'est necessaire.
 
 ```toml
 [dependencies]
-packet_parser = "11.8.0"
+packet_parser = "11.8.1"
 ```
 
 Pour reproduire les exemples qui decodent de l'hexadecimal:
