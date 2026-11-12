@@ -42,6 +42,16 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Documentation
 
+- **Schemas mermaid de la rustdoc** (#215) : les 74 schemas `packet-beta`
+  s'affichaient comme du code, sur docs.rs comme en local.
+  `docs/rustdoc/mermaid.html`, passe a rustdoc par `--html-in-header`
+  (`[package.metadata.docs.rs]`, alias local `cargo doc-mermaid`), les
+  dessine avec mermaid 11.17.2, charge depuis jsDelivr avec son empreinte
+  SRI, et seulement sur les pages qui ont un schema. Le dessin suit le
+  theme de rustdoc. Le schema de `StatusTelegram` (Valmet DNA, 11.8.0)
+  commencait au bit 96, et mermaid l'aurait refuse : il commence au bit 0,
+  par l'en-tete. `tests/rustdoc_mermaid.rs` verifie que chaque schema
+  commence au bit 0 et que ses champs se suivent.
 - **Constats de la relecture du livre en 11.8.0** (#235) : la doc de
   `RadiusAttribute::kind` disait `None` pour les types 126 a 190, nommes
   depuis #192 ; la section Documentation de la 11.7.0 le repete, a lire

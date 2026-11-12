@@ -30,7 +30,15 @@ include = [
     # references mortes pour qui lit la crate depuis crates.io.
     "/MIGRATION-11.md",
     "/LICENSE.md",
+    # L'en-tete de rustdoc qui dessine les schemas mermaid : docs.rs construit
+    # la doc depuis l'archive publiee, il doit donc y etre (#215).
+    "/docs/rustdoc/mermaid.html",
 ]
+
+# docs.rs dessine les schemas ```mermaid packet-beta de la doc (#215). En
+# local : `cargo doc-mermaid` (alias de .cargo/config.toml).
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", "docs/rustdoc/mermaid.html"]
 
 
 [dependencies]
