@@ -25,6 +25,7 @@ decodees et laisse les couches suivantes a `None` quand c'est necessaire.
   et des exemples testes.
 - **La reference de l'API**, [docs.rs/packet_parser](https://docs.rs/packet_parser) :
   chaque type et chaque fonction publics.
+- **Contribuer**, [CONTRIBUTING.md](CONTRIBUTING.md) (en anglais) : les regles, les verifications avant une PR, la publication.
 
 ## Installation
 

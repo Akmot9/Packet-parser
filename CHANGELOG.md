@@ -46,6 +46,13 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   une mineure : seule une rupture echoue. Une fois Cargo.toml bumpe, c'est
   le bump declare qui compte.
 
+### Documentation
+
+- **CONTRIBUTING.md** (#225), en anglais : ou vivent les regles, les
+  verifications que la CI ne fait pas, la procedure de release pas a pas,
+  les conventions d'issues, de commits et du corpus. Chaque regle renvoie a
+  sa source. Les deux README y renvoient.
+
 ## [11.8.0] - 2026-11-03
 
 ### Ajoute
