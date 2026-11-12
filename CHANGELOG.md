@@ -66,6 +66,14 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   verifications que la CI ne fait pas, la procedure de release pas a pas,
   les conventions d'issues, de commits et du corpus. Chaque regle renvoie a
   sa source. Les deux README y renvoient.
+- **Methode** (#222) : la triplication parse/checks/errors est mesuree
+  (`tools/measure_checks.py`). Sur 499 fonctions de checks, 79 % n'ont
+  qu'un appel, 63 % sont des gardes d'une ou deux instructions, 3 servent
+  hors de leur protocole, aucune a `tests/` ni a `fuzz/`. Un nouveau
+  decodeur garde donc ses checks dans un module prive de son fichier de
+  parse s'ils n'ont aucun appelant exterieur et si le tout tient en 300
+  lignes de code. Les erreurs restent dans `src/errors/`, et les decodeurs
+  existants ne bougent pas.
 
 ### Infrastructure
 
