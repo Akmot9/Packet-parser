@@ -206,8 +206,9 @@ pub struct StatusTelegram {
     pub node_number: u8,
     /// Le groupe multicast du reseau : la destination IP du datagramme.
     pub multicast_group: Ipv4Addr,
-    /// Compteur de 32 bits qui avance de 640 000 ± 2 000 entre deux
-    /// telegrammes espaces de 640 ms : des microsecondes, modulo 2^32.
+    /// Compteur de 32 bits qui avance d'environ 640 000 entre deux
+    /// telegrammes espaces de 640 ms : des microsecondes, modulo 2^32. Sur la
+    /// capture, les 302 ecarts vont de 639 111 a 642 481 (#235).
     pub tick: u32,
     /// Le `tick` du telegramme precedent du meme noeud.
     pub previous_tick: u32,
@@ -325,7 +326,8 @@ impl ValmetDnaPacket<'_> {
     }
 
     /// Sonde sur UDP 2517, 4516, 4517 et les ports declares : un message a
-    /// l'en-tete coherent, de famille connue ou non, ou une balise.
+    /// l'en-tete coherent, de famille inconnue, ou de famille connue a sa
+    /// taille exacte, ou une balise.
     pub(crate) fn is_port_udp_match(payload: &[u8]) -> bool {
         ValmetDnaPacket::try_from(payload).is_ok() || TimeBeacon::try_from(payload).is_ok()
     }

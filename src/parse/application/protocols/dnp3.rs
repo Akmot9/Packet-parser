@@ -570,7 +570,7 @@ fn parse_application(fragment: &[u8], base: usize) -> Result<ApplicationFragment
 /// dont le compte, calcule sur 32 bits, revient a zero (la plage complete)
 /// ou redevient positif (un depart qui depasse la fin de plus de 2^31 + 1,
 /// de `0xFFFFFFFF` a 5). A l'inverse, ce compte est negatif pour une plage
-/// de 2^31 objets ou plus (de 0 a `0xFFFFFFFE`) : tshark s'arrete, la ou le
+/// de 2^31 a 2^32 - 1 objets (de 0 a `0xFFFFFFFE`) : tshark s'arrete, la ou le
 /// decodeur continue quand rien ne suit l'en-tete. Il lit enfin les codes
 /// de plage 3 a 5 comme une adresse unique.
 fn parse_object_header(
