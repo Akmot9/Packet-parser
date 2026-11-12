@@ -52,7 +52,7 @@ discriminant of every variant after it: that breaks the API, even for a
 
 ## Releasing a version
 
-As done for 11.7.0 and 11.8.0 (#206, #229):
+As done for 11.7.0, 11.8.0 and 11.8.1 (#206, #229, #242):
 
 1. From an up-to-date `main`, create `chore/release-X.Y.Z`. Read `[Non publie]` to
    choose patch, minor or major. A major must be planned in the ROADMAP and come
@@ -65,8 +65,9 @@ As done for 11.7.0 and 11.8.0 (#206, #229):
 5. In `ROADMAP.md`, write a new `Etat au YYYY-MM-DD` paragraph at the top; the
    old one becomes `Etat anterieur (...)`.
 6. Run the checklist above, then `cargo semver-checks check-release -p packet_parser`
-   (it now checks the declared bump), `cargo publish --dry-run --locked`, and
-   `cargo package --list` (no `pcaps_exemple/` file).
+   (it now checks the declared bump), `cargo publish --dry-run --locked --allow-dirty`, and
+   `cargo package --list --allow-dirty` (no `pcaps_exemple/` file). `--allow-dirty`
+   because the bump is not committed yet (step 7).
 7. Commit `chore(release): prepare vX.Y.Z`, list the results in the PR, merge when CI is green.
 8. Tag the merge commit on `main` and push the tag:
    `git switch main && git pull && git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z`.
