@@ -84,7 +84,7 @@ leur provenance manquante.
   … with no restrictions », en demandant de **citer leur origine**
   (<https://chrissanders.org/packet-captures/>) — même règle que les dossiers
   « source Chris Sanders » (voir le README).
-- Sert aux tests de `src/parse/mod.rs` (trames 4 et 5 : bannière et `USER`).
+- Sert aux tests de `src/parse/tests.rs` (trames 4 et 5 : bannière et `USER`).
 
 ## capwap-only.pcap, capwap-only.pcapng, capwap-association-valid.pcapng
 

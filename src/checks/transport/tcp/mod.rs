@@ -90,7 +90,7 @@ mod tests {
 
     /// La combinaison d'evasion SYN+FIN est une anomalie nommee (#24). Elle
     /// ne fait plus disparaitre la couche transport : voir le test
-    /// bout-en-bout de `parse/mod.rs`.
+    /// bout-en-bout de `parse/tests.rs`.
     #[test]
     fn syn_fin_combination_is_reported_with_the_flags_byte() {
         const SYN: u8 = 0x02;

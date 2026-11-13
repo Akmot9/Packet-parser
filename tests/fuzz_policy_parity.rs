@@ -7,7 +7,7 @@
 //! cible `policy_dispatch`) et la table de dispatch (issue #108).
 //!
 //! L'oracle recopie les listes de verbes, les ports et `PROBE_CAP` de
-//! `src/parse/dispatch.rs` au lieu de les importer : un oracle qui lirait
+//! `src/parse/dispatch/` au lieu de les importer : un oracle qui lirait
 //! ceux du parseur ne pourrait pas le prendre en defaut. Le prix etait une
 //! derive silencieuse — #66 a elargi la detection FTP hors port, l'oracle
 //! est reste a TCP/21, et le fuzz nocturne a echoue quatre nuits (#107). Ce

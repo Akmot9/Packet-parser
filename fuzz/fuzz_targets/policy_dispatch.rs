@@ -1,6 +1,6 @@
 // Oracles de politique du dispatch applicatif, separes du fuzz anti-panic de
 // `parse_packetflow` (issue #108). Une politique de detection est ecrite a
-// deux endroits — la table de `src/parse/dispatch.rs` et l'oracle — et leur
+// deux endroits — la table de `src/parse/dispatch/` et l'oracle — et leur
 // divergence ne se voyait que la nuit, dans une cible qui s'arretait alors de
 // chercher les vrais crashs (#107 : quatre nuits perdues sur un oracle
 // perime). Ici, un echec n'arrete que cette cible.

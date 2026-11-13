@@ -129,7 +129,7 @@ table jointe a l'issue #222). Sur 499 fonctions `pub` ou `pub(crate)` de
 hors de leur protocole : les deux helpers communs aux protocoles texte
 (`find_text_line_fault` et `find_data_block_fault`, dans
 `src/checks/application/mod.rs`) et `is_plausible_short_header`, qu'appelle
-la sonde QUIC de `dispatch.rs`. Aucune ne sert a `tests/`, `fuzz/` ou
+la sonde QUIC de `dispatch/probes.rs`. Aucune ne sert a `tests/`, `fuzz/` ou
 `benches/` : `checks` est `pub(crate)` depuis la 11.0.0, et les oracles du
 fuzz recopient les regles au lieu de les importer, par principe (#108).
 Un test appelle directement 72 % des fonctions, ce qu'un module prive
@@ -142,7 +142,7 @@ Regle pour un nouveau protocole : ses checks vont dans un module prive
 `mod checks` de son fichier de parse quand les deux conditions tiennent :
 
 1. aucune fonction de checks n'est appelee hors de ce fichier, ni par une
-   sonde de `dispatch.rs`, ni par un autre protocole ;
+   sonde de `dispatch/probes.rs`, ni par un autre protocole ;
 2. le fichier de parse, module `checks` compris, compte au plus 300 lignes
    de code hors commentaires et tests
    (`python3 tools/measure_checks.py --lines <fichier>`). C'est a peu pres
@@ -414,9 +414,9 @@ pub mod foo;
 ### Choisir la voie de detection
 
 Hors tunnels et STP, la classification applicative de `PacketFlow` passe par
-une seule table ordonnee, `RULES` dans `src/parse/dispatch.rs`, que parcourt
+une seule table ordonnee, `RULES` dans `src/parse/dispatch/rules.rs`, que parcourt
 `dispatch::classify` apres les ports declares par Decode As
-(`PacketFlow::parse_application_from_transport`, dans `src/parse/mod.rs`, ne
+(`PacketFlow::parse_application_from_transport`, dans `src/parse/engine.rs`, ne
 fait que lui deleguer). Les tunnels (`src/parse/tunnel/` : GRE et IP-in-IP au
 niveau IP, CAPWAP, VXLAN, Geneve et GTP-U sur UDP) sont detectes avant la
 table et donnent leur nom a l'etiquette ; STP (`detect_stp`, BPDU de la
@@ -453,7 +453,7 @@ ajouter ; seul le nom du protocole va dans
 la table.
 
 ```rust
-// src/parse/dispatch.rs
+// src/parse/dispatch/probes.rs
 enum ProbeId {
     // ...
     Foo, // en fin d'enum
@@ -466,7 +466,7 @@ const LAST: Self = Self::Foo;
 // dans run_probe
 ProbeId::Foo => FooPacket::try_from(payload).is_ok(),
 
-// dans RULES, a son rang dans la cascade aveugle
+// src/parse/dispatch/rules.rs : dans RULES, a son rang dans la cascade aveugle
 rule("Foo", Guard::Udp, ProbeId::Foo),
 ```
 
@@ -479,7 +479,7 @@ en-tete fixe est peu discriminant).
 
 **Voie 2 — detection gardee par port** (`port_rule(...)` parmi les regles a
 port de `RULES`, avec sa fonction `is_foo_tcp_port` a cote des autres dans
-`dispatch.rs`) : pour les protocoles a signature faible ou ambigue, que des
+`dispatch/ports.rs`) : pour les protocoles a signature faible ou ambigue, que des
 checks meme parfaits ne peuvent pas distinguer d'un autre protocole. Exemples :
 les reponses FTP/SMTP/NNTP sont octet pour octet identiques (`2xx texte
 CRLF`) ; DHCPv6, AMS, COTP et QUIC short header ont des en-tetes trop peu
