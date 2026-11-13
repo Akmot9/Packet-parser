@@ -6,12 +6,8 @@ name: Bench
 # commente la PR ; le seuil de regression se regle dans le projet CodSpeed.
 #
 # Depot public : pas de jeton, l'authentification passe par OIDC. Le depot
-# doit etre importe une fois sur https://codspeed.io par son proprietaire ;
-# sans cela l'envoi echoue en 401. Tant que la variable de depot
-# CODSPEED_ENABLED ne vaut pas `true`, le job se contente donc de construire
-# le bench et de le derouler une fois, sans mesure : il reste vert et
-# verifie que le bench tourne encore. Une fois le depot importe :
-#   gh variable set CODSPEED_ENABLED --body true
+# est importe sur https://codspeed.io/Akmot9/Packet-parser : chaque run de
+# ce job est mesure et envoye a CodSpeed.
 
 on:
   push:
@@ -55,15 +51,9 @@ jobs:
 
       - name: Build the benchmarks
         working-directory: benches
-        run: cargo codspeed build --locked
-
-      - name: Run the benchmarks once, without measuring
-        if: vars.CODSPEED_ENABLED != 'true'
-        working-directory: benches
-        run: cargo codspeed run
+        run: cargo codspeed build -m simulation --locked
 
       - name: Run the benchmarks
-        if: vars.CODSPEED_ENABLED == 'true'
         uses: CodSpeedHQ/action@v5
         with:
           mode: simulation
