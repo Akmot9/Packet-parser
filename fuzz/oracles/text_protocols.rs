@@ -2,7 +2,7 @@
 // (issue #66), partage par la cible de fuzz `policy_dispatch` et le test de
 // parite `tests/fuzz_policy_parity.rs` (issue #108), inclus par `#[path]`.
 //
-// Les listes recopient celles de `src/parse/dispatch.rs` a dessein plutot que
+// Les listes recopient celles de `src/parse/dispatch/` a dessein plutot que
 // de les importer : un oracle qui lirait celles du parseur ne pourrait pas
 // les prendre en defaut. Le test de parite confronte les deux copies a
 // chaque PR, verbe par verbe et port par port ; le fuzz nocturne, les
@@ -14,7 +14,7 @@ use packet_parser::parse::application::protocols::{
     ftp::FtpMessage, nntp::NntpMessage, smtp::SmtpMessage,
 };
 
-/// Miroir de `FTP_ONLY_VERBS` (src/parse/dispatch.rs) : verbes que seul FTP
+/// Miroir de `FTP_ONLY_VERBS` (src/parse/dispatch/probes.rs) : verbes que seul FTP
 /// definit (RFC 959/2428).
 pub const FTP_ONLY_VERBS: [&str; 11] = [
     "RETR", "STOR", "PASV", "APPE", "RNFR", "RNTO", "MKD", "CDUP", "EPSV", "EPRT", "NLST",

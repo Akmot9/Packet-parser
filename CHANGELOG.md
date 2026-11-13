@@ -18,6 +18,20 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   La methode et `CONTRIBUTING.md` demandent desormais l'entree du protocole
   dans `docs/reference.md`.
 
+### Interne
+
+- **Decoupage** (#221) : `parse/mod.rs` (2 886 lignes) et `dispatch.rs`
+  (2 133) sont decoupes, par deplacements seuls, un commit chacun. Le
+  dispatch devient `dispatch/` : `rules.rs` (la table `RULES`), `probes.rs`
+  (`ProbeId`, `run_probe`, les verbes texte), `ports.rs` (les predicats de
+  port), `tests.rs`, et `mod.rs` qui garde `classify`, `classify_blind` et
+  `DecodeAsProtocol`. Le pipeline L3/L4/L7 de `PacketFlow` passe dans
+  `parse/engine.rs`, les tests dans `parse/tests.rs`. La detection de
+  PostgreSQL passe dans `postgresql/detection.rs`. Plus aucun fichier de
+  `src/parse/` ne depasse 800 lignes hors tests. Aucun chemin public ne
+  change (`cargo semver-checks` : aucune mise a jour requise), ni
+  l'histogramme golden.
+
 ### Infrastructure
 
 - **Depot** (#223) : l'etabli quitte la racine. `benchmark_db`, `ingestor`,
