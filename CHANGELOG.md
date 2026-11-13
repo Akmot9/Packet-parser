@@ -34,6 +34,20 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Infrastructure
 
+- **Bench** (#214) : `benches/` mesure `parse` sur le corpus versionne,
+  avec criterion. Sept trames, une par famille : ACK TCP nu, TLS, DNS,
+  tunnel VXLAN, ASTERIX multi-blocs, le paquet de reference de `verbench`
+  et un segment TCP synthetique de 60 000 octets, la borne des sondes qui
+  lisent le payload entier (#185). Puis douze captures parcourues en
+  entier. Les trames sont choisies par un predicat sur le resultat de
+  `parse`, pas par un numero. Le workflow `bench.yml` le construit et le
+  deroule sur chaque PR et sur main. La mesure par CodSpeed (comptage
+  d'instructions, insensible a la charge du runner) s'active par la
+  variable de depot `CODSPEED_ENABLED`, une fois le depot importe sur
+  codspeed.io. Le bench est un paquet hors du workspace, comme
+  `fuzz/` : criterion ne passe ni par `cargo audit` ni par le controle
+  MSRV de la crate. Lancer : `cargo bench --manifest-path
+  benches/Cargo.toml`.
 - **Depot** (#223) : l'etabli quitte la racine. `benchmark_db`, `ingestor`,
   `integration_test`, `see_unparsable`, `dashboards`, `docker-compose.yml`
   et `oui.csv` vont sous `tools/lab`, qui a son propre workspace Cargo et

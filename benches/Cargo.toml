@@ -1,0 +1,31 @@
+# Bench de la crate, hors de son workspace comme `fuzz/` (#214) : criterion
+# et ses dependances ont leur propre Cargo.lock et ne passent pas par
+# `cargo audit` ni par le controle MSRV de la crate publiee.
+#
+#   cargo bench --manifest-path benches/Cargo.toml
+#
+# `criterion` est ici `codspeed-criterion-compat` : la meme API, mesuree par
+# criterion en local et par CodSpeed dans la CI (job `bench`).
+[package]
+name = "packet_parser-benches"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[dependencies]
+criterion = { package = "codspeed-criterion-compat", version = "6.0.0" }
+hex = "0.4.3"
+packet_parser = { path = ".." }
+pcap-file = "2.0.0"
+
+[[bench]]
+name = "parse_corpus"
+harness = false
+
+[profile.bench]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = true # symboles pour le profil de CodSpeed
+
+[workspace]

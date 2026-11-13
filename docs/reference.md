@@ -432,6 +432,17 @@ cargo test --features parse_timing
 
 ## Benchmarks and HTML Report
 
+Two tools measure the crate:
+
+- [`benches/`](../benches): a criterion bench of `parse` on the versioned
+  corpus, one representative frame per family plus a fixed subset of
+  captures. Run it with `cargo bench --manifest-path benches/Cargo.toml`.
+  CI builds and runs it on every pull request. Once the repository is
+  imported on CodSpeed, [codspeed.io/Akmot9/Packet-parser](https://codspeed.io/Akmot9/Packet-parser)
+  tracks each bench over time.
+- `tools/verbench`, below: the same reference packet across every published
+  version, on one machine.
+
 The main benchmark harness is `tools/verbench`. It compares published crate
 versions from crates.io with the local working copy, then generates:
 

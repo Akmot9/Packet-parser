@@ -132,7 +132,7 @@ and [the book](https://akmot9.github.io/packet-parser-book/).
 - **No `unsafe`**; `unwrap`, `expect` and `panic!` are linted out of production code.
 - **Checked against tshark**: the recent decoders, frame by frame on real
   captures; a golden histogram freezes the classification of the corpus.
-- **Fuzzed every night** (25 targets); `cargo semver-checks` on every pull request.
+- **Fuzzed every night** (25 targets); `cargo semver-checks` and a [benchmark](benches) on every pull request.
 - **No system dependency**: pure Rust, tested on Linux and macOS.
 
 ## Known Limitations
