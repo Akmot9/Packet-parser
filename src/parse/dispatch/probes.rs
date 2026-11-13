@@ -6,6 +6,7 @@
 //! Sondes de contenu de la table de dispatch : leur identite ([`ProbeId`]),
 //! leur execution ([`run_probe`]) et les verbes des protocoles texte.
 
+use crate::checks::application::http::{may_start_request, may_start_response};
 use crate::checks::application::quic::is_plausible_short_header;
 use crate::parse::application::protocols::ams::AmsPacket;
 use crate::parse::application::protocols::asterix::AsterixPacket;
@@ -230,9 +231,12 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Ssh => SshPacket::try_from(payload).is_ok(),
         // Requete ou reponse (#176) : la tete, jusqu'au premier CRLF CRLF,
         // est validee en UTF-8 et ligne par ligne ; sans separateur, tout le
-        // prefixe est la tete.
+        // prefixe est la tete. Chaque decodeur est precede de sa garde a cout
+        // constant (#249) : sans elle, tout segment TCP non reconnu payait
+        // deux parcours du prefixe avant d'etre refuse sur sa premiere ligne.
         ProbeId::Http => {
-            HttpRequest::try_from(text).is_ok() || HttpResponse::try_from(text).is_ok()
+            (may_start_request(text) && HttpRequest::try_from(text).is_ok())
+                || (may_start_response(text) && HttpResponse::try_from(text).is_ok())
         }
         // Garde a cout constant : la sonde est tentee sur chaque paquet TCP, et
         // le Result d'un GiopPacket (qui porte desormais tout le message

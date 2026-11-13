@@ -6,6 +6,23 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Corrige
+
+- **Sonde HTTP** (#249) : depuis la 11.7.0, classer un segment TCP qu'aucune
+  sonde ne reconnait coutait quatre fois plus cher, et ce cout croissait
+  avec la taille du segment. La sonde HTTP cherchait `CRLF CRLF` dans tout
+  le payload puis validait la tete en UTF-8, deux fois (requete, reponse),
+  avant de refuser sur la premiere ligne. Chaque decodeur est desormais
+  precede d'une garde a cout constant : une methode standard en tete, apres
+  les blancs que le decodeur saute, pour une requete ; `HTTP/` pour une
+  reponse. Mesure par le bench de #214 : le paquet de reference (payload
+  chiffre de 1 208 octets) passe de 1 720 ns a 458 ns, contre 420 ns en
+  11.6.0 ; un segment de 60 000 octets passe de 16,9 µs a 447 ns. Les
+  gardes ne refusent rien que les decodeurs acceptent : un test le verifie
+  sur des requetes et des reponses precedees de chaque blanc Unicode puis
+  alterees octet par octet. Aucune etiquette ne change, l'histogramme
+  golden ne bouge pas.
+
 ### Documentation
 
 - **README** (#224) : il passe de 608 a 149 lignes. Il garde le pitch,
