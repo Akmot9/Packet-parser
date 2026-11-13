@@ -26,7 +26,8 @@ CI already runs these on every PR ([`ci.yml`](.github/workflows/ci.yml),
 - `cargo test --workspace --all-features --locked`, and the crate tests on macOS;
 - `cargo check -p packet_parser --all-features --all-targets --locked` on 1.88, the MSRV;
 - `cargo semver-checks` against the latest crates.io version (job `semver`, #213);
-- the bench of `parse` on the corpus, measured by CodSpeed ([`bench.yml`](.github/workflows/bench.yml), #214):
+- the bench of `parse` on the corpus builds and runs ([`bench.yml`](.github/workflows/bench.yml), #214; measured by
+  CodSpeed once the repository variable `CODSPEED_ENABLED` is `true`):
   run it locally with `cargo bench --manifest-path benches/Cargo.toml`;
 - every fuzz target is declared, builds, and runs once (`-runs=1`).
 
