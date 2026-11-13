@@ -6,6 +6,8 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [11.8.2] - 2026-11-13
+
 ### Corrige
 
 - **Sonde HTTP** (#249) : depuis la 11.7.0, classer un segment TCP qu'aucune

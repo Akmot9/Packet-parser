@@ -1,6 +1,21 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-12 : la **11.8.1 est publiee** (tag `v11.8.1`, publication
+Etat au 2026-11-13 : la **11.8.2 est publiee** (tag `v11.8.2`, publication
+par le workflow, semver-checks vert). Patch, pour un correctif de
+performance : depuis la 11.7.0, la sonde HTTP parcourait tout le payload
+avant de le refuser, et un segment TCP non reconnu coutait quatre fois plus
+cher a classer (#249 : 1 720 ns -> 458 ns sur le paquet de reference,
+16,9 µs -> 447 ns sur 60 000 octets). Trouve par le bench de #214, le jour
+de sa mise en place. La version embarque aussi, sans effet sur l'API : le
+decoupage de `parse/` et de `dispatch/` (#221), l'etabli sous `tools/lab`
+(#223), le README en deux ecrans (#224) et le bench `benches/` (#214).
+Aucune etiquette ne change, aucune rupture. Regle de publication : une
+version ne sort que pour une correction de bug ou un ajout de protocole.
+Restent dans #207 : la mesure CodSpeed a activer (#214), #241 (FOSSA), puis
+la 12.0 (#209), pas avant mars 2027. Reste a faire hors de ce depot : le
+livre.
+
+Etat anterieur (2026-11-12) : la **11.8.1 est publiee** (tag `v11.8.1`, publication
 par le workflow, semver-checks vert). Patch : les correctifs sans rupture de
 l'epopee #207. La memoisation des sondes passe a 128 bits (#212) ;
 `Application::try_from` est derive de la table `RULES` au lieu d'une cascade
@@ -210,8 +225,8 @@ faites.
 | Feature | Sujet | Priorite | Taches |
 |---|---|---|---|
 | #208 | Correctifs immediats | P1, patch ou mineure | ~~#212~~ memoisation des sondes sur 128 bits (fait, 11.8.1), ~~#213~~ `cargo semver-checks` sur chaque PR (fait : job `semver` de la CI), #214 bench criterion sur le corpus (en cours : `benches/` et workflow `bench.yml` faits ; restent l'import du depot sur CodSpeed, la PR de regression temoin et le sort de `perf_by_version`), ~~#215~~ schemas mermaid rendus sur docs.rs (fait, 11.8.1), ~~#216~~ `Application::try_from` derive de `RULES` (fait, 11.8.1) |
-| #210 | Forme du code | P2, aucun chemin public ne change | ~~#221~~ decouper `parse/mod.rs` et `dispatch.rs` (fait, non publie : `parse/engine.rs`, `parse/tests.rs`, `dispatch/{rules,probes,ports,tests}.rs`, `postgresql/detection.rs`), ~~#222~~ mesurer la triplication parse/checks/errors (fait, 11.8.1 : checks en module prive pour un petit decodeur) |
-| #211 | Depot range, README reduit, releve preparee | P2 | ~~#223~~ sortir l'etabli de la racine (fait, non publie : `tools/lab`, `docs/archive`), ~~#224~~ README en deux ecrans (fait, non publie : 149 lignes, detail dans `docs/reference.md`, README-fr en pointeur), ~~#225~~ `CONTRIBUTING.md` (fait, 11.8.1), #241 controle FOSSA « License Compliance » rouge en permanence |
+| #210 | Forme du code | P2, aucun chemin public ne change | ~~#221~~ decouper `parse/mod.rs` et `dispatch.rs` (fait, 11.8.2 : `parse/engine.rs`, `parse/tests.rs`, `dispatch/{rules,probes,ports,tests}.rs`, `postgresql/detection.rs`), ~~#222~~ mesurer la triplication parse/checks/errors (fait, 11.8.1 : checks en module prive pour un petit decodeur) |
+| #211 | Depot range, README reduit, releve preparee | P2 | ~~#223~~ sortir l'etabli de la racine (fait, 11.8.2 : `tools/lab`, `docs/archive`), ~~#224~~ README en deux ecrans (fait, 11.8.2 : 149 lignes, detail dans `docs/reference.md`, README-fr en pointeur), ~~#225~~ `CONTRIBUTING.md` (fait, 11.8.1), #241 controle FOSSA « License Compliance » rouge en permanence |
 | #209 | 12.0 : API L7 typee, une seule table, les noms justes | P1, pas avant mars 2027 | #217 enum `ApplicationProtocol`, #218 `details` au L7, #219 retrait de `TryFrom<&[u8]> for Application`, #220 renommages groupes (`copt`, `mac_addres`, `NatDetection`, RADIUS 124 et 125) et `MIGRATION-12.md` |
 
 Ordre fixe par #207 : #208 d'abord, puis #210 et #211, enfin #209 en une

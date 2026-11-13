@@ -57,14 +57,15 @@ discriminant of every variant after it: that breaks the API, even for a
 
 ## Releasing a version
 
-As done for 11.7.0, 11.8.0 and 11.8.1 (#206, #229, #242):
+As done for 11.7.0, 11.8.0, 11.8.1 and 11.8.2 (#206, #229, #242, #251):
 
 1. From an up-to-date `main`, create `chore/release-X.Y.Z`. Read `[Non publie]` to
    choose patch, minor or major. A major must be planned in the ROADMAP and come
    with a `MIGRATION-<N>.md`.
-2. Set `version = "X.Y.Z"` in `Cargo.toml`, then run `cargo update -p packet_parser`
-   and `cargo update -p packet_parser --manifest-path fuzz/Cargo.toml`. In
-   `Cargo.lock` and `fuzz/Cargo.lock`, only the `packet_parser` line changes.
+2. Set `version = "X.Y.Z"` in `Cargo.toml`, then run `cargo update -p packet_parser`,
+   and again with `--manifest-path` for `fuzz/Cargo.toml`, `benches/Cargo.toml` and
+   `tools/lab/Cargo.toml`: their CI jobs build with `--locked`. In each of the four
+   lock files, only the `packet_parser` line changes.
 3. Change the install line `packet_parser = "X.Y.Z"` in `README.md`.
 4. In `CHANGELOG.md`, insert `## [X.Y.Z] - YYYY-MM-DD` right below `## [Non publie]` (now empty).
 5. In `ROADMAP.md`, write a new `Etat au YYYY-MM-DD` paragraph at the top; the
