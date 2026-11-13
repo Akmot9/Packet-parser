@@ -6,6 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 [![docs.rs](https://img.shields.io/docsrs/packet_parser)](https://docs.rs/packet_parser)
 [![Book](https://img.shields.io/badge/book-packet--parser--book-orange)](https://akmot9.github.io/packet-parser-book/)
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/Akmot9/Packet-parser?utm_source=badge)
 
 `packet_parser` is a Rust crate for parsing raw network packets. It starts at
 the data-link layer and progressively decodes internet, transport and
