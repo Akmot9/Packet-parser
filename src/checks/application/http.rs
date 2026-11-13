@@ -88,6 +88,55 @@ pub fn require_version(part: Option<&str>) -> Result<&str, HttpParseError> {
     Ok(version)
 }
 
+/// Garde a cout constant de la sonde HTTP (#249) : ce payload peut-il
+/// commencer une requete ? Le decodeur exige que le premier jeton de la
+/// premiere ligne soit une methode standard, et `split_whitespace` saute
+/// les blancs qui le precedent. La garde saute donc les memes blancs, puis
+/// compare le debut aux methodes.
+///
+/// Elle ne refuse que ce que `parse_http_request` refuserait. Sans elle, le
+/// decodeur cherche `CRLF CRLF` dans tout le payload puis valide la tete en
+/// UTF-8 avant de regarder la methode : chaque segment TCP non reconnu
+/// payait deux parcours complets (1,2 µs pour 1 208 octets).
+pub fn may_start_request(payload: &[u8]) -> bool {
+    let start = skip_leading_whitespace(payload);
+    HTTP_METHODS
+        .iter()
+        .any(|method| start.starts_with(method.as_bytes()))
+}
+
+/// Garde a cout constant de la sonde HTTP (#249) : ce payload peut-il
+/// commencer une reponse ? Le decodeur exige une version `HTTP/x.y` en
+/// premier jeton de la ligne de statut, sans blanc devant.
+pub fn may_start_response(payload: &[u8]) -> bool {
+    payload.starts_with(b"HTTP/")
+}
+
+/// Le payload sans ses blancs de tete, au sens de [`char::is_whitespace`]
+/// (celui de `split_whitespace`), lus directement dans leur encodage UTF-8.
+/// Un octet qui ne commence pas un blanc arrete la lecture : le cout est
+/// constant sur tout payload qui ne commence pas par un blanc.
+fn skip_leading_whitespace(mut bytes: &[u8]) -> &[u8] {
+    loop {
+        let width = match bytes {
+            // U+0009 a U+000D, U+0020.
+            [b'\t'..=b'\r' | b' ', ..] => 1,
+            // U+0085, U+00A0.
+            [0xC2, 0x85 | 0xA0, ..] => 2,
+            // U+1680.
+            [0xE1, 0x9A, 0x80, ..]
+            // U+2000 a U+200A, U+2028, U+2029, U+202F.
+            | [0xE2, 0x80, 0x80..=0x8A | 0xA8 | 0xA9 | 0xAF, ..]
+            // U+205F.
+            | [0xE2, 0x81, 0x9F, ..]
+            // U+3000.
+            | [0xE3, 0x80, 0x80, ..] => 3,
+            _ => return bytes,
+        };
+        bytes = bytes.get(width..).unwrap_or_default();
+    }
+}
+
 /// Requires a header name or value part to be present and returns it borrowed.
 pub fn require_header_part(part: Option<&str>) -> Result<&str, HttpParseError> {
     part.ok_or(HttpParseError::InvalidHeader)
@@ -106,6 +155,46 @@ pub fn extract_header_line(line: &str) -> Result<(&str, &str), HttpParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La table de `skip_leading_whitespace` est exactement
+    /// `char::is_whitespace` : un blanc oublie ferait refuser par la garde
+    /// une requete que le decodeur accepte.
+    #[test]
+    fn skip_leading_whitespace_matches_char_is_whitespace() {
+        let mut buffer = [0u8; 4];
+        for character in (0..=u32::from(char::MAX)).filter_map(char::from_u32) {
+            let encoded = character.encode_utf8(&mut buffer).as_bytes();
+            assert_eq!(
+                skip_leading_whitespace(encoded).is_empty(),
+                character.is_whitespace(),
+                "U+{:04X}",
+                u32::from(character)
+            );
+        }
+    }
+
+    #[test]
+    fn request_guard_skips_whitespace_and_wants_a_method() {
+        assert!(may_start_request(b"GET / HTTP/1.1\r\n\r\n"));
+        assert!(may_start_request(b" \t\nPATCH /x HTTP/1.1"));
+        assert!(may_start_request(
+            "\u{a0}\u{2003}\u{3000}DELETE /".as_bytes()
+        ));
+        assert!(!may_start_request(b""));
+        assert!(!may_start_request(b"   "));
+        assert!(!may_start_request(b"get / HTTP/1.1"));
+        assert!(!may_start_request(b"INVALID REQUEST"));
+        assert!(!may_start_request(b"HTTP/1.1 200 OK"));
+        assert!(!may_start_request(&[0x17, 0x03, 0x03, 0x00, 0x20]));
+    }
+
+    #[test]
+    fn response_guard_wants_the_version_first() {
+        assert!(may_start_response(b"HTTP/1.1 200 OK\r\n\r\n"));
+        assert!(!may_start_response(b" HTTP/1.1 200 OK"));
+        assert!(!may_start_response(b"HTTP"));
+        assert!(!may_start_response(b"GET / HTTP/1.1"));
+    }
 
     #[test]
     fn test_parse_payload_as_utf8_valid() {

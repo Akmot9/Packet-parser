@@ -1018,3 +1018,64 @@ fn blind_rules_mirror_the_public_cascade_order() {
              ordre (#216)"
     );
 }
+
+/// Les gardes de la sonde HTTP (#249) ne refusent rien que les decodeurs
+/// acceptent : sur des requetes et des reponses valides, precedees de chaque
+/// blanc Unicode, puis alterees octet par octet, « le decodeur accepte »
+/// implique toujours « la garde accepte ». Une garde trop stricte changerait
+/// des etiquettes sans qu'aucun autre test le voie.
+#[test]
+fn http_guards_never_refuse_what_the_decoders_accept() {
+    use crate::checks::application::http::{may_start_request, may_start_response};
+    use crate::parse::application::protocols::http::{HttpRequest, HttpResponse};
+
+    fn check(payload: &[u8], accepted: &mut usize) {
+        if HttpRequest::try_from(payload).is_ok() {
+            *accepted += 1;
+            assert!(may_start_request(payload), "requete refusee : {payload:?}");
+        }
+        if HttpResponse::try_from(payload).is_ok() {
+            *accepted += 1;
+            assert!(may_start_response(payload), "reponse refusee : {payload:?}");
+        }
+    }
+
+    let seeds: [&[u8]; 6] = [
+        b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n",
+        b"POST /submit HTTP/1.0\r\nContent-Length: 2\r\n\r\nok",
+        b"OPTIONS * HTTP/2",
+        b"CONNECT example.com:443 HTTP/1.1\r\n\r\n",
+        b"HTTP/1.1 200 OK\r\nServer: x\r\n\r\n",
+        b"HTTP/1.0 404 Not Found",
+    ];
+    let whitespace: Vec<char> = (0..=u32::from(char::MAX))
+        .filter_map(char::from_u32)
+        .filter(|character| character.is_whitespace())
+        .collect();
+    let mut accepted = 0;
+
+    for seed in seeds {
+        check(seed, &mut accepted);
+        // Un blanc, puis deux, devant chaque graine.
+        for first in &whitespace {
+            for second in whitespace.iter().map(Some).chain([None]) {
+                let mut payload = first.to_string();
+                payload.extend(second);
+                let mut payload = payload.into_bytes();
+                payload.extend_from_slice(seed);
+                check(&payload, &mut accepted);
+            }
+        }
+        // Chaque octet de la premiere ligne remplace par chaque valeur.
+        for index in 0..seed.len().min(24) {
+            for value in 0..=u8::MAX {
+                let mut payload = seed.to_vec();
+                payload[index] = value;
+                check(&payload, &mut accepted);
+            }
+        }
+    }
+    // Le test n'est pas vide : graines, variantes a blancs et alterations
+    // acceptees par les decodeurs.
+    assert!(accepted > 2_000, "{accepted} cas acceptes seulement");
+}
