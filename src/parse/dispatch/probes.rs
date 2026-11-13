@@ -235,8 +235,9 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         // constant (#249) : sans elle, tout segment TCP non reconnu payait
         // deux parcours du prefixe avant d'etre refuse sur sa premiere ligne.
         ProbeId::Http => {
-            (may_start_request(text) && HttpRequest::try_from(text).is_ok())
-                || (may_start_response(text) && HttpResponse::try_from(text).is_ok())
+            // TEMOIN #214 : gardes retirees expres, ne pas merger.
+            let _guards = (may_start_request(text), may_start_response(text));
+            HttpRequest::try_from(text).is_ok() || HttpResponse::try_from(text).is_ok()
         }
         // Garde a cout constant : la sonde est tentee sur chaque paquet TCP, et
         // le Result d'un GiopPacket (qui porte desormais tout le message
