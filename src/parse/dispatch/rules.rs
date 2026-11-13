@@ -82,7 +82,7 @@ pub(super) const fn port_rule(
 /// ordre est porteur de semantique (S7Comm avant COTP, DHCP avant SRVLOC,
 /// MQTT en dernier) et verrouille par le snapshot `tests/golden_pcaps.rs`.
 /// Les regles sans garde ni veto de port sont aussi, dans cet ordre, la
-/// cascade de `Application::try_from` ([`classify_blind`], #216).
+/// cascade de `Application::try_from` ([`classify_blind`](super::classify_blind), #216).
 pub(super) static RULES: &[Rule] = &[
     port_rule("SNMP", Guard::Udp, is_snmp_udp_port, ProbeId::Snmp),
     port_rule("DHCPv6", Guard::Udp, is_dhcpv6_udp_port, ProbeId::Dhcpv6),

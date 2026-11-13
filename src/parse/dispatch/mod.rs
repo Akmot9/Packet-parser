@@ -23,7 +23,7 @@
 //!   Modbus/TCP, ASTERIX...) ou couvert par une longueur declaree (NBSS,
 //!   DNS sur TCP, TLS...). Seules les sondes des protocoles texte (FTP, SMTP,
 //!   NNTP, HTTP), qui valident tout le texte en UTF-8, ne lisent que
-//!   [`PROBE_CAP`] octets : la borne de l'issue #20, qui plafonnait jadis
+//!   [`PROBE_CAP`](probes::PROBE_CAP) octets : la borne de l'issue #20, qui plafonnait jadis
 //!   toutes les sondes (#184, #185), et que l'oracle du fuzz recopie.
 
 use super::application::Application;

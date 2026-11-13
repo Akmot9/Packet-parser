@@ -71,7 +71,7 @@ use crate::parse::transport::protocols::esp::EspPacket;
 /// Recopie par l'oracle FTP du fuzz : voir [`FTP_ONLY_VERBS`].
 pub(super) const PROBE_CAP: usize = 18 * 1024;
 
-/// Masque de memoisation de [`classify`] : un bit par [`ProbeId`].
+/// Masque de memoisation de [`classify`](super::classify) : un bit par [`ProbeId`].
 pub(super) type ProbeMask = u128;
 
 /// Identite d'une sonde de contenu. Deux regles peuvent partager la meme
@@ -310,7 +310,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
 /// verbe est valide avec la syntaxe FTP. POST est exclu du set NNTP (HTTP).
 ///
 /// L'oracle de `fuzz/oracles/text_protocols.rs` (#108) recopie cette liste,
-/// les ports de [`is_text_protocol_port`] et [`is_ftp_tcp_port`], et
+/// les ports de [`is_text_protocol_port`](super::ports::is_text_protocol_port) et [`is_ftp_tcp_port`](super::ports::is_ftp_tcp_port), et
 /// [`PROBE_CAP`] : toute modification s'y reporte. Elargir la detection sans
 /// lui fait echouer le fuzzing nocturne sur un comportement voulu ; la
 /// restreindre le relache en silence.

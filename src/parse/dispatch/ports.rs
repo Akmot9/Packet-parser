@@ -11,7 +11,7 @@
 /// ci-dessus y ont deja tranche, et un verbe distinctif y est probablement
 /// du contenu en transit (corps DATA, article) — jamais reclasse.
 ///
-/// Recopie par l'oracle FTP du fuzz : voir [`FTP_ONLY_VERBS`].
+/// Recopie par l'oracle FTP du fuzz : voir [`FTP_ONLY_VERBS`](super::probes::FTP_ONLY_VERBS).
 pub(super) fn is_text_protocol_port(port: Option<u16>) -> bool {
     matches!(port, Some(21 | 25 | 587 | 119))
 }
@@ -116,7 +116,7 @@ pub(super) fn is_stanag5066_tcp_port(port: Option<u16>) -> bool {
 
 /// FTP control channel : TCP 21.
 ///
-/// Recopie par l'oracle FTP du fuzz : voir [`FTP_ONLY_VERBS`].
+/// Recopie par l'oracle FTP du fuzz : voir [`FTP_ONLY_VERBS`](super::probes::FTP_ONLY_VERBS).
 pub(super) fn is_ftp_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(21))
 }

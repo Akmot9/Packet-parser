@@ -197,7 +197,7 @@ impl<'a> PacketFlow<'a> {
     }
 
     /// Le pipeline L3/L4/L7, unique : le chemin normal le traverse avec
-    /// [`NoTiming`] (chaque etape se reduit a son corps), [`parse_timed`]
+    /// [`NoTiming`] (chaque etape se reduit a son corps), [`parse_timed`](super::parse_timed)
     /// avec un [`ParseTiming`](crate::timing::ParseTiming). `l7` inclut la
     /// detection de tunnel et le parsing recursif des paquets encapsules,
     /// qui eux ne sont pas chronometres separement.
