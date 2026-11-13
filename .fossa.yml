@@ -18,6 +18,7 @@ paths:
     - ./fuzz
     - ./tools/verbench
     - ./tools/lab
+    - ./benches
 
 vendoredDependencies:
   licenseScanPathFilters:

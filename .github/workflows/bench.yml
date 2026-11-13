@@ -1,0 +1,60 @@
+name: Bench
+
+# Bench de `parse` sur le corpus (#214), mesure par CodSpeed : en mode
+# simulation, les instructions sont comptees sous valgrind, donc la mesure
+# ne depend pas de la charge du runner. CodSpeed compare chaque PR a main et
+# commente la PR ; le seuil de regression se regle dans le projet CodSpeed.
+#
+# Depot public : pas de jeton, l'authentification passe par OIDC. Le depot
+# doit etre importe une fois sur https://codspeed.io par son proprietaire.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  # Permet a CodSpeed de rejouer d'anciens commits pour amorcer l'historique.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bench:
+    name: Benchmarks (CodSpeed)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # authentification OIDC aupres de CodSpeed
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # `benches -> target` : le bench est un paquet hors du workspace de la
+      # crate, avec son propre Cargo.lock, comme `fuzz/`.
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "benches -> target"
+          cache-bin: true
+
+      - name: Install cargo-codspeed
+        run: cargo install cargo-codspeed --locked --version 6.0.0
+
+      - name: Build the benchmarks
+        working-directory: benches
+        run: cargo codspeed build --locked
+
+      - name: Run the benchmarks
+        uses: CodSpeedHQ/action@v5
+        with:
+          mode: simulation
+          working-directory: benches
+          run: cargo codspeed run
