@@ -10,6 +10,7 @@ crates.io, plus la copie de travail locale, et produit un JSON comparatif.
 tools/verbench/run.sh                 # écrit perf_by_version.json dans tools/verbench/
 tools/verbench/run.sh /chemin/out.json
 python3 tools/verbench/report.py      # génère perf_by_version.html depuis le JSON existant
+python3 tools/verbench/report.py --svg images/perf_by_version.svg   # et la courbe du README
 ```
 
 `run.sh` génère aussi automatiquement un rapport HTML autonome à côté du JSON

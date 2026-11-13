@@ -45,6 +45,10 @@ def parse_args() -> argparse.Namespace:
         nargs="?",
         help="Output HTML path. Defaults to input path with .html suffix.",
     )
+    parser.add_argument(
+        "--svg",
+        help="Also write the standalone trend chart embedded in the README.",
+    )
     return parser.parse_args()
 
 
@@ -536,6 +540,114 @@ def render_html(rows: list[dict[str, int | str]], input_path: Path) -> str:
 """
 
 
+def trend_svg(rows: list[dict[str, int | str]]) -> str:
+    """Courbe autonome du temps total par version publiee, pour le README.
+
+    Une seule serie, donc pas de legende : le titre la nomme. Le fichier porte
+    sa propre surface et ses deux jeux de couleurs (clair, sombre) : GitHub
+    l'affiche par <img>, sans feuille de style de la page.
+    """
+    published = [row for row in rows if "-" not in str(row["version"])]
+    if len(published) < 2:
+        return ""
+    values = [int(row["total_ns"]) for row in published]
+    labels = [str(row["version"]) for row in published]
+
+    width, height = 760, 320
+    left, right, top, bottom = 52, 24, 64, 40
+    plot_w, plot_h = width - left - right, height - top - bottom
+    ticks = chart_ticks(max(values), 4)
+    y_max = ticks[-1]
+
+    def x_at(index: int) -> float:
+        return left + plot_w * index / (len(values) - 1)
+
+    def y_at(value: int) -> float:
+        return top + plot_h * (1 - value / y_max)
+
+    def ns(value: int) -> str:
+        return f"{value:,}".replace(",", " ") + " ns"
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
+        f'width="{width}" height="{height}" role="img" '
+        f'aria-label="Time to parse the reference packet, by published version, '
+        f'from {esc(labels[0])} ({values[0]} ns) to {esc(labels[-1])} ({values[-1]} ns)">',
+        "<style>"
+        ".bg{fill:#fcfcfb;stroke:#e4e3df}.t1{fill:#0b0b0b}.t2{fill:#52514e}"
+        ".grid{stroke:#e4e3df}.line{stroke:#2a78d6}.dot{fill:#2a78d6;stroke:#fcfcfb}"
+        "text{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:12px}"
+        ".title{font-size:15px;font-weight:600}"
+        "@media (prefers-color-scheme:dark){"
+        ".bg{fill:#1a1a19;stroke:#383835}.t1{fill:#f0efec}.t2{fill:#c3c2b7}"
+        ".grid{stroke:#383835}.line{stroke:#3987e5}.dot{fill:#3987e5;stroke:#1a1a19}}"
+        "</style>",
+        f'<rect class="bg" x="0.5" y="0.5" width="{width - 1}" height="{height - 1}" rx="8"/>',
+        f'<text class="title t1" x="{left - 36}" y="26">'
+        "Time to parse one reference packet, by published version</text>",
+        f'<text class="t2" x="{left - 36}" y="44">'
+        "Nanoseconds, lower is better. One laptop: read the trend, not the exact figures.</text>",
+    ]
+
+    for tick in ticks:
+        y = y_at(tick)
+        parts.append(
+            f'<line class="grid" x1="{left}" y1="{y:.1f}" x2="{width - right}" y2="{y:.1f}"/>'
+        )
+        parts.append(
+            f'<text class="t2" x="{left - 8}" y="{y + 4:.1f}" text-anchor="end">'
+            f'{f"{tick:,}".replace(",", " ")}</text>'
+        )
+
+    # Un repere d'axe par version majeure, espace d'au moins 44 px du precedent.
+    last_x = -100.0
+    seen_major = ""
+    for index, label in enumerate(labels):
+        major = label.split(".")[0]
+        if major == seen_major:
+            continue
+        seen_major = major
+        x = x_at(index)
+        if x - last_x < 44:
+            continue
+        last_x = x
+        parts.append(
+            f'<text class="t2" x="{x:.1f}" y="{height - bottom + 20}" '
+            f'text-anchor="middle">{esc(major)}.x</text>'
+        )
+
+    points = [(x_at(i), y_at(v)) for i, v in enumerate(values)]
+    parts.append(
+        f'<polyline class="line" fill="none" stroke-width="2" stroke-linejoin="round" '
+        f'stroke-linecap="round" points="{polyline(points)}"/>'
+    )
+
+    # Etiquettes directes, peu nombreuses : depart, creux, dernier pic, arrivee.
+    lowest = min(range(len(values)), key=values.__getitem__)
+    marked = {0: "start", lowest: "middle", len(values) - 1: "end"}
+    tail = range(max(len(values) - 8, 1), len(values) - 1)
+    peak = max(tail, key=values.__getitem__, default=None)
+    if peak is not None and values[peak] > 1.5 * values[-1]:
+        marked[peak] = "end"
+    for index, anchor in sorted(marked.items()):
+        x, y = points[index]
+        parts.append(f'<circle class="dot" cx="{x:.1f}" cy="{y:.1f}" r="4" stroke-width="2"/>')
+        below = index == lowest
+        dx = {"start": 8, "middle": 0, "end": -8}[anchor]
+        dy = 20 if below else -10
+        if index == len(values) - 1:
+            dx, dy, anchor = 0, 20, "end"
+        elif index == 0:
+            dy = -14
+        parts.append(
+            f'<text class="t1" x="{x + dx:.1f}" y="{y + dy:.1f}" text-anchor="{anchor}">'
+            f"{esc(labels[index])}: {ns(values[index])}</text>"
+        )
+
+    parts.append("</svg>")
+    return "\n".join(parts) + "\n"
+
+
 def main() -> None:
     args = parse_args()
     input_path = Path(args.input).resolve() if args.input else default_input_path()
@@ -548,6 +660,12 @@ def main() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(render_html(rows, input_path), encoding="utf-8")
     print(f"HTML report written to {output_path}")
+
+    if args.svg:
+        svg_path = Path(args.svg).resolve()
+        svg_path.parent.mkdir(parents=True, exist_ok=True)
+        svg_path.write_text(trend_svg(rows), encoding="utf-8")
+        print(f"SVG trend written to {svg_path}")
 
 
 if __name__ == "__main__":

@@ -9,9 +9,12 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 ### Outillage
 
 - `tools/verbench/perf_by_version.json` regenere jusqu'a la 11.8.2 (44
-  mesures ; le precedent releve s'arretait a la 11.3.0). La regression de la sonde HTTP y est
-  visible, 584 ns en 11.6.0, 1 348 ns en 11.7.0, 621 ns en 11.8.2 (#214,
-  #249).
+  mesures ; le precedent releve s'arretait a la 11.3.0). La regression de
+  la sonde HTTP y est visible, 584 ns en 11.6.0, 1 348 ns en 11.7.0, 621 ns
+  en 11.8.2 (#214, #249).
+- Le README montre la tendance : `images/perf_by_version.svg`, courbe du
+  temps total par version publiee, ecrite par `tools/verbench/report.py
+  --svg` (et donc par `run.sh`) a partir de ce meme fichier.
 
 ## [11.8.2] - 2026-11-13
 

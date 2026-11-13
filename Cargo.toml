@@ -23,6 +23,7 @@ include = [
     "/src/**",
     "/examples/**",
     "/images/packet_parser.png", # référencée par le README
+    "/images/perf_by_version.svg", # idem, regeneree par tools/verbench
     "/README.md",
     "/README-fr.md",
     "/CHANGELOG.md",
