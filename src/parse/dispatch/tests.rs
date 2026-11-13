@@ -4,6 +4,8 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 use super::*;
+use crate::parse::application::protocols::ntp::NtpPacket;
+use crate::parse::application::protocols::wireguard::WireGuardPacket;
 
 /// Payload TCP minimal pour exercer la table hors ports standards.
 fn tcp_transport<'a>(payload: &'a [u8]) -> Transport<'a> {
