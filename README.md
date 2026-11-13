@@ -136,14 +136,14 @@ and [the book](https://akmot9.github.io/packet-parser-book/).
 - **Fuzzed every night** (25 targets); `cargo semver-checks` and a [benchmark](benches) on every pull request.
 - **No system dependency**: pure Rust, tested on Linux and macOS.
 
+![Time to parse one reference packet, by published version](images/perf_by_version.svg)
+
 ## Known Limitations
 
 - No TCP reassembly, no IP reassembly.
 - Application detection is heuristic and best-effort.
-- The `parse_timing` path is dedicated to measurement and should not be treated
-  as the standard parsing path.
-- Timed parsing does not yet recursively measure `inner` flows produced by
-  tunnel parsing.
+- The `parse_timing` path is for measurement, not the standard parsing path;
+  it does not yet measure the `inner` flows produced by tunnel parsing.
 
 ## License
 

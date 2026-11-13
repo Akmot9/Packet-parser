@@ -89,6 +89,6 @@ with open(sys.argv[2], "w") as f:
     f.write("\n")
 ' "$RESULTS" "$OUT_JSON"
 
-python3 report.py "$OUT_JSON"
+python3 report.py "$OUT_JSON" --svg "$REPO_ROOT/images/perf_by_version.svg"
 
 echo "OK : $(grep -c . "$RESULTS") versions mesurées -> $OUT_JSON" >&2

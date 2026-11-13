@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 320" width="760" height="320" role="img" aria-label="Time to parse the reference packet, by published version, from 1.0.0 (1466 ns) to 11.8.2 (621 ns)">
+<style>.bg{fill:#fcfcfb;stroke:#e4e3df}.t1{fill:#0b0b0b}.t2{fill:#52514e}.grid{stroke:#e4e3df}.line{stroke:#2a78d6}.dot{fill:#2a78d6;stroke:#fcfcfb}text{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:12px}.title{font-size:15px;font-weight:600}@media (prefers-color-scheme:dark){.bg{fill:#1a1a19;stroke:#383835}.t1{fill:#f0efec}.t2{fill:#c3c2b7}.grid{stroke:#383835}.line{stroke:#3987e5}.dot{fill:#3987e5;stroke:#1a1a19}}</style>
+<rect class="bg" x="0.5" y="0.5" width="759" height="319" rx="8"/>
+<text class="title t1" x="16" y="26">Time to parse one reference packet, by published version</text>
+<text class="t2" x="16" y="44">Nanoseconds, lower is better. One laptop: read the trend, not the exact figures.</text>
+<line class="grid" x1="52" y1="280.0" x2="736" y2="280.0"/>
+<text class="t2" x="44" y="284.0" text-anchor="end">0</text>
+<line class="grid" x1="52" y1="172.0" x2="736" y2="172.0"/>
+<text class="t2" x="44" y="176.0" text-anchor="end">1 000</text>
+<line class="grid" x1="52" y1="64.0" x2="736" y2="64.0"/>
+<text class="t2" x="44" y="68.0" text-anchor="end">2 000</text>
+<text class="t2" x="52.0" y="300" text-anchor="middle">1.x</text>
+<text class="t2" x="296.3" y="300" text-anchor="middle">2.x</text>
+<text class="t2" x="345.1" y="300" text-anchor="middle">3.x</text>
+<text class="t2" x="394.0" y="300" text-anchor="middle">5.x</text>
+<text class="t2" x="442.9" y="300" text-anchor="middle">8.x</text>
+<text class="t2" x="491.7" y="300" text-anchor="middle">10.x</text>
+<text class="t2" x="589.4" y="300" text-anchor="middle">11.x</text>
+<polyline class="line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="52.0,121.7 68.3,130.1 84.6,124.6 100.9,125.1 117.1,121.5 133.4,116.5 149.7,109.7 166.0,118.3 182.3,112.5 198.6,116.2 214.9,115.6 231.1,117.9 247.4,112.8 263.7,108.9 280.0,193.8 296.3,242.0 312.6,243.1 328.9,241.0 345.1,243.4 361.4,243.1 377.7,242.5 394.0,239.1 410.3,238.1 426.6,238.0 442.9,237.0 459.1,236.7 475.4,236.5 491.7,236.0 508.0,235.2 524.3,234.5 540.6,225.0 556.9,223.6 573.1,221.0 589.4,220.7 605.7,221.0 622.0,222.8 638.3,221.7 654.6,221.0 670.9,216.9 687.1,134.4 703.4,136.8 719.7,135.3 736.0,212.9"/>
+<circle class="dot" cx="52.0" cy="121.7" r="4" stroke-width="2"/>
+<text class="t1" x="60.0" y="107.7" text-anchor="start">1.0.0: 1 466 ns</text>
+<circle class="dot" cx="345.1" cy="243.4" r="4" stroke-width="2"/>
+<text class="t1" x="345.1" y="263.4" text-anchor="middle">3.0.0: 339 ns</text>
+<circle class="dot" cx="687.1" cy="134.4" r="4" stroke-width="2"/>
+<text class="t1" x="679.1" y="124.4" text-anchor="end">11.7.0: 1 348 ns</text>
+<circle class="dot" cx="736.0" cy="212.9" r="4" stroke-width="2"/>
+<text class="t1" x="736.0" y="232.9" text-anchor="end">11.8.2: 621 ns</text>
+</svg>
