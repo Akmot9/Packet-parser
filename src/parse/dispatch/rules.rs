@@ -78,11 +78,11 @@ pub(super) const fn port_rule(
 
 /// La table : l'ordre est la priorite. D'abord les regles a port (signature
 /// faible confirmee par le port, ou priorite sur un port standard), puis les
-/// sondes aveugles dans l'ordre historique de `Application::try_from` — cet
-/// ordre est porteur de semantique (S7Comm avant COTP, DHCP avant SRVLOC,
-/// MQTT en dernier) et verrouille par le snapshot `tests/golden_pcaps.rs`.
-/// Les regles sans garde ni veto de port sont aussi, dans cet ordre, la
-/// cascade de `Application::try_from` ([`classify_blind`](super::classify_blind), #216).
+/// sondes aveugles dans leur ordre historique, celui de la cascade sans
+/// transport que portait `Application::try_from` jusqu'a la 11.x (#219) —
+/// cet ordre est porteur de semantique (S7Comm avant COTP, DHCP avant
+/// SRVLOC, MQTT en dernier) et verrouille par le snapshot
+/// `tests/golden_pcaps.rs`.
 pub(super) static RULES: &[Rule] = &[
     port_rule("SNMP", Guard::Udp, is_snmp_udp_port, ProbeId::Snmp),
     port_rule("DHCPv6", Guard::Udp, is_dhcpv6_udp_port, ProbeId::Dhcpv6),
@@ -274,7 +274,7 @@ pub(super) static RULES: &[Rule] = &[
     // qu'avait la sonde aveugle, si bien que rien ne change sur ce port :
     // le decodeur tolerant suffit quand le port confirme (#164).
     port_rule("NTP", Guard::Udp, is_ntp_udp_port, ProbeId::Ntp),
-    // --- cascade aveugle, ordre historique de `Application::try_from`,
+    // --- cascade aveugle, dans son ordre historique,
     // avec les gardes de transport que les RFC imposent : sonder NTP sur du
     // TCP etiquetait "NTP" des Encrypted Alerts TLS (0x15 = LI/VN/mode
     // plausible — trames 44/329/614 de dump.pcapng). Seuls les protocoles

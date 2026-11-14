@@ -128,34 +128,9 @@ impl DecodeAsProtocol {
     }
 }
 
-/// Classe un payload sans port ni transport : la cascade de
-/// `Application::try_from`, derivee de la table (#216). Ce sont les regles
-/// sans garde ni veto de port, dans l'ordre de la table, avec les memes
-/// sondes que [`classify`] et la meme memoisation. Faute de transport, leur
-/// garde de transport n'est pas appliquee : une signature TCP peut
-/// etiqueter un datagramme. Cette API est donc moins sure que `parse`, qui
-/// voit les ports et le transport. `classify_payload` la remplace (#219) :
-/// elle prend le transport et les ports, et passe par [`classify`]. Cette
-/// cascade part avec `Application::try_from`, en 12.0.
-pub(crate) fn classify_blind(payload: &[u8]) -> &'static str {
-    let mut failed_probes: ProbeMask = 0;
-    for rule in RULES {
-        if rule.ports.is_some() || rule.ports_veto.is_some() {
-            continue;
-        }
-        let bit = rule.probe.bit();
-        if failed_probes & bit == 0 && run_probe(rule.probe, payload) {
-            return rule.label;
-        }
-        failed_probes |= bit;
-    }
-    "Unknown"
-}
-
 /// Classifie le payload d'une couche transport. `None` signifie « rien a
 /// sonder » (pas de payload, payload vide, ou port mDNS sans contenu mDNS) ;
-/// un payload sonde sans succes reste etiquete `"Unknown"`, comme
-/// `Application::try_from`.
+/// un payload sonde sans succes reste etiquete `"Unknown"`.
 pub(super) fn classify(
     transport: &Transport<'_>,
     decode_as: &[(u16, DecodeAsProtocol)],

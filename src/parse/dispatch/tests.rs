@@ -969,11 +969,10 @@ fn port_rules_carry_a_transport_guard() {
     }
 }
 
-/// La liste aveugle de la table, figee : c'est aussi, sans les verbes
-/// FTP/SMTP/NNTP (veto de port), la cascade de `Application::try_from`
-/// (#216). Un protocole ajoute ou deplace s'y voit.
+/// La liste aveugle de la table, figee : un protocole ajoute ou deplace s'y
+/// voit.
 #[test]
-fn blind_rules_mirror_the_public_cascade_order() {
+fn blind_rules_order_is_frozen() {
     let blind: Vec<&str> = RULES
         .iter()
         .filter(|rule| rule.ports.is_none())
@@ -1012,10 +1011,9 @@ fn blind_rules_mirror_the_public_cascade_order() {
             "WireGuard",
             "MQTT",
         ],
-        "S7Comm est promu en tete (priorite sur COTP), les verbes \
-             non-ambigus FTP/SMTP/NNTP sont propres au dispatch transport \
-             (issue #66, veto de port), et Application::try_from suit cet \
-             ordre (#216)"
+        "S7Comm est promu en tete (priorite sur COTP), et les verbes \
+             non-ambigus FTP/SMTP/NNTP ne valent que hors de leurs ports \
+             (issue #66, veto de port)"
     );
 }
 
