@@ -450,7 +450,10 @@ n'a plus de liste a lui : il parcourt les regles sans garde ni veto de port
 de la table, dans son ordre (`classify_blind`, #216). Il n'y a rien a y
 ajouter ; seul le nom du protocole va dans
 `blind_rules_mirror_the_public_cascade_order`, qui fige la liste aveugle de
-la table.
+la table. Cette entree part en 12.0 (#219) : une sonde aveugle se teste par
+`classify_payload(<transport>, None, None, payload)`, sous le transport de
+sa garde. Un test negatif (« ces octets ne sont pas Foo ») ecrit sous un
+autre transport passerait sans rien prouver.
 
 ```rust
 // src/parse/dispatch/probes.rs

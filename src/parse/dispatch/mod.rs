@@ -134,7 +134,9 @@ impl DecodeAsProtocol {
 /// sondes que [`classify`] et la meme memoisation. Faute de transport, leur
 /// garde de transport n'est pas appliquee : une signature TCP peut
 /// etiqueter un datagramme. Cette API est donc moins sure que `parse`, qui
-/// voit les ports et le transport ; elle le restera jusqu'a #209.
+/// voit les ports et le transport. `classify_payload` la remplace (#219) :
+/// elle prend le transport et les ports, et passe par [`classify`]. Cette
+/// cascade part avec `Application::try_from`, en 12.0.
 pub(crate) fn classify_blind(payload: &[u8]) -> &'static str {
     let mut failed_probes: ProbeMask = 0;
     for rule in RULES {

@@ -10,17 +10,35 @@ use crate::{errors::application::ApplicationError, parse::dispatch::classify_bli
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
 ///
+/// [`fn@crate::parse`] fills it in [`crate::PacketFlow::application`]. For a
+/// payload without its frame, [`crate::classify_payload`] gives the same
+/// answer from the transport protocol and the ports. Both apply the whole
+/// dispatch table: a valid-looking S7Comm payload carried over UDP is not
+/// labelled S7Comm, and weak COTP signatures stay behind TCP port 102.
+///
+/// # `Application::try_from` will be removed in 12.0
+///
 /// [`Application::try_from`] only receives application bytes and therefore
-/// cannot enforce transport or port constraints. For classification of a
-/// complete packet, use [`crate::parse::PacketFlow`]: it prevents, for
-/// example, a valid-looking S7Comm payload carried over UDP from being
-/// labelled as S7Comm and keeps weak COTP signatures behind TCP port 102.
+/// cannot enforce transport or port constraints. It can give a TCP segment
+/// the label of a protocol that only exists over UDP, and it never
+/// recognizes a protocol that its port identifies. On the capture corpus of
+/// this crate it disagrees with `parse` on 9,307 flows out of 254,107.
+///
+/// Use [`crate::classify_payload`] instead. The rewrite is described in
+/// [`MIGRATION-12.md`](https://github.com/Akmot9/Packet-parser/blob/main/MIGRATION-12.md)
+/// (issue #219).
 #[derive(Debug, Clone, Serialize, Eq)]
 #[non_exhaustive]
 pub struct Application {
     pub application_protocol: &'static str,
 }
 
+/// Classification without transport or ports. **Will be removed in 12.0**
+/// (issue #219): use [`crate::classify_payload`].
+///
+/// This implementation carries no `#[deprecated]` attribute because rustc
+/// rejects it on a trait implementation: the compiler will not warn its
+/// callers before the removal.
 impl TryFrom<&[u8]> for Application {
     type Error = ApplicationError;
 

@@ -14,6 +14,8 @@ Issues, commit messages and the changelog are written in French.
   [stability rules](ROADMAP.md#4-regles-de-la-fenetre-de-stabilite).
 - [`CHANGELOG.md`](CHANGELOG.md): history, one section per release.
 - [`MIGRATION-11.md`](MIGRATION-11.md): every breaking change of 11.0.0.
+- [`MIGRATION-12.md`](MIGRATION-12.md): the breaking changes planned for 12.0.0,
+  each written before it is made.
 - [`pcaps_exemple/README.md`](pcaps_exemple/README.md): the capture corpus.
 
 ## Before you open a pull request
