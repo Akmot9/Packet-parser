@@ -6,6 +6,43 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **classify_payload** (#219) : `classify_payload(protocole, port source,
+  port destination, payload)` classe le payload d'un segment TCP ou d'un
+  datagramme UDP dont l'appelant n'a plus la trame : un flux reassemble, un
+  payload stocke sans ses en-tetes. Elle rend ce que `parse` met dans
+  `PacketFlow::application` : meme table, memes gardes de transport et de
+  port, meme detection de tunnel (VXLAN, Geneve, GTP-U, CAPWAP). `None`
+  quand il n'y a rien a classer : payload vide, protocole autre que TCP et
+  UDP, port UDP reserve a mDNS ou a LLMNR qui porte autre chose. Un port
+  inconnu se passe `None`. `classify_payload_with` prend un `ParseConfig`,
+  comme `parse_with`. Verifie sur tout le corpus : 358 247 flux, tunnels
+  compris, recoivent l'etiquette de `parse`
+  (`tests/classify_payload_parity.rs`), et la cible de fuzz
+  `parse_application` tient la meme egalite sur des trames baties autour de
+  ses octets. Trois differences avec `parse`, documentees et figees chacune
+  par un test, parce que la fonction recoit un payload et non une trame :
+  elle ne voit pas les drapeaux TCP anormaux (SYN+FIN, bits reserves) pour
+  lesquels `parse` ne sonde pas le segment ; elle rend `None` pour GRE et
+  IP-in-IP, que `parse` nomme depuis l'en-tete IP ; et elle nomme encore un
+  tunnel au quatrieme niveau de flux, le dernier que `parse` garde et ou il
+  n'en cherche plus.
+- `TransportProtocol` est reexporte a la racine de la crate.
+
+### Deprecie
+
+- **Application::try_from** (#219) : `impl TryFrom<&[u8]> for Application`
+  sera retire en 12.0. Il classe sans transport ni port : sur le corpus,
+  9 307 flux sur 254 107 n'y recoivent pas l'etiquette de `parse`. 8 004
+  sortent `Unknown` la ou le port identifie le protocole, 1 246 NBNS, mDNS
+  et LLMNR sortent `DNS`, 38 datagrammes Modbus sur UDP 502 sortent
+  `ModbusTCP`, et 19 recoivent un autre protocole : 13 segments MMS sur
+  TCP 102 `RADIUS`, 5 reponses SSDP `HTTP`, une requete DNS `NTP`. Utiliser
+  `classify_payload`. L'impl ne porte pas `#[deprecated]` : rustc refuse
+  l'attribut sur un impl de trait, et le compilateur ne previendra donc pas
+  ses appelants. Reecriture : `MIGRATION-12.md`.
+
 ### Outillage
 
 - `tools/verbench/perf_by_version.json` regenere jusqu'a la 11.8.2 (44

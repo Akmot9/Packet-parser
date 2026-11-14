@@ -158,7 +158,10 @@ pub use errors::{LinkLayerError, ParseError};
 /// Main module for packet analysis.
 pub mod parse;
 pub use parse::parse_timed;
-pub use parse::{DecodeAsProtocol, ParseConfig, is_supported, parse, parse_with};
+pub use parse::{
+    DecodeAsProtocol, ParseConfig, classify_payload, classify_payload_with, is_supported, parse,
+    parse_with,
+};
 
 pub use parse::application::Application;
 /// Exports data link layer parsing functionality.
@@ -171,6 +174,7 @@ pub use parse::link_layer::{
     Ieee80211Link, LinkLayer, LinkLayerKind, LinuxArphrdType, LinuxCookedPacketType, LinuxSll2Link,
     LinuxSllLink, NetworkProtocol, RawIpLink,
 };
+pub use parse::transport::protocols::TransportProtocol;
 pub use parse::transport::{Transport, TransportDetails};
 
 /// Exports data link layer parsing functionality.

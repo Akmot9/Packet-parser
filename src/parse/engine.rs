@@ -137,19 +137,36 @@ impl<'a> PacketFlow<'a> {
         }
 
         match transport {
-            Some(transport) => match tunnel::detect_inner(transport, depth, decode_as) {
-                Some((tunnel_name, inner_flow)) => (
-                    Some(Application {
-                        application_protocol: tunnel_name,
-                    }),
-                    Some(Box::new(inner_flow)),
-                ),
-                None => (
-                    Self::parse_application_from_transport(transport, decode_as),
-                    None,
-                ),
-            },
+            Some(transport) => Self::application_and_inner(transport, depth, decode_as),
             None => (None, None),
+        }
+    }
+
+    /// L'etape L7 d'un flux qui a une couche transport : un tunnel porte par
+    /// le transport donne son nom au flux externe et son paquet interne a
+    /// `inner` ; sinon la table de dispatch tranche. Chemin unique de
+    /// `parse` et de [`classify_payload`](super::classify_payload) : pour
+    /// un flux externe (`depth` nul), les deux rendent la meme etiquette
+    /// par construction, tunnels compris (#219). `classify_payload` n'a pas
+    /// de profondeur : au dernier niveau que `parse` garde, ou il ne
+    /// cherche plus de tunnel, elle le nomme encore.
+    #[inline(always)]
+    pub(super) fn application_and_inner(
+        transport: &Transport<'a>,
+        depth: u8,
+        decode_as: &[(u16, DecodeAsProtocol)],
+    ) -> (Option<Application>, Option<Box<PacketFlow<'a>>>) {
+        match tunnel::detect_inner(transport, depth, decode_as) {
+            Some((tunnel_name, inner_flow)) => (
+                Some(Application {
+                    application_protocol: tunnel_name,
+                }),
+                Some(Box::new(inner_flow)),
+            ),
+            None => (
+                Self::parse_application_from_transport(transport, decode_as),
+                None,
+            ),
         }
     }
 

@@ -89,6 +89,7 @@ on anything else; it is kept for compatibility only.
 | Check whether a link decoder exists | `is_supported(LinkType)` |
 | Parse a packet | `parse(LinkType, &[u8])` |
 | Parse with caller-declared ports ("Decode As") | `parse_with(LinkType, &[u8], &ParseConfig)` |
+| Classify a payload without its frame, from its transport and ports | `classify_payload(TransportProtocol, Option<u16>, Option<u16>, &[u8])` |
 | Detach the result from the buffer | `flow.to_owned_flow()` |
 | Iterate over encapsulated flows | `flow.flatten()` |
 

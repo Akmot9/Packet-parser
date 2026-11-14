@@ -113,6 +113,7 @@ silently manufacture Ethernet fields.
 | Parse only Ethernet/VLAN — assumes Ethernet, see above | `DataLink::try_from(&[u8])` |
 | Parse only L3, from the protocol the link layer announced | `Internet::try_from_network_parts(NetworkProtocol, &[u8])` |
 | Parse only L4, from the protocol the IP header announced | `Transport::try_from_parts(Option<TransportProtocol>, &[u8])` |
+| Classify a payload without its frame (a reassembled stream, a stored payload), with the label `parse` would give it | `classify_payload(TransportProtocol, source_port, destination_port, &[u8])`; with declared ports, `classify_payload_with(.., &ParseConfig)` |
 | Detach the result from the original buffer | `flow.to_owned_flow()` → `PacketFlowOwned` |
 | Iterate over encapsulated flows | `flow.flatten()` |
 | Measure an explicit LINKTYPE | `parse_timed(...)` with the `parse_timing` feature |

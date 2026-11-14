@@ -2,12 +2,13 @@
 // handshakes et du cookie, Transport Data d'au moins 32 octets. Ni panic ni
 // boucle ; quand le decodage reussit, la taille est celle du type, chaque
 // emprunt pointe dans l'entree, un keepalive fait exactement 32 octets, et
-// ce que la cascade aveugle etiquette WireGuard a des octets reserves nuls.
+// ce que la table etiquette WireGuard, sur UDP et sans port, a des octets
+// reserves nuls.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
 use packet_parser::{
-    Application,
+    TransportProtocol, classify_payload,
     parse::application::protocols::wireguard::{WireGuardMessage, WireGuardPacket},
 };
 
@@ -48,8 +49,8 @@ fn inside(input: &[u8], field: &[u8]) -> bool {
 }
 
 fn exercise(data: &[u8]) {
-    let blind = Application::try_from(data)
-        .is_ok_and(|application| application.application_protocol == "WireGuard");
+    let blind = classify_payload(TransportProtocol::Udp, None, None, data)
+        .is_some_and(|application| application.application_protocol == "WireGuard");
     let Ok(packet) = WireGuardPacket::try_from(data) else {
         assert!(!blind, "etiquete WireGuard sans se decoder");
         return;
