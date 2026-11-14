@@ -35,6 +35,7 @@ use application::protocols::copt::{CotpHeader, CotpNumberFormat, CotpParameter, 
 use internet::Internet;
 use serde::Serialize;
 use transport::Transport;
+use transport::protocols::TransportProtocol;
 
 use crate::{LinkLayer, LinkType, ParseError, owned::PacketFlowOwned};
 
@@ -102,6 +103,135 @@ impl ParseConfig {
         self.decode_as.push((port, protocol));
         self
     }
+}
+
+/// Classifies the payload of one TCP segment or UDP datagram when the caller
+/// knows its transport protocol and its ports but no longer has the frame: a
+/// stream it reassembled, a datagram it defragmented, a payload stored
+/// without its headers.
+///
+/// The answer is the one [`fn@parse`] puts in [`PacketFlow::application`] for
+/// a flow with this transport, these ports and this payload. It goes through
+/// the same dispatch table, with its transport guards and its port guards,
+/// and through the same tunnel detection: the label of a VXLAN, Geneve, GTP-U
+/// or CAPWAP datagram is the name of the tunnel.
+///
+/// # Return value
+///
+/// - `None` where `parse` leaves the application layer empty: an empty
+///   payload, a protocol other than TCP or UDP (nothing is probed above ICMP,
+///   ESP or a protocol this crate does not decode), or a port reserved for
+///   mDNS or LLMNR whose content is neither;
+/// - `Some` with the label `"Unknown"` for a payload that was probed and not
+///   recognized;
+/// - `Some` with the label of the protocol otherwise.
+///
+/// # Ports
+///
+/// Pass `None` for a port you do not know. The rules that need a port then do
+/// not apply; the signatures strong enough to stand without one remain, each
+/// behind its transport guard. Many protocols are only recognized on their
+/// port (COTP, FTP replies, IEC 104, PTP...): give the ports whenever you have
+/// them.
+///
+/// # Difference with `parse`
+///
+/// This function does not see the TCP header. `parse` leaves the application
+/// layer empty for a segment whose flags no conforming stack emits (SYN+FIN,
+/// reserved bits: see [`CorruptedLayer`]); this function classifies its
+/// payload like any other.
+///
+/// # Example
+///
+/// ```
+/// use packet_parser::{TransportProtocol, classify_payload};
+///
+/// // An MMS error PDU under TPKT and COTP, captured on TCP port 102.
+/// let payload =
+///     hex::decode("0300002202f0800100010061153013020103a00ea20c800304a273a205a003870102")?;
+/// let label = |source_port, destination_port| {
+///     classify_payload(TransportProtocol::Tcp, source_port, destination_port, &payload)
+///         .map(|application| application.application_protocol)
+/// };
+///
+/// // The port confirms a signature too weak to stand alone.
+/// assert_eq!(label(Some(102), Some(1345)), Some("COTP"));
+/// // Without it, the payload is probed and not recognized.
+/// assert_eq!(label(None, None), Some("Unknown"));
+/// # Ok::<(), hex::FromHexError>(())
+/// ```
+pub fn classify_payload(
+    protocol: TransportProtocol,
+    source_port: Option<u16>,
+    destination_port: Option<u16>,
+    payload: &[u8],
+) -> Option<Application> {
+    classify_transport_payload(protocol, source_port, destination_port, payload, &[])
+}
+
+/// Like [`classify_payload`], with the caller's configuration: the answer is
+/// the one [`parse_with`] gives with the same [`ParseConfig`].
+///
+/// A port declared with [`ParseConfig::decode_as`] gives its protocol a chance
+/// before the rest of the table. The content must still confirm the port, and
+/// the transport guard of the protocol still applies.
+///
+/// ```
+/// use packet_parser::{
+///     DecodeAsProtocol, ParseConfig, TransportProtocol, classify_payload, classify_payload_with,
+/// };
+///
+/// // The greeting of an FTP server that listens on port 2121.
+/// let greeting = b"220 Chris Sanders FTP Server\r\n";
+/// let label = |application: Option<packet_parser::Application>| {
+///     application.map(|application| application.application_protocol)
+/// };
+///
+/// // An FTP reply has the shape of an SMTP or NNTP reply: only its port tells.
+/// let by_default = classify_payload(TransportProtocol::Tcp, Some(2121), Some(1137), greeting);
+/// assert_eq!(label(by_default), Some("Unknown"));
+///
+/// let config = ParseConfig::new().decode_as(2121, DecodeAsProtocol::Ftp);
+/// let declared =
+///     classify_payload_with(TransportProtocol::Tcp, Some(2121), Some(1137), greeting, &config);
+/// assert_eq!(label(declared), Some("FTP"));
+/// ```
+pub fn classify_payload_with(
+    protocol: TransportProtocol,
+    source_port: Option<u16>,
+    destination_port: Option<u16>,
+    payload: &[u8],
+    config: &ParseConfig,
+) -> Option<Application> {
+    classify_transport_payload(
+        protocol,
+        source_port,
+        destination_port,
+        payload,
+        &config.decode_as,
+    )
+}
+
+fn classify_transport_payload(
+    protocol: TransportProtocol,
+    source_port: Option<u16>,
+    destination_port: Option<u16>,
+    payload: &[u8],
+    decode_as: &[(u16, DecodeAsProtocol)],
+) -> Option<Application> {
+    if !matches!(protocol, TransportProtocol::Tcp | TransportProtocol::Udp) {
+        return None;
+    }
+    let transport = Transport {
+        source_port,
+        destination_port,
+        protocol,
+        payload: Some(payload),
+        details: None,
+    };
+    // Le flux interne d'un tunnel est decode puis jete : c'est lui qui
+    // prouve le tunnel, comme dans `parse`.
+    PacketFlow::application_and_inner(&transport, 0, decode_as).0
 }
 
 /// Timed counterpart of [`fn@parse`]: the exact same pipeline, reporting the
