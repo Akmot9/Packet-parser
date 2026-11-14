@@ -86,7 +86,7 @@ fn packet_flow_detects_putty_banner() {
 /// synthetiques verrouillent les confusions les plus plausibles.
 #[test]
 fn text_that_merely_starts_with_ssh_is_not_detected() {
-    use packet_parser::parse::application::Application;
+    use packet_parser::{TransportProtocol, classify_payload};
 
     for payload in [
         // Version de protocole inexistante.
@@ -98,7 +98,10 @@ fn text_that_merely_starts_with_ssh_is_not_detected() {
         // Banniere tronquee par la segmentation TCP.
         &b"SSH-2.0-OpenSSH_8.9p1"[..],
     ] {
-        let application = Application::try_from(payload).expect("payload is classified");
+        // Sur TCP, le transport de la regle SSH : sous un autre, l'oracle
+        // negatif passerait sans rien prouver.
+        let application = classify_payload(TransportProtocol::Tcp, None, None, payload)
+            .expect("payload is classified");
 
         assert_ne!(
             application.application_protocol, "SSH",

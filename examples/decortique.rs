@@ -1,4 +1,4 @@
-use packet_parser::{Application, DataLink, Internet, Transport};
+use packet_parser::{DataLink, Internet, Transport, classify_payload};
 
 fn parse_csv_hex_bytes(s: &str) -> Vec<u8> {
     s.split([',', '\n', '\r', '\t', ' '])
@@ -26,13 +26,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     println!("Transport: {:?}", transport);
 
-    let application = match &transport {
-        Some(t) => match t.payload {
-            Some(p) => Application::try_from(p).ok(),
-            None => None,
-        },
-        None => None,
-    };
+    // La classification applique la table entiere : elle prend le transport
+    // et les ports de la couche qu'on vient de decoder, pas le payload seul.
+    let application = transport
+        .as_ref()
+        .and_then(|t| classify_payload(t.protocol, t.source_port, t.destination_port, t.payload?));
     println!("Application: {:?}", application);
 
     Ok(())

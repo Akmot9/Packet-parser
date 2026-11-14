@@ -624,13 +624,13 @@ fn packetflow_detects_strict_s7comm_on_tcp_with_or_without_standard_port() {
 #[test]
 fn packetflow_never_detects_s7comm_over_udp() {
     let payload = s7_job_with_total_tpkt_len(17);
-    // Prove that these bytes are a valid transport-agnostic S7 payload;
-    // PacketFlow must nevertheless enforce the TCP transport contract.
+    // Prove that these bytes are a valid S7 payload, recognized on TCP even
+    // without a port; PacketFlow must nevertheless enforce the TCP transport
+    // contract.
     assert_eq!(
-        Application::try_from(payload.as_slice())
-            .unwrap()
-            .application_protocol,
-        "S7Comm"
+        classify_payload(TransportProtocol::Tcp, None, None, payload.as_slice())
+            .map(|application| application.application_protocol),
+        Some("S7Comm")
     );
 
     for destination_port in [102, 10_102] {

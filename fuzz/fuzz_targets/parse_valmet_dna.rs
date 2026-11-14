@@ -4,15 +4,15 @@
 // etiquette qui pave le datagramme, accesseurs texte) et balise de 42 octets.
 // Ni panic ni boucle infinie ; quand le decodage reussit, les tailles
 // recoupent l'entree, l'etiquette et le corps lui sont empruntes, l'horloge
-// est dans ses plages, et la sonde aveugle publique (`Application::try_from`)
+// est dans ses plages, et la table, sur UDP et sans port (`classify_payload`),
 // dit « Valmet DNA » exactement quand la famille est connue.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use packet_parser::Application;
 use packet_parser::parse::application::protocols::valmet_dna::{
     DnaClock, MessageKind, TimeBeacon, ValmetDnaMessage, ValmetDnaPacket,
 };
+use packet_parser::{TransportProtocol, classify_payload};
 
 // valmet-dna-multicast-anon.pcap, trame 1 : telegramme d'etat du noeud 0x801D.
 const STATUS_TELEGRAM: &[u8] = &[
@@ -99,13 +99,13 @@ fn exercise(data: &[u8]) {
         }
         Err(_) => false,
     };
-    // La sonde aveugle publique : « Valmet DNA » si et seulement si la famille
-    // est connue (aucune sonde placee avant elle n'accepte un premier octet
-    // 0xAB : NTP y lit une version 5, RTPS veut sa magie).
-    if !data.is_empty() {
-        let blind = Application::try_from(data).expect("payload non vide");
-        assert_eq!(blind.application_protocol == "Valmet DNA", known_kind);
-    }
+    // La table, sur UDP et sans port : « Valmet DNA » si et seulement si la
+    // famille est connue (aucune sonde placee avant elle n'accepte un premier
+    // octet 0xAB : NTP y lit une version 5, RTPS veut sa magie). Un payload
+    // vide n'a ni etiquette ni famille.
+    let blind = classify_payload(TransportProtocol::Udp, None, None, data)
+        .is_some_and(|application| application.application_protocol == "Valmet DNA");
+    assert_eq!(blind, known_kind);
     if let Ok(beacon) = TimeBeacon::try_from(data) {
         assert_eq!(data.len(), 42);
         if let Some(clock) = &beacon.clock {
