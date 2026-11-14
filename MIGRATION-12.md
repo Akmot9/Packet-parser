@@ -10,10 +10,16 @@ avec l'avant, l'après et la raison. Sa liste sera recoupée avec
 
 ## `Application::try_from(&[u8])` est retiré (#219)
 
-**État : annoncé.** L'impl existe encore en 11.x. `classify_payload`, qui la
-remplace, arrive avec la prochaine version 11.x : la migration peut se faire
-avant la 12.0. Le compilateur ne préviendra pas, parce que rustc refuse
-`#[deprecated]` sur un impl de trait.
+**État : fait sur la branche `release/12.0.0`.** L'impl est retirée, avec la
+cascade interne sans transport ni port qu'elle appelait. `classify_payload`,
+qui la remplace, est sur `main` et sort avec la prochaine 11.x : la migration
+peut se faire avant de passer à la 12.0. Une 11.x ne peut pas prévenir à la
+compilation, parce que rustc refuse `#[deprecated]` sur un impl de trait. En
+12.0, un appel restant ne compile plus :
+
+```text
+error[E0277]: the trait bound `packet_parser::Application: TryFrom<&[u8]>` is not satisfied
+```
 
 ```rust
 // 11.x : le payload seul
@@ -98,3 +104,36 @@ l'inverse. C'était une seconde porte d'entrée publique qui ne répondait pas
 comme `parse`, alors que la table existe pour supprimer ces faux positifs
 (#29, #164). Elle ne se corrigeait pas sans changer de signature : le
 transport et les ports ne sont pas dans `&[u8]`.
+
+## `ApplicationError` et `ParseError::Application` sont retirés (#219)
+
+**État : fait sur la branche `release/12.0.0`.**
+
+`ApplicationError` n'avait plus qu'une variante, `EmptyPacket`, et seul
+`Application::try_from` la rendait. L'impl partie, rien dans la crate ne
+construit cette erreur. `ParseError::Application`, qui l'enveloppait, n'a
+jamais été rendue par `parse`.
+
+```rust
+// 11.x
+match Application::try_from(payload) {
+    Err(ApplicationError::EmptyPacket) => { /* payload vide */ }
+    Ok(application) => { /* … */ }
+}
+
+// 12.0 : un payload vide n'a pas de couche application
+match classify_payload(protocol, source_port, destination_port, payload) {
+    None => { /* payload vide, ou rien à classer */ }
+    Some(application) => { /* … */ }
+}
+```
+
+Un `match` sur `ParseError` qui nommait la variante `Application` perd ce
+bras. L'enum est `#[non_exhaustive]` : le bras `_` existe déjà.
+
+Les erreurs des décodeurs applicatifs (`errors::application::dns`,
+`errors::application::tls`…) ne changent pas.
+
+Raison : une erreur que rien ne rend est une promesse fausse dans une
+signature. La 11.0.0 avait retiré de la même façon les neuf variantes
+d'`ApplicationError` jamais construites (`MIGRATION-11.md`).

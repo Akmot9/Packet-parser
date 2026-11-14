@@ -6,6 +6,19 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Rupture
+
+- **Application::try_from** (#219) : `impl TryFrom<&[u8]> for Application`
+  est retire, avec la cascade sans transport ni port qu'il appelait. Un
+  appel restant ne compile plus (E0277). `classify_payload(protocole, port
+  source, port destination, payload)`, decrite plus bas sous « Ajoute », le
+  remplace et rend l'etiquette de `parse`. Migration : `MIGRATION-12.md`.
+- **ApplicationError** (#219) : l'enum est retire, avec la variante
+  `ParseError::Application` qui l'enveloppait. `EmptyPacket`, sa seule
+  variante, n'etait rendue que par `Application::try_from` ; `parse` ne l'a
+  jamais rendue. Les erreurs des decodeurs applicatifs ne changent pas.
+  Migration : `MIGRATION-12.md`.
+
 ### Ajoute
 
 - **classify_payload** (#219) : `classify_payload(protocole, port source,
