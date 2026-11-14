@@ -3,8 +3,12 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-use serde::Serialize;
-use thiserror::Error;
+//! Les types d'erreur des decodeurs applicatifs, un module par protocole.
+//!
+//! La classification applicative n'a pas d'erreur a elle : un payload non
+//! reconnu sort `Unknown`, un payload vide n'a pas de couche application.
+//! `ApplicationError`, que seul `Application::try_from` rendait, est parti
+//! avec lui en 12.0 (#219).
 
 pub mod ams;
 pub mod asterix;
@@ -46,16 +50,3 @@ pub mod tls;
 pub mod umas;
 pub mod valmet_dna;
 pub mod wireguard;
-
-/// Errors related to parsing an `Application`.
-///
-/// Application-layer probing never fails on an unrecognized payload — it
-/// yields no label instead — so the only error is an empty payload. The
-/// per-protocol decoders report their own error types, under
-/// [`crate::errors::application`].
-#[derive(Debug, Error, Clone, Serialize)]
-#[non_exhaustive]
-pub enum ApplicationError {
-    #[error("Packet is empty")]
-    EmptyPacket,
-}
