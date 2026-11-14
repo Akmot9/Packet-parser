@@ -3,12 +3,12 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-//! Les types d'erreur des decodeurs applicatifs, un module par protocole.
+//! Error types of the application-layer decoders, one module per protocol.
 //!
-//! La classification applicative n'a pas d'erreur a elle : un payload non
-//! reconnu sort `Unknown`, un payload vide n'a pas de couche application.
-//! `ApplicationError`, que seul `Application::try_from` rendait, est parti
-//! avec lui en 12.0 (#219).
+//! Classifying a payload has no error of its own: a payload that is not
+//! recognized is labelled `Unknown`, and an empty payload has no application
+//! layer. `ApplicationError`, which only `Application::try_from` returned,
+//! was removed with it in 12.0 (issue #219).
 
 pub mod ams;
 pub mod asterix;

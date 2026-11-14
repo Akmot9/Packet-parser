@@ -12,10 +12,10 @@ avec l'avant, l'après et la raison. Sa liste sera recoupée avec
 
 **État : fait sur la branche `release/12.0.0`.** L'impl est retirée, avec la
 cascade interne sans transport ni port qu'elle appelait. `classify_payload`,
-qui la remplace, existe depuis la dernière 11.x : la migration peut se faire
-avant de passer à la 12.0. Les 11.x n'ont pas pu prévenir à la compilation,
-parce que rustc refuse `#[deprecated]` sur un impl de trait. En 12.0, un
-appel restant ne compile plus :
+qui la remplace, est sur `main` et sort avec la prochaine 11.x : la migration
+peut se faire avant de passer à la 12.0. Une 11.x ne peut pas prévenir à la
+compilation, parce que rustc refuse `#[deprecated]` sur un impl de trait. En
+12.0, un appel restant ne compile plus :
 
 ```text
 error[E0277]: the trait bound `packet_parser::Application: TryFrom<&[u8]>` is not satisfied
