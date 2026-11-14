@@ -22,6 +22,10 @@ use packet_parser::{
 mod common;
 use common::{FileRead, read_capture};
 
+#[path = "../fuzz/oracles/frames.rs"]
+mod frames;
+use frames::{EPHEMERAL_PORT, ethernet_ipv4_payload};
+
 /// pcaps_exemple/protocols/goose/iti_Sample_File_MMS_and_GOOSE.pcap, trame
 /// 126, TCP 102 -> 1345 : un MMS confirmed-ErrorPDU sous TPKT et COTP
 /// (tshark : `tpkt:cotp:ses:pres:mms`). `Application::try_from` y lisait un
@@ -36,6 +40,18 @@ const DNS_QUERY_WITH_EDNS: &str = concat!(
     "0d060100000100000000000108756e6167692d657506616d617a6f6e03636f6d",
     "00001c000100002905ac000000000000",
 );
+
+/// pcaps_exemple/The-Ultimate-PCAP.pcapng, trame 20749 : GRE v0 sans option
+/// portant un ping ICMP (la fixture de `tests/tunnels_golden.rs`).
+const GRE_IPV4_ICMP: &str = concat!(
+    "0025456017c1001e7a793f1008004500005411fb0000ff2ff6c3ac101702c0a8",
+    "2f01000008004500003c6c5b00007f012d63ac170b38c0a82a0b08004cf80001",
+    "00636162636465666768696a6b6c6d6e6f70717273747576776162636465666768",
+    "69",
+);
+
+/// Port UDP de VXLAN (RFC 7348).
+const VXLAN_PORT: u16 = 4789;
 
 fn bytes(hex_dump: &str) -> Vec<u8> {
     hex::decode(hex_dump).expect("hex")
@@ -82,6 +98,8 @@ struct Tally {
     anomalous: usize,
     /// Flux `Unknown` par defaut que la configuration etiquette SSDP.
     relabelled_ssdp: usize,
+    /// Datagrammes de tunnel au dernier niveau que `parse` garde, ecartes.
+    past_tunnel_limit: usize,
 }
 
 /// Compare, pour chaque flux de chaque capture (le flux externe et ceux des
@@ -94,76 +112,115 @@ fn compare(captures: &[PathBuf], config: Option<&ParseConfig>) -> Tally {
         let FileRead::Frames { frames, .. } = read_capture(path) else {
             continue;
         };
-        for (index, (link_type, data)) in frames.iter().enumerate() {
-            let parsed = match config {
-                Some(config) => parse_with(*link_type, data, config),
-                None => parse(*link_type, data),
-            };
-            let Ok(flow) = parsed else { continue };
-            for (depth, flow) in flow.flatten().into_iter().enumerate() {
-                let Some(transport) = flow.transport.as_ref() else {
-                    continue;
-                };
-                // Seuls TCP et UDP exposent un payload : `parse` ne sonde
-                // rien d'autre.
-                let Some(payload) = transport.payload else {
-                    continue;
-                };
-                // Segment TCP anormal (#24) : `parse` ne le sonde pas, et la
-                // fonction, sans en-tete, ne peut pas le savoir. Difference
-                // documentee, figee par
-                // `anomalous_tcp_is_the_documented_difference`.
-                if flow
-                    .corrupted
-                    .as_ref()
-                    .is_some_and(|corrupted| corrupted.layer == CorruptedLayerKind::Transport)
-                {
-                    tally.anomalous += 1;
-                    continue;
-                }
+        compare_frames(&path.display().to_string(), &frames, config, &mut tally);
+    }
+    tally
+}
 
-                let by_default = classify_payload(
+fn compare_frames(
+    origin: &str,
+    frames: &[(LinkType, Vec<u8>)],
+    config: Option<&ParseConfig>,
+    tally: &mut Tally,
+) {
+    for (index, (link_type, data)) in frames.iter().enumerate() {
+        let parsed = match config {
+            Some(config) => parse_with(*link_type, data, config),
+            None => parse(*link_type, data),
+        };
+        let Ok(flow) = parsed else { continue };
+        for (depth, flow) in flow.flatten().into_iter().enumerate() {
+            let Some(transport) = flow.transport.as_ref() else {
+                continue;
+            };
+            // Seuls TCP et UDP exposent un payload : `parse` ne sonde rien
+            // d'autre.
+            let Some(payload) = transport.payload else {
+                continue;
+            };
+            // Segment TCP anormal (#24) : `parse` ne le sonde pas, et la
+            // fonction, sans en-tete, ne peut pas le savoir. Difference
+            // documentee, figee par
+            // `anomalous_tcp_is_the_documented_difference`.
+            if flow
+                .corrupted
+                .as_ref()
+                .is_some_and(|corrupted| corrupted.layer == CorruptedLayerKind::Transport)
+            {
+                tally.anomalous += 1;
+                continue;
+            }
+
+            let by_default = classify_payload(
+                transport.protocol,
+                transport.source_port,
+                transport.destination_port,
+                payload,
+            );
+            let classified = match config {
+                Some(config) => classify_payload_with(
                     transport.protocol,
                     transport.source_port,
                     transport.destination_port,
                     payload,
-                );
-                let classified = match config {
-                    Some(config) => classify_payload_with(
-                        transport.protocol,
-                        transport.source_port,
-                        transport.destination_port,
-                        payload,
-                        config,
-                    ),
-                    None => by_default.clone(),
-                };
-                assert_eq!(
-                    classified,
-                    flow.application,
-                    "{} trame {} profondeur {depth} : {} {:?} -> {:?}, {} octets",
-                    path.display(),
-                    index + 1,
-                    transport.protocol,
-                    transport.source_port,
-                    transport.destination_port,
-                    payload.len(),
-                );
+                    config,
+                ),
+                None => by_default.clone(),
+            };
+            // Au dernier niveau que `parse` garde, il ne cherche plus de
+            // tunnel ; la fonction, sans profondeur, le nomme encore.
+            // Difference documentee, figee par
+            // `the_last_level_parse_keeps_is_the_documented_difference`.
+            if depth == LAST_FLOW_LEVEL
+                && is_tunnel(label(classified.clone()))
+                && !is_tunnel(label(flow.application.clone()))
+            {
+                tally.past_tunnel_limit += 1;
+                continue;
+            }
+            assert_eq!(
+                classified,
+                flow.application,
+                "{origin} trame {} profondeur {depth} : {} {:?} -> {:?}, {} octets",
+                index + 1,
+                transport.protocol,
+                transport.source_port,
+                transport.destination_port,
+                payload.len(),
+            );
 
-                tally.compared += 1;
-                if matches!(
-                    label(classified.clone()),
-                    Some("VXLAN" | "Geneve" | "GTP-U")
-                ) {
-                    tally.tunnels += 1;
-                }
-                if label(classified) == Some("SSDP") && label(by_default) == Some("Unknown") {
-                    tally.relabelled_ssdp += 1;
-                }
+            tally.compared += 1;
+            if is_tunnel(label(classified.clone())) {
+                tally.tunnels += 1;
+            }
+            if label(classified) == Some("SSDP") && label(by_default) == Some("Unknown") {
+                tally.relabelled_ssdp += 1;
             }
         }
     }
-    tally
+}
+
+/// Profondeur du dernier niveau de flux que `parse` garde : il n'y cherche
+/// plus de tunnel (`MAX_TUNNEL_DEPTH` vaut 4 dans `src/parse/tunnel/mod.rs`,
+/// le flux externe etant a la profondeur 0).
+const LAST_FLOW_LEVEL: usize = 3;
+
+/// Les tunnels portes par un transport, que `parse` nomme avant la table.
+fn is_tunnel(label: Option<&str>) -> bool {
+    matches!(label, Some("VXLAN" | "Geneve" | "GTP-U" | "CAPWAP"))
+}
+
+/// Enveloppe `frame` dans un datagramme VXLAN (drapeau I, VNI 42), porte par
+/// une trame Ethernet/IPv4/UDP synthetique.
+fn in_vxlan(frame: &[u8]) -> Vec<u8> {
+    let mut datagram = vec![0x08, 0, 0, 0, 0, 0, 42, 0];
+    datagram.extend_from_slice(frame);
+    ethernet_ipv4_payload(
+        TransportProtocol::Udp,
+        EPHEMERAL_PORT,
+        VXLAN_PORT,
+        &datagram,
+    )
 }
 
 fn corpus() -> PathBuf {
@@ -248,9 +305,11 @@ fn dns_query_on_port_53_is_dns() {
 }
 
 /// `parse` ne sonde que ce que TCP et UDP transportent : au-dessus d'ICMP,
-/// d'ESP ou d'un protocole sans decodeur, `Transport::payload` reste `None`
-/// et la couche application vide. La fonction ne rouvre pas cette porte,
-/// quels que soient les octets et les ports qu'on lui tend.
+/// d'ESP ou d'un protocole sans decodeur, `Transport::payload` reste `None`.
+/// La fonction ne rouvre pas cette porte, quels que soient les octets et les
+/// ports qu'on lui tend. GRE est dans la liste : `parse` le nomme, mais
+/// depuis l'en-tete IP et sans rien sonder (voir
+/// `ip_level_tunnels_are_named_by_parse_only`).
 #[test]
 fn other_transports_are_never_probed() {
     for protocol in [
@@ -344,4 +403,85 @@ fn anomalous_tcp_is_the_documented_difference() {
         &payload,
     );
     assert_eq!(label(application), Some("COTP"));
+}
+
+/// `parse` garde quatre niveaux de flux au plus (garde anti-boucle,
+/// `MAX_TUNNEL_DEPTH` dans `src/parse/tunnel/mod.rs`). Au dernier il ne
+/// cherche plus de tunnel : la table seule y etiquette le datagramme.
+/// `classify_payload` part du payload, sans profondeur, et repond comme pour
+/// un flux externe : elle y nomme encore le tunnel. Difference documentee.
+///
+/// Trames synthetiques : la requete DNS reelle sous trois puis quatre VXLAN,
+/// ce qu'aucun reseau ne fait.
+#[test]
+fn the_last_level_parse_keeps_is_the_documented_difference() {
+    let innermost = ethernet_ipv4_payload(
+        TransportProtocol::Udp,
+        EPHEMERAL_PORT,
+        53,
+        &bytes(DNS_QUERY_WITH_EDNS),
+    );
+    let labels = |frame: &[u8]| -> Vec<Option<&'static str>> {
+        parse(LinkType::ETHERNET, frame)
+            .expect("la trame se decode")
+            .flatten()
+            .into_iter()
+            .map(|flow| label(flow.application.clone()))
+            .collect()
+    };
+
+    // Trois enveloppes : quatre niveaux, rien ne depasse, la parite tient.
+    let three = in_vxlan(&in_vxlan(&in_vxlan(&innermost)));
+    assert_eq!(
+        labels(&three),
+        [Some("VXLAN"), Some("VXLAN"), Some("VXLAN"), Some("DNS")]
+    );
+    let mut tally = Tally::default();
+    compare_frames(
+        "trois VXLAN",
+        &[(LinkType::ETHERNET, three)],
+        None,
+        &mut tally,
+    );
+    assert_eq!((tally.compared, tally.past_tunnel_limit), (4, 0));
+
+    // Quatre enveloppes : le dernier niveau garde est lui-meme un datagramme
+    // VXLAN, que `parse` ne pele plus.
+    let four = in_vxlan(&in_vxlan(&in_vxlan(&in_vxlan(&innermost))));
+    assert_eq!(
+        labels(&four),
+        [Some("VXLAN"), Some("VXLAN"), Some("VXLAN"), Some("Unknown")]
+    );
+    let mut tally = Tally::default();
+    compare_frames(
+        "quatre VXLAN",
+        &[(LinkType::ETHERNET, four)],
+        None,
+        &mut tally,
+    );
+    assert_eq!((tally.compared, tally.past_tunnel_limit), (3, 1));
+}
+
+/// GRE et IP-in-IP sont des tunnels de niveau IP : `parse` les nomme depuis
+/// l'en-tete IP, sans payload de transport a sonder. `classify_payload` ne
+/// recoit qu'un payload : pour ces protocoles, comme pour tout ce qui n'est
+/// ni TCP ni UDP, elle rend `None`. Difference documentee.
+#[test]
+fn ip_level_tunnels_are_named_by_parse_only() {
+    let frame = bytes(GRE_IPV4_ICMP);
+
+    let flow = parse(LinkType::ETHERNET, &frame).expect("la trame se decode");
+    assert_eq!(label(flow.application.clone()), Some("GRE"));
+    let transport = flow.transport.as_ref().expect("transport sans payload");
+    assert_eq!(transport.protocol, TransportProtocol::Gre);
+    assert_eq!(transport.payload, None);
+
+    let gre = flow.internet.as_ref().expect("IPv4 externe").payload;
+    let application = classify_payload(
+        transport.protocol,
+        transport.source_port,
+        transport.destination_port,
+        gre,
+    );
+    assert_eq!(application, None);
 }

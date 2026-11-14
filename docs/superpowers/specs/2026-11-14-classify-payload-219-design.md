@@ -193,3 +193,32 @@ METHODE (voie 1) ; ROADMAP ; CHANGELOG (`Ajoute`, `Deprecie`) ;
 3. #219 : la piste est corrigée (pas de `#[deprecated]`), les critères
    cochés avec leur preuve. L'issue reste ouverte jusqu'à la fusion de
    `release/12.0.0` dans `main`.
+
+## 7. Écarts constatés à l'implémentation et à la relecture (2026-11-14)
+
+- **Trois différences avec `parse`, pas une.** Le §4.1 n'en nommait qu'une,
+  les drapeaux TCP anormaux. La relecture indépendante de la PR 1 en a
+  montré deux autres, que la rustdoc affirmait ne pas exister : GRE et
+  IP-in-IP, que `parse` nomme depuis l'en-tête IP et pour lesquels la
+  fonction rend `None` ; et le dernier des quatre niveaux de flux que
+  `parse` garde, où il ne cherche plus de tunnel alors que la fonction, sans
+  profondeur, le nomme encore. Le comportement est gardé, la documentation
+  corrigée, et chaque différence a son test
+  (`anomalous_tcp_…`, `ip_level_tunnels_…`, `the_last_level_parse_keeps_…`).
+  Le test de parité écarte explicitement le troisième cas au lieu d'échouer
+  le jour où une capture le contiendrait.
+- **« Port réservé à mDNS ou LLMNR » ne vaut que sur UDP.** Précisé partout.
+- **`MIGRATION-12.md` entre dans le paquet dès `main`**, et non sur
+  `release/12.0.0` comme l'écrivait le §4.2 : le CHANGELOG de la prochaine
+  11.x y renvoie, et sans lui la référence serait morte sur crates.io. C'est
+  la raison que `Cargo.toml` donne déjà pour `MIGRATION-11.md`.
+- **Pas de doctest `compile_fail` pour figer le retrait** (plan, tâche 5) :
+  un test qui affirme qu'un symbole retiré reste retiré ne détecte aucun
+  bug. Le retrait est prouvé par le compilateur et par semver-checks.
+- **Un appelant de plus** : `src/parse/tests.rs`
+  (`packetflow_never_detects_s7comm_over_udp`), que le relevé initial avait
+  manqué. Converti avec les autres.
+- **L'oracle de fuzz borne le payload à 65 495 octets**, la limite de la
+  longueur totale IPv4, et non à 1 400. En pratique libFuzzer ne dépasse pas
+  4 096 octets sans `-max_len` : la parité au-delà de `PROBE_CAP` n'est tenue
+  que par le corpus et par construction.

@@ -45,10 +45,9 @@ Qui appelle `parse` n'a rien à faire : l'étiquette est déjà dans
 - **Le type de retour.** `Option<Application>` remplace
   `Result<Application, ApplicationError>`. Un payload vide rend `None`, et
   plus `Err(ApplicationError::EmptyPacket)`. `None` aussi pour un protocole
-  autre que TCP et UDP, et sur un port réservé à mDNS ou LLMNR dont le
-  contenu n'en est pas : ce sont les cas où `parse` laisse la couche
-  application vide. Un payload sondé sans succès reste `Some`, avec
-  l'étiquette `"Unknown"`.
+  autre que TCP et UDP, et sur un port UDP réservé à mDNS (5353) ou à LLMNR
+  (5355) qui porte autre chose. Un payload sondé sans succès reste `Some`,
+  avec l'étiquette `"Unknown"`.
 - **Les étiquettes.** Ce sont celles de `parse`. Sur le corpus de la crate
   (254 107 flux TCP et UDP à payload non vide), 9 307 changent :
 
@@ -72,12 +71,23 @@ Qui appelle `parse` n'a rien à faire : l'étiquette est déjà dans
 - **« Decode As ».** `classify_payload_with` prend un `ParseConfig`, comme
   `parse_with`, et rend la même étiquette que lui.
 
-### Une différence avec `parse`
+### Trois différences avec `parse`
 
-`classify_payload` ne reçoit pas l'en-tête TCP. `parse` ne sonde pas un
-segment dont les drapeaux sont anormaux (SYN+FIN, bits réservés) et laisse sa
-couche application vide ; `classify_payload` classe ce payload comme un
-autre.
+`classify_payload` reçoit un payload, pas une trame. Trois réponses de
+`parse` tiennent à ce qu'elle ne voit pas :
+
+- **Les drapeaux TCP.** `parse` ne sonde pas un segment dont les drapeaux
+  sont anormaux (SYN+FIN, bits réservés) et laisse sa couche application
+  vide. `classify_payload` classe ce payload comme un autre.
+- **Les tunnels de niveau IP.** `parse` nomme GRE et IP-in-IP depuis
+  l'en-tête IP. Ils n'ont pas de payload de transport : `classify_payload`
+  rend `None` pour leurs protocoles, comme pour tout ce qui n'est ni TCP ni
+  UDP.
+- **L'imbrication des tunnels.** `parse` garde quatre niveaux de flux au plus
+  et ne cherche plus de tunnel au dernier : un datagramme de tunnel qui s'y
+  trouve est étiqueté par la table seule. `classify_payload` n'a pas de
+  profondeur. Elle répond toujours comme pour un flux externe, et nomme le
+  tunnel.
 
 ### Raison
 

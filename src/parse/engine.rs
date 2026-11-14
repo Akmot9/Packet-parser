@@ -145,9 +145,11 @@ impl<'a> PacketFlow<'a> {
     /// L'etape L7 d'un flux qui a une couche transport : un tunnel porte par
     /// le transport donne son nom au flux externe et son paquet interne a
     /// `inner` ; sinon la table de dispatch tranche. Chemin unique de
-    /// `parse` et de [`classify_payload`](super::classify_payload) : les
-    /// deux rendent la meme etiquette par construction, tunnels compris
-    /// (#219).
+    /// `parse` et de [`classify_payload`](super::classify_payload) : pour
+    /// un flux externe (`depth` nul), les deux rendent la meme etiquette
+    /// par construction, tunnels compris (#219). `classify_payload` n'a pas
+    /// de profondeur : au dernier niveau que `parse` garde, ou il ne
+    /// cherche plus de tunnel, elle le nomme encore.
     #[inline(always)]
     pub(super) fn application_and_inner(
         transport: &Transport<'a>,

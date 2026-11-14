@@ -30,6 +30,9 @@ include = [
     # Le CHANGELOG de la 11.0.0 y renvoie a chaque rupture : sans lui, sept
     # references mortes pour qui lit la crate depuis crates.io.
     "/MIGRATION-11.md",
+    # Meme raison : le CHANGELOG y renvoie des l'annonce d'un retrait, donc
+    # avant que la 12.0 existe (#219).
+    "/MIGRATION-12.md",
     "/LICENSE.md",
     # L'en-tete de rustdoc qui dessine les schemas mermaid : docs.rs construit
     # la doc depuis l'archive publiee, il doit donc y etre (#215).

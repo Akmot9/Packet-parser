@@ -13,17 +13,21 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   datagramme UDP dont l'appelant n'a plus la trame : un flux reassemble, un
   payload stocke sans ses en-tetes. Elle rend ce que `parse` met dans
   `PacketFlow::application` : meme table, memes gardes de transport et de
-  port, meme detection de tunnel (VXLAN, Geneve, GTP-U, CAPWAP). `None` la
-  ou `parse` laisse la couche vide : payload vide, protocole autre que TCP
-  et UDP, port reserve a mDNS ou LLMNR dont le contenu n'en est pas. Un port
+  port, meme detection de tunnel (VXLAN, Geneve, GTP-U, CAPWAP). `None`
+  quand il n'y a rien a classer : payload vide, protocole autre que TCP et
+  UDP, port UDP reserve a mDNS ou a LLMNR qui porte autre chose. Un port
   inconnu se passe `None`. `classify_payload_with` prend un `ParseConfig`,
   comme `parse_with`. Verifie sur tout le corpus : 358 247 flux, tunnels
   compris, recoivent l'etiquette de `parse`
   (`tests/classify_payload_parity.rs`), et la cible de fuzz
   `parse_application` tient la meme egalite sur des trames baties autour de
-  ses octets. Une difference, documentee : sans en-tete TCP, la fonction ne
-  voit pas les drapeaux anormaux (SYN+FIN, bits reserves) pour lesquels
-  `parse` ne sonde pas le segment.
+  ses octets. Trois differences avec `parse`, documentees et figees chacune
+  par un test, parce que la fonction recoit un payload et non une trame :
+  elle ne voit pas les drapeaux TCP anormaux (SYN+FIN, bits reserves) pour
+  lesquels `parse` ne sonde pas le segment ; elle rend `None` pour GRE et
+  IP-in-IP, que `parse` nomme depuis l'en-tete IP ; et elle nomme encore un
+  tunnel au quatrieme niveau de flux, le dernier que `parse` garde et ou il
+  n'en cherche plus.
 - `TransportProtocol` est reexporte a la racine de la crate.
 
 ### Deprecie

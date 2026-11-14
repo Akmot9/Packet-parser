@@ -111,20 +111,24 @@ impl ParseConfig {
 /// without its headers.
 ///
 /// The answer is the one [`fn@parse`] puts in [`PacketFlow::application`] for
-/// a flow with this transport, these ports and this payload. It goes through
-/// the same dispatch table, with its transport guards and its port guards,
-/// and through the same tunnel detection: the label of a VXLAN, Geneve, GTP-U
-/// or CAPWAP datagram is the name of the tunnel.
+/// the outermost flow of a frame with this transport, these ports and this
+/// payload. It goes through the same dispatch table, with its transport
+/// guards and its port guards, and through the same tunnel detection: the
+/// label of a VXLAN, Geneve, GTP-U or CAPWAP datagram is the name of the
+/// tunnel.
 ///
 /// # Return value
 ///
-/// - `None` where `parse` leaves the application layer empty: an empty
-///   payload, a protocol other than TCP or UDP (nothing is probed above ICMP,
-///   ESP or a protocol this crate does not decode), or a port reserved for
-///   mDNS or LLMNR whose content is neither;
+/// - `None` when there is nothing to classify: an empty payload, a protocol
+///   other than TCP or UDP, or a UDP port reserved for mDNS (5353) or LLMNR
+///   (5355) that carries something else;
 /// - `Some` with the label `"Unknown"` for a payload that was probed and not
 ///   recognized;
 /// - `Some` with the label of the protocol otherwise.
+///
+/// Only TCP and UDP payloads are classified. `parse` probes nothing above
+/// ICMP, ESP or a protocol this crate does not decode, and neither does this
+/// function, whatever bytes and ports it is given.
 ///
 /// # Ports
 ///
@@ -134,12 +138,22 @@ impl ParseConfig {
 /// port (COTP, FTP replies, IEC 104, PTP...): give the ports whenever you have
 /// them.
 ///
-/// # Difference with `parse`
+/// # Differences with `parse`
 ///
-/// This function does not see the TCP header. `parse` leaves the application
-/// layer empty for a segment whose flags no conforming stack emits (SYN+FIN,
-/// reserved bits: see [`CorruptedLayer`]); this function classifies its
-/// payload like any other.
+/// This function receives a payload, not a frame. Three answers of `parse`
+/// depend on what it does not see:
+///
+/// - **TCP flags.** `parse` leaves the application layer empty for a segment
+///   whose flags no conforming stack emits (SYN+FIN, reserved bits: see
+///   [`CorruptedLayer`]). This function classifies its payload like any
+///   other.
+/// - **IP-level tunnels.** `parse` names GRE and IP-in-IP from the IP header.
+///   They carry no transport payload, and this function returns `None` for
+///   their protocols, as for any protocol other than TCP and UDP.
+/// - **Tunnel nesting.** `parse` keeps at most four levels of flows and does
+///   not look for a tunnel in the last one: a tunnel datagram found there is
+///   labelled by the table alone. This function has no depth. It always
+///   answers as for an outermost flow, and names the tunnel.
 ///
 /// # Example
 ///
@@ -229,8 +243,9 @@ fn classify_transport_payload(
         payload: Some(payload),
         details: None,
     };
-    // Le flux interne d'un tunnel est decode puis jete : c'est lui qui
-    // prouve le tunnel, comme dans `parse`.
+    // Profondeur 0 : la fonction repond comme pour le flux externe d'une
+    // trame. Le flux interne d'un tunnel est decode puis jete : c'est lui
+    // qui prouve le tunnel, comme dans `parse`.
     PacketFlow::application_and_inner(&transport, 0, decode_as).0
 }
 
