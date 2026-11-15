@@ -41,3 +41,22 @@ du 2008-10-09 : 102 trames Modbus/TCP entre 192.168.110.131 (Wistron) et
   Il n'est pas dans le dépôt ITI (aucun fichier Modbus de cette taille).
 - Redistribué tel quel ; aucun test ne le cite nommément (il compte dans les
   382 trames `ModbusTCP` de l'histogramme golden).
+
+## `modbus-udp.pcapng`
+
+Les trames **50281 à 50318** de `../../The-Ultimate-PCAP.pcapng`
+(« The Ultimate PCAP » de Johannes Weber, v20260710), extraites le
+2026-11-15 par `editcap -r The-Ultimate-PCAP.pcapng modbus-udp.pcapng
+50281-50318` : octets de trame identiques, en-tête de section et commentaire
+de fusion de l'original conservés. SHA-256
+`8d759b00bc2a041273fdf2fdd586a2d39e9f24299a443da47573aca435a60d52`,
+30 524 octets.
+
+- 38 datagrammes Modbus sur **UDP 502** entre 192.168.222.129 (port 38956)
+  et 192.168.222.131 : 19 requêtes et 19 réponses, codes fonction 1, 2, 3,
+  4, 5, 6, 15 et 16, dont deux réponses d'exception. tshark les décode par
+  `mbudp`.
+- Conditions : celles de The Ultimate PCAP, voir
+  [`../../SOURCE.md`](../../SOURCE.md).
+- Sert à `tests/modbus_golden.rs` (#257) et compte pour les 38 `ModbusUDP`
+  de l'histogramme golden.

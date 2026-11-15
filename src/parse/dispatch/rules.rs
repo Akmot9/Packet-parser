@@ -383,6 +383,19 @@ pub(super) static RULES: &[Rule] = &[
         is_modbus_tcp_port,
         ProbeId::ModbusTcp,
     ),
+    // Modbus sur UDP 502 (#257) : hors de la specification « Modbus
+    // Messaging on TCP/IP », mais present sur le terrain avec la meme
+    // enveloppe MBAP, et decode par tshark (`mbudp`). Le meme decodeur
+    // tolerant que sur TCP 502, sous sa propre etiquette. Pas de regle sans
+    // port : sur l'Ultimate PCAP, 106 datagrammes CLDAP (UDP 389) ont la
+    // forme d'une enveloppe MBAP. UMAS n'y est pas distingue, faute de
+    // capture.
+    port_rule(
+        ApplicationProtocol::ModbusUdp,
+        Guard::Udp,
+        is_modbus_udp_port,
+        ProbeId::ModbusTcp,
+    ),
     // WireGuard : UDP 51820, le port des exemples de `wg(8)` — aucun port
     // IANA. Comme pour l'heuristique de tshark, la forme du message suffit
     // a une initiation ou une reponse, octets reserves compris (Cloudflare

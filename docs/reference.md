@@ -241,6 +241,8 @@ Application detection is intentionally best-effort. Parser modules include:
   every PDU carries a common public function code and the length it implies
   (a bounded Read Device Identification for function 43), Active Directory
   LDAP and DICOM association rejects excepted
+- Modbus over UDP, label `ModbusUDP`: the same MBAP envelope on UDP 502 or
+  a Decode As port (`DecodeAsProtocol::ModbusUdp`), never on another port
 - UMAS (Schneider Electric)
 - EtherNet/IP
 - OPC UA

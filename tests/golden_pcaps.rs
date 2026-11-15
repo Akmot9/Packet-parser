@@ -394,6 +394,13 @@ fn application_classification_histogram_is_frozen() {
     // sonde aveugle exige la magie `AB 01`, une longueur egale au datagramme
     // moins deux et une famille connue a sa taille exacte : rien d'autre ne
     // bouge dans le reste du corpus.
+    //
+    // 2026-11-15 (#257, Modbus sur UDP) : +1 capture
+    // protocols/modbus/modbus-udp.pcapng, les trames 50281 a 50318 de
+    // The-Ultimate-PCAP.pcapng : 38 datagrammes sur UDP 502, 19 requetes et
+    // 19 reponses, que tshark decode par `mbudp`. La regle de port UDP 502
+    // les etiquette tous : "ModbusUDP" 0 -> 38, rien d'autre ne bouge.
+    // Parite datagramme par datagramme dans `tests/modbus_golden.rs`.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 6307),
@@ -418,6 +425,7 @@ fn application_classification_histogram_is_frozen() {
         ("NBNS", 737),
         ("NBSS", 32),
         ("ModbusTCP", 382),
+        ("ModbusUDP", 38),
         ("UMAS", 181),
         ("NNTP", 6),
         ("NTP", 77),

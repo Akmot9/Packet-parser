@@ -10,7 +10,7 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 - **ApplicationProtocol** (#217) : `Application::application_protocol:
   &'static str` est remplace par `Application::protocol:
-  ApplicationProtocol`, un enum `#[non_exhaustive]` de 53 variantes : une
+  ApplicationProtocol`, un enum `#[non_exhaustive]` de 54 variantes : une
   par etiquette de la table de dispatch, des tunnels, de STP, et `Unknown`.
   `label()` rend la chaine d'avant, a l'octet pres ; `Display` et la
   serialisation l'ecrivent, `FromStr` la relit et refuse un texte inconnu
@@ -49,6 +49,17 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **Modbus sur UDP** (#257) : un datagramme sur UDP 502 qui porte une
+  enveloppe MBAP recoit l'etiquette `ModbusUDP`
+  (`ApplicationProtocol::ModbusUdp`), avec le decodeur de Modbus/TCP ; il
+  sortait `Unknown`. Modbus sur UDP n'est pas dans la specification
+  « Modbus Messaging on TCP/IP », mais il existe sur le terrain et tshark le
+  decode (`mbudp`). Un autre port UDP se declare par
+  `DecodeAsProtocol::ModbusUdp`. Aucune sonde sans port : sur l'Ultimate
+  PCAP, 106 datagrammes CLDAP (UDP 389) ont la forme d'une enveloppe MBAP.
+  UMAS n'est pas distingue sur UDP, faute de capture. Golden : les 38
+  datagrammes des trames 50281 a 50318 de l'Ultimate PCAP, extraits dans
+  `protocols/modbus/modbus-udp.pcapng`, en parite avec tshark.
 - **classify_payload** (#219) : `classify_payload(protocole, port source,
   port destination, payload)` classe le payload d'un segment TCP ou d'un
   datagramme UDP dont l'appelant n'a plus la trame : un flux reassemble, un

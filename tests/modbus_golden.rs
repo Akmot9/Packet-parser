@@ -16,6 +16,11 @@
 //! transaction, longueur, unite, code fonction et code d'exception, figes
 //! dans `tests/data/modbus_tshark_oracle.tsv` et compares ici segment par
 //! segment.
+//!
+//! Modbus sur UDP 502 (#257) : `protocols/modbus/modbus-udp.pcapng`, les 38
+//! datagrammes des trames 50281 a 50318 de l'Ultimate PCAP, que tshark
+//! decode par `mbudp`. Leur oracle, `tests/data/modbus_udp_tshark_oracle.tsv`,
+//! vient de `tools/modbus_udp_oracle.sh`.
 
 use std::{collections::BTreeMap, fs, path::Path};
 
@@ -32,6 +37,7 @@ use common::{FileRead, read_capture};
 
 const CORPUS: &str = "pcaps_exemple/protocols";
 const ORACLE: &str = "tests/data/modbus_tshark_oracle.tsv";
+const UDP_ORACLE: &str = "tests/data/modbus_udp_tshark_oracle.tsv";
 
 /// Segments TCP 389 a payload de l'Ultimate PCAP.
 const LDAP_SEGMENTS: usize = 400;
@@ -242,4 +248,104 @@ fn tcp_header_length(flow: &PacketFlow<'_>) -> usize {
         }
         _ => panic!("en-tete TCP attendu"),
     }
+}
+
+/// Le niveau de la trame etiquete Modbus sur UDP.
+fn modbus_udp_level<'f, 'a>(flow: &'f PacketFlow<'a>) -> Option<&'f PacketFlow<'a>> {
+    flow.flatten().into_iter().find(|level| {
+        level
+            .application
+            .as_ref()
+            .is_some_and(|application| application.protocol.label() == "ModbusUDP")
+    })
+}
+
+/// Parite avec tshark sur UDP (#257) : les 38 datagrammes que tshark decode
+/// par `mbudp` sortent `ModbusUDP`, avec les memes en-tetes MBAP — 19
+/// requetes et 19 reponses, dont deux exceptions.
+#[test]
+fn every_udp_datagram_matches_the_tshark_oracle() {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let oracle = read_oracle(&base.join(UDP_ORACLE));
+    let mut datagrams = 0;
+    let mut by_function: BTreeMap<u8, usize> = BTreeMap::new();
+    for (name, rows) in &oracle {
+        let frames = frames_of(&base.join(CORPUS).join(name));
+        assert_eq!(frames.len(), rows.len(), "{name} : toute trame est Modbus");
+        for (index, (link_type, data)) in frames.iter().enumerate() {
+            let number = index + 1;
+            let flow = parse(*link_type, data).expect("trame decodable");
+            assert!(modbus_level(&flow).is_none(), "{name}:{number} : TCP");
+            let level = modbus_udp_level(&flow)
+                .unwrap_or_else(|| panic!("{name}:{number} : pas ModbusUDP"));
+            let transport = level.transport.as_ref().expect("Modbus est sur UDP");
+            assert!(matches!(transport.protocol, TransportProtocol::Udp));
+            let payload = transport.payload.expect("un datagramme a un payload");
+            assert_eq!(
+                &oracle_columns(
+                    transport.source_port.unwrap(),
+                    transport.destination_port.unwrap(),
+                    payload
+                ),
+                &rows[&number],
+                "{name}:{number} : ecart avec tshark"
+            );
+            *by_function.entry(payload[7]).or_default() += 1;
+            datagrams += 1;
+        }
+    }
+    assert_eq!(datagrams, 38);
+    // Codes 1, 2, 3, 4, 5, 6, 15 et 16, et les deux reponses d'exception
+    // (0x83, 0x86) des trames 36 et 38.
+    assert_eq!(
+        by_function.keys().copied().collect::<Vec<_>>(),
+        [1, 2, 3, 4, 5, 6, 15, 16, 0x83, 0x86]
+    );
+}
+
+/// Sur UDP, seul le port 502 fait du Modbus (#257). L'Ultimate PCAP porte
+/// 38 datagrammes Modbus sur UDP 502 et 106 datagrammes CLDAP (UDP 389,
+/// longueur BER sur quatre octets) qui ont la forme d'une enveloppe MBAP :
+/// aucune sonde sans port ne les essaie.
+#[test]
+fn udp_modbus_needs_port_502() {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut modbus = 0;
+    let mut mbap_shaped_elsewhere = 0;
+    for (link_type, data) in frames_of(&base.join(CORPUS).join("../The-Ultimate-PCAP.pcapng")) {
+        let Ok(flow) = parse(link_type, &data) else {
+            continue;
+        };
+        for level in flow.flatten() {
+            let Some(transport) = level.transport.as_ref() else {
+                continue;
+            };
+            let (Some(payload), true) = (
+                transport.payload,
+                matches!(transport.protocol, TransportProtocol::Udp),
+            ) else {
+                continue;
+            };
+            let on_502 =
+                transport.source_port == Some(502) || transport.destination_port == Some(502);
+            let labelled = level
+                .application
+                .as_ref()
+                .is_some_and(|application| application.protocol.label() == "ModbusUDP");
+            assert_eq!(
+                labelled, on_502,
+                "ModbusUDP hors du port 502, ou rate dessus"
+            );
+            if on_502 {
+                modbus += 1;
+            } else if ModbusTcpPacket::try_from(payload).is_ok() {
+                assert!(
+                    transport.source_port == Some(389) || transport.destination_port == Some(389)
+                );
+                mbap_shaped_elsewhere += 1;
+            }
+        }
+    }
+    assert_eq!(modbus, 38);
+    assert_eq!(mbap_shaped_elsewhere, 106);
 }

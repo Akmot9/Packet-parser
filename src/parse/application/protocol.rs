@@ -104,6 +104,7 @@ application_protocols![
     (ValmetDna, "Valmet DNA"),
     (Vxlan, "VXLAN"),
     (WireGuard, "WireGuard"),
+    (ModbusUdp, "ModbusUDP"),
 ];
 
 impl fmt::Display for ApplicationProtocol {
@@ -145,7 +146,7 @@ mod tests {
 
     /// Les etiquettes de la 11.8.2, triees : la table de dispatch, les
     /// tunnels, STP et `Unknown`. Aucune ne change de texte en 12.0.
-    const FROZEN_LABELS: [&str; 53] = [
+    const FROZEN_LABELS: [&str; 54] = [
         "AMS",
         "ASTERIX",
         "BACnet/IP",
@@ -171,6 +172,7 @@ mod tests {
         "LLMNR",
         "MQTT",
         "ModbusTCP",
+        "ModbusUDP",
         "NAT-keepalive",
         "NBNS",
         "NBSS",

@@ -83,6 +83,8 @@ pub enum DecodeAsProtocol {
     WireGuard,
     /// Valmet DNA sur UDP : messages `AB 01` de toute famille, et la balise.
     ValmetDna,
+    /// Modbus sur UDP : l'enveloppe MBAP, comme sur UDP 502.
+    ModbusUdp,
 }
 
 impl DecodeAsProtocol {
@@ -160,6 +162,11 @@ impl DecodeAsProtocol {
                 ApplicationProtocol::ValmetDna,
                 Guard::Udp,
                 ProbeId::ValmetDna,
+            ),
+            Self::ModbusUdp => (
+                ApplicationProtocol::ModbusUdp,
+                Guard::Udp,
+                ProbeId::ModbusTcp,
             ),
         }
     }
