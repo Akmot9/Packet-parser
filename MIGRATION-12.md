@@ -58,7 +58,7 @@ Qui appelle `parse` n'a rien à faire : l'étiquette est déjà dans
   |---|---|---|
   | `Unknown` | le protocole que son port identifie (PTP, IKE, OpenVPN, IEC 104, NBSS, COTP…) ou le nom du tunnel (VXLAN, Geneve, GTP-U) | 8 004 |
   | `DNS` | `NBNS`, `mDNS` ou `LLMNR` : même format, seul le port les distingue | 1 246 |
-  | `ModbusTCP` sur UDP 502 | `Unknown` : la règle Modbus n'admet que TCP | 38 |
+  | `ModbusTCP` sur UDP 502 | `ModbusUDP` : la même enveloppe MBAP, sous l'étiquette de son transport (#257) | 38 |
   | `RADIUS` sur des segments MMS (TCP 102) | `COTP` | 13 |
   | `HTTP` sur des réponses SSDP hors du port 1900 | `Unknown` | 5 |
   | `NTP` sur une requête DNS de 48 octets | `DNS` | 1 |
@@ -259,7 +259,7 @@ let protocol: ApplicationProtocol = "IEC 104".parse()?;    // l'inverse
   `protocol: ApplicationProtocol`. Un appel mécanique : remplacer
   `.application_protocol` par `.protocol.label()` garde le code tel qu'il
   était, chaîne pour chaîne.
-- **L'enum.** 53 variantes, une par étiquette : celles de la table de
+- **L'enum.** 54 variantes, une par étiquette : celles de la table de
   dispatch, les tunnels (`Vxlan`, `Geneve`, `GtpU`, `Capwap`, `Gre`,
   `IpInIp`), `Stp` et `Unknown`. Il est `#[non_exhaustive]` : un `match`
   garde un bras `_`, et un nouveau protocole sera une mineure.

@@ -29,6 +29,11 @@ pub(super) fn is_modbus_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(502))
 }
 
+/// Modbus sur UDP : UDP 502, le port du dissecteur `mbudp` de Wireshark.
+pub(super) fn is_modbus_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(502))
+}
+
 /// ISO-TSAP (TPKT/COTP, notamment S7comm).
 pub(super) fn is_iso_tsap_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(102))

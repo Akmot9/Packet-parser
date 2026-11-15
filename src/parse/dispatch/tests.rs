@@ -297,8 +297,26 @@ fn modbus_is_lenient_on_port_502_and_strict_elsewhere() {
     assert_ne!(label(tcp, 40_001, &USER_DEFINED), Some("ModbusTCP"));
     assert_eq!(label(tcp, 502, &UMAS), Some("UMAS"));
     assert_eq!(label(tcp, 40_001, &UMAS), Some("UMAS"));
-    // Jamais sur UDP, port 502 compris.
-    assert_ne!(label(TransportProtocol::Udp, 502, &READ), Some("ModbusTCP"));
+    // Sur UDP, le port 502 seul, sous sa propre etiquette (#257) : aucune
+    // sonde sans port, et UMAS n'y est pas distingue.
+    let udp = TransportProtocol::Udp;
+    assert_eq!(label(udp, 502, &READ), Some("ModbusUDP"));
+    assert_eq!(label(udp, 502, &USER_DEFINED), Some("ModbusUDP"));
+    assert_eq!(label(udp, 502, &UMAS), Some("ModbusUDP"));
+    assert_eq!(label(udp, 40_001, &READ), Some("Unknown"));
+    // Un autre port UDP se declare ; la declaration ne vaut pas sur TCP.
+    let declared = |protocol: TransportProtocol| {
+        let transport = Transport {
+            protocol,
+            source_port: Some(40_000),
+            destination_port: Some(40_001),
+            payload: Some(&USER_DEFINED),
+            details: None,
+        };
+        classify(&transport, &[(40_001, DecodeAsProtocol::ModbusUdp)]).map(|a| a.protocol.label())
+    };
+    assert_eq!(declared(udp), Some("ModbusUDP"));
+    assert_eq!(declared(tcp), Some("Unknown"));
 }
 
 /// #164 : sur UDP 123, le decodeur NTP tolerant ; sur tout autre port,
@@ -842,7 +860,7 @@ fn valmet_dna_is_lenient_on_its_ports_and_strict_elsewhere() {
 
 /// Toutes les variantes de [`DecodeAsProtocol`], pour les tests qui
 /// parcourent ses regles.
-const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 28] = [
+const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 29] = [
     DecodeAsProtocol::Ftp,
     DecodeAsProtocol::Smtp,
     DecodeAsProtocol::Nntp,
@@ -871,6 +889,7 @@ const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 28] = [
     DecodeAsProtocol::Iec104,
     DecodeAsProtocol::WireGuard,
     DecodeAsProtocol::ValmetDna,
+    DecodeAsProtocol::ModbusUdp,
 ];
 
 /// Anti-derive (revue 10.4.0) : chaque protocole Decode-As doit se
