@@ -29,6 +29,13 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   tunnel au quatrieme niveau de flux, le dernier que `parse` garde et ou il
   n'en cherche plus.
 - `TransportProtocol` est reexporte a la racine de la crate.
+- **Noms corriges** (#220) : les modules
+  `parse::application::protocols::cotp`, `errors::application::cotp`,
+  `parse::data_link::mac_address` et `errors::data_link::mac_address`,
+  sous leur bon nom. Les types qu'ils portent ne changent pas.
+- **IKE** (#220) : `PayloadType::NatDiscovery`, le nom que le registre donne
+  aux payloads IKEv1 20 et 130 (NAT-D, RFC 3947). C'est une constante
+  associee, utilisable en argument comme en motif de `match`.
 
 ### Deprecie
 
@@ -42,6 +49,14 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   `classify_payload`. L'impl ne porte pas `#[deprecated]` : rustc refuse
   l'attribut sur un impl de trait, et le compilateur ne previendra donc pas
   ses appelants. Reecriture : `MIGRATION-12.md`.
+- **Modules copt et mac_addres** (#220) : les quatre anciens chemins,
+  `parse::application::protocols::copt`, `errors::application::copt`,
+  `parse::data_link::mac_addres` et `errors::data_link::mac_addres`, sont
+  des alias des nouveaux et seront retires en 12.0. Le compilateur ne
+  previendra pas : rustc ne propage pas `#[deprecated]` a travers un
+  `pub use`. Table des noms : `MIGRATION-12.md`.
+- **IKE** (#220) : `PayloadType::NatDetection`, au profit de
+  `PayloadType::NatDiscovery`. La variante sera renommee sur place en 12.0.
 
 ### Outillage
 
