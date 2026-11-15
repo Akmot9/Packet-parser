@@ -50,6 +50,11 @@ const GRE_IPV4_ICMP: &str = concat!(
     "69",
 );
 
+/// pcaps_exemple/The-Ultimate-PCAP.pcapng, trame 38163, UDP 62625 -> 5355 :
+/// une requete LLMNR de type ANY (tshark : `llmnr`). Le format est celui de
+/// DNS ; seul le port 5355 (RFC 4795) les distingue.
+const LLMNR_QUERY: &str = "374c000000010000000000000d4a6f68616e6e65732d44656c6c0000ff0001";
+
 /// Port UDP de VXLAN (RFC 7348).
 const VXLAN_PORT: u16 = 4789;
 
@@ -292,6 +297,41 @@ fn mms_without_ports_is_unknown_not_radius() {
     let application = classify_payload(TransportProtocol::Tcp, None, None, &payload);
 
     assert_eq!(label(application), Some("Unknown"));
+}
+
+/// Le temoin du test precedent : c'est bien la garde de transport qui ecarte
+/// RADIUS, pas la sonde. Les memes octets, presentes comme un datagramme
+/// UDP, sont un RADIUS Access-Reject bien forme. Le payload est reel, la
+/// situation ne l'est pas : ce segment n'a jamais circule sur UDP.
+#[test]
+fn mms_bytes_under_udp_are_radius() {
+    let payload = bytes(MMS_OVER_COTP);
+
+    let application = classify_payload(TransportProtocol::Udp, None, None, &payload);
+
+    assert_eq!(label(application), Some("RADIUS"));
+}
+
+/// Le port 5355 fait de ce message DNS une requete LLMNR, quel que soit le
+/// cote ou il se trouve.
+#[test]
+fn llmnr_query_on_port_5355_is_llmnr() {
+    let payload = bytes(LLMNR_QUERY);
+
+    let application = classify_payload(TransportProtocol::Udp, Some(62625), Some(5355), &payload);
+
+    assert_eq!(label(application), Some("LLMNR"));
+}
+
+/// Sans port, rien ne distingue LLMNR de DNS : la fonction rend l'etiquette
+/// du format, pas celle du protocole.
+#[test]
+fn llmnr_query_without_ports_is_dns() {
+    let payload = bytes(LLMNR_QUERY);
+
+    let application = classify_payload(TransportProtocol::Udp, None, None, &payload);
+
+    assert_eq!(label(application), Some("DNS"));
 }
 
 /// La regle de port DNS passe avant la sonde NTP sans port.
