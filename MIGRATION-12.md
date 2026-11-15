@@ -1,21 +1,18 @@
 # Migrer vers packet_parser 12.0.0
 
-La 12.0.0 n'est pas publiée. Elle regroupera en une seule majeure les
-ruptures de la feature #209, et ne sortira pas avant mars 2027, fin de la
-fenêtre de stabilité ouverte par la 11.0.0 (`ROADMAP.md` §4).
+La 12.0.0 n'est pas publiée. Elle regroupe en une seule majeure les
+ruptures de la feature #209, toutes faites. Elle suit directement la
+11.8.2 : aucune 11.x intermédiaire n'a porté d'alias ni de dépréciation
+pour ces ruptures.
 
-Ce guide s'écrit avant chaque rupture, pas après : une entrée par rupture,
-avec l'avant, l'après et la raison. Sa liste sera recoupée avec
-`cargo semver-checks` avant la publication.
+Ce guide a une entrée par rupture, avec l'avant, l'après et la raison. Sa
+liste est recoupée avec `cargo semver-checks --baseline-version 11.8.2`.
 
 ## `Application::try_from(&[u8])` est retiré (#219)
 
-**État : fait sur la branche `release/12.0.0`.** L'impl est retirée, avec la
-cascade interne sans transport ni port qu'elle appelait. `classify_payload`,
-qui la remplace, est sur `main` et sort avec la prochaine 11.x : la migration
-peut se faire avant de passer à la 12.0. Une 11.x ne peut pas prévenir à la
-compilation, parce que rustc refuse `#[deprecated]` sur un impl de trait. En
-12.0, un appel restant ne compile plus :
+**État : fait, non publié.** L'impl est retirée, avec la cascade interne
+sans transport ni port qu'elle appelait. `classify_payload`, qui la
+remplace, arrive dans la même version. Un appel restant ne compile plus :
 
 ```text
 error[E0277]: the trait bound `packet_parser::Application: TryFrom<&[u8]>` is not satisfied
@@ -107,7 +104,7 @@ transport et les ports ne sont pas dans `&[u8]`.
 
 ## `ApplicationError` et `ParseError::Application` sont retirés (#219)
 
-**État : fait sur la branche `release/12.0.0`.**
+**État : fait, non publié.**
 
 `ApplicationError` n'avait plus qu'une variante, `EmptyPacket`, et seul
 `Application::try_from` la rendait. L'impl partie, rien dans la crate ne
@@ -140,20 +137,18 @@ d'`ApplicationError` jamais construites (`MIGRATION-11.md`).
 
 ## Renommages (#220)
 
-**État : fait sur la branche `release/12.0.0`.** Les nouveaux noms arrivent
-avec la prochaine version 11.x, où les anciens restent : la migration peut
-se faire avant la 12.0. Aucun comportement ne change, aucune étiquette,
-aucun JSON.
+**État : fait, non publié.** Aucun comportement ne change, aucune
+étiquette, aucun JSON.
 
-| Ancien nom, retiré en 12.0 | Nouveau nom | Le compilateur prévient en 11.x |
-|---|---|---|
-| `parse::application::protocols::copt` | `parse::application::protocols::cotp` | non |
-| `errors::application::copt` | `errors::application::cotp` | non |
-| `parse::data_link::mac_addres` | `parse::data_link::mac_address` | non |
-| `errors::data_link::mac_addres` | `errors::data_link::mac_address` | non |
-| `ike::PayloadType::NatDetection` | `ike::PayloadType::NatDiscovery` | oui |
-| `radius::AttributeType::MipHomeAgentAddress` | `radius::AttributeType::Mip6FeatureVector` | oui, depuis la 11.7.0 |
-| `radius::AttributeType::MipHomeAgentHost` | `radius::AttributeType::Mip6HomeLinkPrefix` | oui, depuis la 11.7.0 |
+| Ancien nom, retiré en 12.0 | Nouveau nom |
+|---|---|
+| `parse::application::protocols::copt` | `parse::application::protocols::cotp` |
+| `errors::application::copt` | `errors::application::cotp` |
+| `parse::data_link::mac_addres` | `parse::data_link::mac_address` |
+| `errors::data_link::mac_addres` | `errors::data_link::mac_address` |
+| `ike::PayloadType::NatDetection` | `ike::PayloadType::NatDiscovery` |
+| `radius::AttributeType::MipHomeAgentAddress` | `radius::AttributeType::Mip6FeatureVector` |
+| `radius::AttributeType::MipHomeAgentHost` | `radius::AttributeType::Mip6HomeLinkPrefix` |
 
 ```rust
 // 11.8
@@ -165,7 +160,7 @@ match payload.kind {
     _ => {}
 }
 
-// 12.0, et déjà valable en 11.x
+// 12.0
 use packet_parser::parse::application::protocols::cotp::CotpHeader;
 use packet_parser::parse::data_link::mac_address::MacAddress;
 
@@ -181,14 +176,12 @@ racine de la crate, ne bouge pas.
 
 ### Ce qui change
 
-- **Quatre chemins de modules.** En 11.x, l'ancien chemin est un alias du
-  nouveau. rustc ne propage pas `#[deprecated]` à travers un `pub use` :
-  qui passe par `copt` ou `mac_addres` ne reçoit aucun avertissement. Une
-  recherche de ces deux mots dans le code appelant suffit.
-- **Trois variantes.** En 11.x, le nouveau nom est une constante associée
-  qui vaut l'ancienne variante, en valeur comme en motif de `match`. En
-  12.0, la variante prend ce nom, à la même position dans l'enum : les
-  discriminants sont ceux de la 11.8.2, figés par test.
+- **Quatre chemins de modules.** L'ancien chemin ne compile plus. Une
+  recherche de `copt` et de `mac_addres` dans le code appelant suffit.
+- **Trois variantes.** Chacune prend son nouveau nom à la même position
+  dans l'enum : les discriminants sont ceux de la 11.8.2, figés par test.
+  Les deux types RADIUS avaient déjà ces noms en constantes associées
+  depuis la 11.7.0 : qui les utilisait ne change rien.
 - **Le texte de `{:?}`.** `Debug` rend le nom de la variante : en 12.0,
   `NatDiscovery`, `Mip6FeatureVector` et `Mip6HomeLinkPrefix`. Ces types ne
   sont pas sérialisés : le JSON de `owned` ne change pas.
@@ -203,8 +196,8 @@ rupture ; ils sont groupés pour n'en faire qu'une.
 
 ## Trois éléments dépréciés sont retirés (#220)
 
-**État : fait sur la branche `release/12.0.0`.** Chacun avertissait déjà à
-la compilation, et son remplaçant existe en 11.x.
+**État : fait, non publié.** Chacun avertissait déjà à la compilation, et
+son remplaçant existe en 11.8.2.
 
 | Retiré | Déprécié depuis | Remplaçant |
 |---|---|---|
@@ -232,7 +225,7 @@ une faute de frappe.
 
 ## `Application.protocol` est un enum (#217)
 
-**État : fait sur la branche `release/12.0.0`.** Le champ texte
+**État : fait, non publié.** Le champ texte
 `Application::application_protocol` est remplacé par
 `Application::protocol`, de type `ApplicationProtocol`. Il n'y a pas de
 transition en 11.x.
