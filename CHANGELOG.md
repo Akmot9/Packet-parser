@@ -38,8 +38,8 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 - **Variantes renommees sur place** (#220) : `ike::PayloadType::NatDetection`
   devient `NatDiscovery`, `radius::AttributeType::MipHomeAgentAddress`
   devient `Mip6FeatureVector` et `MipHomeAgentHost` devient
-  `Mip6HomeLinkPrefix`. Qui utilisait deja les constantes associees de ces
-  noms ne change rien. Les discriminants sont ceux de la 11.8.2 ; `{:?}`
+  `Mip6HomeLinkPrefix`. Qui utilisait deja les constantes associees
+  RADIUS de ces noms (11.7.0) ne change rien. Les discriminants sont ceux de la 11.8.2 ; `{:?}`
   rend le nouveau nom.
 - **Elements deprecies retires** (#220) : le champ
   `SrvlocHeaderV1::encoding` (utiliser `char_encoding`),
@@ -70,34 +70,6 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   tunnel au quatrieme niveau de flux, le dernier que `parse` garde et ou il
   n'en cherche plus.
 - `TransportProtocol` est reexporte a la racine de la crate.
-- **Noms corriges** (#220) : les modules
-  `parse::application::protocols::cotp`, `errors::application::cotp`,
-  `parse::data_link::mac_address` et `errors::data_link::mac_address`,
-  sous leur bon nom. Les types qu'ils portent ne changent pas.
-- **IKE** (#220) : `PayloadType::NatDiscovery`, le nom que le registre donne
-  aux payloads IKEv1 20 et 130 (NAT-D, RFC 3947). C'est une constante
-  associee, utilisable en argument comme en motif de `match`.
-
-### Deprecie
-
-- **Application::try_from** (#219) : `impl TryFrom<&[u8]> for Application`
-  sera retire en 12.0. Il classe sans transport ni port : sur le corpus,
-  9 307 flux sur 254 107 n'y recoivent pas l'etiquette de `parse`. 8 004
-  sortent `Unknown` la ou le port identifie le protocole, 1 246 NBNS, mDNS
-  et LLMNR sortent `DNS`, 38 datagrammes Modbus sur UDP 502 sortent
-  `ModbusTCP`, et 19 recoivent un autre protocole : 13 segments MMS sur
-  TCP 102 `RADIUS`, 5 reponses SSDP `HTTP`, une requete DNS `NTP`. Utiliser
-  `classify_payload`. L'impl ne porte pas `#[deprecated]` : rustc refuse
-  l'attribut sur un impl de trait, et le compilateur ne previendra donc pas
-  ses appelants. Reecriture : `MIGRATION-12.md`.
-- **Modules copt et mac_addres** (#220) : les quatre anciens chemins,
-  `parse::application::protocols::copt`, `errors::application::copt`,
-  `parse::data_link::mac_addres` et `errors::data_link::mac_addres`, sont
-  des alias des nouveaux et seront retires en 12.0. Le compilateur ne
-  previendra pas : rustc ne propage pas `#[deprecated]` a travers un
-  `pub use`. Table des noms : `MIGRATION-12.md`.
-- **IKE** (#220) : `PayloadType::NatDetection`, au profit de
-  `PayloadType::NatDiscovery`. La variante sera renommee sur place en 12.0.
 
 ### Outillage
 

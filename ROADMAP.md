@@ -12,7 +12,7 @@ decoupage de `parse/` et de `dispatch/` (#221), l'etabli sous `tools/lab`
 Aucune etiquette ne change, aucune rupture. Regle de publication : une
 version ne sort que pour une correction de bug ou un ajout de protocole.
 Restent dans #207 : la mesure CodSpeed a activer (#214), #241 (FOSSA), puis
-la 12.0 (#209), pas avant mars 2027. Reste a faire hors de ce depot : le
+la 12.0 (#209). Reste a faire hors de ce depot : le
 livre.
 
 Etat anterieur (2026-11-12) : la **11.8.1 est publiee** (tag `v11.8.1`, publication
@@ -49,7 +49,8 @@ n'est ouverte. Les epopees #103, #105 et #177 ont ete fermees le 2026-10-18,
 sans etre soldees : leur reliquat est consigne au §3, a rouvrir protocole par
 protocole quand les captures existent. Le seul chantier ouvert est l'epopee
 **#207** (§1) : une API L7 typee et la crate rangee. Ses correctifs sans
-rupture passent d'abord, et la 12.0 ne partira pas avant mars 2027. Hors de
+rupture sont passes d'abord ; les ruptures de la 12.0 sont faites, non
+publiees (2026-11-15). Hors de
 ce depot, le livre (epopee `Akmot9/packet-parser-book#66`) et
 Sonar_desktop_app sont encore epingles en 11.6.0.
 
@@ -227,11 +228,23 @@ faites.
 | #208 | Correctifs immediats | P1, patch ou mineure | ~~#212~~ memoisation des sondes sur 128 bits (fait, 11.8.1), ~~#213~~ `cargo semver-checks` sur chaque PR (fait : job `semver` de la CI), #214 bench criterion sur le corpus (en cours : `benches/` et workflow `bench.yml` faits ; restent l'import du depot sur CodSpeed, la PR de regression temoin et le sort de `perf_by_version`), ~~#215~~ schemas mermaid rendus sur docs.rs (fait, 11.8.1), ~~#216~~ `Application::try_from` derive de `RULES` (fait, 11.8.1) |
 | #210 | Forme du code | P2, aucun chemin public ne change | ~~#221~~ decouper `parse/mod.rs` et `dispatch.rs` (fait, 11.8.2 : `parse/engine.rs`, `parse/tests.rs`, `dispatch/{rules,probes,ports,tests}.rs`, `postgresql/detection.rs`), ~~#222~~ mesurer la triplication parse/checks/errors (fait, 11.8.1 : checks en module prive pour un petit decodeur) |
 | #211 | Depot range, README reduit, releve preparee | P2 | ~~#223~~ sortir l'etabli de la racine (fait, 11.8.2 : `tools/lab`, `docs/archive`), ~~#224~~ README en deux ecrans (fait, 11.8.2 : 149 lignes, detail dans `docs/reference.md`, README-fr en pointeur), ~~#225~~ `CONTRIBUTING.md` (fait, 11.8.1), #241 controle FOSSA « License Compliance » rouge en permanence |
-| #209 | 12.0 : API L7 typee, une seule table, les noms justes | P1, pas avant mars 2027 | ~~#217~~ enum `ApplicationProtocol` (fait sur `release/12.0.0`), #218 `details` au L7, ~~#219~~ retrait de `TryFrom<&[u8]> for Application` (fait sur `release/12.0.0` ; `classify_payload` est sur `main`, non publie), ~~#220~~ renommages groupes (`copt`, `mac_addres`, `NatDetection`, RADIUS 124 et 125) et `MIGRATION-12.md` (fait sur `release/12.0.0` ; les bons noms sont sur `main`, non publies, les anciens en alias) |
+| #209 | 12.0 : API L7 typee, une seule table, les noms justes | P1, fait sur `main`, non publie | ~~#217~~ enum `ApplicationProtocol` (fait), ~~#218~~ `details` au L7 (mesure, puis decision de ne rien faire : voir sous le tableau), ~~#219~~ retrait de `TryFrom<&[u8]> for Application` (fait ; `classify_payload` le remplace), ~~#220~~ renommages groupes (`copt`, `mac_addres`, `NatDetection`, RADIUS 124 et 125), trois elements deprecies retires, et `MIGRATION-12.md` (fait) |
 
 Ordre fixe par #207 : #208 d'abord, puis #210 et #211, enfin #209 en une
-seule majeure quand la fenetre de stabilite ouverte par la 11.0.0 le
-permet. Le guide de migration sera ecrit avant le premier renommage.
+seule majeure. La fenetre de stabilite ouverte par la 11.0.0 (§4, pas de
+majeure avant mars 2027) est levee le 2026-11-15 : la crate n'a pas d'autre
+appelant que son auteur. La 12.0 suit donc la 11.8.2 sans 11.x
+intermediaire, et son guide est `MIGRATION-12.md`.
+
+Decision #218 (2026-11-15) : `Application` ne porte pas de `details`, et la
+crate n'ajoute pas de decodage a la demande. Qui veut les champs du L7
+appelle le decodeur du protocole sur `transport.payload`, comme avant.
+Mesure sur le corpus (376 314 trames, flux externes), cout de ce second
+decodage par rapport a `parse` seul : Modbus/TCP +9 % (420 trames), IEC 104
++18 % (374), DNP3 +37 % (218), DNS +54 % (20 000), HTTP +73 % (402), TLS
+environ 0 % (4 053). Garder le struct decode dans `PacketFlow` l'aurait fait
+passer de 440 a environ 560 octets pour toutes les trames (`DnsPacket` fait
+112 octets) ; ce cout-la n'a pas ete mesure, faute de prototype.
 
 Les epopees de l'ete 2026 qui occupaient ce tableau sont toutes closes :
 #38 le 2026-08-03 (10.0.0), #46, #51, #70 et #79 le 2026-08-19, #56, #60,
