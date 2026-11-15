@@ -56,6 +56,17 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
   `ProfinetPacketError` se lit sur l'erreur typee, plus en cherchant un mot
   dans son texte.
 
+### Outillage
+
+- **FOSSA retire** (#241) : le workflow `fossa.yml` et `.fossa.yml` partent.
+  Le controle « License Compliance » de l'integration GitHub de FOSSA etait
+  rouge en permanence : il lit les textes de licence du corpus
+  (`pcaps_exemple/LICENSES/`) comme des licences du projet et ignore
+  `.fossa.yml`. L'analyse par le CLI, elle, ne bloquait rien
+  (`continue-on-error`). Les licences des dependances restent verifiees par
+  `cargo deny` (liste `allow` de `deny.toml`), avec les avis de securite,
+  les sources et les doublons.
+
 ## [12.1.0] - 2026-11-16
 
 ### Ajoute

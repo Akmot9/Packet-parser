@@ -38,9 +38,9 @@ de `classify_payload` (#219) ; les modules `cotp` et `mac_address` et trois
 variantes portent leur bon nom, trois elements deprecies partent (#220) ;
 #218 est close sans code, sur mesure. Un ajout : Modbus sur UDP 502,
 etiquette `ModbusUDP` (#257). Le JSON ne change pas, hors cette etiquette.
-Guide : `MIGRATION-12.md`. Restent dans #207 : la mesure CodSpeed a activer
-(#214), #241 (FOSSA). Reste a faire hors de ce depot : le livre
-(packet-parser-book#89, #90) et Sonar.
+Guide : `MIGRATION-12.md`. Le livre suit la 12.0.0 (packet-parser-book#91).
+Reste dans #207 : #241, FOSSA, retire du depot ; l'application GitHub de
+FOSSA reste a desinstaller du depot, dans les reglages du compte.
 
 Etat anterieur (2026-11-13) : la **11.8.2 est publiee** (tag `v11.8.2`, publication
 par le workflow, semver-checks vert). Patch, pour un correctif de
