@@ -14,8 +14,7 @@ Issues, commit messages and the changelog are written in French.
   [stability rules](ROADMAP.md#4-regles-de-la-fenetre-de-stabilite).
 - [`CHANGELOG.md`](CHANGELOG.md): history, one section per release.
 - [`MIGRATION-11.md`](MIGRATION-11.md): every breaking change of 11.0.0.
-- [`MIGRATION-12.md`](MIGRATION-12.md): the breaking changes planned for 12.0.0,
-  each written before it is made.
+- [`MIGRATION-12.md`](MIGRATION-12.md): every breaking change of 12.0.0.
 - [`pcaps_exemple/README.md`](pcaps_exemple/README.md): the capture corpus.
 
 ## Before you open a pull request
@@ -59,7 +58,7 @@ discriminant of every variant after it: that breaks the API, even for a
 
 ## Releasing a version
 
-As done for 11.7.0, 11.8.0, 11.8.1 and 11.8.2 (#206, #229, #242, #251):
+As done for 11.7.0, 11.8.0, 11.8.1, 11.8.2 and 12.0.0 (#206, #229, #242, #251, #267):
 
 1. From an up-to-date `main`, create `chore/release-X.Y.Z`. Read `[Non publie]` to
    choose patch, minor or major. A major must be planned in the ROADMAP and come

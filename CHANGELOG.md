@@ -6,6 +6,8 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [12.0.0] - 2026-11-15
+
 ### Rupture
 
 - **ApplicationProtocol** (#217) : `Application::application_protocol:

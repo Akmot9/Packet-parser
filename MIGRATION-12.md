@@ -1,6 +1,6 @@
 # Migrer vers packet_parser 12.0.0
 
-La 12.0.0 n'est pas publiée. Elle regroupe en une seule majeure les
+La 12.0.0 est publiée (2026-11-15). Elle regroupe en une seule majeure les
 ruptures de la feature #209, toutes faites. Elle suit directement la
 11.8.2 : aucune 11.x intermédiaire n'a porté d'alias ni de dépréciation
 pour ces ruptures.
@@ -10,7 +10,7 @@ liste est recoupée avec `cargo semver-checks --baseline-version 11.8.2`.
 
 ## `Application::try_from(&[u8])` est retiré (#219)
 
-**État : fait, non publié.** L'impl est retirée, avec la cascade interne
+**État : fait, 12.0.0.** L'impl est retirée, avec la cascade interne
 sans transport ni port qu'elle appelait. `classify_payload`, qui la
 remplace, arrive dans la même version. Un appel restant ne compile plus :
 
@@ -104,7 +104,7 @@ transport et les ports ne sont pas dans `&[u8]`.
 
 ## `ApplicationError` et `ParseError::Application` sont retirés (#219)
 
-**État : fait, non publié.**
+**État : fait, 12.0.0.**
 
 `ApplicationError` n'avait plus qu'une variante, `EmptyPacket`, et seul
 `Application::try_from` la rendait. L'impl partie, rien dans la crate ne
@@ -137,7 +137,7 @@ d'`ApplicationError` jamais construites (`MIGRATION-11.md`).
 
 ## Renommages (#220)
 
-**État : fait, non publié.** Aucun comportement ne change, aucune
+**État : fait, 12.0.0.** Aucun comportement ne change, aucune
 étiquette, aucun JSON.
 
 | Ancien nom, retiré en 12.0 | Nouveau nom |
@@ -196,7 +196,7 @@ rupture ; ils sont groupés pour n'en faire qu'une.
 
 ## Trois éléments dépréciés sont retirés (#220)
 
-**État : fait, non publié.** Chacun avertissait déjà à la compilation, et
+**État : fait, 12.0.0.** Chacun avertissait déjà à la compilation, et
 son remplaçant existe en 11.8.2.
 
 | Retiré | Déprécié depuis | Remplaçant |
@@ -225,7 +225,7 @@ une faute de frappe.
 
 ## `Application.protocol` est un enum (#217)
 
-**État : fait, non publié.** Le champ texte
+**État : fait, 12.0.0.** Le champ texte
 `Application::application_protocol` est remplacé par
 `Application::protocol`, de type `ApplicationProtocol`. Il n'y a pas de
 transition en 11.x.
