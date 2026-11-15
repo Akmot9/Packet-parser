@@ -4,8 +4,8 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 use crate::{
-    errors::application::copt::CotpParseError,
-    parse::application::protocols::copt::{CotpParameter, CotpPduType},
+    errors::application::cotp::CotpParseError,
+    parse::application::protocols::cotp::{CotpParameter, CotpPduType},
 };
 
 /// A COTP header always contains at least LI and the TPDU code. Individual

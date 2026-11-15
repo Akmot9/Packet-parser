@@ -137,3 +137,61 @@ Les erreurs des décodeurs applicatifs (`errors::application::dns`,
 Raison : une erreur que rien ne rend est une promesse fausse dans une
 signature. La 11.0.0 avait retiré de la même façon les neuf variantes
 d'`ApplicationError` jamais construites (`MIGRATION-11.md`).
+
+## Renommages (#220)
+
+**État : annoncé.** Les nouveaux noms arrivent avec la prochaine version
+11.x, et les anciens restent jusqu'à la 12.0 : la migration peut se faire
+avant. Aucun comportement ne change, aucune étiquette, aucun JSON.
+
+| Ancien nom, retiré en 12.0 | Nouveau nom | Le compilateur prévient en 11.x |
+|---|---|---|
+| `parse::application::protocols::copt` | `parse::application::protocols::cotp` | non |
+| `errors::application::copt` | `errors::application::cotp` | non |
+| `parse::data_link::mac_addres` | `parse::data_link::mac_address` | non |
+| `errors::data_link::mac_addres` | `errors::data_link::mac_address` | non |
+| `ike::PayloadType::NatDetection` | `ike::PayloadType::NatDiscovery` | oui |
+| `radius::AttributeType::MipHomeAgentAddress` | `radius::AttributeType::Mip6FeatureVector` | oui, depuis la 11.7.0 |
+| `radius::AttributeType::MipHomeAgentHost` | `radius::AttributeType::Mip6HomeLinkPrefix` | oui, depuis la 11.7.0 |
+
+```rust
+// 11.8
+use packet_parser::parse::application::protocols::copt::CotpHeader;
+use packet_parser::parse::data_link::mac_addres::MacAddress;
+
+match payload.kind {
+    Some(PayloadType::NatDetection) => { /* … */ }
+    _ => {}
+}
+
+// 12.0, et déjà valable en 11.x
+use packet_parser::parse::application::protocols::cotp::CotpHeader;
+use packet_parser::parse::data_link::mac_address::MacAddress;
+
+match payload.kind {
+    Some(PayloadType::NatDiscovery) => { /* … */ }
+    _ => {}
+}
+```
+
+Les types eux-mêmes ne changent pas de nom : `CotpHeader`, `CotpParseError`,
+`MacAddress`, `MacParseError`, `Oui`. `packet_parser::MacAddress`, à la
+racine de la crate, ne bouge pas.
+
+### Ce qui change
+
+- **Quatre chemins de modules.** En 11.x, l'ancien chemin est un alias du
+  nouveau. rustc ne propage pas `#[deprecated]` à travers un `pub use` :
+  qui passe par `copt` ou `mac_addres` ne reçoit aucun avertissement. Une
+  recherche de ces deux mots dans le code appelant suffit.
+- **Trois variantes.** En 11.x, le nouveau nom est une constante associée
+  qui vaut l'ancienne variante, en valeur comme en motif de `match`. En
+  12.0, la variante prend ce nom, à la même position dans l'enum.
+
+### Raison
+
+`copt` et `mac_addres` sont des fautes de frappe. Le registre IANA nomme les
+payloads IKEv1 20 et 130 « NAT-D », NAT Discovery (RFC 3947), et les types
+RADIUS 124 et 125 MIP6-Feature-Vector et MIP6-Home-Link-Prefix (RFC 5447),
+pas une adresse ni un nom d'hôte (#191). Chacun de ces renommages est une
+rupture ; ils sont groupés pour n'en faire qu'une.

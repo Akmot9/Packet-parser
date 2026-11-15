@@ -1080,4 +1080,13 @@ mod tests {
             })
         );
     }
+
+    /// #220 : le renommage sur place de la 12.0 ne deplace rien. Les valeurs
+    /// sont celles de la 11.8.2.
+    #[test]
+    #[allow(deprecated)]
+    fn renamed_variants_keep_their_discriminants() {
+        assert_eq!(AttributeType::MipHomeAgentAddress as u8, 119);
+        assert_eq!(AttributeType::MipHomeAgentHost as u8, 120);
+    }
 }

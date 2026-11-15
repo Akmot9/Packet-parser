@@ -6,8 +6,8 @@
 pub mod stp;
 
 use crate::{
-    errors::data_link::{DataLinkError, mac_addres::MacParseError},
-    parse::data_link::mac_addres::MAC_LEN,
+    errors::data_link::{DataLinkError, mac_address::MacParseError},
+    parse::data_link::mac_address::MAC_LEN,
 };
 
 const DATALINK_HEADER_LEN: usize = 14;

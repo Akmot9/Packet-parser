@@ -34,7 +34,7 @@ use crate::{
         validate_negotiation_length, validate_tpkt_header,
     },
     errors::application::rdp::RdpParseError,
-    parse::application::protocols::{bounded_capacity, copt::CotpPduType},
+    parse::application::protocols::{bounded_capacity, cotp::CotpPduType},
 };
 
 /// Demande de negociation (MS-RDPBCGR §2.2.1.1.1), dans le Connection
@@ -240,7 +240,7 @@ impl RdpPayload<'_> {
 /// Le TPDU COTP X.224 (RFC 905) d'un TPKT RDP : CR, CC ou DT en classe 0.
 ///
 /// MS-RDPBCGR compte le jeton et la negociation d'un CR/CC dans le LI, la
-/// ou [`crate::parse::application::protocols::copt::CotpHeader`] y lit des
+/// ou [`crate::parse::application::protocols::cotp::CotpHeader`] y lit des
 /// parametres : le decodeur lit donc lui-meme la partie fixe.
 ///
 /// ```mermaid

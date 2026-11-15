@@ -6,14 +6,14 @@
 use std::fmt;
 
 use crate::{
-    checks::application::copt::{
+    checks::application::cotp::{
         checked_offset, extract_connection_fields, extract_length_and_pdu_type, extract_parameter,
         validate_connection_references, validate_cr_cc_class_options, validate_declared_len,
         validate_disconnect_reason, validate_extended_credit_code, validate_fixed_header_len,
         validate_normal_sequence_number_high_bit, validate_reject_cause,
         validate_sequence_number_high_bit, validate_user_data,
     },
-    errors::application::copt::CotpParseError,
+    errors::application::cotp::CotpParseError,
 };
 
 /// COTP PDU Types
@@ -153,7 +153,7 @@ impl<'a> CotpHeader<'a> {
     /// Parse one COTP header from a byte slice.
     ///
     /// Canonical linear sequence: length pre-check, then one `extract_*` per
-    /// wire field (each check lives in `checks::application::copt`), then
+    /// wire field (each check lives in `checks::application::cotp`), then
     /// construction from the already-validated values.
     ///
     /// Unknown TPDU codes are returned as [`CotpPduType::Other`] with their
