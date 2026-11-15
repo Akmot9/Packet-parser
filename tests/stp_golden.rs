@@ -21,7 +21,7 @@
 //! Ethernet + 3 octets LLC). Le pipeline `PacketFlow` actuel ne route pas
 //! ces trames : un test verrouille ce comportement en attendant le cablage.
 
-use packet_parser::parse::data_link::mac_addres::MacAddress;
+use packet_parser::parse::data_link::mac_address::MacAddress;
 use packet_parser::parse::data_link::stp::{
     BpduBody, BpduPacket, BpduType, StpVersion, is_stp_frame, stp_llc_payload,
 };

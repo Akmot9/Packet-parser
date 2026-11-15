@@ -31,7 +31,7 @@
 //! It expects a complete packet buffer (e.g. from PCAP capture).
 
 use application::Application;
-use application::protocols::copt::{CotpHeader, CotpNumberFormat, CotpParameter, CotpPduType};
+use application::protocols::cotp::{CotpHeader, CotpNumberFormat, CotpParameter, CotpPduType};
 use internet::Internet;
 use serde::Serialize;
 use transport::Transport;

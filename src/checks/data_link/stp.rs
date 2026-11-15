@@ -11,7 +11,7 @@
 use crate::{
     errors::data_link::stp::StpError,
     parse::data_link::{
-        mac_addres::MacAddress,
+        mac_address::MacAddress,
         stp::{BpduType, BridgeId, StpVersion},
     },
 };

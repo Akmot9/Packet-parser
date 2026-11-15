@@ -25,7 +25,7 @@ use std::{collections::BTreeMap, fs, path::Path};
 use packet_parser::{
     DecodeAsProtocol, PacketFlow, ParseConfig, parse,
     parse::application::protocols::{
-        copt::CotpPduType,
+        cotp::CotpPduType,
         rdp::{McsPduType, NegotiationResponse, RdpPacket, RdpPayload},
     },
     parse_with,

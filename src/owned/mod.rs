@@ -11,7 +11,7 @@ use std::{
 
 use crate::parse::CorruptedLayer;
 use crate::parse::data_link::vlan_tag::VlanTag;
-use crate::parse::data_link::{ethertype, ethertype::Ethertype, mac_addres::MacAddress};
+use crate::parse::data_link::{ethertype, ethertype::Ethertype, mac_address::MacAddress};
 use crate::parse::link_layer::{
     Ieee80211Link, LinkLayer, LinkLayerKind, LinuxArphrdType, LinuxCookedPacketType, LinuxSll2Link,
     LinuxSllLink, NetworkProtocol, RawIpLink,
