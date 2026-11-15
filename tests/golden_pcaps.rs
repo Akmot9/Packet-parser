@@ -48,9 +48,7 @@ fn classification_histogram() -> BTreeMap<String, usize> {
                 let label = flattened
                     .application
                     .as_ref()
-                    .map_or(NO_APPLICATION, |application| {
-                        application.application_protocol
-                    });
+                    .map_or(NO_APPLICATION, |application| application.protocol.label());
                 *histogram.entry(label.to_string()).or_default() += 1;
             }
         }

@@ -60,7 +60,8 @@ fn assert_detected_as_ssh(hex_fixture: &str, expected_len: usize) {
     assert_eq!(
         flow.application
             .expect("an application layer is detected")
-            .application_protocol,
+            .protocol
+            .label(),
         "SSH"
     );
 }
@@ -104,7 +105,8 @@ fn text_that_merely_starts_with_ssh_is_not_detected() {
             .expect("payload is classified");
 
         assert_ne!(
-            application.application_protocol, "SSH",
+            application.protocol.label(),
+            "SSH",
             "payload {payload:?} must not be labelled SSH"
         );
     }

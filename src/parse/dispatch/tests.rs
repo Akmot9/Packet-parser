@@ -33,13 +33,13 @@ fn unambiguous_verbs_classify_off_port_shared_verbs_do_not() {
         (&b"XOVER 1-5\r\n"[..], "NNTP"),
     ] {
         let transport = tcp_transport(payload);
-        let label = classify(&transport, &[]).map(|a| a.application_protocol);
+        let label = classify(&transport, &[]).map(|a| a.protocol.label());
         assert_eq!(label, Some(expected), "payload {payload:?}");
     }
 
     // QUIT existe dans les trois protocoles : jamais par contenu seul.
     let transport = tcp_transport(b"QUIT\r\n");
-    let label = classify(&transport, &[]).map(|a| a.application_protocol);
+    let label = classify(&transport, &[]).map(|a| a.protocol.label());
     assert_ne!(label, Some("FTP"));
     assert_ne!(label, Some("SMTP"));
     assert_ne!(label, Some("NNTP"));
@@ -57,7 +57,7 @@ fn unambiguous_verbs_require_a_complete_command() {
         &b"RETR \xff\xfe\r\n"[..], // UTF-8 invalide
     ] {
         let transport = tcp_transport(payload);
-        let label = classify(&transport, &[]).map(|a| a.application_protocol);
+        let label = classify(&transport, &[]).map(|a| a.protocol.label());
         assert_ne!(label, Some("FTP"), "payload {payload:?}");
     }
 }
@@ -78,7 +78,7 @@ fn unambiguous_verbs_reject_bare_line_breaks_and_control_bytes() {
         (&b"XOVER 1-5\r\n\x00"[..], "NNTP"),
     ] {
         let transport = tcp_transport(payload);
-        let found = classify(&transport, &[]).map(|a| a.application_protocol);
+        let found = classify(&transport, &[]).map(|a| a.protocol.label());
         assert_ne!(found, Some(label), "payload {payload:?}");
     }
 }
@@ -98,7 +98,7 @@ fn nntp_tab_separator_is_detected_off_port() {
     ] {
         let transport = tcp_transport(payload);
         let label = classify(&transport, &[])
-            .map(|a| a.application_protocol)
+            .map(|a| a.protocol.label())
             .filter(|label| matches!(*label, "FTP" | "SMTP" | "NNTP"));
         assert_eq!(label, expected, "payload {payload:?}");
     }
@@ -169,7 +169,7 @@ fn nightly_fuzz_inputs_of_107_are_not_ftp() {
             .flatten()
             .into_iter()
             .filter_map(|flow| flow.application.as_ref())
-            .map(|application| application.application_protocol)
+            .map(|application| application.protocol.label())
             .collect();
         assert!(!labels.contains(&"FTP"), "entree {index} : {labels:?}");
         let transport = flow.transport.as_ref().expect("TCP");
@@ -190,26 +190,26 @@ fn decode_as_extends_port_guards_without_replacing_them() {
     // USER est un verbe partage : jamais detecte hors port par defaut...
     let transport = tcp_transport(b"USER alice\r\n");
     assert_ne!(
-        classify(&transport, &[]).map(|a| a.application_protocol),
+        classify(&transport, &[]).map(|a| a.protocol.label()),
         Some("FTP")
     );
     // ... mais l'appelant peut declarer que 50 000 porte du FTP.
     let decode_as = [(50_000_u16, DecodeAsProtocol::Ftp)];
     assert_eq!(
-        classify(&transport, &decode_as).map(|a| a.application_protocol),
+        classify(&transport, &decode_as).map(|a| a.protocol.label()),
         Some("FTP")
     );
     // Le port declare ne suffit jamais : contenu non-FTP refuse.
     let garbage = tcp_transport(b"\x16\x03\x03\x00\x10aaaaaaaaaaaaaaaa");
     assert_ne!(
-        classify(&garbage, &decode_as).map(|a| a.application_protocol),
+        classify(&garbage, &decode_as).map(|a| a.protocol.label()),
         Some("FTP")
     );
     // La garde de transport du protocole reste appliquee : declarer un
     // port DNS datagramme sur du TCP ne sonde pas la forme datagramme.
     let decode_udp_only = [(50_000_u16, DecodeAsProtocol::Mdns)];
     assert_ne!(
-        classify(&transport, &decode_udp_only).map(|a| a.application_protocol),
+        classify(&transport, &decode_udp_only).map(|a| a.protocol.label()),
         Some("mDNS")
     );
 }
@@ -242,7 +242,7 @@ fn udp_4500_demultiplexes_ike_esp_and_keepalive() {
         details: None,
     };
     let label = |port: u16, payload: &'static [u8], decode_as: &[(u16, DecodeAsProtocol)]| {
-        classify(&transport(port, payload), decode_as).map(|a| a.application_protocol)
+        classify(&transport(port, payload), decode_as).map(|a| a.protocol.label())
     };
     assert_eq!(label(4500, &MARKED_IKE, &[]), Some("IKE"));
     assert_eq!(label(500, &IKE, &[]), Some("IKE"));
@@ -288,7 +288,7 @@ fn modbus_is_lenient_on_port_502_and_strict_elsewhere() {
             payload: Some(payload),
             details: None,
         };
-        classify(&transport, &[]).map(|a| a.application_protocol)
+        classify(&transport, &[]).map(|a| a.protocol.label())
     };
     let tcp = TransportProtocol::Tcp;
     assert_eq!(label(tcp, 502, &READ), Some("ModbusTCP"));
@@ -353,7 +353,7 @@ fn ntp_is_lenient_on_port_123_and_strict_elsewhere() {
             payload: Some(payload),
             details: None,
         };
-        classify(&transport, &[]).map(|a| a.application_protocol)
+        classify(&transport, &[]).map(|a| a.protocol.label())
     };
     assert_eq!(label(123, &REPLY), Some("NTP"));
     assert_eq!(label(40_001, &REPLY), Some("NTP"));
@@ -369,10 +369,7 @@ fn ntp_is_lenient_on_port_123_and_strict_elsewhere() {
         payload: Some(&REPLY),
         details: None,
     };
-    assert_ne!(
-        classify(&tcp, &[]).map(|a| a.application_protocol),
-        Some("NTP")
-    );
+    assert_ne!(classify(&tcp, &[]).map(|a| a.protocol.label()), Some("NTP"));
 }
 
 /// #164 : la sonde aveugle lit tout le datagramme, pas les PROBE_CAP
@@ -396,7 +393,7 @@ fn ntp_blind_probe_reads_the_whole_datagram() {
             payload: Some(payload),
             details: None,
         };
-        classify(&transport, &[]).map(|a| a.application_protocol)
+        classify(&transport, &[]).map(|a| a.protocol.label())
     };
     assert_eq!(label(&datagram), Some("NTP"));
     datagram.extend_from_slice(&[0; 100]);
@@ -427,7 +424,7 @@ fn asterix_probe_reads_the_whole_datagram() {
             payload: Some(payload),
             details: None,
         };
-        classify(&transport, &[]).map(|a| a.application_protocol)
+        classify(&transport, &[]).map(|a| a.protocol.label())
     };
     let exact = block((PROBE_CAP - 3) / 3);
     assert_eq!(exact.len(), PROBE_CAP);
@@ -471,7 +468,7 @@ fn dns_blind_probe_does_not_accept_a_capped_prefix() {
             payload: Some(payload),
             details: None,
         };
-        classify(&transport, &[]).map(|a| a.application_protocol)
+        classify(&transport, &[]).map(|a| a.protocol.label())
     };
     let label = |payload: &[u8]| label_from(40_000, payload);
     // Une question, une reponse TXT de `rdlength` octets de chaines.
@@ -522,7 +519,7 @@ fn whole_payload_probes_judge_the_payload_beyond_the_cap() {
             payload: Some(payload),
             details: None,
         };
-        classify(&transport, &[]).map(|a| a.application_protocol)
+        classify(&transport, &[]).map(|a| a.protocol.label())
     };
     let tcp = |destination: u16, payload: &[u8]| {
         label(TransportProtocol::Tcp, 50_000, destination, payload)
@@ -672,13 +669,13 @@ fn text_probes_keep_the_cap() {
     stor.extend_from_slice(b"\r\n");
     let transport = tcp_transport(&stor);
     assert_eq!(
-        classify(&transport, &[]).map(|a| a.application_protocol),
+        classify(&transport, &[]).map(|a| a.protocol.label()),
         Some("Unknown")
     );
     let mut stor = b"STOR a\r\n".to_vec();
     stor.resize(PROBE_CAP, 0);
     assert_ne!(
-        classify(&tcp_transport(&stor), &[]).map(|a| a.application_protocol),
+        classify(&tcp_transport(&stor), &[]).map(|a| a.protocol.label()),
         Some("FTP")
     );
 }
@@ -704,7 +701,7 @@ fn ntp_port_rule_comes_after_the_other_port_rules() {
         details: None,
     };
     assert_eq!(
-        classify(&transport, &[]).map(|a| a.application_protocol),
+        classify(&transport, &[]).map(|a| a.protocol.label()),
         Some("DNS")
     );
 }
@@ -725,7 +722,7 @@ fn wireguard_port_rule_comes_after_the_other_udp_port_rules() {
             payload: Some(payload),
             details: None,
         };
-        classify(&transport, &[]).map(|a| a.application_protocol)
+        classify(&transport, &[]).map(|a| a.protocol.label())
     };
     let mut esp = vec![0x01, 0x02, 0x03, 0x04, 0, 0, 0, 1];
     esp.extend((0..140).map(|i| (i * 7 + 3) as u8));
@@ -758,7 +755,7 @@ fn wireguard_port_rule_comes_after_the_other_udp_port_rules() {
             },
             &[(51820, DecodeAsProtocol::WireGuard)]
         )
-        .map(|a| a.application_protocol),
+        .map(|a| a.protocol.label()),
         Some("WireGuard"),
         "un port declare reste tolerant"
     );
@@ -786,7 +783,7 @@ fn valmet_dna_is_lenient_on_its_ports_and_strict_elsewhere() {
                 payload: Some(payload),
                 details: None,
             };
-            classify(&transport, decode_as).map(|a| a.application_protocol)
+            classify(&transport, decode_as).map(|a| a.protocol.label())
         };
     let status = hex::decode(concat!(
         "ab01801d00ff007c00000fff001003b00000048ace4818e03d0018803f000000",
@@ -838,7 +835,7 @@ fn valmet_dna_is_lenient_on_its_ports_and_strict_elsewhere() {
         details: None,
     };
     assert_ne!(
-        classify(&tcp, &[(2517, DecodeAsProtocol::ValmetDna)]).map(|a| a.application_protocol),
+        classify(&tcp, &[(2517, DecodeAsProtocol::ValmetDna)]).map(|a| a.protocol.label()),
         Some("Valmet DNA")
     );
 }
@@ -926,7 +923,7 @@ fn decode_as_cannot_override_terminal_reserved_ports() {
     };
     let decode_as = [(5353_u16, DecodeAsProtocol::Dns)];
     assert_eq!(
-        classify(&transport, &decode_as).map(|a| a.application_protocol),
+        classify(&transport, &decode_as).map(|a| a.protocol.label()),
         Some("mDNS"),
         "la regle terminale de la table garde la main sur 5353"
     );
@@ -962,22 +959,21 @@ fn probe_count_is_the_number_of_variants() {
 fn port_rules_carry_a_transport_guard() {
     for rule in RULES.iter().filter(|rule| rule.ports.is_some()) {
         assert!(
-            !matches!(rule.guard, Guard::Any) || rule.label == "DNS",
+            !matches!(rule.guard, Guard::Any) || rule.label.label() == "DNS",
             "regle a port sans garde de transport : {}",
             rule.label
         );
     }
 }
 
-/// La liste aveugle de la table, figee : c'est aussi, sans les verbes
-/// FTP/SMTP/NNTP (veto de port), la cascade de `Application::try_from`
-/// (#216). Un protocole ajoute ou deplace s'y voit.
+/// La liste aveugle de la table, figee : un protocole ajoute ou deplace s'y
+/// voit.
 #[test]
-fn blind_rules_mirror_the_public_cascade_order() {
+fn blind_rules_order_is_frozen() {
     let blind: Vec<&str> = RULES
         .iter()
         .filter(|rule| rule.ports.is_none())
-        .map(|rule| rule.label)
+        .map(|rule| rule.label.label())
         .collect();
     assert_eq!(
         blind,
@@ -1012,10 +1008,9 @@ fn blind_rules_mirror_the_public_cascade_order() {
             "WireGuard",
             "MQTT",
         ],
-        "S7Comm est promu en tete (priorite sur COTP), les verbes \
-             non-ambigus FTP/SMTP/NNTP sont propres au dispatch transport \
-             (issue #66, veto de port), et Application::try_from suit cet \
-             ordre (#216)"
+        "S7Comm est promu en tete (priorite sur COTP), et les verbes \
+             non-ambigus FTP/SMTP/NNTP ne valent que hors de leurs ports \
+             (issue #66, veto de port)"
     );
 }
 

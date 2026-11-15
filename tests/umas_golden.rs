@@ -55,7 +55,8 @@ fn packet_flow_labels_a_umas_request_over_modbus_tcp() {
     assert_eq!(
         flow.application
             .expect("an application layer is detected")
-            .application_protocol,
+            .protocol
+            .label(),
         "UMAS",
         "le code fonction 0x5A doit l'emporter sur l'etiquette ModbusTCP"
     );
@@ -125,7 +126,7 @@ fn every_umas_frame_of_the_capture_is_labelled() {
             continue;
         };
         assert_eq!(
-            application.application_protocol,
+            application.protocol.label(),
             "UMAS",
             "trame {} : seul UMAS est attendu dans cette capture",
             index + 1
@@ -179,7 +180,7 @@ fn the_umas_probe_does_not_steal_ordinary_modbus_traffic() {
             let Ok(flow) = parse(*link_type, data) else {
                 continue;
             };
-            match flow.application.as_ref().map(|a| a.application_protocol) {
+            match flow.application.as_ref().map(|a| a.protocol.label()) {
                 Some("ModbusTCP") => seen.0 += 1,
                 Some("UMAS") => seen.1 += 1,
                 _ => {}

@@ -104,7 +104,7 @@ fn exercise(data: &[u8]) {
     // octet 0xAB : NTP y lit une version 5, RTPS veut sa magie). Un payload
     // vide n'a ni etiquette ni famille.
     let blind = classify_payload(TransportProtocol::Udp, None, None, data)
-        .is_some_and(|application| application.application_protocol == "Valmet DNA");
+        .is_some_and(|application| application.protocol.label() == "Valmet DNA");
     assert_eq!(blind, known_kind);
     if let Ok(beacon) = TimeBeacon::try_from(data) {
         assert_eq!(data.len(), 42);

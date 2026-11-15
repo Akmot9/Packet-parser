@@ -363,7 +363,7 @@ fn application_label(frame: &[u8]) -> Option<&'static str> {
     parse(LinkType::ETHERNET, frame)
         .expect("synthetic Ethernet frame")
         .application
-        .map(|application| application.application_protocol)
+        .map(|application| application.protocol.label())
 }
 
 #[test]
@@ -380,7 +380,7 @@ fn packetflow_requires_tcp_for_s7_but_allows_a_non_standard_port() {
     assert_eq!(
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("S7Comm")
     );
     assert_eq!(
@@ -440,7 +440,7 @@ fn count_fixture_protocols(path: &Path) -> (FrameOracle, FrameOracle) {
         match innermost
             .application
             .as_ref()
-            .map(|application| application.application_protocol)
+            .map(|application| application.protocol.label())
         {
             Some("S7Comm") => {
                 s7comm += 1;
@@ -618,7 +618,7 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
                 let label = flattened
                     .application
                     .as_ref()
-                    .map(|application| application.application_protocol);
+                    .map(|application| application.protocol.label());
                 let frames = match label {
                     Some("S7Comm") => &mut s7comm_frames,
                     Some("COTP") => &mut cotp_frames,
@@ -793,7 +793,7 @@ fn real_s7commplus_frames_are_recognized_and_never_parsed_as_s7comm() {
     for (index, (link_type, data)) in frames.iter().enumerate() {
         let flow =
             parse(*link_type, data).unwrap_or_else(|error| panic!("trame {} : {error}", index + 1));
-        if flow.application.as_ref().map(|a| a.application_protocol) == Some("COTP") {
+        if flow.application.as_ref().map(|a| a.protocol.label()) == Some("COTP") {
             labelled_cotp += 1;
         }
         let Some(payload) = flow

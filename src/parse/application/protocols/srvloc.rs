@@ -74,13 +74,6 @@ pub struct SrvlocHeaderV1<'a> {
     pub dialect: u8,
     pub language: &'a str, // 2 bytes ASCII -> "en"
 
-    /// Premier octet (poids fort) du champ Char Encoding, seul lu avant la
-    /// 11.5.0 : il vaut 0 pour tout MIBenum inferieur a 256, UTF-8 compris.
-    #[deprecated(
-        since = "11.5.0",
-        note = "Char Encoding fait deux octets (RFC 2165) ; utiliser `char_encoding`"
-    )]
-    pub encoding: u8,
     /// Char Encoding (RFC 2165 section 7) : MIBenum IANA sur deux octets,
     /// 106 pour UTF-8.
     pub char_encoding: u16,
@@ -396,9 +389,6 @@ fn parse_v1_packet(payload: &[u8]) -> Result<SrvlocPacket<'_>, SrvlocPacketParse
             (0, 0, "", 0, "")
         };
 
-    // `encoding` reste rempli pour les lecteurs d'avant la 11.5.0, avec
-    // l'octet qu'il a toujours porte.
-    #[allow(deprecated)]
     let header_v1 = SrvlocHeaderV1 {
         version,
         function,
@@ -406,7 +396,6 @@ fn parse_v1_packet(payload: &[u8]) -> Result<SrvlocPacket<'_>, SrvlocPacketParse
         flags,
         dialect,
         language,
-        encoding: char_encoding.to_be_bytes()[0],
         char_encoding,
         transaction_id,
         error_code,
@@ -830,11 +819,6 @@ mod tests {
         assert_eq!(header.scope_list, "DEFAULT");
         let SrvlocMessage::Raw(rest) = &packet.payload;
         assert!(rest.is_empty());
-
-        // Le champ deprecie garde l'octet de poids fort qu'il a toujours lu.
-        #[allow(deprecated)]
-        let encoding = header.encoding;
-        assert_eq!(encoding, 0);
     }
 
     #[test]

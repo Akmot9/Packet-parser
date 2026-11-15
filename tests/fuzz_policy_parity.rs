@@ -148,7 +148,7 @@ fn label_of(frame: &[u8]) -> Option<&'static str> {
     PacketFlow::try_from(frame)
         .expect("trame synthetique analysable")
         .application
-        .map(|application| application.application_protocol)
+        .map(|application| application.protocol.label())
 }
 
 fn text_label(label: Option<&'static str>) -> Option<&'static str> {

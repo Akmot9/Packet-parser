@@ -3,10 +3,10 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
+pub mod protocol;
 pub mod protocols;
+use protocol::ApplicationProtocol;
 use serde::Serialize;
-
-use crate::{errors::application::ApplicationError, parse::dispatch::classify_blind};
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
 ///
@@ -16,66 +16,25 @@ use crate::{errors::application::ApplicationError, parse::dispatch::classify_bli
 /// dispatch table: a valid-looking S7Comm payload carried over UDP is not
 /// labelled S7Comm, and weak COTP signatures stay behind TCP port 102.
 ///
-/// # `Application::try_from` will be removed in 12.0
-///
-/// [`Application::try_from`] only receives application bytes and therefore
-/// cannot enforce transport or port constraints. It can give a TCP segment
-/// the label of a protocol that only exists over UDP, and it never
-/// recognizes a protocol that its port identifies. On the capture corpus of
-/// this crate it disagrees with `parse` on 9,307 flows out of 254,107.
-///
-/// Use [`crate::classify_payload`] instead. The rewrite is described in
-/// [`MIGRATION-12.md`](https://github.com/Akmot9/Packet-parser/blob/main/MIGRATION-12.md)
-/// (issue #219).
-#[derive(Debug, Clone, Serialize, Eq)]
+/// Until 11.x, `Application` also implemented `TryFrom<&[u8]>`, a
+/// classification that saw neither the transport protocol nor the ports.
+/// That conversion was removed in 12.0 (issue #219): see
+/// [`MIGRATION-12.md`](https://github.com/Akmot9/Packet-parser/blob/main/MIGRATION-12.md).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct Application {
-    pub application_protocol: &'static str,
-}
-
-/// Classification without transport or ports. **Will be removed in 12.0**
-/// (issue #219): use [`crate::classify_payload`].
-///
-/// This implementation carries no `#[deprecated]` attribute because rustc
-/// rejects it on a trait implementation: the compiler will not warn its
-/// callers before the removal.
-impl TryFrom<&[u8]> for Application {
-    type Error = ApplicationError;
-
-    fn try_from(packet: &[u8]) -> Result<Self, Self::Error> {
-        if packet.is_empty() {
-            return Err(ApplicationError::EmptyPacket);
-        }
-
-        // La cascade est celle de la table : ses regles sans port, dans son
-        // ordre (#216). Plus de liste de sondes ecrite a la main ici.
-        Ok(Application {
-            application_protocol: classify_blind(packet),
-        })
-    }
-}
-
-impl PartialEq for Application {
-    fn eq(&self, other: &Self) -> bool {
-        self.application_protocol == other.application_protocol
-    }
-}
-
-use std::hash::{Hash, Hasher};
-
-impl Hash for Application {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.application_protocol.hash(state);
-    }
+    /// The protocol, as an enum since 12.0 (issue #217). Until 11.x this
+    /// was the text field `application_protocol`; the JSON key keeps that
+    /// name and [`ApplicationProtocol::label`] gives the same text.
+    #[serde(rename = "application_protocol")]
+    pub protocol: ApplicationProtocol,
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::parse::application::Application;
     use crate::parse::classify_payload;
     use crate::parse::transport::protocols::TransportProtocol::{self, Tcp, Udp};
-    use std::convert::TryFrom;
 
     /// pcaps_exemple/protocols/valmet_dna/valmet-dna-multicast-anon.pcap,
     /// trame 1 : un telegramme d'etat Valmet DNA.
@@ -92,7 +51,8 @@ mod tests {
     fn label(protocol: TransportProtocol, payload: &[u8]) -> &'static str {
         classify_payload(protocol, None, None, payload)
             .expect("payload non vide")
-            .application_protocol
+            .protocol
+            .label()
     }
 
     #[test]
@@ -253,24 +213,18 @@ mod tests {
         assert_eq!(label(Udp, &packet), "Unknown");
     }
 
-    // `impl TryFrom<&[u8]> for Application` est conserve jusqu'a la 12.0
-    // (#219). Les deux tests qui suivent partent avec lui.
-
-    /// La cascade sans transport ni port repond encore.
+    /// #217 : le champ est un enum, la cle JSON et son texte sont ceux de
+    /// la 11.x.
     #[test]
-    fn test_blind_try_from_still_answers() {
-        let status = hex::decode(VALMET_DNA_STATUS).expect("hex");
+    fn application_serializes_under_its_historical_key() {
+        let application = crate::Application {
+            protocol: crate::ApplicationProtocol::Ntp,
+        };
 
-        let parsed = Application::try_from(status.as_slice()).expect("payload non vide");
-
-        assert_eq!(parsed.application_protocol, "Valmet DNA");
-    }
-
-    #[test]
-    fn test_empty_packet_is_an_error() {
-        assert!(matches!(
-            Application::try_from(&[][..]),
-            Err(crate::errors::application::ApplicationError::EmptyPacket)
-        ));
+        assert_eq!(
+            serde_json::to_string(&application).unwrap(),
+            r#"{"application_protocol":"NTP"}"#
+        );
+        assert_eq!(application.to_string(), "NTP ");
     }
 }

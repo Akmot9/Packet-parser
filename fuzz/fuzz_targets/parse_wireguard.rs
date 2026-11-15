@@ -50,7 +50,7 @@ fn inside(input: &[u8], field: &[u8]) -> bool {
 
 fn exercise(data: &[u8]) {
     let blind = classify_payload(TransportProtocol::Udp, None, None, data)
-        .is_some_and(|application| application.application_protocol == "WireGuard");
+        .is_some_and(|application| application.protocol.label() == "WireGuard");
     let Ok(packet) = WireGuardPacket::try_from(data) else {
         assert!(!blind, "etiquete WireGuard sans se decoder");
         return;

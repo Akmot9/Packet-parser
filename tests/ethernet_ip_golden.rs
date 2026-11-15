@@ -88,7 +88,8 @@ fn assert_flow_is_ethernet_ip(bytes: &[u8], source_port: u16, destination_port: 
     assert_eq!(
         flow.application
             .expect("an application layer is detected")
-            .application_protocol,
+            .protocol
+            .label(),
         "EtherNet/IP"
     );
 

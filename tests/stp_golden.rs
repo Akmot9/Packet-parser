@@ -199,7 +199,7 @@ fn packet_flow_labels_llc_bpdu_frames_as_stp() {
     assert_eq!(
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("STP"),
         "un BPDU en LLC 42-42-03 est etiquete STP"
     );

@@ -72,7 +72,7 @@ pub enum FooMessageType {
 }
 
 pub struct Application {
-    pub application_protocol: &'static str,
+    pub protocol: ApplicationProtocol,
 }
 ```
 
@@ -396,11 +396,11 @@ Exemple application :
 pub mod foo;
 ```
 
-Exporter le module et son type principal. L'etiquette applicative est une
-chaine (`Application::application_protocol: &'static str`) : nommer un
-nouveau protocole n'ajoute aucune variante publique (l'enum
-`ApplicationProtocol` et son `Display` ont ete supprimes en 11.0.0, voir
-`MIGRATION-11.md`). Les types publics que seule la crate construit sont
+Exporter le module et son type principal. L'etiquette applicative est un
+enum depuis la 12.0 (`Application::protocol: ApplicationProtocol`, #217) :
+nommer un nouveau protocole ajoute une variante et son etiquette texte, en
+fin de la liste de `src/parse/application/protocol.rs`, et le test
+`labels_are_frozen` du meme fichier recoit la nouvelle chaine. Les types publics que seule la crate construit sont
 `#[non_exhaustive]`, ce que verifie `tests/public_types_are_non_exhaustive.rs` :
 une variante ou un champ ajoute a l'un d'eux est additif (version mineure) ;
 renommer ou retirer reste une version majeure.
@@ -445,15 +445,13 @@ Exemples de signatures fortes : un marqueur litteral (`HTTP/`, `GIOP`,
 annoncee qui doit correspondre exactement aux octets restants (PostgreSQL).
 La garde de transport reste celle que la specification impose : `Guard::Any`
 est reserve aux protocoles reellement bi-transport (DNP3, EtherNet/IP, SNMP,
-SRVLOC). `Application::try_from`, le probing public sans port ni transport,
-n'a plus de liste a lui : il parcourt les regles sans garde ni veto de port
-de la table, dans son ordre (`classify_blind`, #216). Il n'y a rien a y
-ajouter ; seul le nom du protocole va dans
-`blind_rules_mirror_the_public_cascade_order`, qui fige la liste aveugle de
-la table. Cette entree part en 12.0 (#219) : une sonde aveugle se teste par
+SRVLOC). Le nom du protocole va dans `blind_rules_order_is_frozen`, qui
+fige la liste aveugle de la table. Une sonde aveugle se teste par
 `classify_payload(<transport>, None, None, payload)`, sous le transport de
-sa garde. Un test negatif (« ces octets ne sont pas Foo ») ecrit sous un
-autre transport passerait sans rien prouver.
+sa garde : un test negatif (« ces octets ne sont pas Foo ») ecrit sous un
+autre transport passerait sans rien prouver. Il n'existe plus d'entree
+publique sans transport ni port : `Application::try_from` est parti en 12.0
+(#219).
 
 ```rust
 // src/parse/dispatch/probes.rs
@@ -470,7 +468,7 @@ const LAST: Self = Self::Foo;
 ProbeId::Foo => FooPacket::try_from(payload).is_ok(),
 
 // src/parse/dispatch/rules.rs : dans RULES, a son rang dans la cascade aveugle
-rule("Foo", Guard::Udp, ProbeId::Foo),
+rule(ApplicationProtocol::Foo, Guard::Udp, ProbeId::Foo),
 ```
 
 Attention : l'ordre de detection compte. Un parseur trop permissif peut
@@ -493,7 +491,7 @@ leur place : une regle a port porte toujours une garde de transport
 le contenu (issue #25).
 
 ```rust
-port_rule("Foo", Guard::Tcp, is_foo_tcp_port, ProbeId::Foo),
+port_rule(ApplicationProtocol::Foo, Guard::Tcp, is_foo_tcp_port, ProbeId::Foo),
 ```
 
 Les autres champs de `Rule` couvrent les cas particuliers : `terminal_on_port`
@@ -521,7 +519,7 @@ connait l'etiquette et la sonde.
 port, gardee par le seul transport ou le protocole est defini) : lorsque le
 protocole s'identifie suffisamment pour etre reconnu hors de son port
 standard, mais n'est defini que sur un transport donne. S7Comm suit cette voie
-(`rule("S7Comm", Guard::Tcp, ProbeId::S7Comm)`, placee avant la regle COTP
+(`rule(ApplicationProtocol::S7Comm, Guard::Tcp, ProbeId::S7Comm)`, placee avant la regle COTP
 pour l'emporter sur l'etiquette generique, port 102 compris) : l'enveloppe
 complete TPKT + COTP-DT + S7 permet le probing sur n'importe quel port TCP,
 tandis que les memes octets sur UDP ne doivent jamais produire le label

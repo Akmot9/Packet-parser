@@ -49,7 +49,7 @@ const NODES: [u16; 17] = [
 fn label(flow: &PacketFlow<'_>) -> Option<&'static str> {
     flow.application
         .as_ref()
-        .map(|application| application.application_protocol)
+        .map(|application| application.protocol.label())
 }
 
 fn frames() -> Vec<(LinkType, Vec<u8>)> {

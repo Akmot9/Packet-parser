@@ -57,7 +57,7 @@ fn observed(path: &Path, labels: &[&str]) -> FrameOracle {
             .into_iter()
             .next_back()
             .and_then(|flow| flow.application.as_ref())
-            .map(|application| application.application_protocol);
+            .map(|application| application.protocol.label());
         if innermost_label.is_some_and(|label| labels.contains(&label)) {
             count += 1;
             update_frame_digest(&mut frame_digest, frame_number);

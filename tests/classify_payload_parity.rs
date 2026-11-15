@@ -63,7 +63,7 @@ fn bytes(hex_dump: &str) -> Vec<u8> {
 }
 
 fn label(application: Option<Application>) -> Option<&'static str> {
-    application.map(|application| application.application_protocol)
+    application.map(|application| application.protocol.label())
 }
 
 /// Toutes les captures du corpus, `s7comm/` compris : `collect_capture_files`

@@ -101,7 +101,7 @@ fn esp_row(esp: &EspPacket<'_>, carrier: &str) -> OracleRow {
 fn label(flow: &PacketFlow<'_>) -> Option<&'static str> {
     flow.application
         .as_ref()
-        .map(|application| application.application_protocol)
+        .map(|application| application.protocol.label())
 }
 
 /// Parite avec tshark sur les 858 trames du corpus, sans Decode As.

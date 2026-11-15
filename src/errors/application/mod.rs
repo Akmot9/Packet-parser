@@ -3,19 +3,18 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-use serde::Serialize;
-use thiserror::Error;
+//! Error types of the application-layer decoders, one module per protocol.
+//!
+//! Classifying a payload has no error of its own: a payload that is not
+//! recognized is labelled `Unknown`, and an empty payload has no application
+//! layer. `ApplicationError`, which only `Application::try_from` returned,
+//! was removed with it in 12.0 (issue #219).
 
 pub mod ams;
 pub mod asterix;
 pub mod bacnet;
 pub mod bitcoin;
 pub mod cotp;
-
-/// Ancien nom de [`cotp`], garde pour les appelants de la 11.8 et retire en
-/// 12.0 (#220, `MIGRATION-12.md`). Le compilateur ne previent pas : rustc ne
-/// propage pas `#[deprecated]` a travers un `pub use`.
-pub use cotp as copt;
 pub mod dhcp;
 pub mod dhcpv6;
 pub mod dis;
@@ -51,16 +50,3 @@ pub mod tls;
 pub mod umas;
 pub mod valmet_dna;
 pub mod wireguard;
-
-/// Errors related to parsing an `Application`.
-///
-/// Application-layer probing never fails on an unrecognized payload — it
-/// yields no label instead — so the only error is an empty payload. The
-/// per-protocol decoders report their own error types, under
-/// [`crate::errors::application`].
-#[derive(Debug, Error, Clone, Serialize)]
-#[non_exhaustive]
-pub enum ApplicationError {
-    #[error("Packet is empty")]
-    EmptyPacket,
-}

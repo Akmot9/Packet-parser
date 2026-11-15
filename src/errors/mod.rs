@@ -15,7 +15,6 @@ pub mod internet;
 mod link_layer;
 pub mod transport;
 
-use application::ApplicationError;
 use internet::InternetError;
 pub use link_layer::LinkLayerError;
 use thiserror::Error;
@@ -42,7 +41,4 @@ pub enum ParseError {
 
     #[error("Transport layer error: {0}")]
     Transport(#[from] TransportError),
-
-    #[error("Application layer error: {0}")]
-    Application(#[from] ApplicationError),
 }

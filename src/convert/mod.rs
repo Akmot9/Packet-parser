@@ -77,8 +77,7 @@ pub enum HexStreamError {
 }
 
 /// Convertit un flux hexadécimal Wireshark en `Vec<u8>`, sans paniquer sur une
-/// entrée invalide. À préférer à [`hex_stream_to_bytes`] pour toute entrée
-/// non maîtrisée.
+/// entrée invalide.
 pub fn try_hex_stream_to_bytes(hex: &str) -> Result<Vec<u8>, HexStreamError> {
     if !hex.len().is_multiple_of(2) {
         return Err(HexStreamError::OddLength(hex.len()));
@@ -93,21 +92,6 @@ pub fn try_hex_stream_to_bytes(hex: &str) -> Result<Vec<u8>, HexStreamError> {
         bytes.push(byte);
     }
     Ok(bytes)
-}
-
-/// Convertit un flux hexadécimal Wireshark en `Vec<u8>`.
-///
-/// # Panics
-///
-/// Panique si la chaîne a une longueur impaire ou contient un caractère non
-/// hexadécimal. Utiliser [`try_hex_stream_to_bytes`] pour une entrée
-/// utilisateur.
-#[deprecated(
-    since = "11.0.0",
-    note = "panique sur une entree invalide ; utiliser `try_hex_stream_to_bytes`"
-)]
-pub fn hex_stream_to_bytes(hex: &str) -> Vec<u8> {
-    hex_stream_or_panic(hex)
 }
 
 #[expect(
@@ -168,30 +152,29 @@ pub fn display_packet(bytes: &[u8]) {
 }
 
 #[cfg(test)]
-#[allow(deprecated)]
 mod tests {
     use super::*;
     use std::fs;
 
     #[test]
-    fn test_hex_stream_to_bytes_valid_ascii() {
+    fn test_hex_stream_or_panic_valid_ascii() {
         let hex = "48656C6C6F"; // "Hello"
         let expected = vec![0x48, 0x65, 0x6C, 0x6C, 0x6F];
-        assert_eq!(hex_stream_to_bytes(hex), expected);
+        assert_eq!(hex_stream_or_panic(hex), expected);
     }
 
     #[test]
-    fn test_hex_stream_to_bytes_empty() {
+    fn test_hex_stream_or_panic_empty() {
         let hex = "";
         let expected: Vec<u8> = vec![];
-        assert_eq!(hex_stream_to_bytes(hex), expected);
+        assert_eq!(hex_stream_or_panic(hex), expected);
     }
 
     #[test]
-    fn test_hex_stream_to_bytes_lowercase() {
+    fn test_hex_stream_or_panic_lowercase() {
         let hex = "deadbeef";
         let expected = vec![0xDE, 0xAD, 0xBE, 0xEF];
-        assert_eq!(hex_stream_to_bytes(hex), expected);
+        assert_eq!(hex_stream_or_panic(hex), expected);
     }
 
     #[test]
@@ -220,14 +203,14 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "La chaîne hexadécimale doit avoir une longueur paire")]
-    fn test_hex_stream_to_bytes_odd_length_should_panic() {
-        let _ = hex_stream_to_bytes("ABC");
+    fn test_hex_stream_or_panic_odd_length_should_panic() {
+        let _ = hex_stream_or_panic("ABC");
     }
 
     #[test]
     #[should_panic(expected = "Valeur hex invalide")]
-    fn test_hex_stream_to_bytes_invalid_hex_should_panic() {
-        let _ = hex_stream_to_bytes("ZZ");
+    fn test_hex_stream_or_panic_invalid_hex_should_panic() {
+        let _ = hex_stream_or_panic("ZZ");
     }
 
     #[test]

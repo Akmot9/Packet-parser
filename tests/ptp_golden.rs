@@ -49,7 +49,7 @@ fn ptp_message<'a>(flow: &'a PacketFlow<'a>) -> Option<(&'static str, PtpPacket<
         return Some(("l2", packet.clone()));
     }
     let application = flow.application.as_ref()?;
-    if application.application_protocol != "PTP" {
+    if application.protocol.label() != "PTP" {
         return None;
     }
     let payload = flow.transport.as_ref()?.payload?;
@@ -340,7 +340,7 @@ fn decode_as_routes_ptp_on_a_non_standard_port() {
     let label = |flow: &PacketFlow<'_>| {
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol)
+            .map(|application| application.protocol.label())
     };
 
     let flow = parse(packet_parser::LinkType::ETHERNET, &bytes).expect("trame decodable");

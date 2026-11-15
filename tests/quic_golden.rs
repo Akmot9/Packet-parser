@@ -60,7 +60,7 @@ fn assert_quic(bytes: &[u8]) {
     let flow = parse(LinkType::LINUX_SLL, bytes).expect("captured frame decodes");
     let application = flow.application.expect("an application layer is detected");
 
-    assert_eq!(application.application_protocol, "QUIC");
+    assert_eq!(application.protocol.label(), "QUIC");
 }
 
 #[test]

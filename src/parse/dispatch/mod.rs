@@ -29,6 +29,7 @@
 use super::application::Application;
 use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
+use crate::parse::application::protocol::ApplicationProtocol;
 
 mod ports;
 mod probes;
@@ -88,74 +89,85 @@ impl DecodeAsProtocol {
     /// (etiquette, garde, sonde) de la regle equivalente de la table. DNS
     /// choisit sa forme selon le transport : datagramme sur UDP, prefixe de
     /// longueur sur TCP (RFC 1035 §4.2).
-    fn rule(self, protocol: TransportProtocol) -> (&'static str, Guard, ProbeId) {
+    fn rule(self, protocol: TransportProtocol) -> (ApplicationProtocol, Guard, ProbeId) {
         match self {
-            Self::Ftp => ("FTP", Guard::Tcp, ProbeId::Ftp),
-            Self::Smtp => ("SMTP", Guard::Tcp, ProbeId::Smtp),
-            Self::Nntp => ("NNTP", Guard::Tcp, ProbeId::Nntp),
-            Self::Cotp => ("COTP", Guard::Tcp, ProbeId::CotpTpkt),
+            Self::Ftp => (ApplicationProtocol::Ftp, Guard::Tcp, ProbeId::Ftp),
+            Self::Smtp => (ApplicationProtocol::Smtp, Guard::Tcp, ProbeId::Smtp),
+            Self::Nntp => (ApplicationProtocol::Nntp, Guard::Tcp, ProbeId::Nntp),
+            Self::Cotp => (ApplicationProtocol::Cotp, Guard::Tcp, ProbeId::CotpTpkt),
             Self::Dns => match protocol {
-                TransportProtocol::Tcp => ("DNS", Guard::Tcp, ProbeId::DnsTcp),
-                _ => ("DNS", Guard::Udp, ProbeId::Dns),
+                TransportProtocol::Tcp => (ApplicationProtocol::Dns, Guard::Tcp, ProbeId::DnsTcp),
+                _ => (ApplicationProtocol::Dns, Guard::Udp, ProbeId::Dns),
             },
-            Self::Mdns => ("mDNS", Guard::Udp, ProbeId::Mdns),
-            Self::Llmnr => ("LLMNR", Guard::Udp, ProbeId::Llmnr),
-            Self::Ssdp => ("SSDP", Guard::Udp, ProbeId::Ssdp),
-            Self::Nbns => ("NBNS", Guard::Udp, ProbeId::Nbns),
-            Self::Nbss => ("NBSS", Guard::Tcp, ProbeId::Nbss),
-            Self::Snmp => ("SNMP", Guard::Any, ProbeId::Snmp),
-            Self::Dhcpv6 => ("DHCPv6", Guard::Udp, ProbeId::Dhcpv6),
-            Self::OpcUa => ("OPC UA", Guard::Tcp, ProbeId::Opcua),
-            Self::PostgreSql => ("PostgreSQL", Guard::Tcp, ProbeId::PostgresqlPort),
-            Self::ModbusTcp => ("ModbusTCP", Guard::Tcp, ProbeId::ModbusTcp),
-            Self::EthernetIp => ("EtherNet/IP", Guard::Any, ProbeId::EthernetIp),
-            Self::Ams => ("AMS", Guard::Any, ProbeId::Ams),
-            Self::QuicShortHeader => ("QUIC", Guard::Udp, ProbeId::QuicShortHeader),
+            Self::Mdns => (ApplicationProtocol::Mdns, Guard::Udp, ProbeId::Mdns),
+            Self::Llmnr => (ApplicationProtocol::Llmnr, Guard::Udp, ProbeId::Llmnr),
+            Self::Ssdp => (ApplicationProtocol::Ssdp, Guard::Udp, ProbeId::Ssdp),
+            Self::Nbns => (ApplicationProtocol::Nbns, Guard::Udp, ProbeId::Nbns),
+            Self::Nbss => (ApplicationProtocol::Nbss, Guard::Tcp, ProbeId::Nbss),
+            Self::Snmp => (ApplicationProtocol::Snmp, Guard::Any, ProbeId::Snmp),
+            Self::Dhcpv6 => (ApplicationProtocol::Dhcpv6, Guard::Udp, ProbeId::Dhcpv6),
+            Self::OpcUa => (ApplicationProtocol::OpcUa, Guard::Tcp, ProbeId::Opcua),
+            Self::PostgreSql => (
+                ApplicationProtocol::PostgreSql,
+                Guard::Tcp,
+                ProbeId::PostgresqlPort,
+            ),
+            Self::ModbusTcp => (
+                ApplicationProtocol::ModbusTcp,
+                Guard::Tcp,
+                ProbeId::ModbusTcp,
+            ),
+            Self::EthernetIp => (
+                ApplicationProtocol::EthernetIp,
+                Guard::Any,
+                ProbeId::EthernetIp,
+            ),
+            Self::Ams => (ApplicationProtocol::Ams, Guard::Any, ProbeId::Ams),
+            Self::QuicShortHeader => (
+                ApplicationProtocol::Quic,
+                Guard::Udp,
+                ProbeId::QuicShortHeader,
+            ),
             Self::OpenVpn => match protocol {
-                TransportProtocol::Tcp => ("OpenVPN", Guard::Tcp, ProbeId::OpenVpnTcp),
-                _ => ("OpenVPN", Guard::Udp, ProbeId::OpenVpnUdp),
+                TransportProtocol::Tcp => (
+                    ApplicationProtocol::OpenVpn,
+                    Guard::Tcp,
+                    ProbeId::OpenVpnTcp,
+                ),
+                _ => (
+                    ApplicationProtocol::OpenVpn,
+                    Guard::Udp,
+                    ProbeId::OpenVpnUdp,
+                ),
             },
-            Self::Ptp => ("PTP", Guard::Udp, ProbeId::Ptp),
-            Self::Stanag5066 => ("STANAG 5066", Guard::Tcp, ProbeId::Stanag5066),
-            Self::Dis => ("DIS", Guard::Udp, ProbeId::DisLenient),
-            Self::Ike => ("IKE", Guard::Udp, ProbeId::Ike),
-            Self::Esp => ("ESP", Guard::Udp, ProbeId::EspNatT),
-            Self::Rdp => ("RDP", Guard::Tcp, ProbeId::Rdp),
-            Self::Iec104 => ("IEC 104", Guard::Tcp, ProbeId::Iec104),
-            Self::WireGuard => ("WireGuard", Guard::Udp, ProbeId::WireGuard),
-            Self::ValmetDna => ("Valmet DNA", Guard::Udp, ProbeId::ValmetDna),
+            Self::Ptp => (ApplicationProtocol::Ptp, Guard::Udp, ProbeId::Ptp),
+            Self::Stanag5066 => (
+                ApplicationProtocol::Stanag5066,
+                Guard::Tcp,
+                ProbeId::Stanag5066,
+            ),
+            Self::Dis => (ApplicationProtocol::Dis, Guard::Udp, ProbeId::DisLenient),
+            Self::Ike => (ApplicationProtocol::Ike, Guard::Udp, ProbeId::Ike),
+            Self::Esp => (ApplicationProtocol::Esp, Guard::Udp, ProbeId::EspNatT),
+            Self::Rdp => (ApplicationProtocol::Rdp, Guard::Tcp, ProbeId::Rdp),
+            Self::Iec104 => (ApplicationProtocol::Iec104, Guard::Tcp, ProbeId::Iec104),
+            Self::WireGuard => (
+                ApplicationProtocol::WireGuard,
+                Guard::Udp,
+                ProbeId::WireGuard,
+            ),
+            Self::ValmetDna => (
+                ApplicationProtocol::ValmetDna,
+                Guard::Udp,
+                ProbeId::ValmetDna,
+            ),
         }
     }
-}
-
-/// Classe un payload sans port ni transport : la cascade de
-/// `Application::try_from`, derivee de la table (#216). Ce sont les regles
-/// sans garde ni veto de port, dans l'ordre de la table, avec les memes
-/// sondes que [`classify`] et la meme memoisation. Faute de transport, leur
-/// garde de transport n'est pas appliquee : une signature TCP peut
-/// etiqueter un datagramme. Cette API est donc moins sure que `parse`, qui
-/// voit les ports et le transport. `classify_payload` la remplace (#219) :
-/// elle prend le transport et les ports, et passe par [`classify`]. Cette
-/// cascade part avec `Application::try_from`, en 12.0.
-pub(crate) fn classify_blind(payload: &[u8]) -> &'static str {
-    let mut failed_probes: ProbeMask = 0;
-    for rule in RULES {
-        if rule.ports.is_some() || rule.ports_veto.is_some() {
-            continue;
-        }
-        let bit = rule.probe.bit();
-        if failed_probes & bit == 0 && run_probe(rule.probe, payload) {
-            return rule.label;
-        }
-        failed_probes |= bit;
-    }
-    "Unknown"
 }
 
 /// Classifie le payload d'une couche transport. `None` signifie « rien a
 /// sonder » (pas de payload, payload vide, ou port mDNS sans contenu mDNS) ;
-/// un payload sonde sans succes reste etiquete `"Unknown"`, comme
-/// `Application::try_from`.
+/// un payload sonde sans succes reste etiquete `"Unknown"`.
 pub(super) fn classify(
     transport: &Transport<'_>,
     decode_as: &[(u16, DecodeAsProtocol)],
@@ -182,9 +194,7 @@ pub(super) fn classify(
             }
             let bit = probe.bit();
             if failed_probes & bit == 0 && run_probe(probe, payload) {
-                return Some(Application {
-                    application_protocol: label,
-                });
+                return Some(Application { protocol: label });
             }
             failed_probes |= bit;
         }
@@ -208,7 +218,7 @@ pub(super) fn classify(
         let matched = failed_probes & bit == 0 && run_probe(rule.probe, payload);
         if matched {
             return Some(Application {
-                application_protocol: rule.label,
+                protocol: rule.label,
             });
         }
         failed_probes |= bit;
@@ -218,6 +228,6 @@ pub(super) fn classify(
     }
 
     Some(Application {
-        application_protocol: "Unknown",
+        protocol: ApplicationProtocol::Unknown,
     })
 }

@@ -60,9 +60,10 @@ fn frames_of(path: &Path) -> Vec<(packet_parser::LinkType, Vec<u8>)> {
 /// Le niveau de la trame etiquete Modbus/TCP ou UMAS (porte par Modbus/TCP).
 fn modbus_level<'f, 'a>(flow: &'f PacketFlow<'a>) -> Option<&'f PacketFlow<'a>> {
     flow.flatten().into_iter().find(|level| {
-        level.application.as_ref().is_some_and(|application| {
-            matches!(application.application_protocol, "ModbusTCP" | "UMAS")
-        })
+        level
+            .application
+            .as_ref()
+            .is_some_and(|application| matches!(application.protocol.label(), "ModbusTCP" | "UMAS"))
     })
 }
 
@@ -138,7 +139,7 @@ fn every_segment_matches_the_tshark_oracle() {
                 "{name}:{number} : ecart avec tshark"
             );
             *by_label
-                .entry(level.application.as_ref().unwrap().application_protocol)
+                .entry(level.application.as_ref().unwrap().protocol.label())
                 .or_default() += 1;
             *by_function.entry(payload[7]).or_default() += 1;
             segments += 1;
