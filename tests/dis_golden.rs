@@ -102,7 +102,7 @@ fn oracle_row(packet: &DisPacket<'_>) -> OracleRow {
 fn label(flow: &PacketFlow<'_>) -> Option<&'static str> {
     flow.application
         .as_ref()
-        .map(|application| application.application_protocol)
+        .map(|application| application.protocol.label())
 }
 
 /// Parite avec tshark sur les 393 trames du corpus, les ports 6993 et 22999

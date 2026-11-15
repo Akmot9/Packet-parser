@@ -165,7 +165,7 @@ impl ParseConfig {
 ///     hex::decode("0300002202f0800100010061153013020103a00ea20c800304a273a205a003870102")?;
 /// let label = |source_port, destination_port| {
 ///     classify_payload(TransportProtocol::Tcp, source_port, destination_port, &payload)
-///         .map(|application| application.application_protocol)
+///         .map(|application| application.protocol.label())
 /// };
 ///
 /// // The port confirms a signature too weak to stand alone.
@@ -198,7 +198,7 @@ pub fn classify_payload(
 /// // The greeting of an FTP server that listens on port 2121.
 /// let greeting = b"220 Chris Sanders FTP Server\r\n";
 /// let label = |application: Option<packet_parser::Application>| {
-///     application.map(|application| application.application_protocol)
+///     application.map(|application| application.protocol.label())
 /// };
 ///
 /// // An FTP reply has the shape of an SMTP or NNTP reply: only its port tells.

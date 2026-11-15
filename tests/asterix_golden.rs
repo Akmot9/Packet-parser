@@ -50,7 +50,8 @@ fn asterix_payload(bytes: &[u8]) -> AsterixPacket<'_> {
         flow.application
             .as_ref()
             .expect("an application layer is detected")
-            .application_protocol,
+            .protocol
+            .label(),
         "ASTERIX"
     );
     let payload = flow
@@ -432,7 +433,7 @@ fn every_frame_matches_the_tshark_oracle() {
             let flow =
                 parse(*link_type, data).unwrap_or_else(|error| panic!("{file}:{number} : {error}"));
             assert_eq!(
-                flow.application.as_ref().map(|a| a.application_protocol),
+                flow.application.as_ref().map(|a| a.protocol.label()),
                 Some("ASTERIX"),
                 "{file}:{number}"
             );
@@ -528,7 +529,7 @@ fn frames_beyond_the_tshark_i002_050_limit_decode_against_the_specification() {
             let flow =
                 parse(*link_type, data).unwrap_or_else(|error| panic!("{file}:{number} : {error}"));
             assert_eq!(
-                flow.application.as_ref().map(|a| a.application_protocol),
+                flow.application.as_ref().map(|a| a.protocol.label()),
                 Some("ASTERIX"),
                 "{file}:{number}"
             );

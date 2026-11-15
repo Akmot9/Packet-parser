@@ -10,7 +10,7 @@ pub mod dhcp;
 pub mod http;
 impl fmt::Display for Application {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ", self.application_protocol)
+        write!(f, "{} ", self.protocol)
     }
 }
 
@@ -21,7 +21,7 @@ mod tests {
     #[test]
     fn test_application_display() {
         let app = Application {
-            application_protocol: "NTP",
+            protocol: crate::ApplicationProtocol::Ntp,
         };
         assert_eq!(app.to_string(), "NTP ");
     }

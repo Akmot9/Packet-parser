@@ -3,7 +3,9 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
+pub mod protocol;
 pub mod protocols;
+use protocol::ApplicationProtocol;
 use serde::Serialize;
 
 /// The `Application` struct contains information about the layer 7 protocol and its parsed data.
@@ -18,24 +20,14 @@ use serde::Serialize;
 /// classification that saw neither the transport protocol nor the ports.
 /// That conversion was removed in 12.0 (issue #219): see
 /// [`MIGRATION-12.md`](https://github.com/Akmot9/Packet-parser/blob/main/MIGRATION-12.md).
-#[derive(Debug, Clone, Serialize, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct Application {
-    pub application_protocol: &'static str,
-}
-
-impl PartialEq for Application {
-    fn eq(&self, other: &Self) -> bool {
-        self.application_protocol == other.application_protocol
-    }
-}
-
-use std::hash::{Hash, Hasher};
-
-impl Hash for Application {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.application_protocol.hash(state);
-    }
+    /// The protocol, as an enum since 12.0 (issue #217). Until 11.x this
+    /// was the text field `application_protocol`; the JSON key keeps that
+    /// name and [`ApplicationProtocol::label`] gives the same text.
+    #[serde(rename = "application_protocol")]
+    pub protocol: ApplicationProtocol,
 }
 
 #[cfg(test)]
@@ -59,7 +51,8 @@ mod tests {
     fn label(protocol: TransportProtocol, payload: &[u8]) -> &'static str {
         classify_payload(protocol, None, None, payload)
             .expect("payload non vide")
-            .application_protocol
+            .protocol
+            .label()
     }
 
     #[test]
@@ -218,5 +211,20 @@ mod tests {
 
         assert_eq!(label(Tcp, &packet), "Unknown");
         assert_eq!(label(Udp, &packet), "Unknown");
+    }
+
+    /// #217 : le champ est un enum, la cle JSON et son texte sont ceux de
+    /// la 11.x.
+    #[test]
+    fn application_serializes_under_its_historical_key() {
+        let application = crate::Application {
+            protocol: crate::ApplicationProtocol::Ntp,
+        };
+
+        assert_eq!(
+            serde_json::to_string(&application).unwrap(),
+            r#"{"application_protocol":"NTP"}"#
+        );
+        assert_eq!(application.to_string(), "NTP ");
     }
 }

@@ -83,7 +83,7 @@ fn http_row(flow: &PacketFlow<'_>) -> Option<OracleRow> {
         let Some(application) = flattened.application.as_ref() else {
             continue;
         };
-        if application.application_protocol != "HTTP" {
+        if application.protocol.label() != "HTTP" {
             continue;
         }
         let payload = flattened

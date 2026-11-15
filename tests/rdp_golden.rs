@@ -63,7 +63,7 @@ fn read_oracle(path: &Path) -> BTreeMap<String, BTreeMap<usize, OracleRow>> {
 fn label(flow: &PacketFlow<'_>) -> Option<&'static str> {
     flow.application
         .as_ref()
-        .map(|application| application.application_protocol)
+        .map(|application| application.protocol.label())
 }
 
 /// Le choix PER que tshark affiche pour un DomainMCSPDU.

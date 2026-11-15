@@ -222,7 +222,7 @@ fn oracle_row(packet: &RtpsPacket<'_>) -> OracleRow {
 /// Le message RTPS d'un flux, si la crate l'a etiquete ainsi.
 fn rtps_message<'a>(flow: &'a PacketFlow<'a>) -> Option<RtpsPacket<'a>> {
     let application = flow.application.as_ref()?;
-    if application.application_protocol != "RTPS" {
+    if application.protocol.label() != "RTPS" {
         return None;
     }
     let payload = flow.transport.as_ref()?.payload?;
@@ -281,7 +281,7 @@ fn every_frame_matches_the_tshark_oracle() {
                     let error = payload.map(|p| RtpsPacket::try_from(p).err());
                     panic!(
                         "{file}:{number} : tshark voit RTPS, pas la crate ({:?}, {error:?})",
-                        flow.application.as_ref().map(|a| a.application_protocol)
+                        flow.application.as_ref().map(|a| a.protocol.label())
                     )
                 }
                 (None, Some(_)) => panic!("{file}:{number} : la crate voit RTPS, pas tshark"),

@@ -455,7 +455,7 @@ impl<'a> From<&PacketFlow<'a>> for PacketFlowOwned {
                 .application
                 .as_ref()
                 .map(|application| ApplicationOwned {
-                    protocol: application.application_protocol.to_string(),
+                    protocol: application.protocol.label().to_string(),
                 }),
             inner: flow
                 .inner

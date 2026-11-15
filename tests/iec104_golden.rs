@@ -108,7 +108,7 @@ fn oracle_columns(packet: &Iec104Packet<'_>) -> [String; 12] {
 fn label(flow: &PacketFlow<'_>) -> Option<&'static str> {
     flow.application
         .as_ref()
-        .map(|application| application.application_protocol)
+        .map(|application| application.protocol.label())
 }
 
 /// Parite avec tshark sur tous les segments a payload du corpus.

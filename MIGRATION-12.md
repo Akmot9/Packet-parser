@@ -229,3 +229,69 @@ Raison : `encoding` ne lisait qu'un octet d'un champ de deux (RFC 2165 §7)
 et valait 0 pour tout MIBenum inférieur à 256, UTF-8 compris ;
 `hex_stream_to_bytes` paniquait sur une entrée invalide ; `MIN_SIZES` était
 une faute de frappe.
+
+## `Application.protocol` est un enum (#217)
+
+**État : fait sur la branche `release/12.0.0`.** Le champ texte
+`Application::application_protocol` est remplacé par
+`Application::protocol`, de type `ApplicationProtocol`. Il n'y a pas de
+transition en 11.x.
+
+```rust
+// 11.x : une chaîne
+match application.application_protocol {
+    "IEC 104" => { /* … */ }
+    "ModbusTCP" => { /* … */ }
+    _ => {}
+}
+
+// 12.0 : un enum
+match application.protocol {
+    ApplicationProtocol::Iec104 => { /* … */ }
+    ApplicationProtocol::ModbusTcp => { /* … */ }
+    _ => {}
+}
+```
+
+Qui veut encore la chaîne l'obtient par `label()` :
+
+```rust
+let label: &'static str = application.protocol.label();   // "IEC 104"
+let protocol: ApplicationProtocol = "IEC 104".parse()?;    // l'inverse
+```
+
+### Ce qui change
+
+- **Le champ.** `application_protocol: &'static str` devient
+  `protocol: ApplicationProtocol`. Un appel mécanique : remplacer
+  `.application_protocol` par `.protocol.label()` garde le code tel qu'il
+  était, chaîne pour chaîne.
+- **L'enum.** 53 variantes, une par étiquette : celles de la table de
+  dispatch, les tunnels (`Vxlan`, `Geneve`, `GtpU`, `Capwap`, `Gre`,
+  `IpInIp`), `Stp` et `Unknown`. Il est `#[non_exhaustive]` : un `match`
+  garde un bras `_`, et un nouveau protocole sera une mineure.
+- **`FromStr` est strict.** Un texte qui n'est l'étiquette d'aucune variante
+  rend `UnknownApplicationLabel`, pas `ApplicationProtocol::Unknown`. La
+  casse compte : `"mdns"` n'est pas `"mDNS"`.
+- **`Application` dérive `PartialEq`, `Eq` et `Hash`**, avec le même
+  comportement que ses impls écrites à la main.
+
+### Ce qui ne change pas
+
+- **Aucune étiquette ne change de texte.** `label()`, `Display` et la
+  sérialisation rendent les chaînes de la 11.8.2 à l'octet près, figées par
+  un test.
+- **Le JSON.** La clé reste `application_protocol`, dans la forme empruntée
+  comme dans `owned`. `ApplicationOwned::protocol` reste une `String`.
+
+### Raison
+
+Un `match` sur une chaîne n'a pas d'exhaustivité, une faute de frappe y est
+silencieuse, et renommer une étiquette était une rupture que
+`cargo semver-checks` ne pouvait pas voir. La table de dispatch porte
+maintenant l'enum : une étiquette sans variante ne compile pas.
+
+Un enum du même nom existait avant la 11.0.0, qui l'avait retiré comme code
+mort (`MIGRATION-11.md`) : rien ne le produisait. Celui-ci est ce que
+`parse` rend.
+

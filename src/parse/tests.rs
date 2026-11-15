@@ -155,17 +155,17 @@ fn packetflow_detects_quic() {
     let packet = sample_quic_hxdump();
     let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "QUIC");
+    assert_eq!(application.protocol.label(), "QUIC");
 
     let packet = sample_quic_hxdump_1();
     let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "QUIC");
+    assert_eq!(application.protocol.label(), "QUIC");
 
     let packet = sample_quic_hxdump_2();
     let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "QUIC");
+    assert_eq!(application.protocol.label(), "QUIC");
 }
 
 #[test]
@@ -173,7 +173,7 @@ fn packetflow_detects_quic_protected_payload() {
     let packet = sample_quic_hxdump_protected_payload();
     let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "QUIC");
+    assert_eq!(application.protocol.label(), "QUIC");
 }
 
 #[test]
@@ -181,7 +181,7 @@ fn packetflow_detects_quic_handshake() {
     let packet = sample_quic_hxdump_handshake();
     let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "QUIC");
+    assert_eq!(application.protocol.label(), "QUIC");
 }
 
 fn ethernet_ipv4_udp_packet(ip_flags_fragment: u16, udp_length: u16) -> Vec<u8> {
@@ -506,7 +506,7 @@ fn packetflow_detects_tpkt_cotp_connection_request_and_confirm_on_tcp_102() {
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
         let application = flow.application.as_ref().expect("application layer");
-        assert_eq!(application.application_protocol, "COTP");
+        assert_eq!(application.protocol.label(), "COTP");
     }
 }
 
@@ -520,7 +520,7 @@ fn packetflow_requires_tcp_port_102_for_cotp() {
         tcp_flow
             .application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("COTP")
     );
 
@@ -530,7 +530,7 @@ fn packetflow_requires_tcp_port_102_for_cotp() {
         udp_flow
             .application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("COTP")
     );
 }
@@ -552,7 +552,7 @@ fn packetflow_validates_concatenated_non_user_tpdus() {
     assert_eq!(
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("COTP")
     );
 
@@ -603,7 +603,7 @@ fn packetflow_rejects_tpkt_cotp_with_nonzero_reserved_byte() {
     assert_ne!(
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("COTP")
     );
 }
@@ -617,7 +617,7 @@ fn packetflow_detects_strict_s7comm_on_tcp_with_or_without_standard_port() {
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
         let application = flow.application.as_ref().expect("application layer");
-        assert_eq!(application.application_protocol, "S7Comm");
+        assert_eq!(application.protocol.label(), "S7Comm");
     }
 }
 
@@ -629,7 +629,7 @@ fn packetflow_never_detects_s7comm_over_udp() {
     // contract.
     assert_eq!(
         classify_payload(TransportProtocol::Tcp, None, None, payload.as_slice())
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("S7Comm")
     );
 
@@ -640,7 +640,7 @@ fn packetflow_never_detects_s7comm_over_udp() {
         assert_ne!(
             flow.application
                 .as_ref()
-                .map(|application| application.application_protocol),
+                .map(|application| application.protocol.label()),
             Some("S7Comm")
         );
     }
@@ -656,7 +656,7 @@ fn packetflow_does_not_preempt_256_byte_s7comm_as_cotp() {
     let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
 
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "S7Comm");
+    assert_eq!(application.protocol.label(), "S7Comm");
 }
 
 #[test]
@@ -671,7 +671,7 @@ fn packetflow_detects_ethernet_ip_without_standard_port() {
     assert_eq!(transport.destination_port, Some(1234));
 
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "EtherNet/IP");
+    assert_eq!(application.protocol.label(), "EtherNet/IP");
 }
 
 #[test]
@@ -688,7 +688,7 @@ fn packetflow_detects_postgresql_from_payload_without_standard_port() {
     assert_eq!(transport.payload, Some(payload.as_slice()));
 
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "PostgreSQL");
+    assert_eq!(application.protocol.label(), "PostgreSQL");
 }
 
 #[test]
@@ -717,7 +717,7 @@ fn packetflow_detects_postgresql_startup_frame_4() {
     assert_eq!(payload.len(), 76);
 
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "PostgreSQL");
+    assert_eq!(application.protocol.label(), "PostgreSQL");
 
     let pg = PostgreSqlPacket::try_from(payload).expect("postgresql startup packet");
     assert_eq!(pg.messages.len(), 1);
@@ -770,7 +770,7 @@ fn packetflow_detects_postgresql_backend_frame_24() {
     assert_eq!(payload.len(), 465);
 
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "PostgreSQL");
+    assert_eq!(application.protocol.label(), "PostgreSQL");
 
     let pg = PostgreSqlPacket::try_from(payload).expect("postgresql backend packet");
     // AuthenticationSASLFinal, AuthenticationOk, treize ParameterStatus,
@@ -822,12 +822,12 @@ fn packetflow_detects_postgresql_weak_shape_only_on_standard_port() {
     assert_eq!(transport.protocol, TransportProtocol::Tcp);
     assert_eq!(transport.destination_port, Some(5432));
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "PostgreSQL");
+    assert_eq!(application.protocol.label(), "PostgreSQL");
 
     let elsewhere = ethernet_ipv4_tcp_packet(51845, 5433, &payload);
     let flow = PacketFlow::try_from(elsewhere.as_slice()).unwrap();
     let application = flow.application.as_ref().expect("application layer");
-    assert_ne!(application.application_protocol, "PostgreSQL");
+    assert_ne!(application.protocol.label(), "PostgreSQL");
 }
 
 #[test]
@@ -837,14 +837,14 @@ fn packetflow_detects_ftp_on_standard_port() {
     let transport = flow.transport.as_ref().expect("transport layer");
     assert_eq!(transport.destination_port, Some(21));
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "FTP");
+    assert_eq!(application.protocol.label(), "FTP");
 
     let reply = sample_ipv4_tcp_ftp_welcome_reply();
     let flow = PacketFlow::try_from(reply.as_slice()).unwrap();
     let transport = flow.transport.as_ref().expect("transport layer");
     assert_eq!(transport.source_port, Some(21));
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "FTP");
+    assert_eq!(application.protocol.label(), "FTP");
 }
 
 #[test]
@@ -863,7 +863,7 @@ fn ftp_off_port_policy_unambiguous_verbs_only() {
         assert_eq!(
             flow.application
                 .as_ref()
-                .map(|application| application.application_protocol),
+                .map(|application| application.protocol.label()),
             Some("FTP"),
             "unambiguous verb not classified off-port: {payload:?}"
         );
@@ -879,7 +879,7 @@ fn ftp_off_port_policy_unambiguous_verbs_only() {
         assert_ne!(
             flow.application
                 .as_ref()
-                .map(|application| application.application_protocol),
+                .map(|application| application.protocol.label()),
             Some("FTP"),
             "shared FTP form classified away from TCP/21: {payload:?}"
         );
@@ -901,7 +901,7 @@ fn packetflow_does_not_relabel_text_protocol_bodies_as_ftp() {
                 assert_ne!(
                     flow.application
                         .as_ref()
-                        .map(|application| application.application_protocol),
+                        .map(|application| application.protocol.label()),
                     Some("FTP"),
                     "body {source_port}->{destination_port} relabelled FTP: {payload:?}"
                 );
@@ -924,7 +924,7 @@ fn packetflow_port_guards_win_for_shared_ftp_commands() {
         assert_eq!(
             flow.application
                 .as_ref()
-                .map(|application| application.application_protocol),
+                .map(|application| application.protocol.label()),
             Some(expected),
             "payload on TCP/{destination_port}: {payload:?}"
         );
@@ -938,14 +938,14 @@ fn packetflow_detects_smtp_on_standard_port() {
     let transport = flow.transport.as_ref().expect("transport layer");
     assert_eq!(transport.destination_port, Some(25));
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "SMTP");
+    assert_eq!(application.protocol.label(), "SMTP");
 
     let reply = sample_ipv4_tcp_smtp_ok_reply();
     let flow = PacketFlow::try_from(reply.as_slice()).unwrap();
     let transport = flow.transport.as_ref().expect("transport layer");
     assert_eq!(transport.source_port, Some(25));
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "SMTP");
+    assert_eq!(application.protocol.label(), "SMTP");
 }
 
 #[test]
@@ -954,7 +954,7 @@ fn packetflow_detects_smtp_on_submission_port() {
     let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
     let application = flow.application.as_ref().expect("application layer");
 
-    assert_eq!(application.application_protocol, "SMTP");
+    assert_eq!(application.protocol.label(), "SMTP");
 }
 
 #[test]
@@ -966,9 +966,7 @@ fn smtp_off_port_policy_unambiguous_verbs_only() {
         let packet = ethernet_ipv4_tcp_packet(51845, destination_port, b"EHLO GP\r\n");
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
         assert_eq!(
-            flow.application
-                .as_ref()
-                .map(|app| app.application_protocol),
+            flow.application.as_ref().map(|app| app.protocol.label()),
             Some("SMTP"),
             "unambiguous EHLO not classified on TCP port {destination_port}"
         );
@@ -977,7 +975,7 @@ fn smtp_off_port_policy_unambiguous_verbs_only() {
         let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
         let application = flow.application.as_ref();
         assert_ne!(
-            application.map(|app| app.application_protocol),
+            application.map(|app| app.protocol.label()),
             Some("SMTP"),
             "shared QUIT was classified on TCP port {destination_port}"
         );
@@ -991,14 +989,14 @@ fn packetflow_detects_nntp_on_standard_port() {
     let transport = flow.transport.as_ref().expect("transport layer");
     assert_eq!(transport.destination_port, Some(119));
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "NNTP");
+    assert_eq!(application.protocol.label(), "NNTP");
 
     let reply = sample_ipv4_tcp_nntp_data_follows_reply();
     let flow = PacketFlow::try_from(reply.as_slice()).unwrap();
     let transport = flow.transport.as_ref().expect("transport layer");
     assert_eq!(transport.source_port, Some(119));
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "NNTP");
+    assert_eq!(application.protocol.label(), "NNTP");
 }
 
 #[test]
@@ -1009,7 +1007,7 @@ fn packetflow_does_not_detect_plain_nntp_off_standard_ports() {
         let application = flow.application.as_ref();
 
         assert_ne!(
-            application.map(|app| app.application_protocol),
+            application.map(|app| app.protocol.label()),
             Some("NNTP"),
             "plain NNTP was classified on TCP port {destination_port}"
         );
@@ -1033,7 +1031,7 @@ fn packetflow_detects_mdns_query_on_standard_port() {
     assert_eq!(transport.destination_port, Some(5353));
 
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "mDNS");
+    assert_eq!(application.protocol.label(), "mDNS");
 }
 
 #[test]
@@ -1050,7 +1048,7 @@ fn packetflow_detects_mdns_announcement_with_empty_question() {
     assert_eq!(transport.destination_port, Some(5353));
 
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "mDNS");
+    assert_eq!(application.protocol.label(), "mDNS");
 }
 
 #[test]
@@ -1069,10 +1067,7 @@ fn packetflow_does_not_detect_mdns_off_the_standard_port() {
     assert_eq!(transport.destination_port, Some(5000));
 
     let application = flow.application.as_ref();
-    assert_ne!(
-        application.map(|app| app.application_protocol),
-        Some("mDNS")
-    );
+    assert_ne!(application.map(|app| app.protocol.label()), Some("mDNS"));
 }
 
 #[test]
@@ -1336,7 +1331,8 @@ fn packetflow_recurses_into_capwap_ieee80211_tunnel() {
         flow.application
             .as_ref()
             .expect("outer application")
-            .application_protocol,
+            .protocol
+            .label(),
         "CAPWAP",
         "le tunnel est reporté comme protocole applicatif de la ligne externe"
     );
@@ -1413,7 +1409,8 @@ fn packetflow_detects_mqtt_v31_session_from_real_capture() {
             flow.application
                 .as_ref()
                 .unwrap_or_else(|| panic!("{name}: pas d'application"))
-                .application_protocol,
+                .protocol
+                .label(),
             "MQTT",
             "{name} doit être détecté MQTT"
         );
@@ -1460,7 +1457,7 @@ fn mqtt_lookalike_noise_is_not_detected_as_mqtt() {
         let label = flow
             .application
             .as_ref()
-            .map(|app| app.application_protocol)
+            .map(|app| app.protocol.label())
             .unwrap_or("<aucune>");
         assert_ne!(label, "MQTT", "{name} ne doit pas être détecté MQTT");
     }
@@ -1562,7 +1559,8 @@ fn sll_v1_real_capture_dispatches_ipv4_ipv6_and_loopback_to_dns() {
             flow.application
                 .as_ref()
                 .unwrap_or_else(|| panic!("{name}: pas de L7"))
-                .application_protocol,
+                .protocol
+                .label(),
             "DNS",
             "{name} doit être détecté DNS"
         );
@@ -1722,7 +1720,8 @@ fn sll2_real_capture_dispatches_ipv4_ipv6_and_loopback_to_dns() {
             flow.application
                 .as_ref()
                 .unwrap_or_else(|| panic!("{name}: pas de L7"))
-                .application_protocol,
+                .protocol
+                .label(),
             "DNS",
             "{name} doit être détecté DNS"
         );
@@ -1947,7 +1946,8 @@ fn packetflow_recurses_into_capwap_fromds_short_header() {
         flow.application
             .as_ref()
             .expect("outer application")
-            .application_protocol,
+            .protocol
+            .label(),
         "CAPWAP"
     );
 
@@ -2049,7 +2049,7 @@ fn packetflow_detects_tlsv3() {
     assert_eq!(transport.destination_port, Some(4443));
 
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "TLS");
+    assert_eq!(application.protocol.label(), "TLS");
 
     // Le payload TCP est exactement un record TLS complet de 215 octets :
     // 5 d'en-tête + 210 de ClientHello.
@@ -2085,7 +2085,7 @@ fn packetflow_detects_tlsv3_server_hello_multi_records() {
     assert_eq!(transport.destination_port, Some(34012));
 
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "TLS");
+    assert_eq!(application.protocol.label(), "TLS");
 
     let records = parse_tls_records(transport.payload.expect("tcp payload"));
     assert_eq!(records.len(), 6);
@@ -2132,7 +2132,7 @@ fn packetflow_detects_tlsv3_change_cypher_spec() {
     assert_eq!(transport.destination_port, Some(4443));
 
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "TLS");
+    assert_eq!(application.protocol.label(), "TLS");
 
     let records = parse_tls_records(transport.payload.expect("tcp payload"));
     assert_eq!(records.len(), 2);
@@ -2162,7 +2162,7 @@ fn packetflow_detects_tlsv3_application_data() {
     assert_eq!(transport.destination_port, Some(4443));
 
     let application = flow.application.as_ref().expect("application layer");
-    assert_eq!(application.application_protocol, "TLS");
+    assert_eq!(application.protocol.label(), "TLS");
 
     let records = parse_tls_records(transport.payload.expect("tcp payload"));
     assert_eq!(records.len(), 1);

@@ -66,7 +66,7 @@ fn check_default_policy(flow: &PacketFlow<'_>) {
     let label = flow
         .application
         .as_ref()
-        .map(|application| application.application_protocol);
+        .map(|application| application.protocol.label());
     let Some(transport) = flow.transport.as_ref() else {
         assert!(
             !matches!(label, Some("FTP" | "SMTP" | "NNTP" | "S7Comm" | "COTP")),
@@ -143,7 +143,7 @@ fn check_decode_as_policy(flow: &PacketFlow<'_>, declared: DecodeAsProtocol) {
     let label = flow
         .application
         .as_ref()
-        .map(|application| application.application_protocol);
+        .map(|application| application.protocol.label());
     let Some(transport) = flow.transport.as_ref() else {
         return;
     };
@@ -195,7 +195,7 @@ fn label_of(frame: &[u8], config: &ParseConfig) -> Option<&'static str> {
     parse_with(LinkType::ETHERNET, frame, config)
         .expect("la graine Ethernet structuree doit rester analysable")
         .application
-        .map(|application| application.application_protocol)
+        .map(|application| application.protocol.label())
 }
 
 fn tcp(source_port: u16, destination_port: u16, payload: &[u8]) -> Vec<u8> {

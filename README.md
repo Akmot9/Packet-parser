@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Some(application) = &flow.application {
-        println!("L7: {}", application.application_protocol);
+        println!("L7: {}", application.protocol);
     }
 
     Ok(())
