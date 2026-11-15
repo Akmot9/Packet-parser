@@ -1314,7 +1314,7 @@ fn sample_capwap_ieee80211_inner_tcp() -> Vec<u8> {
 
 #[test]
 fn packetflow_recurses_into_capwap_ieee80211_tunnel() {
-    use crate::parse::data_link::mac_addres::MacAddress;
+    use crate::parse::data_link::mac_address::MacAddress;
 
     let packet = sample_capwap_ieee80211_inner_tcp();
     let flow = PacketFlow::try_from(packet.as_slice()).unwrap();
@@ -1926,7 +1926,7 @@ fn sample_capwap_ieee80211_fromds_inner_tcp() -> Vec<u8> {
 
 #[test]
 fn packetflow_recurses_into_capwap_fromds_short_header() {
-    use crate::parse::data_link::mac_addres::MacAddress;
+    use crate::parse::data_link::mac_address::MacAddress;
 
     let packet = sample_capwap_ieee80211_fromds_inner_tcp();
     let flow = PacketFlow::try_from(packet.as_slice()).unwrap();

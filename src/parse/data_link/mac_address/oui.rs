@@ -15,7 +15,7 @@
 //! # Example
 //!
 //! ```rust
-//! use packet_parser::parse::data_link::mac_addres::oui::Oui;
+//! use packet_parser::parse::data_link::mac_address::oui::Oui;
 //!
 //! let oui = Oui::from_bytes(&[0x2C, 0xFD, 0xA1, 0x12, 0x34, 0x56]);
 //! assert_eq!(oui, Oui::ASUSTek);
@@ -80,7 +80,7 @@ impl Oui {
     /// # Example
     ///
     /// ```
-    /// use packet_parser::parse::data_link::mac_addres::oui::Oui;
+    /// use packet_parser::parse::data_link::mac_address::oui::Oui;
     ///
     /// let oui = Oui::from_bytes(&[0x64, 0x6E, 0xE0, 0x12, 0x34, 0x56]);
     /// assert_eq!(oui, Oui::Intel);

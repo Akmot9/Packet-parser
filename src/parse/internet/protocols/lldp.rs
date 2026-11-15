@@ -31,7 +31,7 @@ use crate::{
         TLV_SYSTEM_DESCRIPTION, TLV_SYSTEM_NAME, split_tlv, validate_tlv_length,
     },
     errors::internet::lldp::LldpParseError,
-    parse::{application::protocols::bounded_capacity, data_link::mac_addres::MacAddress},
+    parse::{application::protocols::bounded_capacity, data_link::mac_address::MacAddress},
 };
 
 /// Sous-type d'adresse reseau (registre IANA des familles d'adresses) d'un

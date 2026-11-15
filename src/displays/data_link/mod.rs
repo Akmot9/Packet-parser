@@ -5,7 +5,7 @@
 
 use std::fmt;
 pub mod ethertype;
-pub mod mac_addres;
+pub mod mac_address;
 pub mod oui;
 pub mod vlan;
 use crate::parse::data_link::DataLink;
@@ -42,7 +42,7 @@ impl fmt::Display for DataLink<'_> {
 mod tests {
     use crate::parse::data_link::DataLink;
     use crate::parse::data_link::ethertype::Ethertype;
-    use crate::parse::data_link::mac_addres::MacAddress;
+    use crate::parse::data_link::mac_address::MacAddress;
     use crate::parse::data_link::pppoe::PppoeSession;
 
     /// #172 : une ligne `PPPoE` de plus, le protocole PPP par son nom quand il

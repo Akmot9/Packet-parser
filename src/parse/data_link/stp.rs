@@ -27,7 +27,7 @@ use crate::{
         validate_configuration_length, validate_rst_length, validate_version_type_coherence,
     },
     errors::data_link::stp::StpError,
-    parse::data_link::mac_addres::MacAddress,
+    parse::data_link::mac_address::MacAddress,
 };
 
 const ETHERNET_HEADER_LEN: usize = 14;

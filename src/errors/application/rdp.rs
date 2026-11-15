@@ -5,7 +5,7 @@
 
 use thiserror::Error;
 
-use crate::errors::application::copt::CotpParseError;
+use crate::errors::application::cotp::CotpParseError;
 
 /// Erreurs de decodage d'un segment RDP (MS-RDPBCGR) : TPKT, COTP X.224,
 /// negociation, MCS.

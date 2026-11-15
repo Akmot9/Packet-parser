@@ -3,7 +3,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use packet_parser::parse::application::protocols::copt::{
+use packet_parser::parse::application::protocols::cotp::{
     CotpHeader, CotpNumberFormat, CotpParameter, CotpPduType,
 };
 
