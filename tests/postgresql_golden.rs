@@ -121,7 +121,7 @@ fn expected_type(tshark: &str) -> PostgreSqlMessageType {
 fn label(flow: &PacketFlow<'_>) -> Option<&'static str> {
     flow.application
         .as_ref()
-        .map(|application| application.application_protocol)
+        .map(|application| application.protocol.label())
 }
 
 /// Parite avec tshark sur les 331 segments a payload du corpus : types et

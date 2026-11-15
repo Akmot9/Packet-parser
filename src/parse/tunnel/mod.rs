@@ -40,6 +40,7 @@ use super::link_layer::{Ieee80211Link, LinkLayer};
 use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
 use crate::LinkType;
+use crate::parse::application::protocol::ApplicationProtocol;
 
 /// Maximum tunnel nesting depth (anti-loop guard against malformed traffic that
 /// could claim endless encapsulation). The outer flow is depth 0.
@@ -69,7 +70,7 @@ pub(crate) fn detect_inner<'a>(
     transport: &Transport<'a>,
     depth: u8,
     decode_as: &[(u16, crate::parse::DecodeAsProtocol)],
-) -> Option<(&'static str, PacketFlow<'a>)> {
+) -> Option<(ApplicationProtocol, PacketFlow<'a>)> {
     if depth + 1 >= MAX_TUNNEL_DEPTH {
         return None;
     }
@@ -84,7 +85,7 @@ pub(crate) fn detect_inner<'a>(
         && let Ok(inner) =
             PacketFlow::parse_decoded_with(DecodedLink::new(inner_link), depth + 1, decode_as)
     {
-        return Some(("CAPWAP", inner));
+        return Some((ApplicationProtocol::Capwap, inner));
     }
 
     // --- VXLAN over UDP 4789 → trame Ethernet interne complete ---
@@ -94,7 +95,7 @@ pub(crate) fn detect_inner<'a>(
         && let Some(inner_link) = peel_vxlan(payload)
         && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
     {
-        return Some(("VXLAN", inner));
+        return Some((ApplicationProtocol::Vxlan, inner));
     }
 
     // --- Geneve over UDP 6081 → Ethernet (0x6558) ou IP brute interne ---
@@ -104,7 +105,7 @@ pub(crate) fn detect_inner<'a>(
         && let Some(inner_link) = peel_geneve(payload)
         && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
     {
-        return Some(("Geneve", inner));
+        return Some((ApplicationProtocol::Geneve, inner));
     }
 
     // --- GTP-U over UDP 2152 → paquet IP interne, sans couche 2 ---
@@ -123,7 +124,7 @@ pub(crate) fn detect_inner<'a>(
         && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
         && inner.corrupted.is_none()
     {
-        return Some(("GTP-U", inner));
+        return Some((ApplicationProtocol::GtpU, inner));
     }
 
     None
@@ -137,22 +138,22 @@ pub(crate) fn detect_inner_l3<'a>(
     internet: &Internet<'a>,
     depth: u8,
     decode_as: &[(u16, crate::parse::DecodeAsProtocol)],
-) -> Option<(&'static str, PacketFlow<'a>)> {
+) -> Option<(ApplicationProtocol, PacketFlow<'a>)> {
     if depth + 1 >= MAX_TUNNEL_DEPTH {
         return None;
     }
 
     let (label, inner_link) = match internet.payload_protocol {
-        Some(TransportProtocol::Gre) => ("GRE", peel_gre(internet.payload)?),
+        Some(TransportProtocol::Gre) => (ApplicationProtocol::Gre, peel_gre(internet.payload)?),
         // Le protocole IP externe ANNONCE la version interne (4 = IPv4-in-IP,
         // 41 = IPv6-in-IP) : le decodeur raw-IP la verifie contre le quartet
         // de version du paquet interne — refus si les deux ne concordent pas.
         Some(TransportProtocol::Ipv4) => (
-            "IP-in-IP",
+            ApplicationProtocol::IpInIp,
             RawIpDecoder::decode_as(LinkType::IPV4, internet.payload).ok()?,
         ),
         Some(TransportProtocol::Ipv6) => (
-            "IP-in-IP",
+            ApplicationProtocol::IpInIp,
             RawIpDecoder::decode_as(LinkType::IPV6, internet.payload).ok()?,
         ),
         _ => return None,
@@ -588,7 +589,7 @@ mod tests {
         assert_ne!(
             flow.application
                 .as_ref()
-                .map(|application| application.application_protocol),
+                .map(|application| application.protocol.label()),
             Some("GTP-U"),
             "l'etiquette ne peut pas etre plus sure que le paquet qui la porte"
         );
@@ -822,7 +823,7 @@ mod tests {
                 outer
                     .application
                     .as_ref()
-                    .map(|application| application.application_protocol),
+                    .map(|application| application.protocol.label()),
                 Some("CAPWAP"),
                 "chaque niveau pele est etiquete comme tunnel"
             );

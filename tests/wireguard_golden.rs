@@ -77,7 +77,7 @@ fn frames_of(path: &Path) -> Vec<(packet_parser::LinkType, Vec<u8>)> {
 fn label(flow: &PacketFlow<'_>) -> Option<&'static str> {
     flow.application
         .as_ref()
-        .map(|application| application.application_protocol)
+        .map(|application| application.protocol.label())
 }
 
 /// Le niveau de la trame etiquete WireGuard.

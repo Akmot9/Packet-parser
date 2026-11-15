@@ -14,6 +14,7 @@ use super::transport::Transport;
 use super::{
     CorruptedLayer, CorruptedLayerKind, DecodeAsProtocol, PacketFlow, dispatch, link, tunnel,
 };
+use crate::parse::application::protocol::ApplicationProtocol;
 use crate::{
     LinkLayer, NetworkProtocol, ParseError,
     errors::{internet::InternetError, transport::TransportError},
@@ -130,7 +131,7 @@ impl<'a> PacketFlow<'a> {
         {
             return (
                 Some(Application {
-                    application_protocol: tunnel_name,
+                    protocol: tunnel_name,
                 }),
                 Some(Box::new(inner_flow)),
             );
@@ -159,7 +160,7 @@ impl<'a> PacketFlow<'a> {
         match tunnel::detect_inner(transport, depth, decode_as) {
             Some((tunnel_name, inner_flow)) => (
                 Some(Application {
-                    application_protocol: tunnel_name,
+                    protocol: tunnel_name,
                 }),
                 Some(Box::new(inner_flow)),
             ),
@@ -190,7 +191,7 @@ impl<'a> PacketFlow<'a> {
         let llc = frame.payload.get(..usize::from(frame.ethertype.0))?;
         let bpdu = llc.strip_prefix(&LLC_STP_HEADER)?;
         BpduPacket::try_from(bpdu).ok().map(|_| Application {
-            application_protocol: "STP",
+            protocol: ApplicationProtocol::Stp,
         })
     }
 

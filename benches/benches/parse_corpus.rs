@@ -58,7 +58,7 @@ fn first_frame(capture: &str, wanted: impl Fn(&PacketFlow<'_>) -> bool) -> Frame
 fn has_label(flow: &PacketFlow<'_>, label: &str) -> bool {
     flow.application
         .as_ref()
-        .is_some_and(|application| application.application_protocol == label)
+        .is_some_and(|application| application.protocol.label() == label)
 }
 
 /// Le paquet de reference de `tools/verbench` : IPv6, TCP, payload chiffre

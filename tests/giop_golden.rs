@@ -95,7 +95,8 @@ fn packet_flow_labels_giop_request_over_tcp() {
     assert_eq!(
         flow.application
             .expect("an application layer is detected")
-            .application_protocol,
+            .protocol
+            .label(),
         "GIOP"
     );
 }
@@ -108,7 +109,8 @@ fn packet_flow_labels_giop_reply_over_tcp() {
     assert_eq!(
         flow.application
             .expect("an application layer is detected")
-            .application_protocol,
+            .protocol
+            .label(),
         "GIOP"
     );
 }

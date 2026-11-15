@@ -57,7 +57,8 @@ fn packet_flow_labels_opcua_over_a_null_loopback_capture() {
     assert_eq!(
         flow.application
             .expect("an application layer is detected")
-            .application_protocol,
+            .protocol
+            .label(),
         "OPC UA"
     );
 }
@@ -80,7 +81,7 @@ fn every_opcua_frame_of_the_capture_is_labelled_and_decoded() {
 
         let flow =
             parse(*link_type, data).unwrap_or_else(|error| panic!("trame {} : {error}", index + 1));
-        if flow.application.as_ref().map(|a| a.application_protocol) != Some("OPC UA") {
+        if flow.application.as_ref().map(|a| a.protocol.label()) != Some("OPC UA") {
             continue;
         }
         labelled += 1;

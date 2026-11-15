@@ -64,7 +64,7 @@
 //!         transport.protocol, transport.source_port, transport.destination_port);
 //! }
 //! if let Some(application) = &flow.application {
-//!     println!("L7: {}", application.application_protocol);
+//!     println!("L7: {}", application.protocol.label());
 //! }
 //! # Ok(())
 //! # }
@@ -104,7 +104,7 @@
 //! │                                           / payload_protocol / payload / details
 //! ├── transport:   Option<Transport<'a>>      protocol / source_port / destination_port
 //! │                                           / payload / details
-//! ├── application: Option<Application>        application_protocol: &'static str
+//! ├── application: Option<Application>        protocol: ApplicationProtocol
 //! ├── inner:       Option<Box<PacketFlow<'a>>>  packet carried inside a tunnel
 //! └── corrupted:   Option<CorruptedLayer>     set when a recognized layer held
 //!                                             invalid bytes

@@ -240,7 +240,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let flows = flow.flatten();
             let innermost = flows.last().expect("flatten n'est jamais vide");
             let label = match &innermost.application {
-                Some(app) => app.application_protocol.to_string(),
+                Some(app) => app.protocol.label().to_string(),
                 None => "<pas de L7>".to_string(),
             };
 

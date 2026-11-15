@@ -442,7 +442,7 @@ fn every_real_giop_frame_over_tcp_is_labelled_by_the_pipeline() {
                 continue;
             }
             assert_eq!(
-                flow.application.map(|a| a.application_protocol),
+                flow.application.map(|a| a.protocol.label()),
                 Some("GIOP"),
                 "{capture} trame {frame}"
             );

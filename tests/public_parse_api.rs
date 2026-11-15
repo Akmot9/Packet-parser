@@ -1224,7 +1224,7 @@ fn linktype_ipv4_decodes_like_raw_ip() {
     let raw = flow.data_link.as_raw_ip().expect("RAW IP view");
     assert_eq!(raw.ip_version, 4);
     assert_eq!(
-        flow.application.expect("L7 detected").application_protocol,
+        flow.application.expect("L7 detected").protocol.label(),
         "TLS"
     );
 }

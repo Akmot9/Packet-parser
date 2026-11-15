@@ -142,7 +142,7 @@ fn gre_ipv4_tunnel_exposes_the_inner_icmp_flow() {
     assert_eq!(
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("GRE")
     );
     let flows = flow.flatten();
@@ -163,7 +163,7 @@ fn gre_ipv6_tunnel_exposes_the_inner_icmpv6_flow() {
     assert_eq!(
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("GRE")
     );
     let inner = flow.inner.as_ref().expect("flux interne");
@@ -185,7 +185,7 @@ fn gre_in_gre_recurses_and_refuses_the_keepalive_leaf() {
         flows[0]
             .application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("GRE")
     );
     let inner = flows[1];
@@ -223,7 +223,7 @@ fn assert_tunneled_inner<'a>(
     assert_eq!(
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some(tunnel)
     );
     let flows = flow.flatten();
@@ -311,7 +311,7 @@ fn ipv6_in_ipv4_exposes_the_inner_dns_flow() {
     assert_eq!(
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("IP-in-IP")
     );
     let inner = flow.inner.as_ref().expect("flux interne IPv6");
@@ -321,7 +321,7 @@ fn ipv6_in_ipv4_exposes_the_inner_dns_flow() {
         inner
             .application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("DNS"),
         "la reponse DNS du flux interne est classifiee"
     );
@@ -384,7 +384,7 @@ fn gtp_u_tunnel_exposes_the_inner_tcp_flow() {
     assert_eq!(
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("GTP-U")
     );
     let flows = flow.flatten();
@@ -407,7 +407,7 @@ fn gtp_u_reads_the_inner_ip_version_because_no_field_announces_it() {
     assert_eq!(
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("GTP-U")
     );
     let inner = flow.inner.as_ref().expect("flux interne");
@@ -427,7 +427,7 @@ fn dns_traffic_on_port_2152_is_refused_not_guessed() {
     assert_ne!(
         flow.application
             .as_ref()
-            .map(|application| application.application_protocol),
+            .map(|application| application.protocol.label()),
         Some("GTP-U"),
         "le port ne suffit pas a faire un tunnel"
     );
@@ -486,7 +486,7 @@ fn every_readable_g_pdu_of_the_capture_is_peeled_and_nothing_else_is() {
             if flow
                 .application
                 .as_ref()
-                .map(|application| application.application_protocol)
+                .map(|application| application.protocol.label())
                 != Some("GTP-U")
             {
                 continue;

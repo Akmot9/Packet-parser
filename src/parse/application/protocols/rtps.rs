@@ -829,7 +829,7 @@ mod tests {
             details: None,
         };
         assert_eq!(
-            crate::parse::dispatch::classify(&transport, &[]).map(|a| a.application_protocol),
+            crate::parse::dispatch::classify(&transport, &[]).map(|a| a.protocol.label()),
             Some("RTPS")
         );
     }

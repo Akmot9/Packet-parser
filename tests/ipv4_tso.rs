@@ -36,7 +36,7 @@ fn assert_tso_frame_is_tls(capture: &str, number: usize, length: usize, tcp_payl
     let transport = flow.transport.as_ref().expect("TCP");
     assert_eq!(transport.payload.map(<[u8]>::len), Some(tcp_payload));
     assert_eq!(
-        flow.application.as_ref().map(|a| a.application_protocol),
+        flow.application.as_ref().map(|a| a.protocol.label()),
         Some("TLS")
     );
 }
