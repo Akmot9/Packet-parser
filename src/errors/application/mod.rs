@@ -10,7 +10,12 @@ pub mod ams;
 pub mod asterix;
 pub mod bacnet;
 pub mod bitcoin;
-pub mod copt;
+pub mod cotp;
+
+/// Ancien nom de [`cotp`], garde pour les appelants de la 11.8 et retire en
+/// 12.0 (#220, `MIGRATION-12.md`). Le compilateur ne previent pas : rustc ne
+/// propage pas `#[deprecated]` a travers un `pub use`.
+pub use cotp as copt;
 pub mod dhcp;
 pub mod dhcpv6;
 pub mod dis;

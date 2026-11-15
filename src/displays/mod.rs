@@ -35,7 +35,7 @@ impl Display for PacketFlow<'_> {
 mod tests {
     use crate::parse::PacketFlow;
     use crate::parse::data_link::ethertype::Ethertype;
-    use crate::parse::data_link::mac_addres::MacAddress;
+    use crate::parse::data_link::mac_address::MacAddress;
 
     #[test]
     fn test_packet_flow_display_only_data_link() {

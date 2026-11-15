@@ -5,7 +5,7 @@
 
 use std::fmt::{self, Display};
 
-use crate::parse::data_link::mac_addres::oui::Oui;
+use crate::parse::data_link::mac_address::oui::Oui;
 
 /// Implements `Display` for `Oui` so it can be converted into a string.
 impl Display for Oui {
@@ -27,7 +27,7 @@ impl Display for Oui {
 #[cfg(test)]
 mod tests {
 
-    use crate::parse::data_link::mac_addres::oui::Oui;
+    use crate::parse::data_link::mac_address::oui::Oui;
 
     #[test]
     fn test_oui_display() {

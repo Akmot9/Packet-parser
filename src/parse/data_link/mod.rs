@@ -47,8 +47,13 @@
 //! - [`MacAddress`]
 //! - [`Ethertype`]
 
-pub mod mac_addres;
-use mac_addres::MacAddress;
+pub mod mac_address;
+
+/// Ancien nom de [`mac_address`], garde pour les appelants de la 11.8 et retire en
+/// 12.0 (#220, `MIGRATION-12.md`). Le compilateur ne previent pas : rustc ne
+/// propage pas `#[deprecated]` a travers un `pub use`.
+pub use mac_address as mac_addres;
+use mac_address::MacAddress;
 use serde::Serialize;
 
 pub mod ethertype;
@@ -308,7 +313,7 @@ mod tests {
 
     use crate::errors::data_link::DataLinkError;
     use crate::parse::data_link::DataLink;
-    use crate::parse::data_link::mac_addres::MacAddress;
+    use crate::parse::data_link::mac_address::MacAddress;
 
     /// Ethernet, PPPoE session `session`, PPP `protocol` (deux octets), puis
     /// `body` ; la longueur PPPoE couvre le protocole et `body`.

@@ -9,7 +9,7 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use super::data_link::{DataLink, ethertype, ethertype::Ethertype, mac_addres::MacAddress};
+use super::data_link::{DataLink, ethertype, ethertype::Ethertype, mac_address::MacAddress};
 use crate::LinkType;
 
 /// Protocol carried immediately after the link-layer header.
@@ -578,7 +578,7 @@ impl fmt::Display for LinkLayer<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::data_link::mac_addres::MacAddress;
+    use crate::parse::data_link::mac_address::MacAddress;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 

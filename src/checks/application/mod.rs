@@ -7,7 +7,7 @@ pub mod ams;
 pub mod asterix;
 pub mod bacnet;
 pub mod bitcoin;
-pub mod copt;
+pub mod cotp;
 pub mod dhcp;
 pub mod dhcpv6;
 pub mod dis;

@@ -4,9 +4,14 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 use thiserror::Error;
-pub mod mac_addres;
+pub mod mac_address;
+
+/// Ancien nom de [`mac_address`], garde pour les appelants de la 11.8 et retire en
+/// 12.0 (#220, `MIGRATION-12.md`). Le compilateur ne previent pas : rustc ne
+/// propage pas `#[deprecated]` a travers un `pub use`.
+pub use mac_address as mac_addres;
 pub mod stp;
-use mac_addres::MacParseError;
+use mac_address::MacParseError;
 
 #[derive(Error, Debug, PartialEq)]
 #[non_exhaustive]

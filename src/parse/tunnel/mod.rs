@@ -33,7 +33,7 @@
 use super::PacketFlow;
 use super::data_link::DataLink;
 use super::data_link::ethertype::Ethertype;
-use super::data_link::mac_addres::MacAddress;
+use super::data_link::mac_address::MacAddress;
 use super::internet::Internet;
 use super::link::{DecodedLink, RawIpDecoder};
 use super::link_layer::{Ieee80211Link, LinkLayer};

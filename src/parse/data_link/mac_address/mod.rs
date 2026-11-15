@@ -17,7 +17,7 @@
 //! # Example
 //!
 //! ```rust
-//! use packet_parser::parse::data_link::mac_addres::MacAddress;
+//! use packet_parser::parse::data_link::mac_address::MacAddress;
 //!
 //! let bytes = [0x2C, 0xFD, 0xA1, 0x3C, 0x4D, 0x5E];
 //! let mac = MacAddress::try_from(bytes.as_ref()).expect("Valid MAC address");
@@ -43,7 +43,9 @@ use oui::*;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
-use crate::{checks::data_link::validate_mac_length, errors::data_link::mac_addres::MacParseError};
+use crate::{
+    checks::data_link::validate_mac_length, errors::data_link::mac_address::MacParseError,
+};
 
 /// The fixed length of a MAC address (6 bytes).
 pub const MAC_LEN: usize = 6;
@@ -119,7 +121,7 @@ impl MacAddress {
     /// # Example
     ///
     /// ```
-    /// use packet_parser::parse::data_link::mac_addres::MacAddress;
+    /// use packet_parser::parse::data_link::mac_address::MacAddress;
     ///
     /// let mac = MacAddress([0x2C, 0xFD, 0xA1, 0x3C, 0x4D, 0x5E]);
     /// assert_eq!(mac.display_with_oui(), "ASUSTek:3c:4d:5e");
@@ -145,7 +147,7 @@ impl MacAddress {
     /// # Example
     ///
     /// ```
-    /// use packet_parser::parse::data_link::mac_addres::MacAddress;
+    /// use packet_parser::parse::data_link::mac_address::MacAddress;
     ///
     /// let mac = MacAddress([0x2C, 0xFD, 0xA1, 0x3C, 0x4D, 0x5E]);
     /// assert_eq!(mac.get_oui().to_string(), "ASUSTek");
@@ -167,7 +169,7 @@ impl TryFrom<&[u8]> for MacAddress {
     /// # Example
     ///
     /// ```
-    /// use packet_parser::parse::data_link::mac_addres::MacAddress;
+    /// use packet_parser::parse::data_link::mac_address::MacAddress;
     /// use std::convert::TryFrom;
     ///
     /// let bytes = [0x00, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E];
