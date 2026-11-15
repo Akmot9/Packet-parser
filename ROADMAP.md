@@ -1,6 +1,20 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-13 : la **11.8.2 est publiee** (tag `v11.8.2`, publication
+Etat au 2026-11-15 : la **12.0.0 est publiee** (tag `v12.0.0`, publication
+par le workflow). Majeure : les quatre taches de la feature #209, en une
+seule version, directement apres la 11.8.2 (la fenetre de stabilite est
+levee, la crate n'a pas d'autre appelant que son auteur).
+`Application::protocol` est un enum, `ApplicationProtocol` (#217) ;
+`Application::try_from(&[u8])` et `ApplicationError` sont retires au profit
+de `classify_payload` (#219) ; les modules `cotp` et `mac_address` et trois
+variantes portent leur bon nom, trois elements deprecies partent (#220) ;
+#218 est close sans code, sur mesure. Un ajout : Modbus sur UDP 502,
+etiquette `ModbusUDP` (#257). Le JSON ne change pas, hors cette etiquette.
+Guide : `MIGRATION-12.md`. Restent dans #207 : la mesure CodSpeed a activer
+(#214), #241 (FOSSA). Reste a faire hors de ce depot : le livre
+(packet-parser-book#89, #90) et Sonar.
+
+Etat anterieur (2026-11-13) : la **11.8.2 est publiee** (tag `v11.8.2`, publication
 par le workflow, semver-checks vert). Patch, pour un correctif de
 performance : depuis la 11.7.0, la sonde HTTP parcourait tout le payload
 avant de le refuser, et un segment TCP non reconnu coutait quatre fois plus
@@ -228,7 +242,7 @@ faites.
 | #208 | Correctifs immediats | P1, patch ou mineure | ~~#212~~ memoisation des sondes sur 128 bits (fait, 11.8.1), ~~#213~~ `cargo semver-checks` sur chaque PR (fait : job `semver` de la CI), #214 bench criterion sur le corpus (en cours : `benches/` et workflow `bench.yml` faits ; restent l'import du depot sur CodSpeed, la PR de regression temoin et le sort de `perf_by_version`), ~~#215~~ schemas mermaid rendus sur docs.rs (fait, 11.8.1), ~~#216~~ `Application::try_from` derive de `RULES` (fait, 11.8.1) |
 | #210 | Forme du code | P2, aucun chemin public ne change | ~~#221~~ decouper `parse/mod.rs` et `dispatch.rs` (fait, 11.8.2 : `parse/engine.rs`, `parse/tests.rs`, `dispatch/{rules,probes,ports,tests}.rs`, `postgresql/detection.rs`), ~~#222~~ mesurer la triplication parse/checks/errors (fait, 11.8.1 : checks en module prive pour un petit decodeur) |
 | #211 | Depot range, README reduit, releve preparee | P2 | ~~#223~~ sortir l'etabli de la racine (fait, 11.8.2 : `tools/lab`, `docs/archive`), ~~#224~~ README en deux ecrans (fait, 11.8.2 : 149 lignes, detail dans `docs/reference.md`, README-fr en pointeur), ~~#225~~ `CONTRIBUTING.md` (fait, 11.8.1), #241 controle FOSSA « License Compliance » rouge en permanence |
-| #209 | 12.0 : API L7 typee, une seule table, les noms justes | P1, fait sur `main`, non publie | ~~#217~~ enum `ApplicationProtocol` (fait), ~~#218~~ `details` au L7 (mesure, puis decision de ne rien faire : voir sous le tableau), ~~#219~~ retrait de `TryFrom<&[u8]> for Application` (fait ; `classify_payload` le remplace), ~~#220~~ renommages groupes (`copt`, `mac_addres`, `NatDetection`, RADIUS 124 et 125), trois elements deprecies retires, et `MIGRATION-12.md` (fait) |
+| #209 | 12.0 : API L7 typee, une seule table, les noms justes | P1, fait, 12.0.0 | ~~#217~~ enum `ApplicationProtocol` (fait), ~~#218~~ `details` au L7 (mesure, puis decision de ne rien faire : voir sous le tableau), ~~#219~~ retrait de `TryFrom<&[u8]> for Application` (fait ; `classify_payload` le remplace), ~~#220~~ renommages groupes (`copt`, `mac_addres`, `NatDetection`, RADIUS 124 et 125), trois elements deprecies retires, et `MIGRATION-12.md` (fait) |
 
 Ordre fixe par #207 : #208 d'abord, puis #210 et #211, enfin #209 en une
 seule majeure. La fenetre de stabilite ouverte par la 11.0.0 (§4, pas de
