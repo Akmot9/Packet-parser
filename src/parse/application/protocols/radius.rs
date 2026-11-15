@@ -79,18 +79,14 @@ impl RadiusCode {
 /// 223 (experimentaux), 224 a 240 (propres a chaque implementation) et 247 a
 /// 255 (reserves) rendent `None`.
 ///
-/// Les variantes portent les noms du registre, sauf pour dix types : 89, 101
+/// Les variantes portent les noms du registre, sauf pour huit types : 89, 101
 /// et 241 a 246 portent ceux de leur RFC (Chargeable-User-Identity, RFC 4372
 /// §2.1 ; Error-Cause, RFC 5176 §3.5, que le registre ecrit « Error-Cause
 /// Attribute » ; Extended-Type-1 a -4, Long-Extended-Type-1 et -2, RFC 6929
-/// §3), 124 et 125 ceux de deux AVP Diameter (voir
-/// [`AttributeType::MipHomeAgentAddress`] et
-/// [`AttributeType::MipHomeAgentHost`], depreciees au profit des constantes
-/// [`AttributeType::Mip6FeatureVector`] et
-/// [`AttributeType::Mip6HomeLinkPrefix`]). Le nom que le registre donne a
-/// 89, 124, 125, 173 et 241 a 246 est un alias de recherche de la
-/// documentation. Les variantes ajoutees apres la 11.6.0 (126 a 190) sont
-/// en fin d'enum, apres 241 a 246, pour garder les discriminants.
+/// §3). Le nom que le registre donne a 89, 124, 125, 173 et 241 a 246 est
+/// un alias de recherche de la documentation. Les variantes ajoutees apres
+/// la 11.6.0 (126 a 190) sont en fin d'enum, apres 241 a 246, pour garder
+/// les discriminants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AttributeType {
@@ -214,30 +210,19 @@ pub enum AttributeType {
     DigestHa1,
     SipAor,
     DelegatedIpv6Prefix,
-    /// Type 124, MIP6-Feature-Vector au registre IANA (RFC 5447 §4.2.5 et
-    /// §7.1) : un champ de 64 drapeaux, les capacites Mobile IPv6 du NAS
-    /// (`MIP6_INTEGRATED` 1, `LOCAL_HOME_AGENT_ASSIGNMENT` 2, §7.2). Le nom
-    /// de la variante est celui d'une AVP Diameter que la meme RFC decrit,
-    /// MIP-Home-Agent-Address (code 334 de la RFC 4004, §4.2.2), qui n'existe
-    /// pas en RADIUS : la valeur n'est pas une adresse.
+    /// Type 124, MIP6-Feature-Vector (RFC 5447 §4.2.5 et §7.1) : un champ de
+    /// 64 drapeaux, les capacites Mobile IPv6 du NAS (`MIP6_INTEGRATED` 1,
+    /// `LOCAL_HOME_AGENT_ASSIGNMENT` 2, §7.2). Nommee `MipHomeAgentAddress`
+    /// jusqu'a la 11.x, du nom d'une AVP Diameter qui n'existe pas en
+    /// RADIUS ; renommee sur place en 12.0 (#191, #220).
     #[doc(alias = "MIP6-Feature-Vector")]
-    #[deprecated(
-        since = "11.7.0",
-        note = "le type 124 est MIP6-Feature-Vector (RFC 5447), pas une adresse ; utiliser `AttributeType::Mip6FeatureVector`"
-    )]
-    MipHomeAgentAddress,
-    /// Type 125, MIP6-Home-Link-Prefix au registre IANA (RFC 5447 §4.2.4 et
-    /// §7.1) : la longueur du prefixe sur un octet, puis les seize octets du
-    /// prefixe IPv6 du reseau d'origine. Le nom de la variante est celui d'une
-    /// AVP Diameter que la meme RFC decrit, MIP-Home-Agent-Host (code 348 de
-    /// la RFC 4004, §4.2.3), qui n'existe pas en RADIUS : la valeur n'est pas
-    /// un nom d'hote.
+    Mip6FeatureVector,
+    /// Type 125, MIP6-Home-Link-Prefix (RFC 5447 §4.2.4 et §7.1) : la
+    /// longueur du prefixe sur un octet, puis les seize octets du prefixe
+    /// IPv6 du reseau d'origine. Nommee `MipHomeAgentHost` jusqu'a la 11.x ;
+    /// renommee sur place en 12.0 (#191, #220).
     #[doc(alias = "MIP6-Home-Link-Prefix")]
-    #[deprecated(
-        since = "11.7.0",
-        note = "le type 125 est MIP6-Home-Link-Prefix (RFC 5447), pas un nom d'hote ; utiliser `AttributeType::Mip6HomeLinkPrefix`"
-    )]
-    MipHomeAgentHost,
+    Mip6HomeLinkPrefix,
     #[doc(alias = "Extended-Attribute-1")]
     ExtendedType1,
     #[doc(alias = "Extended-Attribute-2")]
@@ -333,16 +318,6 @@ pub enum AttributeType {
 }
 
 impl AttributeType {
-    /// Type 124, MIP6-Feature-Vector (RFC 5447 §4.2.5) : le nom que prendra
-    /// la variante en 12.0, utilisable des maintenant en argument comme en
-    /// motif de `match`.
-    #[allow(non_upper_case_globals, deprecated)]
-    pub const Mip6FeatureVector: Self = Self::MipHomeAgentAddress;
-    /// Type 125, MIP6-Home-Link-Prefix (RFC 5447 §4.2.4) : le nom que
-    /// prendra la variante en 12.0.
-    #[allow(non_upper_case_globals, deprecated)]
-    pub const Mip6HomeLinkPrefix: Self = Self::MipHomeAgentHost;
-
     pub fn from_code(code: u8) -> Option<Self> {
         Some(match code {
             1 => Self::UserName,
@@ -925,18 +900,6 @@ mod tests {
             AttributeType::from_code(125),
             Some(AttributeType::Mip6HomeLinkPrefix)
         );
-        // Les anciens noms restent les memes valeurs jusqu'a la 12.0.
-        #[allow(deprecated)]
-        {
-            assert_eq!(
-                AttributeType::Mip6FeatureVector,
-                AttributeType::MipHomeAgentAddress
-            );
-            assert_eq!(
-                AttributeType::Mip6HomeLinkPrefix,
-                AttributeType::MipHomeAgentHost
-            );
-        }
         let feature_vector = packet
             .attribute(AttributeType::Mip6FeatureVector)
             .expect("124");
@@ -1082,11 +1045,11 @@ mod tests {
     }
 
     /// #220 : le renommage sur place de la 12.0 ne deplace rien. Les valeurs
-    /// sont celles de la 11.8.2.
+    /// sont celles de la 11.8.2, sous les anciens noms `MipHomeAgentAddress`
+    /// et `MipHomeAgentHost`.
     #[test]
-    #[allow(deprecated)]
     fn renamed_variants_keep_their_discriminants() {
-        assert_eq!(AttributeType::MipHomeAgentAddress as u8, 119);
-        assert_eq!(AttributeType::MipHomeAgentHost as u8, 120);
+        assert_eq!(AttributeType::Mip6FeatureVector as u8, 119);
+        assert_eq!(AttributeType::Mip6HomeLinkPrefix as u8, 120);
     }
 }

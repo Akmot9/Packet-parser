@@ -221,15 +221,9 @@ pub enum PayloadType {
     /// « Reserved, not to be used »).
     Attributes,
     /// NAT Discovery, NAT-D : IKEv1 (20, RFC 3947 §3.2 ; 130, brouillons
-    /// draft-ietf-ipsec-nat-t-ike-00 a -03). Le nom de la variante date de la
-    /// 11.6.0 ; le registre dit « NAT-D », NAT Discovery. Elle sera renommee
-    /// sur place en 12.0 (#220) : [`PayloadType::NatDiscovery`] porte deja ce
-    /// nom.
-    #[deprecated(
-        since = "11.9.0",
-        note = "le registre dit NAT-D, NAT Discovery (RFC 3947) ; utiliser `PayloadType::NatDiscovery`"
-    )]
-    NatDetection,
+    /// draft-ietf-ipsec-nat-t-ike-00 a -03). Nommee `NatDetection` de la
+    /// 11.6.0 a la 11.x, renommee sur place en 12.0 (#220).
+    NatDiscovery,
     /// NAT Original Address, NAT-OA : IKEv1 (21, RFC 3947 §5.2 ; 131,
     /// brouillons -00 a -03).
     NatOriginalAddress,
@@ -269,12 +263,6 @@ pub enum PayloadType {
 }
 
 impl PayloadType {
-    /// NAT Discovery, NAT-D (RFC 3947 §3.2) : le nom que prendra la variante
-    /// [`PayloadType::NatDetection`] en 12.0, utilisable des maintenant en
-    /// argument comme en motif de `match`.
-    #[allow(non_upper_case_globals, deprecated)]
-    pub const NatDiscovery: Self = Self::NatDetection;
-
     pub fn from_code(major: u8, code: u8) -> Option<Self> {
         Some(match (major, code) {
             (IKE_MAJOR_V1, 1) => Self::SecurityAssociation,
@@ -929,27 +917,14 @@ mod tests {
         assert_eq!(packet.payloads[0].kind, None);
     }
 
-    /// #220 : `NatDiscovery` est le nom que la variante prendra en 12.0. Il
-    /// vaut la variante, en valeur comme en motif.
-    #[test]
-    #[allow(deprecated)]
-    fn nat_discovery_is_nat_detection() {
-        assert_eq!(PayloadType::NatDiscovery, PayloadType::NatDetection);
-        let named = match PayloadType::NatDetection {
-            PayloadType::NatDiscovery => "NAT-D",
-            _ => "autre",
-        };
-        assert_eq!(named, "NAT-D");
-    }
-
     /// #220 : le renommage sur place de la 12.0 ne deplace rien. Les valeurs
-    /// sont celles de la 11.8.2 ; le test vit dans la crate parce que `as`
-    /// est refuse de l'exterieur sur un enum `non_exhaustive`.
+    /// sont celles de la 11.8.2, ou la variante s'appelait `NatDetection` ; le
+    /// test vit dans la crate parce que `as` est refuse de l'exterieur sur un
+    /// enum `non_exhaustive`.
     #[test]
-    #[allow(deprecated)]
     fn renamed_variant_keeps_its_discriminant() {
         assert_eq!(PayloadType::Attributes as u8, 13);
-        assert_eq!(PayloadType::NatDetection as u8, 14);
+        assert_eq!(PayloadType::NatDiscovery as u8, 14);
         assert_eq!(PayloadType::NatOriginalAddress as u8, 15);
     }
 }

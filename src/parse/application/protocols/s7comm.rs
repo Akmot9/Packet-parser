@@ -280,10 +280,6 @@ impl<'a> S7CommPacket<'a> {
     /// Minimum required size for an S7Comm packet (TPKT + COTP + S7 Header)
     pub const MIN_SIZE: usize = 4 + 3 + 10;
 
-    /// Deprecated misspelled alias for [`S7CommPacket::MIN_SIZE`].
-    #[deprecated(note = "use S7CommPacket::MIN_SIZE")]
-    pub const MIN_SIZES: usize = Self::MIN_SIZE;
-
     /// Version du protocole S7 de ce paquet.
     ///
     /// `parse` ne construit un paquet qu'apres validation du protocol id
