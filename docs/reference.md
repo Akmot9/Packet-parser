@@ -361,8 +361,9 @@ Complete TLS records on implicit-TLS ports such as 465, 563 and 990 are
 reported as TLS. To inspect externally decrypted application data, call the
 detailed protocol parser directly.
 
-`PacketFlow` currently exposes a lightweight application protocol name through
-`Application { application_protocol }`. For detailed protocol-specific parsing,
+`PacketFlow` exposes the application protocol as an enum,
+`Application { protocol: ApplicationProtocol }`; `protocol.label()` gives its
+text label, the one written in the JSON output. For detailed protocol-specific parsing,
 use the corresponding module under
 `packet_parser::parse::application::protocols`.
 

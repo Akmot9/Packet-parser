@@ -8,6 +8,18 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Rupture
 
+- **ApplicationProtocol** (#217) : `Application::application_protocol:
+  &'static str` est remplace par `Application::protocol:
+  ApplicationProtocol`, un enum `#[non_exhaustive]` de 53 variantes : une
+  par etiquette de la table de dispatch, des tunnels, de STP, et `Unknown`.
+  `label()` rend la chaine d'avant, a l'octet pres ; `Display` et la
+  serialisation l'ecrivent, `FromStr` la relit et refuse un texte inconnu
+  (`UnknownApplicationLabel`). La table de dispatch, « Decode As », les
+  tunnels et STP portent l'enum : une etiquette sans variante ne compile
+  plus. Le JSON ne change pas : la cle reste `application_protocol`, et
+  `ApplicationOwned::protocol` reste une `String`. `ApplicationProtocol` et
+  `UnknownApplicationLabel` sont reexportes a la racine. Reecriture d'un
+  `match` : `MIGRATION-12.md`.
 - **Application::try_from** (#219) : `impl TryFrom<&[u8]> for Application`
   est retire, avec la cascade sans transport ni port qu'il appelait. Un
   appel restant ne compile plus (E0277). `classify_payload(protocole, port
