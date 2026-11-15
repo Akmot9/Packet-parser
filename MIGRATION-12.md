@@ -140,9 +140,10 @@ d'`ApplicationError` jamais construites (`MIGRATION-11.md`).
 
 ## Renommages (#220)
 
-**État : annoncé.** Les nouveaux noms arrivent avec la prochaine version
-11.x, et les anciens restent jusqu'à la 12.0 : la migration peut se faire
-avant. Aucun comportement ne change, aucune étiquette, aucun JSON.
+**État : fait sur la branche `release/12.0.0`.** Les nouveaux noms arrivent
+avec la prochaine version 11.x, où les anciens restent : la migration peut
+se faire avant la 12.0. Aucun comportement ne change, aucune étiquette,
+aucun JSON.
 
 | Ancien nom, retiré en 12.0 | Nouveau nom | Le compilateur prévient en 11.x |
 |---|---|---|
@@ -186,7 +187,11 @@ racine de la crate, ne bouge pas.
   recherche de ces deux mots dans le code appelant suffit.
 - **Trois variantes.** En 11.x, le nouveau nom est une constante associée
   qui vaut l'ancienne variante, en valeur comme en motif de `match`. En
-  12.0, la variante prend ce nom, à la même position dans l'enum.
+  12.0, la variante prend ce nom, à la même position dans l'enum : les
+  discriminants sont ceux de la 11.8.2, figés par test.
+- **Le texte de `{:?}`.** `Debug` rend le nom de la variante : en 12.0,
+  `NatDiscovery`, `Mip6FeatureVector` et `Mip6HomeLinkPrefix`. Ces types ne
+  sont pas sérialisés : le JSON de `owned` ne change pas.
 
 ### Raison
 
@@ -195,3 +200,32 @@ payloads IKEv1 20 et 130 « NAT-D », NAT Discovery (RFC 3947), et les types
 RADIUS 124 et 125 MIP6-Feature-Vector et MIP6-Home-Link-Prefix (RFC 5447),
 pas une adresse ni un nom d'hôte (#191). Chacun de ces renommages est une
 rupture ; ils sont groupés pour n'en faire qu'une.
+
+## Trois éléments dépréciés sont retirés (#220)
+
+**État : fait sur la branche `release/12.0.0`.** Chacun avertissait déjà à
+la compilation, et son remplaçant existe en 11.x.
+
+| Retiré | Déprécié depuis | Remplaçant |
+|---|---|---|
+| `SrvlocHeaderV1::encoding` (champ `u8`) | 11.5.0 | `SrvlocHeaderV1::char_encoding` (`u16`) |
+| `convert::hex_stream_to_bytes` | 11.0.0 | `convert::try_hex_stream_to_bytes` |
+| `S7CommPacket::MIN_SIZES` | sans version indiquée | `S7CommPacket::MIN_SIZE` |
+
+```rust
+// 11.x
+let bytes = hex_stream_to_bytes(hex);            // panique sur une entrée invalide
+let utf8 = header.encoding == 0;                 // l'octet de poids fort seul
+
+// 12.0
+let bytes = try_hex_stream_to_bytes(hex)?;       // Result<Vec<u8>, HexStreamError>
+let utf8 = header.char_encoding == 106;          // MIBenum IANA sur deux octets
+```
+
+`SrvlocHeaderV1` est une struct exhaustive : qui la construit ou la
+déstructure champ par champ retire `encoding`.
+
+Raison : `encoding` ne lisait qu'un octet d'un champ de deux (RFC 2165 §7)
+et valait 0 pour tout MIBenum inférieur à 256, UTF-8 compris ;
+`hex_stream_to_bytes` paniquait sur une entrée invalide ; `MIN_SIZES` était
+une faute de frappe.

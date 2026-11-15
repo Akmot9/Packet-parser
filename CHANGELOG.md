@@ -18,6 +18,22 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   variante, n'etait rendue que par `Application::try_from` ; `parse` ne l'a
   jamais rendue. Les erreurs des decodeurs applicatifs ne changent pas.
   Migration : `MIGRATION-12.md`.
+- **Modules copt et mac_addres** (#220) : les quatre anciens chemins,
+  `parse::application::protocols::copt`, `errors::application::copt`,
+  `parse::data_link::mac_addres` et `errors::data_link::mac_addres`, sont
+  retires. Les modules s'appellent `cotp` et `mac_address` ; les types
+  qu'ils portent ne changent pas, et `packet_parser::MacAddress` non plus.
+- **Variantes renommees sur place** (#220) : `ike::PayloadType::NatDetection`
+  devient `NatDiscovery`, `radius::AttributeType::MipHomeAgentAddress`
+  devient `Mip6FeatureVector` et `MipHomeAgentHost` devient
+  `Mip6HomeLinkPrefix`. Qui utilisait deja les constantes associees de ces
+  noms ne change rien. Les discriminants sont ceux de la 11.8.2 ; `{:?}`
+  rend le nouveau nom.
+- **Elements deprecies retires** (#220) : le champ
+  `SrvlocHeaderV1::encoding` (utiliser `char_encoding`),
+  `convert::hex_stream_to_bytes` (utiliser `try_hex_stream_to_bytes`) et
+  `S7CommPacket::MIN_SIZES` (utiliser `MIN_SIZE`). Table des noms :
+  `MIGRATION-12.md`.
 
 ### Ajoute
 

@@ -84,8 +84,9 @@ impl RadiusCode {
 /// §2.1 ; Error-Cause, RFC 5176 §3.5, que le registre ecrit « Error-Cause
 /// Attribute » ; Extended-Type-1 a -4, Long-Extended-Type-1 et -2, RFC 6929
 /// §3). Le nom que le registre donne a 89, 124, 125, 173 et 241 a 246 est
-/// un alias de recherche de la documentation. Les variantes ajoutees apres la 11.6.0 (126 a 190) sont
-/// en fin d'enum, apres 241 a 246, pour garder les discriminants.
+/// un alias de recherche de la documentation. Les variantes ajoutees apres
+/// la 11.6.0 (126 a 190) sont en fin d'enum, apres 241 a 246, pour garder
+/// les discriminants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AttributeType {
