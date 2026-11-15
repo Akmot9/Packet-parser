@@ -222,7 +222,13 @@ pub enum PayloadType {
     Attributes,
     /// NAT Discovery, NAT-D : IKEv1 (20, RFC 3947 §3.2 ; 130, brouillons
     /// draft-ietf-ipsec-nat-t-ike-00 a -03). Le nom de la variante date de la
-    /// 11.6.0 ; le registre dit « NAT-D ».
+    /// 11.6.0 ; le registre dit « NAT-D », NAT Discovery. Elle sera renommee
+    /// sur place en 12.0 (#220) : [`PayloadType::NatDiscovery`] porte deja ce
+    /// nom.
+    #[deprecated(
+        since = "11.9.0",
+        note = "le registre dit NAT-D, NAT Discovery (RFC 3947) ; utiliser `PayloadType::NatDiscovery`"
+    )]
     NatDetection,
     /// NAT Original Address, NAT-OA : IKEv1 (21, RFC 3947 §5.2 ; 131,
     /// brouillons -00 a -03).
@@ -263,6 +269,12 @@ pub enum PayloadType {
 }
 
 impl PayloadType {
+    /// NAT Discovery, NAT-D (RFC 3947 §3.2) : le nom que prendra la variante
+    /// [`PayloadType::NatDetection`] en 12.0, utilisable des maintenant en
+    /// argument comme en motif de `match`.
+    #[allow(non_upper_case_globals, deprecated)]
+    pub const NatDiscovery: Self = Self::NatDetection;
+
     pub fn from_code(major: u8, code: u8) -> Option<Self> {
         Some(match (major, code) {
             (IKE_MAJOR_V1, 1) => Self::SecurityAssociation,
@@ -284,7 +296,7 @@ impl PayloadType {
             (IKE_MAJOR_V1, 17) => Self::KeyDownload,
             (IKE_MAJOR_V1, 18) => Self::SequenceNumber,
             (IKE_MAJOR_V1, 19) => Self::ProofOfPossession,
-            (IKE_MAJOR_V1, 20 | 130) => Self::NatDetection,
+            (IKE_MAJOR_V1, 20 | 130) => Self::NatDiscovery,
             (IKE_MAJOR_V1, 21 | 131) => Self::NatOriginalAddress,
             (IKE_MAJOR_V1, 22) => Self::GroupAssociatedPolicy,
             (IKE_MAJOR_V2, 33) => Self::SecurityAssociation,
@@ -733,7 +745,7 @@ mod tests {
         for code in [20, 130] {
             assert_eq!(
                 PayloadType::from_code(IKE_MAJOR_V1, code),
-                Some(PayloadType::NatDetection)
+                Some(PayloadType::NatDiscovery)
             );
         }
         for code in [21, 131] {
@@ -915,5 +927,29 @@ mod tests {
         let packet = IkePacket::try_from(unknown.as_slice()).expect("codes inconnus");
         assert_eq!(packet.header.exchange(), None);
         assert_eq!(packet.payloads[0].kind, None);
+    }
+
+    /// #220 : `NatDiscovery` est le nom que la variante prendra en 12.0. Il
+    /// vaut la variante, en valeur comme en motif.
+    #[test]
+    #[allow(deprecated)]
+    fn nat_discovery_is_nat_detection() {
+        assert_eq!(PayloadType::NatDiscovery, PayloadType::NatDetection);
+        let named = match PayloadType::NatDetection {
+            PayloadType::NatDiscovery => "NAT-D",
+            _ => "autre",
+        };
+        assert_eq!(named, "NAT-D");
+    }
+
+    /// #220 : le renommage sur place de la 12.0 ne deplace rien. Les valeurs
+    /// sont celles de la 11.8.2 ; le test vit dans la crate parce que `as`
+    /// est refuse de l'exterieur sur un enum `non_exhaustive`.
+    #[test]
+    #[allow(deprecated)]
+    fn renamed_variant_keeps_its_discriminant() {
+        assert_eq!(PayloadType::Attributes as u8, 13);
+        assert_eq!(PayloadType::NatDetection as u8, 14);
+        assert_eq!(PayloadType::NatOriginalAddress as u8, 15);
     }
 }
