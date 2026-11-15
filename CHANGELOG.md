@@ -253,6 +253,13 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
 - Le README montre la tendance : `images/perf_by_version.svg`, courbe du
   temps total par version publiee, ecrite par `tools/verbench/report.py
   --svg` (et donc par `run.sh`) a partir de ce meme fichier.
+- **CodSpeed** (#214) : le depot est importe sur codspeed.io. Le job
+  « Benchmarks » mesure chaque run et l'envoie, sans la variable
+  `CODSPEED_ENABLED` qui le gardait eteint ; le README porte le badge.
+- **Tests** (#219) : `tests/classify_payload_parity.rs` fige trois cas sur
+  des octets reels : une requete LLMNR est `LLMNR` sur le port 5355 et
+  `DNS` sans port, et un message MMS sous UDP est lu comme du RADIUS, la
+  garde de transport etant la seule chose qui les separe.
 
 ## [11.8.2] - 2026-11-13
 
