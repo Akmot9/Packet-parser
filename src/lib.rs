@@ -164,6 +164,7 @@ pub use parse::{
 };
 
 pub use parse::application::Application;
+pub use parse::application::protocol::{ApplicationProtocol, UnknownApplicationLabel};
 /// Exports data link layer parsing functionality.
 pub use parse::data_link::DataLink;
 pub use parse::data_link::mac_address::MacAddress;
