@@ -5,6 +5,17 @@
 
 // errors/mod.rs
 
+//! # Dependency direction
+//!
+//! The decoders in [`mod@crate::parse`] depend on this module, not the other
+//! way round. Two enums are the deliberate exception:
+//! [`SnmpError`](crate::errors::application::snmp::SnmpError) carries an
+//! [`SnmpVersion`](crate::parse::application::protocols::snmp::SnmpVersion) and
+//! [`MqttError`](crate::errors::application::mqtt::MqttError) an
+//! [`MqttPacketType`](crate::parse::application::protocols::mqtt::MqttPacketType),
+//! both defined by their decoder. An error names what it rejects with the
+//! decoder's own type, not with a copy of it kept in step by hand.
+
 // Publics : le doc-comment de `lib.rs` promet aux consommateurs de pouvoir
 // nommer et matcher les types d'erreur par couche. Tant que ces modules
 // étaient `pub(crate)`, la promesse ne compilait pas (E0603) et les 120

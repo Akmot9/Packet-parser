@@ -26,13 +26,13 @@ pub enum NetworkProtocol {
     Arp,
     Profinet,
     Other(u16),
-    /// PTP (IEEE 1588) directement sur Ethernet, EtherType `0x88F7`.
+    /// PTP (IEEE 1588) directly over Ethernet, EtherType `0x88F7`.
     // En fin d'enum et non a cote de Profinet : inseree ailleurs, la variante
     // decalerait les discriminants des suivantes (rupture SemVer).
     Ptp,
-    /// GOOSE (IEC 61850-8-1) directement sur Ethernet, EtherType `0x88B8`.
+    /// GOOSE (IEC 61850-8-1) directly over Ethernet, EtherType `0x88B8`.
     Goose,
-    /// LLDP (IEEE 802.1AB) directement sur Ethernet, EtherType `0x88CC`.
+    /// LLDP (IEEE 802.1AB) directly over Ethernet, EtherType `0x88CC`.
     Lldp,
 }
 

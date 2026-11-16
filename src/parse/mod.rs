@@ -68,11 +68,11 @@ pub fn parse(link_type: LinkType, bytes: &[u8]) -> Result<PacketFlow<'_>, ParseE
     PacketFlow::parse_decoded(link::decode(link_type, bytes)?, 0)
 }
 
-/// Comme [`fn@parse`], avec une configuration de l'appelant : « mon FTP
-/// tourne sur 2121 » se declare via [`ParseConfig::decode_as`] (issue #65).
-/// Les ports declares etendent les gardes de port de la table de dispatch
-/// sans les remplacer — le contenu doit toujours confirmer le port, et le
-/// comportement par defaut est strictement celui de [`fn@parse`].
+/// Like [`fn@parse`], with a configuration supplied by the caller: "my FTP
+/// runs on port 2121" is declared with [`ParseConfig::decode_as`] (issue #65).
+/// Declared ports extend the port guards of the dispatch table without
+/// replacing them: the content must still confirm the port, and the default
+/// behaviour is exactly that of [`fn@parse`].
 pub fn parse_with<'a>(
     link_type: LinkType,
     bytes: &'a [u8],
@@ -81,8 +81,8 @@ pub fn parse_with<'a>(
     PacketFlow::parse_decoded_with(link::decode(link_type, bytes)?, 0, &config.decode_as)
 }
 
-/// Configuration de parsing cote appelant (« Decode As »). Construite en
-/// builder ; vide par defaut, auquel cas [`parse_with`] est identique a
+/// Caller-side parsing configuration ("Decode As"). Built as a builder;
+/// empty by default, in which case [`parse_with`] behaves exactly like
 /// [`fn@parse`].
 #[derive(Debug, Clone, Default)]
 pub struct ParseConfig {
@@ -94,9 +94,9 @@ impl ParseConfig {
         Self::default()
     }
 
-    /// Declare qu'un port supplementaire porte ce protocole. Le port ne
-    /// remplace jamais la validation de contenu : il donne seulement sa
-    /// chance a la sonde avant le reste de la table.
+    /// Declares that an additional port carries this protocol. The port
+    /// never replaces content validation: it only gives the probe its turn
+    /// before the rest of the table.
     #[must_use]
     pub fn decode_as(mut self, port: u16, protocol: DecodeAsProtocol) -> Self {
         self.decode_as.push((port, protocol));

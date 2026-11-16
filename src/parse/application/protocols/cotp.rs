@@ -185,251 +185,284 @@ impl<'a> CotpHeader<'a> {
 
         match pdu_type {
             CotpPduType::ConnectionRequest | CotpPduType::ConnectionConfirm => {
-                const FIXED_END: usize = 7;
-                validate_fixed_header_len(
-                    declared_end,
-                    FIXED_END,
-                    if pdu_type == CotpPduType::ConnectionRequest {
-                        "CR"
-                    } else {
-                        "CC"
-                    },
-                )?;
-                let credit = data[1] & 0x0F;
-                let (dst_ref, src_ref, _, _, _) = extract_connection_fields(data, 2, declared_end)?;
-                let (class, extended_formats, no_explicit_flow_control) =
-                    validate_cr_cc_class_options(data[6], credit)?;
-                validate_connection_references(pdu_type, dst_ref, src_ref)?;
-                if pdu_type == CotpPduType::ConnectionRequest && data.len() > 128 {
-                    return Err(CotpParseError::PduTooLong {
-                        pdu: "CR",
-                        maximum: 128,
-                        actual: data.len(),
-                    });
-                }
-
-                header.dst_ref = dst_ref;
-                header.src_ref = src_ref;
-                header.class = class;
-                header.extended_formats = extended_formats;
-                header.no_explicit_flow_control = no_explicit_flow_control;
-                header.credit = Some(u16::from(credit));
-                header.raw_fixed_part = &data[2..FIXED_END];
-                header.parameters =
-                    Self::parse_parameters(data, FIXED_END, declared_end, pdu_type)?;
-                header.user_data = &data[declared_end..];
-                validate_user_data(
-                    if pdu_type == CotpPduType::ConnectionRequest {
-                        "CR"
-                    } else {
-                        "CC"
-                    },
-                    Some(class),
-                    header.user_data.len(),
-                    32,
-                )?;
+                header.fill_connection(data, declared_end)?;
             }
-            CotpPduType::DisconnectRequest => {
-                const FIXED_END: usize = 7;
-                validate_fixed_header_len(declared_end, FIXED_END, "DR")?;
-                let fixed = &data[2..FIXED_END];
-                header.dst_ref = u16::from_be_bytes([fixed[0], fixed[1]]);
-                header.src_ref = u16::from_be_bytes([fixed[2], fixed[3]]);
-                validate_disconnect_reason(fixed[4])?;
-                header.disconnect_reason = Some(fixed[4]);
-                header.raw_fixed_part = fixed;
-                header.parameters =
-                    Self::parse_parameters(data, FIXED_END, declared_end, pdu_type)?;
-                header.user_data = &data[declared_end..];
-                validate_user_data("DR", None, header.user_data.len(), 64)?;
-            }
-            CotpPduType::DisconnectConfirm => {
-                const FIXED_END: usize = 6;
-                validate_fixed_header_len(declared_end, FIXED_END, "DC")?;
-                let fixed = &data[2..FIXED_END];
-                header.dst_ref = u16::from_be_bytes([fixed[0], fixed[1]]);
-                header.src_ref = u16::from_be_bytes([fixed[2], fixed[3]]);
-                header.raw_fixed_part = fixed;
-                header.parameters =
-                    Self::parse_parameters(data, FIXED_END, declared_end, pdu_type)?;
-            }
-            CotpPduType::TpduError => {
-                const FIXED_END: usize = 5;
-                validate_fixed_header_len(declared_end, FIXED_END, "ER")?;
-                let fixed = &data[2..FIXED_END];
-                header.dst_ref = u16::from_be_bytes([fixed[0], fixed[1]]);
-                validate_reject_cause(fixed[2])?;
-                header.reject_cause = Some(fixed[2]);
-                header.raw_fixed_part = fixed;
-                header.parameters =
-                    Self::parse_parameters(data, FIXED_END, declared_end, pdu_type)?;
-            }
+            CotpPduType::DisconnectRequest => header.fill_disconnect_request(data, declared_end)?,
+            CotpPduType::DisconnectConfirm => header.fill_disconnect_confirm(data, declared_end)?,
+            CotpPduType::TpduError => header.fill_error(data, declared_end)?,
             CotpPduType::Data
             | CotpPduType::ExpeditedData
-            | CotpPduType::ExpeditedDataAcknowledgement => {
-                let has_eot = matches!(pdu_type, CotpPduType::Data | CotpPduType::ExpeditedData);
-                let has_user_data =
-                    matches!(pdu_type, CotpPduType::Data | CotpPduType::ExpeditedData);
-
-                if length == 2 && pdu_type == CotpPduType::Data {
-                    let number_and_eot = data[2];
-                    header.number_format = Some(CotpNumberFormat::Class01Normal);
-                    header.raw_fixed_part = &data[2..3];
-                    header
-                        .parameters
-                        .push(CotpParameter::TpduNumber(number_and_eot & 0x7F));
-                    header
-                        .parameters
-                        .push(CotpParameter::Eot(number_and_eot & 0x80 != 0));
-                } else if length >= 4 && length % 2 == 0 {
-                    let fixed_end = 5;
-                    let number_and_eot = data[4];
-                    if !has_eot {
-                        validate_normal_sequence_number_high_bit("EA", number_and_eot)?;
-                    }
-                    header.dst_ref = u16::from_be_bytes([data[2], data[3]]);
-                    header.number_format = Some(CotpNumberFormat::Normal);
-                    header.raw_fixed_part = &data[2..fixed_end];
-                    header
-                        .parameters
-                        .push(CotpParameter::TpduNumber(number_and_eot & 0x7F));
-                    if has_eot {
-                        let eot = number_and_eot & 0x80 != 0;
-                        if pdu_type == CotpPduType::ExpeditedData && !eot {
-                            return Err(CotpParseError::MissingEot { pdu: "ED" });
-                        }
-                        header.parameters.push(CotpParameter::Eot(eot));
-                    }
-                    header.parameters.extend(Self::parse_parameters(
-                        data,
-                        fixed_end,
-                        declared_end,
-                        pdu_type,
-                    )?);
-                } else if length >= 7 && length % 2 == 1 {
-                    let fixed_end = 8;
-                    let number_and_eot = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
-                    if !has_eot {
-                        validate_sequence_number_high_bit("EA", number_and_eot)?;
-                    }
-                    header.dst_ref = u16::from_be_bytes([data[2], data[3]]);
-                    header.number_format = Some(CotpNumberFormat::Extended);
-                    header.raw_fixed_part = &data[2..fixed_end];
-                    header.parameters.push(CotpParameter::TpduNumberExtended(
-                        number_and_eot & 0x7FFF_FFFF,
-                    ));
-                    if has_eot {
-                        let eot = number_and_eot & 0x8000_0000 != 0;
-                        if pdu_type == CotpPduType::ExpeditedData && !eot {
-                            return Err(CotpParseError::MissingEot { pdu: "ED" });
-                        }
-                        header.parameters.push(CotpParameter::Eot(eot));
-                    }
-                    header.parameters.extend(Self::parse_parameters(
-                        data,
-                        fixed_end,
-                        declared_end,
-                        pdu_type,
-                    )?);
-                } else {
-                    return Err(CotpParseError::InvalidTpduHeaderLength {
-                        pdu: if pdu_type == CotpPduType::Data {
-                            "DT"
-                        } else if pdu_type == CotpPduType::ExpeditedData {
-                            "ED"
-                        } else {
-                            "EA"
-                        },
-                        length,
-                    });
-                }
-
-                if has_user_data {
-                    header.user_data = &data[declared_end..];
-                }
-                if pdu_type == CotpPduType::ExpeditedData {
-                    if header.user_data.is_empty() {
-                        return Err(CotpParseError::UserDataTooShort {
-                            pdu: "ED",
-                            minimum: 1,
-                            actual: 0,
-                        });
-                    }
-                    validate_user_data("ED", None, header.user_data.len(), 16)?;
-                }
-            }
-            CotpPduType::DataAcknowledgement => {
-                if length >= 4 && length % 2 == 0 {
-                    let fixed_end = 5;
-                    validate_normal_sequence_number_high_bit("AK", data[4])?;
-                    header.dst_ref = u16::from_be_bytes([data[2], data[3]]);
-                    header.credit = Some(u16::from(data[1] & 0x0F));
-                    header.number_format = Some(CotpNumberFormat::Normal);
-                    header.raw_fixed_part = &data[2..fixed_end];
-                    header
-                        .parameters
-                        .push(CotpParameter::TpduNumber(data[4] & 0x7F));
-                    header.parameters.extend(Self::parse_parameters(
-                        data,
-                        fixed_end,
-                        declared_end,
-                        pdu_type,
-                    )?);
-                } else if length >= 9 && length % 2 == 1 {
-                    let fixed_end = 10;
-                    validate_extended_credit_code("AK", data[1])?;
-                    let number = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
-                    validate_sequence_number_high_bit("AK", number)?;
-                    header.dst_ref = u16::from_be_bytes([data[2], data[3]]);
-                    header.credit = Some(u16::from_be_bytes([data[8], data[9]]));
-                    header.number_format = Some(CotpNumberFormat::Extended);
-                    header.raw_fixed_part = &data[2..fixed_end];
-                    header
-                        .parameters
-                        .push(CotpParameter::TpduNumberExtended(number & 0x7FFF_FFFF));
-                    header.parameters.extend(Self::parse_parameters(
-                        data,
-                        fixed_end,
-                        declared_end,
-                        pdu_type,
-                    )?);
-                } else {
-                    return Err(CotpParseError::InvalidTpduHeaderLength { pdu: "AK", length });
-                }
-            }
-            CotpPduType::Reject => match length {
-                4 => {
-                    let fixed_end = 5;
-                    validate_normal_sequence_number_high_bit("RJ", data[4])?;
-                    header.dst_ref = u16::from_be_bytes([data[2], data[3]]);
-                    header.credit = Some(u16::from(data[1] & 0x0F));
-                    header.number_format = Some(CotpNumberFormat::Normal);
-                    header.raw_fixed_part = &data[2..fixed_end];
-                    header
-                        .parameters
-                        .push(CotpParameter::TpduNumber(data[4] & 0x7F));
-                }
-                9 => {
-                    let fixed_end = 10;
-                    validate_extended_credit_code("RJ", data[1])?;
-                    let number = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
-                    validate_sequence_number_high_bit("RJ", number)?;
-                    header.dst_ref = u16::from_be_bytes([data[2], data[3]]);
-                    header.credit = Some(u16::from_be_bytes([data[8], data[9]]));
-                    header.number_format = Some(CotpNumberFormat::Extended);
-                    header.raw_fixed_part = &data[2..fixed_end];
-                    header
-                        .parameters
-                        .push(CotpParameter::TpduNumberExtended(number & 0x7FFF_FFFF));
-                }
-                _ => {
-                    return Err(CotpParseError::InvalidTpduHeaderLength { pdu: "RJ", length });
-                }
-            },
+            | CotpPduType::ExpeditedDataAcknowledgement => header.fill_data(data, declared_end)?,
+            CotpPduType::DataAcknowledgement => header.fill_acknowledgement(data, declared_end)?,
+            CotpPduType::Reject => header.fill_reject(data)?,
             CotpPduType::Other(_) => {}
         }
 
         Ok((header, declared_end))
+    }
+
+    /// CR and CC: credit, references, class and options, then the variable
+    /// part and at most 32 octets of user data.
+    fn fill_connection(
+        &mut self,
+        data: &'a [u8],
+        declared_end: usize,
+    ) -> Result<(), CotpParseError> {
+        const FIXED_END: usize = 7;
+        let pdu_type = self.pdu_type;
+        let pdu = if pdu_type == CotpPduType::ConnectionRequest {
+            "CR"
+        } else {
+            "CC"
+        };
+        validate_fixed_header_len(declared_end, FIXED_END, pdu)?;
+        let credit = data[1] & 0x0F;
+        let (dst_ref, src_ref, _, _, _) = extract_connection_fields(data, 2, declared_end)?;
+        let (class, extended_formats, no_explicit_flow_control) =
+            validate_cr_cc_class_options(data[6], credit)?;
+        validate_connection_references(pdu_type, dst_ref, src_ref)?;
+        if pdu_type == CotpPduType::ConnectionRequest && data.len() > 128 {
+            return Err(CotpParseError::PduTooLong {
+                pdu: "CR",
+                maximum: 128,
+                actual: data.len(),
+            });
+        }
+
+        self.dst_ref = dst_ref;
+        self.src_ref = src_ref;
+        self.class = class;
+        self.extended_formats = extended_formats;
+        self.no_explicit_flow_control = no_explicit_flow_control;
+        self.credit = Some(u16::from(credit));
+        self.raw_fixed_part = &data[2..FIXED_END];
+        self.parameters = Self::parse_parameters(data, FIXED_END, declared_end, pdu_type)?;
+        self.user_data = &data[declared_end..];
+        validate_user_data(pdu, Some(class), self.user_data.len(), 32)?;
+        Ok(())
+    }
+
+    /// DR: references and reason, then the variable part and at most 64
+    /// octets of user data.
+    fn fill_disconnect_request(
+        &mut self,
+        data: &'a [u8],
+        declared_end: usize,
+    ) -> Result<(), CotpParseError> {
+        const FIXED_END: usize = 7;
+        validate_fixed_header_len(declared_end, FIXED_END, "DR")?;
+        let fixed = &data[2..FIXED_END];
+        self.dst_ref = u16::from_be_bytes([fixed[0], fixed[1]]);
+        self.src_ref = u16::from_be_bytes([fixed[2], fixed[3]]);
+        validate_disconnect_reason(fixed[4])?;
+        self.disconnect_reason = Some(fixed[4]);
+        self.raw_fixed_part = fixed;
+        self.parameters = Self::parse_parameters(data, FIXED_END, declared_end, self.pdu_type)?;
+        self.user_data = &data[declared_end..];
+        validate_user_data("DR", None, self.user_data.len(), 64)?;
+        Ok(())
+    }
+
+    /// DC: references, then the variable part.
+    fn fill_disconnect_confirm(
+        &mut self,
+        data: &'a [u8],
+        declared_end: usize,
+    ) -> Result<(), CotpParseError> {
+        const FIXED_END: usize = 6;
+        validate_fixed_header_len(declared_end, FIXED_END, "DC")?;
+        let fixed = &data[2..FIXED_END];
+        self.dst_ref = u16::from_be_bytes([fixed[0], fixed[1]]);
+        self.src_ref = u16::from_be_bytes([fixed[2], fixed[3]]);
+        self.raw_fixed_part = fixed;
+        self.parameters = Self::parse_parameters(data, FIXED_END, declared_end, self.pdu_type)?;
+        Ok(())
+    }
+
+    /// ER: destination reference and reject cause, then the variable part.
+    fn fill_error(&mut self, data: &'a [u8], declared_end: usize) -> Result<(), CotpParseError> {
+        const FIXED_END: usize = 5;
+        validate_fixed_header_len(declared_end, FIXED_END, "ER")?;
+        let fixed = &data[2..FIXED_END];
+        self.dst_ref = u16::from_be_bytes([fixed[0], fixed[1]]);
+        validate_reject_cause(fixed[2])?;
+        self.reject_cause = Some(fixed[2]);
+        self.raw_fixed_part = fixed;
+        self.parameters = Self::parse_parameters(data, FIXED_END, declared_end, self.pdu_type)?;
+        Ok(())
+    }
+
+    /// DT, ED and EA: the TPDU number in one of the three formats the length
+    /// indicator allows, the EOT bit where the TPDU has one, then the variable
+    /// part and the user data of DT and ED.
+    fn fill_data(&mut self, data: &'a [u8], declared_end: usize) -> Result<(), CotpParseError> {
+        let (length, pdu_type) = (self.length, self.pdu_type);
+        let has_eot = matches!(pdu_type, CotpPduType::Data | CotpPduType::ExpeditedData);
+        let has_user_data = matches!(pdu_type, CotpPduType::Data | CotpPduType::ExpeditedData);
+
+        if length == 2 && pdu_type == CotpPduType::Data {
+            let number_and_eot = data[2];
+            self.number_format = Some(CotpNumberFormat::Class01Normal);
+            self.raw_fixed_part = &data[2..3];
+            self.parameters
+                .push(CotpParameter::TpduNumber(number_and_eot & 0x7F));
+            self.parameters
+                .push(CotpParameter::Eot(number_and_eot & 0x80 != 0));
+        } else if length >= 4 && length % 2 == 0 {
+            let fixed_end = 5;
+            let number_and_eot = data[4];
+            if !has_eot {
+                validate_normal_sequence_number_high_bit("EA", number_and_eot)?;
+            }
+            self.dst_ref = u16::from_be_bytes([data[2], data[3]]);
+            self.number_format = Some(CotpNumberFormat::Normal);
+            self.raw_fixed_part = &data[2..fixed_end];
+            self.parameters
+                .push(CotpParameter::TpduNumber(number_and_eot & 0x7F));
+            if has_eot {
+                let eot = number_and_eot & 0x80 != 0;
+                if pdu_type == CotpPduType::ExpeditedData && !eot {
+                    return Err(CotpParseError::MissingEot { pdu: "ED" });
+                }
+                self.parameters.push(CotpParameter::Eot(eot));
+            }
+            self.parameters.extend(Self::parse_parameters(
+                data,
+                fixed_end,
+                declared_end,
+                pdu_type,
+            )?);
+        } else if length >= 7 && length % 2 == 1 {
+            let fixed_end = 8;
+            let number_and_eot = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
+            if !has_eot {
+                validate_sequence_number_high_bit("EA", number_and_eot)?;
+            }
+            self.dst_ref = u16::from_be_bytes([data[2], data[3]]);
+            self.number_format = Some(CotpNumberFormat::Extended);
+            self.raw_fixed_part = &data[2..fixed_end];
+            self.parameters.push(CotpParameter::TpduNumberExtended(
+                number_and_eot & 0x7FFF_FFFF,
+            ));
+            if has_eot {
+                let eot = number_and_eot & 0x8000_0000 != 0;
+                if pdu_type == CotpPduType::ExpeditedData && !eot {
+                    return Err(CotpParseError::MissingEot { pdu: "ED" });
+                }
+                self.parameters.push(CotpParameter::Eot(eot));
+            }
+            self.parameters.extend(Self::parse_parameters(
+                data,
+                fixed_end,
+                declared_end,
+                pdu_type,
+            )?);
+        } else {
+            return Err(CotpParseError::InvalidTpduHeaderLength {
+                pdu: if pdu_type == CotpPduType::Data {
+                    "DT"
+                } else if pdu_type == CotpPduType::ExpeditedData {
+                    "ED"
+                } else {
+                    "EA"
+                },
+                length,
+            });
+        }
+
+        if has_user_data {
+            self.user_data = &data[declared_end..];
+        }
+        if pdu_type == CotpPduType::ExpeditedData {
+            if self.user_data.is_empty() {
+                return Err(CotpParseError::UserDataTooShort {
+                    pdu: "ED",
+                    minimum: 1,
+                    actual: 0,
+                });
+            }
+            validate_user_data("ED", None, self.user_data.len(), 16)?;
+        }
+        Ok(())
+    }
+
+    /// AK: the acknowledged TPDU number and the credit, in the normal or the
+    /// extended format, then the variable part.
+    fn fill_acknowledgement(
+        &mut self,
+        data: &'a [u8],
+        declared_end: usize,
+    ) -> Result<(), CotpParseError> {
+        let (length, pdu_type) = (self.length, self.pdu_type);
+        if length >= 4 && length % 2 == 0 {
+            let fixed_end = 5;
+            validate_normal_sequence_number_high_bit("AK", data[4])?;
+            self.dst_ref = u16::from_be_bytes([data[2], data[3]]);
+            self.credit = Some(u16::from(data[1] & 0x0F));
+            self.number_format = Some(CotpNumberFormat::Normal);
+            self.raw_fixed_part = &data[2..fixed_end];
+            self.parameters
+                .push(CotpParameter::TpduNumber(data[4] & 0x7F));
+            self.parameters.extend(Self::parse_parameters(
+                data,
+                fixed_end,
+                declared_end,
+                pdu_type,
+            )?);
+        } else if length >= 9 && length % 2 == 1 {
+            let fixed_end = 10;
+            validate_extended_credit_code("AK", data[1])?;
+            let number = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
+            validate_sequence_number_high_bit("AK", number)?;
+            self.dst_ref = u16::from_be_bytes([data[2], data[3]]);
+            self.credit = Some(u16::from_be_bytes([data[8], data[9]]));
+            self.number_format = Some(CotpNumberFormat::Extended);
+            self.raw_fixed_part = &data[2..fixed_end];
+            self.parameters
+                .push(CotpParameter::TpduNumberExtended(number & 0x7FFF_FFFF));
+            self.parameters.extend(Self::parse_parameters(
+                data,
+                fixed_end,
+                declared_end,
+                pdu_type,
+            )?);
+        } else {
+            return Err(CotpParseError::InvalidTpduHeaderLength { pdu: "AK", length });
+        }
+        Ok(())
+    }
+
+    /// RJ: the expected TPDU number and the credit, in the normal or the
+    /// extended format. It has no variable part.
+    fn fill_reject(&mut self, data: &'a [u8]) -> Result<(), CotpParseError> {
+        match self.length {
+            4 => {
+                let fixed_end = 5;
+                validate_normal_sequence_number_high_bit("RJ", data[4])?;
+                self.dst_ref = u16::from_be_bytes([data[2], data[3]]);
+                self.credit = Some(u16::from(data[1] & 0x0F));
+                self.number_format = Some(CotpNumberFormat::Normal);
+                self.raw_fixed_part = &data[2..fixed_end];
+                self.parameters
+                    .push(CotpParameter::TpduNumber(data[4] & 0x7F));
+            }
+            9 => {
+                let fixed_end = 10;
+                validate_extended_credit_code("RJ", data[1])?;
+                let number = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
+                validate_sequence_number_high_bit("RJ", number)?;
+                self.dst_ref = u16::from_be_bytes([data[2], data[3]]);
+                self.credit = Some(u16::from_be_bytes([data[8], data[9]]));
+                self.number_format = Some(CotpNumberFormat::Extended);
+                self.raw_fixed_part = &data[2..fixed_end];
+                self.parameters
+                    .push(CotpParameter::TpduNumberExtended(number & 0x7FFF_FFFF));
+            }
+            length => {
+                return Err(CotpParseError::InvalidTpduHeaderLength { pdu: "RJ", length });
+            }
+        }
+        Ok(())
     }
 }
 

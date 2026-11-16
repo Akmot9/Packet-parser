@@ -45,11 +45,11 @@ use rules::{Guard, RULES, matches_terminal_reserved_port};
 /// (#274).
 macro_rules! decode_as_protocols {
     ($($(#[$doc:meta])* $variant:ident),+ $(,)?) => {
-        /// Protocole que l'appelant peut associer a un port supplementaire via
-        /// [`crate::ParseConfig`] (« Decode As », issue #65). La regle de la table
-        /// vaut aussi ici : le port declare ne suffit jamais, la sonde de contenu
-        /// doit accepter le payload, et la garde de transport du protocole reste
-        /// appliquee.
+        /// Protocol the caller can bind to an additional port through
+        /// [`crate::ParseConfig`] ("Decode As", issue #65). The rule of the
+        /// dispatch table applies here too: the declared port is never enough,
+        /// the content probe must accept the payload, and the transport guard
+        /// of the protocol still applies.
         #[non_exhaustive]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub enum DecodeAsProtocol {
@@ -60,8 +60,8 @@ macro_rules! decode_as_protocols {
         }
 
         impl DecodeAsProtocol {
-            /// Toutes les variantes, dans l'ordre de leur declaration : les
-            /// protocoles qu'un appelant peut proposer pour un port.
+            /// Every variant, in declaration order: the protocols a caller
+            /// can offer for a port.
             ///
             /// ```
             /// use packet_parser::DecodeAsProtocol;
@@ -99,20 +99,20 @@ decode_as_protocols![
     Ptp,
     Stanag5066,
     Dis,
-    /// IKE nu ou derriere le marqueur non-ESP (UDP).
+    /// Bare IKE, or IKE behind the non-ESP marker (UDP).
     Ike,
-    /// ESP encapsule dans UDP (RFC 3948), SPI non nul en tete.
+    /// ESP encapsulated in UDP (RFC 3948), starting with a non-zero SPI.
     Esp,
-    /// RDP : TPKT, COTP X.224 et MCS (TCP).
+    /// RDP: TPKT, X.224 COTP and MCS (TCP).
     Rdp,
-    /// IEC 60870-5-104 : APDU `0x68` sur TCP.
+    /// IEC 60870-5-104: `0x68` APDU over TCP.
     Iec104,
-    /// WireGuard sur UDP : la forme du message, octets reserves compris
-    /// quel que soit le type.
+    /// WireGuard over UDP: the shape of the message, reserved bytes
+    /// included, whatever the type.
     WireGuard,
-    /// Valmet DNA sur UDP : messages `AB 01` de toute famille, et la balise.
+    /// Valmet DNA over UDP: `AB 01` messages of any family, and the beacon.
     ValmetDna,
-    /// Modbus sur UDP : l'enveloppe MBAP, comme sur UDP 502.
+    /// Modbus over UDP: the MBAP envelope, as on UDP 502.
     ModbusUdp,
 ];
 

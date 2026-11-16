@@ -3,19 +3,18 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-//! Validation **opt-in** des checksums IPv4/TCP/UDP.
+//! **Opt-in** verification of IPv4, TCP and UDP checksums.
 //!
-//! Le parsing ne valide jamais les checksums : sur une capture faite côté
-//! émetteur, l'offload matériel (checksum offloading) laisse souvent des
-//! checksums non calculés, et une validation obligatoire rejetterait du
-//! trafic parfaitement sain. Ces fonctions permettent au consommateur de
-//! valider quand son contexte s'y prête.
+//! Parsing never validates checksums: on a capture taken on the sending
+//! side, hardware checksum offloading often leaves checksums uncomputed, and
+//! a mandatory validation would reject perfectly healthy traffic. These
+//! functions let the consumer validate when its context allows it.
 //!
-//! Chaque fonction retourne :
-//! - `Some(true)` : checksum présent et correct ;
-//! - `Some(false)` : checksum présent et incorrect ;
-//! - `None` : non vérifiable (paquet trop court, ou checksum UDP absent —
-//!   valeur 0, autorisée en IPv4).
+//! Each function returns:
+//! - `Some(true)`: checksum present and correct;
+//! - `Some(false)`: checksum present and incorrect;
+//! - `None`: not verifiable (packet too short, or UDP checksum absent, that
+//!   is value 0, which IPv4 allows).
 
 use std::net::IpAddr;
 
@@ -44,8 +43,8 @@ fn ones_complement_sum(chunks: &[&[u8]]) -> u16 {
     (sum & 0xFFFF) as u16
 }
 
-/// Vérifie le checksum d'un en-tête IPv4 (`packet` commence à l'octet 0 de
-/// l'en-tête IP).
+/// Verifies the checksum of an IPv4 header (`packet` starts at octet 0 of
+/// the IP header).
 pub fn verify_ipv4_header_checksum(packet: &[u8]) -> Option<bool> {
     if packet.len() < 20 {
         return None;
@@ -93,8 +92,8 @@ fn pseudo_header_sum(
     }
 }
 
-/// Vérifie le checksum d'un segment TCP complet (`segment` = en-tête TCP +
-/// données), avec les adresses IP source/destination du paquet porteur.
+/// Verifies the checksum of a complete TCP segment (`segment` = TCP header +
+/// data), with the source and destination IP addresses of the carrying packet.
 pub fn verify_tcp_checksum(source: IpAddr, destination: IpAddr, segment: &[u8]) -> Option<bool> {
     if segment.len() < 20 {
         return None;
@@ -103,9 +102,9 @@ pub fn verify_tcp_checksum(source: IpAddr, destination: IpAddr, segment: &[u8]) 
     Some(ones_complement_sum(&[&pseudo, segment]) == 0xFFFF)
 }
 
-/// Vérifie le checksum d'un datagramme UDP complet (`datagram` = en-tête UDP +
-/// données). Retourne `None` quand le checksum vaut 0 (non calculé, autorisé
-/// en IPv4).
+/// Verifies the checksum of a complete UDP datagram (`datagram` = UDP header +
+/// data). Returns `None` when the checksum is 0 (not computed, which IPv4
+/// allows).
 pub fn verify_udp_checksum(source: IpAddr, destination: IpAddr, datagram: &[u8]) -> Option<bool> {
     if datagram.len() < 8 {
         return None;
