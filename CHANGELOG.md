@@ -6,6 +6,18 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Interne
+
+- **Dependances** (#270) : `uuid` est retiree, la crate ne l'appelait nulle
+  part. `hex` quitte `[dependencies]` : seuls les tests et les doctests s'en
+  servent, et elle reste en dependance de developpement. `chrono` est prise
+  sans ses features par defaut, avec `std` seul : `clock` tirait
+  `iana-time-zone` pour un `Utc::now()` que la crate n'appelle pas. Le
+  `Cargo.lock` passe de 76 a 25 paquets. L'API ne change pas. `chrono` reste
+  une dependance publique (`NtpPacket` expose des `DateTime<Utc>`) : un
+  appelant qui comptait sur la crate pour activer `clock` doit desormais
+  declarer `chrono` lui-meme.
+
 ## [12.0.0] - 2026-11-15
 
 ### Rupture
