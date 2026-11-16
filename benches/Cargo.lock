@@ -441,7 +441,6 @@ name = "packet_parser"
 version = "12.0.0"
 dependencies = [
  "chrono",
- "pcap-file",
  "serde",
  "thiserror 2.0.21",
 ]

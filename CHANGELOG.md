@@ -57,6 +57,19 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   une dependance publique (`NtpPacket` expose des `DateTime<Utc>`) : un
   appelant qui comptait sur la crate pour activer `clock` doit desormais
   declarer `chrono` lui-meme.
+- **pcap-file hors des dependances** (#271) : `Packet::packet_to_pcap` ecrit
+  lui-meme les 40 octets d'en-tete d'un pcap classique, et `pcap-file` devient
+  une dependance de developpement, pour les tests et les exemples qui lisent
+  des captures. Elle ne servait qu'a cette methode, et tout appelant de `parse`
+  compilait avec elle `derive-into-owned`, `byteorder_slice`, `byteorder`, un
+  `syn` v1 et un `thiserror` v1 en double : il compile 11 crates au lieu de 18.
+  Ni feature `pcap` ni rupture : la methode reste, sa signature aussi, et le
+  fichier ecrit est le meme a l'octet pres (un test le compare a la sortie de
+  `pcap-file`). Deux effets, pour un paquet de plus de 65 535 octets, que la
+  methode refusait deja : il est refuse avant la creation du fichier, qui
+  n'ecrase donc plus un fichier existant par un en-tete seul, et l'erreur
+  rendue est une `std::io::Error` (`InvalidInput`) au lieu d'une
+  `pcap_file::PcapError`.
 - **Detection COTP** (#277) : `cotp_from_tpkt` et ses trois fonctions de
   rigueur quittent `parse/mod.rs` pour le module `cotp`, par deplacement
   seul. Elles n'avaient qu'un appelant hors tests, la sonde
