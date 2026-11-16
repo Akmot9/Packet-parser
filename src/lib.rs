@@ -10,7 +10,11 @@
 // `arithmetic_side_effects` ne sont volontairement pas actives : plus de
 // 1000 acces idiomatiques (index apres controle de longueur explicite), dont
 // l'absence de panic est verifiee par les cibles de fuzz de `fuzz/` (le
-// nombre n'est plus ecrit ici : il a deja derive une fois).
+// nombre n'est plus ecrit ici : il a deja derive une fois). Un decodeur
+// applicatif y est atteint par sa cible `parse_<protocole>` ou, quand la
+// mesure montre qu'elle n'y ajoute rien, par le dispatch que fuzzent
+// `parse_application`, `parse_packetflow` et `policy_dispatch` ; la
+// couverture mesuree decodeur par decodeur est dans l'issue #272.
 // Un cast `as` qui peut tronquer est refuse de meme (#273) : une longueur
 // lue sur le fil se convertit par `try_from`, et un cast voulu porte son
 // #[expect].
