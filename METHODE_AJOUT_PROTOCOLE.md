@@ -509,11 +509,13 @@ port d'une autre regle, DNS 53 dans
 `ntp_port_rule_comes_after_the_other_port_rules`) et WireGuard (51820 est un
 port ephemere, `wireguard_port_rule_comes_after_the_other_udp_port_rules`).
 Pour qu'un appelant declare un autre port (« Decode As »,
-`ParseConfig::decode_as`), ajouter une variante en fin de `DecodeAsProtocol`
-(`#[non_exhaustive]` : ajout additif, version mineure) et son bras dans
-`DecodeAsProtocol::rule`, puis l'ajouter a la liste `all` de
-`decode_as_protocols_resolve_to_table_rules`, qui verifie alors que la table
-connait l'etiquette et la sonde.
+`ParseConfig::decode_as`), ajouter une variante en fin de la liste
+`decode_as_protocols!` de `src/parse/dispatch/mod.rs` (`#[non_exhaustive]` :
+ajout additif, version mineure) et son bras dans `DecodeAsProtocol::rule`.
+`DecodeAsProtocol::ALL` sort de la meme liste : la variante entre d'office
+dans `decode_as_protocols_resolve_to_table_rules`, qui verifie que la table
+connait l'etiquette et la sonde, et dans les cibles de fuzz
+`parse_packetflow` et `policy_dispatch`, sans liste a tenir a la main (#274).
 
 **Voie 3 — signature forte avec contrainte de transport** (`rule(...)` sans
 port, gardee par le seul transport ou le protocole est defini) : lorsque le

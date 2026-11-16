@@ -858,47 +858,15 @@ fn valmet_dna_is_lenient_on_its_ports_and_strict_elsewhere() {
     );
 }
 
-/// Toutes les variantes de [`DecodeAsProtocol`], pour les tests qui
-/// parcourent ses regles.
-const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 29] = [
-    DecodeAsProtocol::Ftp,
-    DecodeAsProtocol::Smtp,
-    DecodeAsProtocol::Nntp,
-    DecodeAsProtocol::Cotp,
-    DecodeAsProtocol::Dns,
-    DecodeAsProtocol::Mdns,
-    DecodeAsProtocol::Llmnr,
-    DecodeAsProtocol::Ssdp,
-    DecodeAsProtocol::Nbns,
-    DecodeAsProtocol::Nbss,
-    DecodeAsProtocol::Snmp,
-    DecodeAsProtocol::Dhcpv6,
-    DecodeAsProtocol::OpcUa,
-    DecodeAsProtocol::PostgreSql,
-    DecodeAsProtocol::ModbusTcp,
-    DecodeAsProtocol::EthernetIp,
-    DecodeAsProtocol::Ams,
-    DecodeAsProtocol::QuicShortHeader,
-    DecodeAsProtocol::OpenVpn,
-    DecodeAsProtocol::Ptp,
-    DecodeAsProtocol::Stanag5066,
-    DecodeAsProtocol::Dis,
-    DecodeAsProtocol::Ike,
-    DecodeAsProtocol::Esp,
-    DecodeAsProtocol::Rdp,
-    DecodeAsProtocol::Iec104,
-    DecodeAsProtocol::WireGuard,
-    DecodeAsProtocol::ValmetDna,
-    DecodeAsProtocol::ModbusUdp,
-];
-
 /// Anti-derive (revue 10.4.0) : chaque protocole Decode-As doit se
 /// resoudre vers une etiquette et une sonde que la table connait — les
 /// deux encodages ne peuvent pas diverger silencieusement.
 #[test]
 fn decode_as_protocols_resolve_to_table_rules() {
     use ProbeId as P;
-    let all = DECODE_AS_PROTOCOLS;
+    // `ALL` sort de la meme liste que l'enum : aucune variante n'echappe a
+    // ce test (#274).
+    let all = DecodeAsProtocol::ALL;
     // Decode As plus tolerant que la regle de port, a dessein : un port
     // declare est du WireGuard, octets reserves de Cloudflare compris
     // (le recours que l'heuristique de Wireshark indique), la ou 51820
@@ -956,7 +924,7 @@ fn decode_as_cannot_override_terminal_reserved_ports() {
 /// `ProbeId::LAST` fait echouer ce test.
 #[test]
 fn probe_count_is_the_number_of_variants() {
-    let decode_as = DECODE_AS_PROTOCOLS.iter().flat_map(|protocol| {
+    let decode_as = DecodeAsProtocol::ALL.iter().flat_map(|protocol| {
         [TransportProtocol::Tcp, TransportProtocol::Udp]
             .map(|transport| protocol.rule(transport).2 as u32)
     });

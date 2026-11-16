@@ -18,46 +18,15 @@ use packet_parser::{
     parse::transport::protocols::TransportProtocol, parse_with,
 };
 
-/// Tous les protocoles declarables par l'appelant (Decode As, issue #65),
-/// dans l'ordre de l'enum : le premier octet de l'entree en choisit un.
-const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 29] = [
-    DecodeAsProtocol::Ftp,
-    DecodeAsProtocol::Smtp,
-    DecodeAsProtocol::Nntp,
-    DecodeAsProtocol::Cotp,
-    DecodeAsProtocol::Dns,
-    DecodeAsProtocol::Mdns,
-    DecodeAsProtocol::Llmnr,
-    DecodeAsProtocol::Ssdp,
-    DecodeAsProtocol::Nbns,
-    DecodeAsProtocol::Nbss,
-    DecodeAsProtocol::Snmp,
-    DecodeAsProtocol::Dhcpv6,
-    DecodeAsProtocol::OpcUa,
-    DecodeAsProtocol::PostgreSql,
-    DecodeAsProtocol::ModbusTcp,
-    DecodeAsProtocol::EthernetIp,
-    DecodeAsProtocol::Ams,
-    DecodeAsProtocol::QuicShortHeader,
-    DecodeAsProtocol::OpenVpn,
-    DecodeAsProtocol::Ptp,
-    DecodeAsProtocol::Stanag5066,
-    DecodeAsProtocol::Dis,
-    DecodeAsProtocol::Ike,
-    DecodeAsProtocol::Esp,
-    DecodeAsProtocol::Rdp,
-    DecodeAsProtocol::Iec104,
-    DecodeAsProtocol::WireGuard,
-    DecodeAsProtocol::ValmetDna,
-    DecodeAsProtocol::ModbusUdp,
-];
-
 /// Les trois premiers octets de l'entree choisissent une configuration
 /// Decode As (un protocole, un port) ; `parse_with` n'etait fuzze par
 /// aucune cible avant #108.
 fn decode_as_config(data: &[u8]) -> ParseConfig {
-    let protocol = DECODE_AS_PROTOCOLS
-        [usize::from(data.first().copied().unwrap_or(0)) % DECODE_AS_PROTOCOLS.len()];
+    // Tous les protocoles declarables (Decode As, issue #65), dans l'ordre
+    // de l'enum : le premier octet de l'entree en choisit un. `ALL` sort de
+    // la meme liste que l'enum, aucune variante ne peut y manquer (#274).
+    let all = DecodeAsProtocol::ALL;
+    let protocol = all[usize::from(data.first().copied().unwrap_or(0)) % all.len()];
     let port = u16::from_be_bytes([
         data.get(1).copied().unwrap_or(0),
         data.get(2).copied().unwrap_or(0),

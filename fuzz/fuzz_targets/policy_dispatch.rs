@@ -300,43 +300,12 @@ fn fixed_policy_checks() {
     assert_ne!(label_of(user, &udp_only), Some("mDNS"));
 }
 
-/// Tous les protocoles declarables, dans l'ordre de l'enum : le premier
-/// octet de l'entree en choisit un.
-const DECODE_AS_PROTOCOLS: [DecodeAsProtocol; 29] = [
-    DecodeAsProtocol::Ftp,
-    DecodeAsProtocol::Smtp,
-    DecodeAsProtocol::Nntp,
-    DecodeAsProtocol::Cotp,
-    DecodeAsProtocol::Dns,
-    DecodeAsProtocol::Mdns,
-    DecodeAsProtocol::Llmnr,
-    DecodeAsProtocol::Ssdp,
-    DecodeAsProtocol::Nbns,
-    DecodeAsProtocol::Nbss,
-    DecodeAsProtocol::Snmp,
-    DecodeAsProtocol::Dhcpv6,
-    DecodeAsProtocol::OpcUa,
-    DecodeAsProtocol::PostgreSql,
-    DecodeAsProtocol::ModbusTcp,
-    DecodeAsProtocol::EthernetIp,
-    DecodeAsProtocol::Ams,
-    DecodeAsProtocol::QuicShortHeader,
-    DecodeAsProtocol::OpenVpn,
-    DecodeAsProtocol::Ptp,
-    DecodeAsProtocol::Stanag5066,
-    DecodeAsProtocol::Dis,
-    DecodeAsProtocol::Ike,
-    DecodeAsProtocol::Esp,
-    DecodeAsProtocol::Rdp,
-    DecodeAsProtocol::Iec104,
-    DecodeAsProtocol::WireGuard,
-    DecodeAsProtocol::ValmetDna,
-    DecodeAsProtocol::ModbusUdp,
-];
-
 fuzz_target!(init: fixed_policy_checks(), |data: &[u8]| {
-    let declared = DECODE_AS_PROTOCOLS
-        [usize::from(data.first().copied().unwrap_or(0)) % DECODE_AS_PROTOCOLS.len()];
+    // Tous les protocoles declarables, dans l'ordre de l'enum : le premier
+    // octet de l'entree en choisit un. `ALL` sort de la meme liste que
+    // l'enum, aucune variante ne peut y manquer (#274).
+    let all = DecodeAsProtocol::ALL;
+    let declared = all[usize::from(data.first().copied().unwrap_or(0)) % all.len()];
     check(data, declared);
 
     // Les memes graines que `parse_packetflow`, sur le port declare pour
