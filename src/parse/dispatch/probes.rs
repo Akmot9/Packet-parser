@@ -12,6 +12,7 @@ use crate::parse::application::protocols::ams::AmsPacket;
 use crate::parse::application::protocols::asterix::AsterixPacket;
 use crate::parse::application::protocols::bacnet::BacnetPacket;
 use crate::parse::application::protocols::bitcoin::BitcoinPacket;
+use crate::parse::application::protocols::cotp::cotp_from_tpkt;
 use crate::parse::application::protocols::dhcp::DhcpPacket;
 use crate::parse::application::protocols::dhcpv6::Dhcpv6Packet;
 use crate::parse::application::protocols::dis::DisPacket;
@@ -49,7 +50,6 @@ use crate::parse::application::protocols::tls::TlsPacket;
 use crate::parse::application::protocols::umas::UmasPacket;
 use crate::parse::application::protocols::valmet_dna::ValmetDnaPacket;
 use crate::parse::application::protocols::wireguard::WireGuardPacket;
-use crate::parse::cotp_from_tpkt;
 use crate::parse::transport::protocols::esp::EspPacket;
 /// Nombre d'octets soumis aux sondes des protocoles texte (FTP, SMTP, NNTP,
 /// HTTP), qui valident tout leur texte en UTF-8 : au-dela, seul le prefixe

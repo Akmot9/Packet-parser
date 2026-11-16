@@ -28,6 +28,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   une dependance publique (`NtpPacket` expose des `DateTime<Utc>`) : un
   appelant qui comptait sur la crate pour activer `clock` doit desormais
   declarer `chrono` lui-meme.
+- **Detection COTP** (#277) : `cotp_from_tpkt` et ses trois fonctions de
+  rigueur quittent `parse/mod.rs` pour le module `cotp`, par deplacement
+  seul. Elles n'avaient qu'un appelant hors tests, la sonde
+  `ProbeId::CotpTpkt` ; `parse/mod.rs` ne porte plus de logique propre a un
+  protocole.
+- **Egalite de PacketFlow** (#277) : `PartialEq` et `Hash` sont derives au
+  lieu d'etre ecrits a la main. Les impls enumeraient les six champs, comme
+  le fait `derive` : un champ ajoute a la structure entre desormais d'office
+  dans l'egalite. Le hash d'un flux ne change pas.
 
 ## [12.0.0] - 2026-11-15
 
