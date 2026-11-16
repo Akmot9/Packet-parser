@@ -6,6 +6,56 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
+
+### Rupture
+
+- **CorruptedLayer.error** (#275) : le champ passe de `String` a
+  `CorruptedLayerError`, un enum `#[non_exhaustive]` qui porte l'erreur du
+  decodeur, `Internet(InternetError)` ou `Transport(TransportError)`. Le
+  moteur avait cette erreur en main et l'aplatissait en texte. Un appelant
+  trie maintenant les causes par un `match` (en-tete tronque, longueur
+  invalide, anomalie TCP) au lieu de chercher un mot dans un message.
+  `Display` rend le texte d'avant et la serialisation l'ecrit : le JSON ne
+  change pas, verifie a l'octet pres sur les 387 161 trames du corpus et
+  sur 2 426 corruptions synthetiques de couche 4. `CorruptedLayerError` est
+  reexporte a la racine. Migration : `MIGRATION-13.md`.
+- **CorruptedLayer** (#275) : la struct devient `#[non_exhaustive]` et ne se
+  construit plus en litteral hors de la crate.
+  `CorruptedLayer::from(InternetError)` et `from(TransportError)` la
+  construisent et deduisent `layer` de l'erreur. Elle pourra gagner un
+  champ sans nouvelle rupture. Migration : `MIGRATION-13.md`.
+
+### Ajoute
+
+- **Derives des erreurs des couches 3 et 4** (#275) : `InternetError`,
+  `ArpError`, `Ipv4Error`, `Ipv6Error`, `ProfinetPacketError`,
+  `GooseParseError`, `LldpParseError`, `PtpPacketParseError`,
+  `TransportError`, `TcpError`, `UdpError`, `EspError`, `IcmpError` et
+  `Icmpv6Error` derivent tous `Clone`, `PartialEq`, `Eq` et `Hash`. C'est
+  ce qui permet a `PacketFlow` de porter l'erreur en gardant ses propres
+  derives.
+
+### Change
+
+- **Cout d'un paquet corrompu** (#275) : il n'alloue plus de `String`. Sur
+  le bench du depot, deux passes alternees : 365 ns -> 106 ns pour une
+  longueur totale IPv4 au-dela de la trame (trame reelle), 199 ns -> 119 ns
+  pour un en-tete TCP tronque, 331 ns -> 125 ns pour un SYN+FIN, soit le
+  cout d'un ACK sain (128 ns). `PacketFlow` passe de 440 a 456 octets,
+  sans effet mesurable sur les trames saines.
+
+### Interne
+
+- **Bench** (#275) : trois cas de paquet corrompu dans le groupe `frame`
+  (`corrupted_ipv4_total_length`, `corrupted_tcp_truncated`,
+  `corrupted_tcp_syn_fin`). Le sous-ensemble `corpus/subset` n'a aucune
+  trame corrompue, et le corpus entier n'en a qu'en couche 3 : les deux cas
+  de couche 4 sont synthetiques.
+- **`tests/profinet_corpus.rs`** (#275) : la variante de
+  `ProfinetPacketError` se lit sur l'erreur typee, plus en cherchant un mot
+  dans son texte.
+
 ## [12.1.0] - 2026-11-16
 
 ### Ajoute

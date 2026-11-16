@@ -15,6 +15,7 @@ Issues, commit messages and the changelog are written in French.
 - [`CHANGELOG.md`](CHANGELOG.md): history, one section per release.
 - [`MIGRATION-11.md`](MIGRATION-11.md): every breaking change of 11.0.0.
 - [`MIGRATION-12.md`](MIGRATION-12.md): every breaking change of 12.0.0.
+- [`MIGRATION-13.md`](MIGRATION-13.md): the breaking changes merged for 13.0.0, not published yet.
 - [`pcaps_exemple/README.md`](pcaps_exemple/README.md): the capture corpus.
 
 ## Before you open a pull request
