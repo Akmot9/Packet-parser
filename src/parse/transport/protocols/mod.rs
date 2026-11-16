@@ -327,7 +327,6 @@ pub enum TransportProtocol {
 
 impl TransportProtocol {
     /// Converts an IANA protocol number / IPv6 next-header number
-    /// Converts an IANA protocol number / IPv6 next-header number
     pub fn from_u8(value: u8) -> Self {
         use TransportProtocol::*;
         match value {

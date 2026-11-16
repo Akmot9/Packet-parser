@@ -39,13 +39,14 @@ pub enum LinkLayerError {
     )]
     PreemptibleFragment { link_type: LinkType, smd: u8 },
 
-    /// Famille d'adresses inconnue, ou qui contredit la version du paquet IP
-    /// qu'elle annonce. `family` est la lecture little-endian du champ ; le
-    /// decodeur essaie les deux ordres avant de rapporter cette erreur.
+    /// Address family that is unknown, or that contradicts the version of
+    /// the IP packet it announces. `family` is the little-endian reading of
+    /// the field; the decoder tries both byte orders before reporting this
+    /// error.
     ///
-    /// Ajoutee en fin d'enumeration : inseree plus haut, elle decalerait les
-    /// discriminants des variantes suivantes, ce qui est une rupture pour qui
-    /// les lit via `as`.
+    /// Added at the end of the enum: inserted higher up, it would shift the
+    /// discriminants of the variants that follow, which breaks anyone reading
+    /// them through `as`.
     #[error(
         "Malformed LINKTYPE {link_type} packet: address family {family} is unknown or contradicts the IP version"
     )]

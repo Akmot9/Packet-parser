@@ -38,11 +38,11 @@ pub enum InternetDetails<'a> {
     Ipv4(ipv4::Ipv4Packet<'a>),
     Ipv6(ipv6::Ipv6Packet<'a>),
     Arp(ArpPacket),
-    /// PTP directement sur Ethernet (EtherType `0x88F7`).
+    /// PTP directly over Ethernet (EtherType `0x88F7`).
     Ptp(PtpPacket<'a>),
-    /// GOOSE, IEC 61850-8-1, directement sur Ethernet (EtherType `0x88B8`).
+    /// GOOSE, IEC 61850-8-1, directly over Ethernet (EtherType `0x88B8`).
     Goose(GoosePacket<'a>),
-    /// LLDP, IEEE 802.1AB, directement sur Ethernet (EtherType `0x88CC`).
+    /// LLDP, IEEE 802.1AB, directly over Ethernet (EtherType `0x88CC`).
     Lldp(LldpPacket<'a>),
 }
 
@@ -90,18 +90,18 @@ pub struct Internet<'a> {
 }
 
 impl<'a> Internet<'a> {
-    /// La destination est-elle un groupe multicast (issue #9) ? S'appuie sur
-    /// la classification deja portee par `destination_type`.
+    /// Whether the destination is a multicast group (issue #9). Relies on
+    /// the classification already carried by `destination_type`.
     pub fn destination_is_multicast(&self) -> bool {
         self.destination_type == Some(IpType::Multicast)
     }
 
-    /// La destination est-elle la diffusion limitee IPv4 255.255.255.255
-    /// (issue #9) ? Le parseur la classe aussi `IpType::Broadcast` dans
-    /// `destination_type` depuis la 11.0.0 ; l'aide lit l'adresse, et reste
-    /// donc juste sur un `Internet` construit a la main. La diffusion dirigee
-    /// (x.y.z.255 selon le masque) exige de connaitre le sous-reseau, hors de
-    /// portee d'un parseur de paquets.
+    /// Whether the destination is the IPv4 limited broadcast
+    /// 255.255.255.255 (issue #9). Since 11.0.0 the parser also classifies it
+    /// as `IpType::Broadcast` in `destination_type`; this helper reads the
+    /// address, so it stays correct on an `Internet` built by hand. A
+    /// directed broadcast (x.y.z.255, depending on the mask) requires knowing
+    /// the subnet, which a packet parser does not.
     pub fn destination_is_limited_broadcast(&self) -> bool {
         matches!(
             self.destination,

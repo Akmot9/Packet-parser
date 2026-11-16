@@ -3,26 +3,26 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-//! Chronometrage optionnel du pipeline de parsing.
+//! Optional timing of the parsing pipeline.
 //!
-//! L'API est **la meme que la feature `parse_timing` soit activee ou non** :
-//! [`ParseTiming`] a toujours ses cinq champs et
-//! [`parse_timed`](crate::parse_timed) existe toujours. Sans la feature,
-//! rien n'est mesure et les champs restent a zero ; avec, chaque couche est
-//! chronometree. Une feature Cargo doit etre additive : comme Cargo unifie
-//! les features du graphe, une forme de struct qui change avec la feature
-//! casserait un consommateur qui ne l'a jamais demandee (#26).
+//! The API is **the same whether the `parse_timing` feature is enabled or
+//! not**: [`ParseTiming`] always has its five fields and
+//! [`parse_timed`](crate::parse_timed) always exists. Without the feature,
+//! nothing is measured and the fields stay at zero; with it, each layer is
+//! timed. A Cargo feature must be additive: since Cargo unifies the features
+//! of the graph, a struct whose shape changed with the feature would break a
+//! consumer that never asked for it (#26).
 //!
-//! Le chemin normal ([`parse`](fn@crate::parse)) n'est jamais chronometre,
-//! que la feature soit activee ou non : il est monomorphise sur un puits de
-//! mesures vide, dont chaque etape se reduit a l'appel du corps.
+//! The normal path ([`parse`](fn@crate::parse)) is never timed, whether the
+//! feature is enabled or not: it is monomorphised over an empty measurement
+//! sink, where each stage reduces to calling its body.
 
-/// Duree de chaque couche du pipeline, en nanosecondes. Tous les champs sont
-/// a zero quand la feature `parse_timing` est desactivee.
+/// Duration of each layer of the pipeline, in nanoseconds. Every field is
+/// zero when the `parse_timing` feature is disabled.
 ///
-/// `l*_ns` est le cout de la *tentative* : il peut etre non nul meme quand
-/// la couche n'est pas supportee. `l7_ns` inclut la detection de tunnel et
-/// le parsing recursif des paquets encapsules.
+/// `l*_ns` is the cost of the *attempt*: it can be non-zero even when the
+/// layer is not supported. `l7_ns` includes tunnel detection and the
+/// recursive parsing of encapsulated packets.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ParseTiming {
     pub l2_ns: u64,

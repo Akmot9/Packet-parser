@@ -27,7 +27,7 @@ pub enum TransportDetails<'a> {
     Udp(UdpPacket<'a>),
     Icmp(IcmpPacket<'a>),
     Icmpv6(Icmpv6Packet<'a>),
-    /// ESP natif (protocole IP 50) : SPI et numero de sequence en clair.
+    /// Native ESP (IP protocol 50): SPI and sequence number in the clear.
     Esp(EspPacket<'a>),
 }
 

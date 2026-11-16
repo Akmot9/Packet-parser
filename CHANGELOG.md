@@ -70,6 +70,23 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   n'ecrase donc plus un fichier existant par un en-tete seul, et l'erreur
   rendue est une `std::io::Error` (`InvalidInput`) au lieu d'une
   `pcap_file::PcapError`.
+- **Fonctions longues** (#277) : `CotpHeader::from_bytes` (263 lignes) garde
+  la longueur et le `match` sur le type, et chaque famille de TPDU a sa
+  methode privee (CR/CC, DR, DC, ER, DT/ED/EA, AK, RJ). Dans RTPS, le bras
+  HEADER_EXTENSION de `submessage_details` devient `header_extension`. Code
+  deplace, compare a l'ancienne version sur cinq millions d'entrees. Quatre
+  fonctions de plus de 100 lignes restent telles quelles : ce sont des tables
+  (attributs RADIUS, numeros de protocole IP et leur affichage, primitives
+  STANAG 5066).
+- **Rustdoc de la facade en anglais** (#277) : la doc publique des items
+  reexportes a la racine (`parse_with`, `ParseConfig`, `DecodeAsProtocol`,
+  les aides de `MacAddress` et d'`Internet`, quelques variantes) et celle des
+  modules `checksum`, `convert` et `timing` passent en anglais, comme
+  `parse` et `PacketFlow`. Les decodeurs restent en francais. La regle est
+  dans `CONTRIBUTING.md`. Aucun texte d'erreur ne change.
+- **errors et parse** (#277) : `SnmpError` et `MqttError` importent un type
+  de leur decodeur (`SnmpVersion`, `MqttPacketType`). C'est voulu, et la doc
+  du module `errors` le dit.
 - **Detection COTP** (#277) : `cotp_from_tpkt` et ses trois fonctions de
   rigueur quittent `parse/mod.rs` pour le module `cotp`, par deplacement
   seul. Elles n'avaient qu'un appelant hors tests, la sonde

@@ -67,26 +67,26 @@ pub const MAC_LEN: usize = 6;
 pub struct MacAddress(pub [u8; MAC_LEN]);
 
 impl MacAddress {
-    /// Adresse de diffusion ff:ff:ff:ff:ff:ff (issue #9).
+    /// Broadcast address ff:ff:ff:ff:ff:ff (issue #9).
     pub const fn is_broadcast(&self) -> bool {
         matches!(self.0, [0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
     }
 
-    /// Bit I/G du premier octet (IEEE 802) : adresse de groupe. La diffusion
-    /// est un cas particulier de multicast ; utiliser [`Self::is_broadcast`]
-    /// pour la distinguer.
+    /// I/G bit of the first octet (IEEE 802): group address. Broadcast is a
+    /// special case of multicast; use [`Self::is_broadcast`] to tell it
+    /// apart.
     pub const fn is_multicast(&self) -> bool {
         self.0[0] & 0x01 != 0
     }
 
-    /// Adresse individuelle (ni multicast ni diffusion).
+    /// Individual address (neither multicast nor broadcast).
     pub const fn is_unicast(&self) -> bool {
         !self.is_multicast()
     }
 }
 
-/// Sérialisée sous forme de chaîne hexadécimale ("aa:bb:cc:dd:ee:ff"),
-/// comme les anciens champs `String` de `DataLink`.
+/// Serialized as a hexadecimal string ("aa:bb:cc:dd:ee:ff"), like the
+/// former `String` fields of `DataLink`.
 impl Serialize for MacAddress {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_str(self)
@@ -185,7 +185,7 @@ impl TryFrom<&[u8]> for MacAddress {
     }
 }
 
-/// convertir une string en MacAddress
+/// Converts a string into a `MacAddress`.
 impl TryFrom<String> for MacAddress {
     type Error = MacParseError;
 

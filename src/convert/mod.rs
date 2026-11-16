@@ -11,33 +11,31 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-/// # PacketConverter
-/// Une crate pour convertir et afficher des paquets réseau en Rust.
+/// A network packet, as raw bytes.
 ///
-/// ## Fonctionnalités :
-/// - Conversion d'une chaîne hexadécimale en `Vec<u8>`
-/// - Conversion d'un `Vec<u8>` en chaîne hexadécimale
-/// - Affichage formaté des paquets réseau
-///   Structure représentant un paquet réseau.
+/// This module converts and displays packets:
+/// - a hexadecimal string into a `Vec<u8>`;
+/// - a `Vec<u8>` into a hexadecimal string;
+/// - a formatted display of the bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Packet {
     pub data: Vec<u8>,
 }
 
 impl Packet {
-    /// Ecrit ce paquet dans un fichier PCAP a `path` (cree ou ecrase),
-    /// horodate a l'instant de l'appel.
+    /// Writes this packet to a PCAP file at `path` (created or overwritten),
+    /// timestamped at the time of the call.
     ///
-    /// Le fichier est un pcap classique (pas un pcapng) : version 2.4,
-    /// `LINKTYPE_ETHERNET`, horodatage a la microseconde, `snaplen` de 65 535,
-    /// dans le boutisme de la machine.
+    /// The file is a classic pcap (not a pcapng): version 2.4,
+    /// `LINKTYPE_ETHERNET`, microsecond timestamps, a `snaplen` of 65,535, in
+    /// the byte order of the machine.
     ///
     /// # Errors
     ///
-    /// Un paquet de plus de 65 535 octets est refuse avant toute ecriture : un
-    /// fichier deja present a `path` reste alors intact. Les autres erreurs
-    /// sont celles de la creation et de l'ecriture du fichier, et celle d'une
-    /// horloge reglee avant 1970 ou apres 2106.
+    /// A packet of more than 65,535 bytes is refused before anything is
+    /// written: a file already present at `path` is then left untouched. The
+    /// other errors are those of creating and writing the file, and that of a
+    /// clock set before 1970 or after 2106.
     pub fn packet_to_pcap(&self, path: impl AsRef<Path>) -> Result<(), Box<dyn std::error::Error>> {
         let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let image = pcap_image(timestamp, &self.data)?;
@@ -90,13 +88,13 @@ fn pcap_image(timestamp: Duration, data: &[u8]) -> Result<Vec<u8>, Box<dyn std::
     Ok(image)
 }
 
-/// Implémentation du trait `From<&str>` pour convertir une chaîne hexadécimale en `Packet`.
+/// Converts a hexadecimal string into a `Packet`.
 ///
 /// # Panics
 ///
-/// Panique sur une chaîne de longueur impaire ou non hexadécimale : `From`
-/// est infaillible par contrat. Pour une entrée utilisateur, passer par
-/// [`try_hex_stream_to_bytes`] et construire `Packet { data }`.
+/// Panics on a string of odd length or with non-hexadecimal characters:
+/// `From` is infallible by contract. For user input, go through
+/// [`try_hex_stream_to_bytes`] and build `Packet { data }`.
 impl From<&str> for Packet {
     fn from(hex: &str) -> Self {
         Packet {
@@ -105,14 +103,14 @@ impl From<&str> for Packet {
     }
 }
 
-/// Implémentation du trait `Display` pour afficher un paquet de manière lisible.
+/// Displays the packet as a formatted array of bytes.
 impl fmt::Display for Packet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", format_hex_array(&self.data))
     }
 }
 
-/// Erreurs de conversion d'un flux hexadécimal.
+/// Errors converting a hexadecimal stream.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum HexStreamError {
@@ -122,8 +120,8 @@ pub enum HexStreamError {
     InvalidDigit(String),
 }
 
-/// Convertit un flux hexadécimal Wireshark en `Vec<u8>`, sans paniquer sur une
-/// entrée invalide.
+/// Converts a Wireshark hex stream into a `Vec<u8>`, without panicking on
+/// invalid input.
 pub fn try_hex_stream_to_bytes(hex: &str) -> Result<Vec<u8>, HexStreamError> {
     if !hex.len().is_multiple_of(2) {
         return Err(HexStreamError::OddLength(hex.len()));
@@ -154,7 +152,7 @@ fn hex_stream_or_panic(hex: &str) -> Vec<u8> {
     }
 }
 
-/// Convertit un slice `&[u8]` en une chaîne hexadécimale.
+/// Converts a `&[u8]` slice into a hexadecimal string.
 #[expect(clippy::unwrap_used, reason = "fmt::Write sur String est infaillible")]
 pub fn bytes_to_hex_string(bytes: &[u8]) -> String {
     let mut hex_string = String::with_capacity(bytes.len() * 2);
@@ -164,7 +162,7 @@ pub fn bytes_to_hex_string(bytes: &[u8]) -> String {
     hex_string
 }
 
-/// Retourne un tableau formaté de bytes sous forme de chaîne Rust.
+/// Returns the bytes formatted as a Rust array, in a string.
 #[expect(clippy::unwrap_used, reason = "fmt::Write sur String est infaillible")]
 pub fn format_hex_array(bytes: &[u8]) -> String {
     const BYTES_PER_LINE: usize = 8;
@@ -192,7 +190,7 @@ pub fn format_hex_array(bytes: &[u8]) -> String {
     out
 }
 
-/// Affiche un paquet réseau de manière lisible.
+/// Prints a network packet in a readable form.
 pub fn display_packet(bytes: &[u8]) {
     println!("Packet: {}", format_hex_array(bytes));
 }

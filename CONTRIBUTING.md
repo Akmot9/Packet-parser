@@ -56,6 +56,21 @@ discriminant of every variant after it: that breaks the API, even for a
 `#[non_exhaustive]` enum. The `semver` job rejects it (#213); see the
 [METHODE checklist](METHODE_AJOUT_PROTOCOLE.md#7-checklist-avant-commit).
 
+## Rustdoc language
+
+The public documentation uses two languages, split by where it shows on docs.rs
+(#277):
+
+- **English** for the façade: every item re-exported from the crate root in
+  [`src/lib.rs`](src/lib.rs), with its fields, variants and methods, and the
+  public top-level modules `checksum`, `convert`, `owned` and `timing`.
+- **French** for the protocol decoders under `parse`, their checks and their
+  error enums, and for comments in the code. A few older decoders are in
+  English and stay as they are.
+
+A new façade item is documented in English even when the decoder next to it is
+in French.
+
 ## Releasing a version
 
 As done for 11.7.0, 11.8.0, 11.8.1, 11.8.2 and 12.0.0 (#206, #229, #242, #251, #267):

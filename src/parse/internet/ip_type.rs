@@ -23,10 +23,10 @@ pub enum IpType {
     // En fin d'enum : inseree plus haut, la variante decalait le discriminant
     // de toutes les suivantes (`IpType::Multicast as u8` passait de 1 a 2),
     // rupture silencieuse pour qui stocke ou transmet ces valeurs.
-    /// Diffusion limitee IPv4, `255.255.255.255` (RFC 919). La diffusion
-    /// dirigee (`192.168.1.255` sur un /24) n'est pas reconnaissable sans le
-    /// masque du sous-reseau, hors de portee d'un parseur de paquets : elle
-    /// reste classee selon sa plage.
+    /// IPv4 limited broadcast, `255.255.255.255` (RFC 919). A directed
+    /// broadcast (`192.168.1.255` on a /24) cannot be recognised without the
+    /// subnet mask, which a packet parser does not have: it stays classified
+    /// by its range.
     Broadcast,
 }
 
