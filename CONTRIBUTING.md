@@ -49,6 +49,18 @@ cargo +nightly fuzz run <target> -- -max_total_time=600   # each target you touc
 - The crate needs no system library. The side tools live in [`tools/lab`](tools/lab/README.md),
   outside the workspace; they need libpcap and CI only checks that they compile (job `lab`).
 
+## What semver covers
+
+Everything public, the protocol decoders included (decision #276). `pub mod parse`
+exposes the decoders next to the façade, and `cargo semver-checks` runs on every
+pull request: changing a field or a variant of a decoder is a major change,
+exactly like changing `PacketFlow`.
+
+So a decoder grows by addition: its types are `#[non_exhaustive]`, and a new
+variant goes last (next section). Anything else waits for a major release, with
+its `MIGRATION-<N>.md`. The rule and what was ruled out are in the
+[stability rules](ROADMAP.md#4-regles-de-la-fenetre-de-stabilite).
+
 ## New enum variants go last
 
 Add a variant at the end of its enum. Inserted higher, it shifts the

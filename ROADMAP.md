@@ -486,6 +486,16 @@ soldee en 11.0.0 (#76, lot A, PR #86, §1 bis). Ces fichiers sont ranges sous
 
 ## 4. Regles de la fenetre de stabilite
 
+- **Toute la surface publique est sous semver, decodeurs compris** (decision
+  #276, 2026-11-16). `pub mod parse` expose les decodeurs applicatifs a cote
+  de la facade : retoucher un champ ou une variante de l'un d'eux vaut une
+  majeure, au meme titre que changer `PacketFlow`, et `cargo semver-checks`
+  le refuse sur la PR (#213). Un decodeur evolue donc par ajout, ou en
+  majeure avec son `MIGRATION-<N>.md`. Deux autres reponses ont ete ecartees :
+  deux niveaux de stabilite (facade stricte, decodeurs libres en mineure),
+  que `cargo semver-checks` ne sait pas distinguer, et deux crates, trop
+  lourd tant que la crate n'a pas d'autre appelant que son auteur. A revoir
+  le jour ou un second appelant le demande.
 - Aucune rupture d'API sans necessite majeure. Depuis la 11.0.0, **ajouter
   un champ a une struct de decodage, une variante a un enum de protocole ou
   une variante d'erreur est additif** : ces types sont `#[non_exhaustive]`.
