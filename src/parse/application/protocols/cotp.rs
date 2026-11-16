@@ -541,6 +541,122 @@ impl fmt::Display for CotpHeader<'_> {
     }
 }
 
+/// Decode the first RFC 1006 TPKT frame and its COTP header.
+///
+/// A TCP segment may contain bytes after the first TPKT (including another
+/// complete frame), so the declared TPKT boundary is used instead of requiring
+/// equality with the whole transport payload. LI delimits only the COTP
+/// header: CR/CC/DR, DT and ED may carry user data after it, while other TPDU
+/// types may be concatenated and are checked one by one.
+pub(crate) fn cotp_from_tpkt(payload: &[u8]) -> Option<CotpHeader<'_>> {
+    const TPKT_HEADER_LEN: usize = 4;
+    const TPKT_MIN_LEN: usize = 7;
+
+    if payload.len() < TPKT_MIN_LEN || payload[0] != 3 || payload[1] != 0 {
+        return None;
+    }
+
+    let tpkt_len = usize::from(u16::from_be_bytes([payload[2], payload[3]]));
+    if !(TPKT_MIN_LEN..=payload.len()).contains(&tpkt_len) {
+        return None;
+    }
+
+    let cotp_bytes = &payload[TPKT_HEADER_LEN..tpkt_len];
+    let (header, mut consumed) = CotpHeader::from_bytes(cotp_bytes).ok()?;
+    if !is_strict_cotp_header(&header) {
+        return None;
+    }
+
+    if cotp_may_consume_user_data(header.pdu_type) {
+        return Some(header);
+    }
+
+    while consumed < cotp_bytes.len() {
+        let (next, next_consumed) = CotpHeader::from_bytes(&cotp_bytes[consumed..]).ok()?;
+        if !is_strict_cotp_header(&next) || next_consumed == 0 {
+            return None;
+        }
+        consumed = consumed.checked_add(next_consumed)?;
+        if cotp_may_consume_user_data(next.pdu_type) {
+            return Some(header);
+        }
+    }
+
+    (consumed == cotp_bytes.len()).then_some(header)
+}
+
+fn cotp_may_consume_user_data(pdu_type: CotpPduType) -> bool {
+    matches!(
+        pdu_type,
+        CotpPduType::Data
+            | CotpPduType::ExpeditedData
+            | CotpPduType::ConnectionRequest
+            | CotpPduType::ConnectionConfirm
+            | CotpPduType::DisconnectRequest
+    )
+}
+
+fn is_strict_cotp_header(header: &CotpHeader<'_>) -> bool {
+    match header.pdu_type {
+        CotpPduType::Data => match header.number_format {
+            Some(CotpNumberFormat::Class01Normal) => header
+                .parameters
+                .iter()
+                .any(|parameter| matches!(parameter, CotpParameter::TpduNumber(0))),
+            Some(CotpNumberFormat::Normal | CotpNumberFormat::Extended) => true,
+            None | Some(CotpNumberFormat::Undetermined) => false,
+        },
+        CotpPduType::ExpeditedData
+        | CotpPduType::ExpeditedDataAcknowledgement
+        | CotpPduType::DataAcknowledgement
+        | CotpPduType::Reject => !matches!(
+            header.number_format,
+            None | Some(CotpNumberFormat::Undetermined)
+        ),
+        CotpPduType::ConnectionRequest | CotpPduType::ConnectionConfirm => {
+            is_strict_connection_header(header)
+        }
+        CotpPduType::DisconnectRequest
+        | CotpPduType::DisconnectConfirm
+        | CotpPduType::TpduError => true,
+        CotpPduType::Other(_) => false,
+    }
+}
+
+fn is_strict_connection_header(header: &CotpHeader<'_>) -> bool {
+    for parameter in &header.parameters {
+        if let CotpParameter::Other(code, _) = parameter {
+            // The tolerant CR decoder preserves unknown parameters as RFC 905
+            // permits. A detector cannot use that tolerance as evidence: only
+            // the defined connection parameters remain valid fingerprints.
+            if !matches!(
+                code,
+                0x85..=0x89 | 0x8B | 0xC1 | 0xC2 | 0xC4..=0xC7 | 0xF0 | 0xF2
+            ) {
+                return false;
+            }
+        }
+
+        if header.class == 0
+            && matches!(
+                parameter,
+                CotpParameter::TpduSize(0x0C | 0x0D)
+                    | CotpParameter::Checksum(_)
+                    | CotpParameter::AtnExtendedChecksum16(_)
+                    | CotpParameter::AtnExtendedChecksum32(_)
+                    | CotpParameter::Other(
+                        0x85..=0x89 | 0x8B | 0xC4..=0xC7 | 0xF0 | 0xF2,
+                        _
+                    )
+            )
+        {
+            return false;
+        }
+    }
+
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
