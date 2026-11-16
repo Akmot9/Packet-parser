@@ -7,7 +7,7 @@ use thiserror::Error;
 
 /// Errors raised while parsing an ICMPv6 message (IP next header 58, RFC 4443).
 #[non_exhaustive]
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq, Clone, Hash)]
 pub enum Icmpv6Error {
     #[error("ICMPv6 message too short: expected at least {expected} bytes, got {actual}")]
     InvalidLength { expected: usize, actual: usize },

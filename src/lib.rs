@@ -192,6 +192,6 @@ pub use parse::transport::{Transport, TransportDetails};
 
 /// Exports data link layer parsing functionality.
 pub use parse::PacketFlow;
-pub use parse::{CorruptedLayer, CorruptedLayerKind};
+pub use parse::{CorruptedLayer, CorruptedLayerError, CorruptedLayerKind};
 
 pub mod timing;

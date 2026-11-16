@@ -7,7 +7,7 @@ use thiserror::Error;
 
 /// Errors raised while parsing an ICMPv4 message (IP protocol 1, RFC 792).
 #[non_exhaustive]
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq, Clone, Hash)]
 pub enum IcmpError {
     #[error("ICMP message too short: expected at least {expected} bytes, got {actual}")]
     InvalidLength { expected: usize, actual: usize },

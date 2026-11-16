@@ -7,7 +7,7 @@ use thiserror::Error;
 
 /// Erreurs de decodage d'une trame GOOSE (IEC 61850-8-1 §8, EtherType
 /// `0x88B8`).
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq, Clone, Hash)]
 #[non_exhaustive]
 pub enum GooseParseError {
     #[error("GOOSE frame truncated: expected at least {expected} bytes, got {actual}")]

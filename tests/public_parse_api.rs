@@ -1,9 +1,12 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+use packet_parser::errors::internet::{InternetError, ipv4::Ipv4Error, ipv6::Ipv6Error};
+use packet_parser::errors::transport::{TransportError, tcp::TcpError, udp::UdpError};
 use packet_parser::parse::transport::protocols::TransportProtocol;
 use packet_parser::{
-    CorruptedLayerKind, LinkLayerError, LinkType, LinuxArphrdType, LinuxCookedPacketType,
-    NetworkProtocol, PacketFlow, ParseError, is_supported, parse,
+    CorruptedLayer, CorruptedLayerError, CorruptedLayerKind, LinkLayerError, LinkType,
+    LinuxArphrdType, LinuxCookedPacketType, NetworkProtocol, PacketFlow, ParseError, is_supported,
+    parse,
 };
 
 /// Packet #1 extracted from Sonar's `test_files/raw_ip.pcapng` fixture.
@@ -231,7 +234,7 @@ fn assert_raw_l3_corruption(
     assert!(flow.application.is_none());
     let corrupted = flow.corrupted.expect("recognized but corrupt IP header");
     assert_eq!(corrupted.layer, CorruptedLayerKind::Internet);
-    assert!(!corrupted.error.is_empty());
+    assert!(matches!(corrupted.error, CorruptedLayerError::Internet(_)));
 }
 
 fn assert_ethernet_apis_match(bytes: &[u8]) {
@@ -602,7 +605,7 @@ fn recognized_but_truncated_sll_network_payload_degrades_at_l3() {
                 .corrupted
                 .expect("recognized but corrupt network header");
             assert_eq!(corrupted.layer, CorruptedLayerKind::Internet);
-            assert!(!corrupted.error.is_empty());
+            assert!(matches!(corrupted.error, CorruptedLayerError::Internet(_)));
         }
     }
 }
@@ -818,7 +821,7 @@ fn recognized_but_truncated_sll2_network_payload_degrades_at_l3() {
                 .corrupted
                 .expect("recognized but corrupt network header");
             assert_eq!(corrupted.layer, CorruptedLayerKind::Internet);
-            assert!(!corrupted.error.is_empty());
+            assert!(matches!(corrupted.error, CorruptedLayerError::Internet(_)));
         }
     }
 }
@@ -1226,5 +1229,230 @@ fn linktype_ipv4_decodes_like_raw_ip() {
     assert_eq!(
         flow.application.expect("L7 detected").protocol.label(),
         "TLS"
+    );
+}
+
+/// Ethernet, an IPv4 header announcing `protocol`, then `l4`: the bytes IPv4
+/// hands to the transport layer.
+fn ethernet_ipv4_carrying(protocol: u8, l4: &[u8]) -> Vec<u8> {
+    let total_length = u16::try_from(20 + l4.len()).expect("fits an IPv4 datagram");
+    let mut frame = vec![
+        0, 1, 2, 3, 4, 5, // destination MAC
+        6, 7, 8, 9, 10, 11, // source MAC
+        0x08, 0x00, // IPv4
+        0x45, 0x00,
+    ];
+    frame.extend_from_slice(&total_length.to_be_bytes());
+    frame.extend_from_slice(&[0x12, 0x34, 0x40, 0x00, 64, protocol, 0, 0]);
+    frame.extend_from_slice(&[192, 0, 2, 1, 198, 51, 100, 2]);
+    frame.extend_from_slice(l4);
+    frame
+}
+
+/// A 20-byte TCP header, 40000 -> 40001, with the given data offset/reserved
+/// byte and flags byte.
+fn tcp_header(offset_and_reserved: u8, flags: u8) -> [u8; 20] {
+    [
+        0x9c,
+        0x40,
+        0x9c,
+        0x41,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        offset_and_reserved,
+        flags,
+        0xff,
+        0xff,
+        0,
+        0,
+        0,
+        0,
+    ]
+}
+
+/// How a caller sorts corruption reports since 13.0.0 (#275).
+#[derive(Debug, PartialEq, Eq)]
+enum Cause {
+    TruncatedHeader,
+    InvalidLength,
+    TcpAnomaly,
+    Other,
+}
+
+/// The sort itself: a `match` on the typed error. Nothing here reads the
+/// text of the error.
+fn cause(corrupted: &CorruptedLayer) -> Cause {
+    match &corrupted.error {
+        CorruptedLayerError::Internet(
+            InternetError::Ipv4Error(Ipv4Error::InvalidLength { .. })
+            | InternetError::Ipv6Error(Ipv6Error::InvalidLength { .. }),
+        )
+        | CorruptedLayerError::Transport(
+            TransportError::TcpError(TcpError::PacketTooShort)
+            | TransportError::UdpError(UdpError::PacketTooShort { .. }),
+        ) => Cause::TruncatedHeader,
+        CorruptedLayerError::Internet(InternetError::Ipv4Error(
+            Ipv4Error::InvalidTotalLength { .. },
+        ))
+        | CorruptedLayerError::Transport(TransportError::UdpError(UdpError::InvalidLength {
+            ..
+        })) => Cause::InvalidLength,
+        CorruptedLayerError::Transport(TransportError::TcpError(
+            TcpError::InvalidFlags { .. } | TcpError::ReservedBitsSet { .. },
+        )) => Cause::TcpAnomaly,
+        _ => Cause::Other,
+    }
+}
+
+#[test]
+fn a_caller_tells_corruption_causes_apart_with_a_match() {
+    let syn = tcp_header(0x50, 0x02);
+    let mut ipv4_shorter_than_its_header = ethernet_ipv4_carrying(6, &[]);
+    ipv4_shorter_than_its_header.truncate(14 + 10);
+    let mut ipv4_longer_than_the_frame = ethernet_ipv4_carrying(6, &syn);
+    ipv4_longer_than_the_frame[16] = 0x01; // Total Length 296 for a 40-byte packet
+    let mut ipv6_shorter_than_its_header = ethernet_ipv6_udp();
+    ipv6_shorter_than_its_header.truncate(14 + 10);
+
+    // (name, frame, cause, layer, is the transport layer kept, JSON text)
+    let cases = [
+        (
+            "IPv4 header cut short",
+            ipv4_shorter_than_its_header,
+            Cause::TruncatedHeader,
+            CorruptedLayerKind::Internet,
+            false,
+            "IPv4 error: Invalid IPv4 packet length: expected at least 20 bytes, got 10 bytes",
+        ),
+        (
+            "IPv6 header cut short",
+            ipv6_shorter_than_its_header,
+            Cause::TruncatedHeader,
+            CorruptedLayerKind::Internet,
+            false,
+            "IPv6 error: Invalid IPv6 packet length: expected at least 40 bytes, got 10 bytes",
+        ),
+        (
+            "TCP header cut short",
+            ethernet_ipv4_carrying(6, &syn[..8]),
+            Cause::TruncatedHeader,
+            CorruptedLayerKind::Transport,
+            false,
+            "TCP error: Packet too short to be a valid TCP header",
+        ),
+        (
+            "UDP header cut short",
+            ethernet_ipv4_carrying(17, &[0x04, 0xd2, 0x00, 0x35]),
+            Cause::TruncatedHeader,
+            CorruptedLayerKind::Transport,
+            false,
+            "UDP error: UDP packet too short: expected at least 8 bytes, got 4 bytes",
+        ),
+        (
+            "IPv4 Total Length beyond the frame",
+            ipv4_longer_than_the_frame,
+            Cause::InvalidLength,
+            CorruptedLayerKind::Internet,
+            false,
+            "IPv4 error: Invalid total length: expected 296 bytes (header: 20 + data: 276), \
+             but got 40 bytes",
+        ),
+        (
+            "UDP Length below its own header",
+            ethernet_ipv4_carrying(17, &[0x04, 0xd2, 0x00, 0x35, 0x00, 0x04, 0x00, 0x00]),
+            Cause::InvalidLength,
+            CorruptedLayerKind::Transport,
+            false,
+            "UDP error: UDP length field (4) doesn't match actual packet length (8)",
+        ),
+        (
+            "TCP SYN+FIN",
+            ethernet_ipv4_carrying(6, &tcp_header(0x50, 0x03)),
+            Cause::TcpAnomaly,
+            CorruptedLayerKind::Transport,
+            true,
+            "TCP error: Invalid TCP flags 0x03: SYN and FIN are both set",
+        ),
+        (
+            "TCP reserved bits",
+            ethernet_ipv4_carrying(6, &tcp_header(0x54, 0x02)),
+            Cause::TcpAnomaly,
+            CorruptedLayerKind::Transport,
+            true,
+            "TCP error: TCP reserved bits are set: 0b010",
+        ),
+        (
+            "TCP data offset below five words",
+            ethernet_ipv4_carrying(6, &tcp_header(0x30, 0x02)),
+            Cause::Other,
+            CorruptedLayerKind::Transport,
+            false,
+            "TCP error: Invalid data offset: 3",
+        ),
+    ];
+
+    for (name, frame, expected_cause, layer, transport_kept, text) in cases {
+        let flow = parse(LinkType::ETHERNET, &frame).expect("the link layer decodes");
+        let corrupted = flow
+            .corrupted
+            .as_ref()
+            .unwrap_or_else(|| panic!("{name}: a corruption report"));
+
+        assert_eq!(cause(corrupted), expected_cause, "{name}");
+        // `layer` and the variant of `error` say the same thing.
+        assert_eq!(corrupted.layer, layer, "{name}");
+        assert_eq!(
+            matches!(corrupted.error, CorruptedLayerError::Internet(_)),
+            layer == CorruptedLayerKind::Internet,
+            "{name}"
+        );
+        assert_eq!(flow.transport.is_some(), transport_kept, "{name}");
+
+        // The JSON did not move: `error` is still the text, under the same key.
+        assert_eq!(corrupted.error.to_string(), text, "{name}");
+        assert_eq!(
+            serde_json::to_value(corrupted).expect("serializable"),
+            serde_json::json!({ "layer": format!("{layer:?}"), "error": text }),
+            "{name}"
+        );
+        // The owned flow carries the same report, typed as well.
+        assert_eq!(
+            flow.to_owned_flow().corrupted.as_ref(),
+            Some(corrupted),
+            "{name}"
+        );
+    }
+}
+
+/// A caller builds a report from an error, in a fixture for instance: the
+/// struct is `#[non_exhaustive]` and takes no literal.
+#[test]
+fn a_corruption_report_is_built_from_its_error() {
+    let internet = CorruptedLayer::from(InternetError::EmptyPacket);
+    assert_eq!(internet.layer, CorruptedLayerKind::Internet);
+    assert_eq!(
+        internet.error,
+        CorruptedLayerError::from(InternetError::EmptyPacket)
+    );
+
+    let transport =
+        CorruptedLayer::from(TransportError::from(TcpError::InvalidFlags { flags: 0x03 }));
+    assert_eq!(transport.layer, CorruptedLayerKind::Transport);
+    assert_eq!(
+        serde_json::to_string(&transport).expect("serializable"),
+        r#"{"layer":"Transport","error":"TCP error: Invalid TCP flags 0x03: SYN and FIN are both set"}"#
+    );
+
+    // The typed error is a `std::error::Error` whose text is the inner one's.
+    let error: &dyn std::error::Error = &transport.error;
+    assert_eq!(
+        error.to_string(),
+        "TCP error: Invalid TCP flags 0x03: SYN and FIN are both set"
     );
 }

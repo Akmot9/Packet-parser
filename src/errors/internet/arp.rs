@@ -6,7 +6,7 @@
 use thiserror::Error;
 
 /// Errors that can occur when parsing or processing ARP packets
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone, Eq, Hash)]
 #[non_exhaustive]
 pub enum ArpError {
     /// The packet is too short to be a valid ARP packet

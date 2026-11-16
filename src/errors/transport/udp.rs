@@ -6,7 +6,7 @@
 use thiserror::Error;
 
 /// Errors specific to UDP packet parsing
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Clone, Eq, Hash)]
 #[non_exhaustive]
 pub enum UdpError {
     /// The packet is too short to be a valid UDP packet

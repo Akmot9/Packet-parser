@@ -6,7 +6,7 @@
 use thiserror::Error;
 
 /// Errors that can occur when parsing or processing IPv4 packets
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone, Eq, Hash)]
 #[non_exhaustive]
 pub enum Ipv4Error {
     /// The packet is too short to be a valid IPv4 packet

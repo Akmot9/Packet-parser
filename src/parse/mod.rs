@@ -32,10 +32,11 @@
 
 use application::Application;
 use internet::Internet;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use transport::Transport;
 use transport::protocols::TransportProtocol;
 
+use crate::errors::{internet::InternetError, transport::TransportError};
 use crate::{LinkLayer, LinkType, ParseError, owned::PacketFlowOwned};
 
 pub mod application;
@@ -293,12 +294,90 @@ pub enum CorruptedLayerKind {
 ///   correlation, and only the layers above it are `None`.
 ///
 /// To tell them apart, check whether the layer named by `layer` is `Some`.
+///
+/// The parser builds this value. To build one yourself, in a test fixture
+/// for instance, convert the error: `layer` follows from its kind.
+///
+/// ```
+/// use packet_parser::errors::internet::InternetError;
+/// use packet_parser::{CorruptedLayer, CorruptedLayerKind};
+///
+/// let corrupted = CorruptedLayer::from(InternetError::EmptyPacket);
+/// assert_eq!(corrupted.layer, CorruptedLayerKind::Internet);
+/// assert_eq!(corrupted.error.to_string(), "Empty packet");
+/// ```
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct CorruptedLayer {
     /// Which layer had invalid bytes.
     pub layer: CorruptedLayerKind,
-    /// Human-readable description of the parse error.
-    pub error: String,
+    /// Why: the error of the decoder that refused the bytes. Match on it to
+    /// tell a truncated header from an impossible length or a TCP anomaly.
+    /// Its `Display` is the human-readable description, and the text of the
+    /// JSON key `error`.
+    pub error: CorruptedLayerError,
+}
+
+impl From<InternetError> for CorruptedLayer {
+    fn from(error: InternetError) -> Self {
+        Self {
+            layer: CorruptedLayerKind::Internet,
+            error: CorruptedLayerError::Internet(error),
+        }
+    }
+}
+
+impl From<TransportError> for CorruptedLayer {
+    fn from(error: TransportError) -> Self {
+        Self {
+            layer: CorruptedLayerKind::Transport,
+            error: CorruptedLayerError::Transport(error),
+        }
+    }
+}
+
+/// The typed cause of a [`CorruptedLayer`]: the error of the layer whose
+/// bytes are invalid.
+///
+/// ```
+/// use packet_parser::errors::transport::{TransportError, tcp::TcpError};
+/// use packet_parser::{CorruptedLayerError, LinkType, parse};
+///
+/// // Ethernet, IPv4, and a TCP header with both SYN and FIN set.
+/// let frame = hex::decode(concat!(
+///     "020000000001020000000002", "0800",
+///     "450000280001400040060000c0000201c0000202",
+///     "9c409c410000000100000000500300000000ffff",
+/// ))
+/// .unwrap();
+/// let flow = parse(LinkType::ETHERNET, &frame).unwrap();
+///
+/// let corrupted = flow.corrupted.expect("the anomaly is reported");
+/// assert!(matches!(
+///     corrupted.error,
+///     CorruptedLayerError::Transport(TransportError::TcpError(TcpError::InvalidFlags {
+///         flags: 0x03
+///     }))
+/// ));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash, thiserror::Error)]
+#[non_exhaustive]
+pub enum CorruptedLayerError {
+    /// The internet layer was recognized by its EtherType, but its bytes are
+    /// invalid.
+    #[error(transparent)]
+    Internet(#[from] InternetError),
+    /// The transport layer was recognized by the IP protocol field, but its
+    /// bytes are invalid, or its header carries a semantic anomaly.
+    #[error(transparent)]
+    Transport(#[from] TransportError),
+}
+
+/// Serialized as its text, the same string the `error` key always carried.
+impl Serialize for CorruptedLayerError {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
 }
 
 /// A fully or partially parsed network packet flow.

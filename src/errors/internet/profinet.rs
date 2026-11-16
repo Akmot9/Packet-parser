@@ -8,7 +8,7 @@ use thiserror::Error;
 /// Erreurs du decodeur PROFINET : la validation du Frame ID de toute trame
 /// RT (`validate_frame`), puis le decodage DCP des seuls Frame ID DCP
 /// (`ProfinetPacket::try_from`).
-#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[derive(Error, Debug, Clone, Eq, PartialEq, Hash)]
 #[non_exhaustive]
 pub enum ProfinetPacketError {
     /// Le message DCP n'a pas son en-tete fixe de 12 octets.

@@ -11,9 +11,7 @@ use super::application::Application;
 use super::data_link::stp::BpduPacket;
 use super::internet::Internet;
 use super::transport::Transport;
-use super::{
-    CorruptedLayer, CorruptedLayerKind, DecodeAsProtocol, PacketFlow, dispatch, link, tunnel,
-};
+use super::{CorruptedLayer, DecodeAsProtocol, PacketFlow, dispatch, link, tunnel};
 use crate::parse::application::protocol::ApplicationProtocol;
 use crate::{
     LinkLayer, NetworkProtocol, ParseError,
@@ -44,13 +42,7 @@ impl<'a> PacketFlow<'a> {
         match Internet::try_from_network_parts(network_protocol, network_payload) {
             Ok(internet) => (Some(internet), None),
             Err(InternetError::UnsupportedProtocol) => (None, None),
-            Err(e) => (
-                None,
-                Some(CorruptedLayer {
-                    layer: CorruptedLayerKind::Internet,
-                    error: e.to_string(),
-                }),
-            ),
+            Err(e) => (None, Some(CorruptedLayer::from(e))),
         }
     }
 
@@ -63,13 +55,7 @@ impl<'a> PacketFlow<'a> {
                 match Transport::try_from_parts(internet.payload_protocol, internet.payload) {
                     Ok(transport) => (Some(transport), None),
                     Err(TransportError::UnsupportedProtocol) => (None, None),
-                    Err(e) => (
-                        None,
-                        Some(CorruptedLayer {
-                            layer: CorruptedLayerKind::Transport,
-                            error: e.to_string(),
-                        }),
-                    ),
+                    Err(e) => (None, Some(CorruptedLayer::from(e))),
                 }
             }
             None => (None, None),
@@ -98,10 +84,8 @@ impl<'a> PacketFlow<'a> {
             Some(crate::TransportDetails::Tcp(tcp)) => tcp.anomaly(),
             _ => None,
         };
-        let l4_corruption = anomaly.map(|anomaly| CorruptedLayer {
-            layer: CorruptedLayerKind::Transport,
-            error: TransportError::from(anomaly).to_string(),
-        });
+        let l4_corruption =
+            anomaly.map(|anomaly| CorruptedLayer::from(TransportError::from(anomaly)));
         PacketFlow {
             data_link,
             internet,

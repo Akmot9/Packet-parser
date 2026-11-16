@@ -19,10 +19,11 @@
 
 use std::path::Path;
 
+use packet_parser::errors::internet::{InternetError, ipv4::Ipv4Error};
+use packet_parser::parse::CorruptedLayer;
 use packet_parser::parse::data_link::DataLink;
 use packet_parser::parse::data_link::vlan_tag::{TPID_8021Q, VlanTag};
 use packet_parser::parse::transport::protocols::TransportProtocol;
-use packet_parser::parse::{CorruptedLayer, CorruptedLayerKind};
 use packet_parser::{LinkType, parse};
 
 mod common;
@@ -162,12 +163,13 @@ fn every_frame_of_the_capture_reports_the_inner_vlan_and_the_pppoe_session() {
             assert_eq!((data.len(), session.length), (76, 42), "trame {number}");
             assert_eq!(
                 flow.corrupted,
-                Some(CorruptedLayer {
-                    layer: CorruptedLayerKind::Internet,
-                    error: "IPv4 error: Invalid total length: expected 46 bytes \
-                            (header: 20 + data: 26), but got 40 bytes"
-                        .to_string(),
-                }),
+                Some(CorruptedLayer::from(InternetError::Ipv4Error(
+                    Ipv4Error::InvalidTotalLength {
+                        expected: 46,
+                        actual: 40,
+                        min_header_len: 20,
+                    }
+                ))),
                 "trame {number}"
             );
             assert!(flow.internet.is_none(), "trame {number}");
