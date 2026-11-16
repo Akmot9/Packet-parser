@@ -6,7 +6,7 @@
 use crate::{
     checks::application::quic::{
         QUIC_RETRY_INTEGRITY_TAG_LEN, QuicCursor, extract_first_byte, extract_version, read_cid,
-        read_pn_and_payload, split_retry_token_and_tag,
+        read_pn_and_payload, split_retry_token_and_tag, varint_to_len,
     },
     errors::application::quic::QuicError,
 };
@@ -252,7 +252,7 @@ impl<'a> TryFrom<&'a [u8]> for QuicPacket<'a> {
         match packet_type {
             QuicPacketType::Initial => {
                 // Token Length (varint) + Token
-                let token_len = cur.read_varint()? as usize;
+                let token_len = varint_to_len(cur.read_varint()?);
                 let token = cur.take(token_len)?;
 
                 let payload = read_pn_and_payload(&mut cur, &mut header)?;
@@ -401,6 +401,49 @@ mod tests {
                 expected: 4,
                 available: 2
             })
+        ));
+    }
+
+    /// Un Initial v1 sans identifiants de connexion, jusqu'au champ Token
+    /// Length exclu.
+    fn initial_prefix() -> Vec<u8> {
+        let mut buf = vec![0xC0]; // Long=1, Fixed=1, Initial, PN len=1
+        buf.extend_from_slice(&1u32.to_be_bytes());
+        buf.extend_from_slice(&[0, 0]); // dcid len, scid len
+        buf
+    }
+
+    /// Varint de huit octets (RFC 9000 §16) valant 2^32 + 2.
+    const WIDE_VARINT: [u8; 8] = [0xC0, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02];
+
+    /// #273 : un Token Length de 2^32 + 2 suivi de deux octets de token.
+    /// Tronquee a 32 bits, la longueur vaudrait 2 et le paquet passerait.
+    #[test]
+    fn test_wide_token_length_is_not_truncated() {
+        let mut buf = initial_prefix();
+        buf.extend_from_slice(&WIDE_VARINT); // token len
+        buf.extend_from_slice(&[0xAA, 0xBB]); // les deux octets qu'une troncature lirait
+        buf.extend_from_slice(&[0x01, 0x00]); // length = 1, PN
+
+        assert!(matches!(
+            QuicPacket::try_from(buf.as_slice()),
+            Err(QuicError::Truncated { .. })
+        ));
+    }
+
+    /// #273 : un champ Length de 2^32 + 2 suivi d'un PN et d'un octet de
+    /// payload. Tronquee a 32 bits, la longueur vaudrait 2 et le paquet
+    /// passerait.
+    #[test]
+    fn test_wide_length_field_is_not_truncated() {
+        let mut buf = initial_prefix();
+        buf.push(0x00); // token len = 0
+        buf.extend_from_slice(&WIDE_VARINT); // length
+        buf.extend_from_slice(&[0x00, 0xAA]); // PN, puis un octet de payload
+
+        assert!(matches!(
+            QuicPacket::try_from(buf.as_slice()),
+            Err(QuicError::PayloadTooShort { available: 1, .. })
         ));
     }
 
