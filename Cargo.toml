@@ -47,7 +47,6 @@ rustdoc-args = ["--html-in-header", "docs/rustdoc/mermaid.html"]
 
 [dependencies]
 thiserror = "2.0.18"
-pcap-file = "2.0.0"
 serde = { version = "1.0.228", features = ["derive"] }
 # Pour les horodatages NTP. Sans les features par defaut : `clock` tirait
 # iana-time-zone pour un `Utc::now()` que la crate n'appelle pas ; seuls
@@ -57,8 +56,11 @@ chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 # Volontairement sans `pcap` ni `pnet` : leurs bindings natifs (libpcap,
 # Npcap sur Windows) empechaient tests et exemples de compiler hors Linux.
 # `pcap-file` (Rust pur) lit les captures partout, voir examples/scan_pcaps.rs.
+# Dependance de developpement seulement : la bibliotheque ne s'en sert plus,
+# `Packet::packet_to_pcap` ecrit le format lui-meme (#271).
 [dev-dependencies]
 hex = "0.4.3"
+pcap-file = "2.0.0"
 serde_json = "1.0.150"
 
 [workspace]

@@ -3,11 +3,12 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-use pcap_file::pcap::{PcapPacket, PcapWriter};
 use std::{
     fmt::{self, Write},
     fs::File,
+    io,
     path::Path,
+    time::{Duration, SystemTime},
 };
 
 /// # PacketConverter
@@ -26,22 +27,67 @@ pub struct Packet {
 impl Packet {
     /// Ecrit ce paquet dans un fichier PCAP a `path` (cree ou ecrase),
     /// horodate a l'instant de l'appel.
+    ///
+    /// Le fichier est un pcap classique (pas un pcapng) : version 2.4,
+    /// `LINKTYPE_ETHERNET`, horodatage a la microseconde, `snaplen` de 65 535,
+    /// dans le boutisme de la machine.
+    ///
+    /// # Errors
+    ///
+    /// Un paquet de plus de 65 535 octets est refuse avant toute ecriture : un
+    /// fichier deja present a `path` reste alors intact. Les autres erreurs
+    /// sont celles de la creation et de l'ecriture du fichier, et celle d'une
+    /// horloge reglee avant 1970 ou apres 2106.
     pub fn packet_to_pcap(&self, path: impl AsRef<Path>) -> Result<(), Box<dyn std::error::Error>> {
-        let file = File::create(path)?;
-
-        // Configurer le PacketWriter avec les paramètres par défaut
-        let writer = PcapWriter::new(file);
-
-        let orig_len = u32::try_from(self.data.len())?;
-        let timestamp: std::time::Duration =
-            std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH)?;
-        let packet = PcapPacket::new(timestamp, orig_len, &self.data);
-
-        // Ajouter les données du paquet
-        writer?.write_packet(&packet)?;
-
+        let timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+        let image = pcap_image(timestamp, &self.data)?;
+        io::Write::write_all(&mut File::create(path)?, &image)?;
         Ok(())
     }
+}
+
+/// Image d'un fichier pcap classique qui porte un seul paquet : l'en-tete
+/// global de 24 octets, puis un enregistrement de 16 octets et les donnees.
+///
+/// Ecrite a la main : `pcap-file` ne servait qu'ici, et imposait a tout
+/// appelant de `parse` ses propres dependances (#271). Elle reste l'oracle
+/// des tests, qui comparent les deux sorties octet pour octet.
+fn pcap_image(timestamp: Duration, data: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    const MAGIC_MICROSECONDS: u32 = 0xA1B2_C3D4;
+    const VERSION: (u16, u16) = (2, 4);
+    // Plus grande taille de paquet que le fichier annonce pouvoir porter.
+    const SNAPLEN: u32 = 65_535;
+    const LINKTYPE_ETHERNET: u32 = 1;
+    const HEADERS_LEN: usize = 24 + 16;
+
+    let len = match u32::try_from(data.len()) {
+        Ok(len) if len <= SNAPLEN => len,
+        _ => {
+            let refusal = format!(
+                "paquet de {} octets : un fichier pcap de snaplen {SNAPLEN} n'en porte pas autant",
+                data.len()
+            );
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, refusal).into());
+        }
+    };
+    // Le format compte les secondes sur 32 bits non signes.
+    let seconds = u32::try_from(timestamp.as_secs())?;
+
+    let mut image = Vec::with_capacity(HEADERS_LEN + data.len());
+    image.extend_from_slice(&MAGIC_MICROSECONDS.to_ne_bytes());
+    image.extend_from_slice(&VERSION.0.to_ne_bytes());
+    image.extend_from_slice(&VERSION.1.to_ne_bytes());
+    image.extend_from_slice(&0_i32.to_ne_bytes()); // thiszone : UTC
+    image.extend_from_slice(&0_u32.to_ne_bytes()); // sigfigs
+    image.extend_from_slice(&SNAPLEN.to_ne_bytes());
+    image.extend_from_slice(&LINKTYPE_ETHERNET.to_ne_bytes());
+
+    image.extend_from_slice(&seconds.to_ne_bytes());
+    image.extend_from_slice(&timestamp.subsec_micros().to_ne_bytes());
+    image.extend_from_slice(&len.to_ne_bytes()); // incl_len : rien n'est tronque
+    image.extend_from_slice(&len.to_ne_bytes()); // orig_len
+    image.extend_from_slice(data);
+    Ok(image)
 }
 
 /// Implémentation du trait `From<&str>` pour convertir une chaîne hexadécimale en `Packet`.
@@ -290,21 +336,110 @@ mod tests {
         assert_eq!(packet1, packet2);
     }
 
+    /// Chemin de sortie propre a un test, dans le repertoire temporaire : le
+    /// chemin est celui que l'appelant donne, pas le repertoire courant.
+    fn temp_pcap(test: &str) -> std::path::PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("packet_parser_{test}_{}.pcap", std::process::id()));
+        let _ = fs::remove_file(&path);
+        path
+    }
+
+    /// Ce que `pcap-file` ecrit pour le meme paquet et le meme horodatage.
+    fn pcap_file_image(timestamp: Duration, data: &[u8]) -> Vec<u8> {
+        use pcap_file::pcap::{PcapPacket, PcapWriter};
+
+        let mut writer = PcapWriter::new(Vec::new()).unwrap();
+        let orig_len = u32::try_from(data.len()).unwrap();
+        writer
+            .write_packet(&PcapPacket::new(timestamp, orig_len, data))
+            .unwrap();
+        writer.into_writer()
+    }
+
     #[test]
-    fn test_packet_to_pcap_creates_file_and_is_non_empty() {
-        // Dans le repertoire temporaire, pas dans le repertoire courant : le
-        // chemin est celui que l'appelant donne.
-        let pcap_path =
-            std::env::temp_dir().join(format!("packet_parser_test_{}.pcap", std::process::id()));
-        let _ = fs::remove_file(&pcap_path);
+    fn test_pcap_image_matches_pcap_file_byte_for_byte() {
+        let frame = hex_stream_or_panic(
+            "feaa81e86d1efeaa818ec864080045500034000000003d06206b36e6700dac140a02",
+        );
+        let largest = vec![0xA5; 65_535];
+        let cases: [(Duration, &[u8]); 5] = [
+            (Duration::new(1_763_251_200, 123_456_789), &frame),
+            (Duration::new(0, 0), &[]),
+            (Duration::new(1, 999_999_999), &[0x00]),
+            (Duration::new(u64::from(u32::MAX), 999_000), &frame),
+            (Duration::new(1_763_251_200, 0), &largest),
+        ];
 
+        for (timestamp, data) in cases {
+            assert_eq!(
+                pcap_image(timestamp, data).unwrap(),
+                pcap_file_image(timestamp, data),
+                "paquet de {} octets a {timestamp:?}",
+                data.len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_pcap_image_rejects_a_packet_over_the_snaplen() {
+        let too_long = vec![0; 65_536];
+
+        let error = pcap_image(Duration::new(1, 0), &too_long).unwrap_err();
+
+        let error = error.downcast_ref::<io::Error>().unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert!(error.to_string().contains("65536"), "{error}");
+    }
+
+    #[test]
+    fn test_pcap_image_rejects_a_timestamp_past_32_bits() {
+        let past_2106 = Duration::new(u64::from(u32::MAX) + 1, 0);
+
+        assert!(pcap_image(past_2106, &[0x00]).is_err());
+    }
+
+    #[test]
+    fn test_packet_to_pcap_is_read_back_by_pcap_file() {
+        use pcap_file::{DataLink, TsResolution, pcap::PcapReader};
+
+        let pcap_path = temp_pcap("read_back");
         let packet = Packet::from("48656C6C6F");
-        let result = packet.packet_to_pcap(&pcap_path);
+        let before = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap();
 
-        assert!(result.is_ok());
-        let metadata = fs::metadata(&pcap_path).unwrap();
-        assert!(metadata.len() > 0);
+        packet.packet_to_pcap(&pcap_path).unwrap();
 
+        let mut reader = PcapReader::new(fs::File::open(&pcap_path).unwrap()).unwrap();
+        let header = reader.header();
+        assert_eq!((header.version_major, header.version_minor), (2, 4));
+        assert_eq!(header.datalink, DataLink::ETHERNET);
+        assert_eq!(header.snaplen, 65_535);
+        assert_eq!(header.ts_resolution, TsResolution::MicroSecond);
+
+        let read = reader.next_packet().unwrap().unwrap();
+        assert_eq!(&*read.data, packet.data.as_slice());
+        assert_eq!(read.orig_len, 5);
+        // A la microseconde pres : le fichier ne garde pas les nanosecondes.
+        assert!(read.timestamp + Duration::from_micros(1) > before);
+        assert!(read.timestamp < before + Duration::from_secs(60));
+        assert!(reader.next_packet().is_none());
+
+        fs::remove_file(&pcap_path).unwrap();
+    }
+
+    #[test]
+    fn test_packet_to_pcap_leaves_an_existing_file_alone_when_it_refuses() {
+        let pcap_path = temp_pcap("refused");
+        fs::write(&pcap_path, b"deja la").unwrap();
+        let packet = Packet {
+            data: vec![0; 65_536],
+        };
+
+        assert!(packet.packet_to_pcap(&pcap_path).is_err());
+
+        assert_eq!(fs::read(&pcap_path).unwrap(), b"deja la");
         fs::remove_file(&pcap_path).unwrap();
     }
 }
