@@ -87,6 +87,12 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 - **errors et parse** (#277) : `SnmpError` et `MqttError` importent un type
   de leur decodeur (`SnmpVersion`, `MqttPacketType`). C'est voulu, et la doc
   du module `errors` le dit.
+- **Contrat de stabilite** (#276) : toute la surface publique est sous
+  semver, decodeurs compris. Retoucher un champ ou une variante d'un decodeur
+  vaut une majeure ; un decodeur evolue par ajout. C'etait deja ce que
+  `cargo semver-checks` imposait sur chaque PR : la decision est maintenant
+  ecrite, dans le ROADMAP (§4), `CONTRIBUTING.md` et le README. Deux niveaux
+  de stabilite et deux crates ont ete ecartes.
 - **Detection COTP** (#277) : `cotp_from_tpkt` et ses trois fonctions de
   rigueur quittent `parse/mod.rs` pour le module `cotp`, par deplacement
   seul. Elles n'avaient qu'un appelant hors tests, la sonde
