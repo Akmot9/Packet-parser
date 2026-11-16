@@ -189,3 +189,101 @@ path = "fuzz_targets/policy_dispatch.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_dhcpv6"
+path = "fuzz_targets/parse_dhcpv6.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_ethernet_ip"
+path = "fuzz_targets/parse_ethernet_ip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_http"
+path = "fuzz_targets/parse_http.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_mqtt"
+path = "fuzz_targets/parse_mqtt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_netbios"
+path = "fuzz_targets/parse_netbios.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_ntp"
+path = "fuzz_targets/parse_ntp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_opcua"
+path = "fuzz_targets/parse_opcua.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_openvpn"
+path = "fuzz_targets/parse_openvpn.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_postgresql"
+path = "fuzz_targets/parse_postgresql.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_snmp"
+path = "fuzz_targets/parse_snmp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_srvloc"
+path = "fuzz_targets/parse_srvloc.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_ssdp"
+path = "fuzz_targets/parse_ssdp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_tls"
+path = "fuzz_targets/parse_tls.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_umas"
+path = "fuzz_targets/parse_umas.rs"
+test = false
+doc = false
+bench = false
