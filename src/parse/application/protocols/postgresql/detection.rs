@@ -75,7 +75,8 @@ pub(super) fn message_has_strong_detection_evidence(message: &PostgreSqlMessage<
             message.payload.last() == Some(&0) && startup_has_known_parameter(startup)
         }
         (PostgreSqlMessageType::SslRequest | PostgreSqlMessageType::GssEncRequest, _) => {
-            message.length == POSTGRESQL_UNTYPED_HEADER_LEN as u32 && message.payload.is_empty()
+            u64::from(message.length) == POSTGRESQL_UNTYPED_HEADER_LEN as u64
+                && message.payload.is_empty()
         }
         (
             PostgreSqlMessageType::CancelRequest,

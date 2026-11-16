@@ -57,6 +57,10 @@ impl UtcTime {
     }
 
     /// Nanosecondes de la fraction, arrondies vers le bas.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "une fraction de 24 bits donne moins de 10^9 nanosecondes"
+    )]
     pub fn nanoseconds(&self) -> u32 {
         ((u64::from(self.fraction) * 1_000_000_000) >> 24) as u32
     }

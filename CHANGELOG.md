@@ -17,8 +17,25 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   `policy_dispatch`, lisent `ALL` ; en 11.8.0, `ValmetDna` manquait a celle
   du fuzz (#235).
 
+### Corrige
+
+- **QUIC sur une cible 32 bits** (#273) : deux longueurs lues dans un varint,
+  Token Length et Length, etaient reduites de `u64` a `usize` par un cast
+  `as`. Sur une cible 32 bits, une valeur de 2^32 ou plus perdait ses bits
+  hauts : le decodeur lisait moins d'octets que la longueur annoncee au lieu
+  de refuser le paquet. Elles saturent desormais et le controle de bornes
+  les refuse (`Truncated`, `PayloadTooShort`). Rien ne change sur 64 bits.
+
 ### Interne
 
+- **Casts tronquants** (#273) : `clippy::cast_possible_truncation` rejoint
+  les lints bloquants de la bibliotheque. Les 32 autres casts releves sont
+  remplaces par `try_from` ou `From`, ou portent un `#[expect]` motive (cinq :
+  pseudo-en-tete IPv4, deux FRN ASTERIX, table CRC DNP3, nanosecondes GOOSE).
+  Trois effets, hors d'atteinte d'un paquet : au-dela de 4 Gio, une longueur
+  de champ d'erreur MQTT ou PostgreSQL sature au lieu de repartir de zero,
+  `verify_tcp_checksum` et `verify_udp_checksum` rendent `None`, et
+  `Packet::packet_to_pcap` rend une erreur.
 - **Dependances** (#270) : `uuid` est retiree, la crate ne l'appelait nulle
   part. `hex` quitte `[dependencies]` : seuls les tests et les doctests s'en
   servent, et elle reste en dependance de developpement. `chrono` est prise

@@ -179,6 +179,12 @@ fn validate_connack_code(code: u8) -> Result<(), MqttError> {
 /// varint de longueur + contenu, sans reste. `remaining_length` est la
 /// longueur du corps complet, reprise telle quelle dans l'erreur
 /// `InvalidRemainingLength` (même mapping que l'inline d'origine).
+/// Longueur d'un corps au type `u32` des champs d'erreur : au-dela d'un
+/// `u32`, la valeur sature au lieu d'etre tronquee.
+fn body_len_u32(body: &[u8]) -> u32 {
+    u32::try_from(body.len()).unwrap_or(u32::MAX)
+}
+
 fn validate_properties_fill_exactly(
     packet_type: MqttPacketType,
     remaining_length: u32,
@@ -338,7 +344,7 @@ fn validate_connack_vh(first_byte: u8, body: &[u8]) -> Result<usize, MqttError> 
     if body.len() < 2 {
         return Err(MqttError::InvalidRemainingLength {
             packet_type: MqttPacketType::Connack,
-            remaining_length: body.len() as u32,
+            remaining_length: body_len_u32(body),
         });
     }
     if body[0] > 1 {
@@ -351,7 +357,7 @@ fn validate_connack_vh(first_byte: u8, body: &[u8]) -> Result<usize, MqttError> 
     validate_connack_code(body[1])?;
     // v3 : exactement 2 octets ; v5 : + bloc de propriétés exact.
     if body.len() > 2 {
-        validate_properties_fill_exactly(MqttPacketType::Connack, body.len() as u32, &body[2..])?;
+        validate_properties_fill_exactly(MqttPacketType::Connack, body_len_u32(body), &body[2..])?;
     }
     Ok(body.len())
 }
@@ -388,7 +394,7 @@ fn validate_publish_vh(first_byte: u8, body: &[u8]) -> Result<usize, MqttError> 
 fn validate_ack_vh(packet_type: MqttPacketType, body: &[u8]) -> Result<usize, MqttError> {
     let invalid_len = || MqttError::InvalidRemainingLength {
         packet_type,
-        remaining_length: body.len() as u32,
+        remaining_length: body_len_u32(body),
     };
     read_packet_id(packet_type, body)?;
     match body.len() {
@@ -403,7 +409,7 @@ fn validate_ack_vh(packet_type: MqttPacketType, body: &[u8]) -> Result<usize, Mq
                 });
             }
             if body.len() > 3 {
-                validate_properties_fill_exactly(packet_type, body.len() as u32, &body[3..])?;
+                validate_properties_fill_exactly(packet_type, body_len_u32(body), &body[3..])?;
             }
         }
         _ => return Err(invalid_len()),
@@ -437,7 +443,7 @@ fn validate_suback_vh(body: &[u8]) -> Result<usize, MqttError> {
     if body.len() < 3 {
         return Err(MqttError::InvalidRemainingLength {
             packet_type: MqttPacketType::Suback,
-            remaining_length: body.len() as u32,
+            remaining_length: body_len_u32(body),
         });
     }
     // v3 : chaque octet après le packet id est un code de retour.
@@ -460,7 +466,7 @@ fn validate_suback_vh(body: &[u8]) -> Result<usize, MqttError> {
 fn validate_unsuback_vh(body: &[u8]) -> Result<usize, MqttError> {
     let invalid_len = || MqttError::InvalidRemainingLength {
         packet_type: MqttPacketType::Unsuback,
-        remaining_length: body.len() as u32,
+        remaining_length: body_len_u32(body),
     };
     read_packet_id(MqttPacketType::Unsuback, body)?;
     match body.len() {
@@ -495,7 +501,7 @@ fn validate_ping_vh(packet_type: MqttPacketType, body: &[u8]) -> Result<usize, M
     if !body.is_empty() {
         return Err(MqttError::InvalidRemainingLength {
             packet_type,
-            remaining_length: body.len() as u32,
+            remaining_length: body_len_u32(body),
         });
     }
     Ok(0)
@@ -512,7 +518,7 @@ fn validate_disconnect_vh(body: &[u8]) -> Result<usize, MqttError> {
             if body.len() > 1 {
                 validate_properties_fill_exactly(
                     MqttPacketType::Disconnect,
-                    body.len() as u32,
+                    body_len_u32(body),
                     &body[1..],
                 )?;
             }

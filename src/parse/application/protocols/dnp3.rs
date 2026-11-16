@@ -620,7 +620,7 @@ fn parse_object_header(
             }
         }
         11 => RangeSpecifier::VariableCount {
-            count: read(1)? as u8,
+            count: u8::try_from(read(1)?).unwrap_or(u8::MAX),
         },
         other => RangeSpecifier::Reserved(other),
     };

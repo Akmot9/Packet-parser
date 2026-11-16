@@ -40,6 +40,10 @@ const fn crc_table() -> [u16; 256] {
     let mut table = [0u16; 256];
     let mut index = 0;
     while index < 256 {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "index < 256, et `try_from` n'est pas const"
+        )]
         let mut crc = index as u16;
         let mut bit = 0;
         while bit < 8 {

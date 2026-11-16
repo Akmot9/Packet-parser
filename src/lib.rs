@@ -11,9 +11,17 @@
 // 1000 acces idiomatiques (index apres controle de longueur explicite), dont
 // l'absence de panic est verifiee par les cibles de fuzz de `fuzz/` (le
 // nombre n'est plus ecrit ici : il a deja derive une fois).
+// Un cast `as` qui peut tronquer est refuse de meme (#273) : une longueur
+// lue sur le fil se convertit par `try_from`, et un cast voulu porte son
+// #[expect].
 #![cfg_attr(
     not(test),
-    warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+    warn(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::cast_possible_truncation
+    )
 )]
 
 //! # Packet Parser
