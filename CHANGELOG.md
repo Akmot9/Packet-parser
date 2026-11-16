@@ -6,6 +6,17 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **DecodeAsProtocol::ALL** (#274) : toutes les variantes de
+  `DecodeAsProtocol`, dans l'ordre de leur declaration, pour l'appelant qui
+  propose la liste des protocoles declarables sur un port. L'enum et `ALL`
+  sortent d'une seule liste, comme `ApplicationProtocol` : une variante ne
+  peut plus manquer a `ALL`. Les trois listes ecrites a la main, celle des
+  tests du dispatch et celles des cibles de fuzz `parse_packetflow` et
+  `policy_dispatch`, lisent `ALL` ; en 11.8.0, `ValmetDna` manquait a celle
+  du fuzz (#235).
+
 ### Interne
 
 - **Dependances** (#270) : `uuid` est retiree, la crate ne l'appelait nulle

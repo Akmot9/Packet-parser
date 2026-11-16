@@ -40,14 +40,43 @@ mod tests;
 use probes::{ProbeId, ProbeMask, run_probe};
 use rules::{Guard, RULES, matches_terminal_reserved_port};
 
-/// Protocole que l'appelant peut associer a un port supplementaire via
-/// [`crate::ParseConfig`] (« Decode As », issue #65). La regle de la table
-/// vaut aussi ici : le port declare ne suffit jamais, la sonde de contenu
-/// doit accepter le payload, et la garde de transport du protocole reste
-/// appliquee.
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DecodeAsProtocol {
+/// Declare l'enum et `ALL` depuis une seule liste, comme
+/// `application_protocols!` : une variante ne peut pas manquer a `ALL`
+/// (#274).
+macro_rules! decode_as_protocols {
+    ($($(#[$doc:meta])* $variant:ident),+ $(,)?) => {
+        /// Protocole que l'appelant peut associer a un port supplementaire via
+        /// [`crate::ParseConfig`] (« Decode As », issue #65). La regle de la table
+        /// vaut aussi ici : le port declare ne suffit jamais, la sonde de contenu
+        /// doit accepter le payload, et la garde de transport du protocole reste
+        /// appliquee.
+        #[non_exhaustive]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum DecodeAsProtocol {
+            $(
+                $(#[$doc])*
+                $variant,
+            )+
+        }
+
+        impl DecodeAsProtocol {
+            /// Toutes les variantes, dans l'ordre de leur declaration : les
+            /// protocoles qu'un appelant peut proposer pour un port.
+            ///
+            /// ```
+            /// use packet_parser::DecodeAsProtocol;
+            ///
+            /// assert_eq!(DecodeAsProtocol::ALL.first(), Some(&DecodeAsProtocol::Ftp));
+            /// assert!(DecodeAsProtocol::ALL.contains(&DecodeAsProtocol::ModbusUdp));
+            /// ```
+            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
+        }
+    };
+}
+
+// Une nouvelle variante s'ajoute en fin de liste : les discriminants ne
+// bougent pas, et `ALL` garde son ordre.
+decode_as_protocols![
     Ftp,
     Smtp,
     Nntp,
@@ -85,7 +114,7 @@ pub enum DecodeAsProtocol {
     ValmetDna,
     /// Modbus sur UDP : l'enveloppe MBAP, comme sur UDP 502.
     ModbusUdp,
-}
+];
 
 impl DecodeAsProtocol {
     /// (etiquette, garde, sonde) de la regle equivalente de la table. DNS
