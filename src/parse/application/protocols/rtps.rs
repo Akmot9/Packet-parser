@@ -443,6 +443,48 @@ fn parse_submessage(
     ))
 }
 
+/// Les champs d'un HEADER_EXTENSION (§9.4.5.2) que ses flags annoncent, dans
+/// l'ordre du fil ; la somme de controle en grand-boutiste quel que soit E
+/// (Table 9.8) ; la ParameterList, s'il y en a une, occupe le reste. `body`
+/// porte au moins `header_extension_fixed_length(flags)` octets.
+fn header_extension(flags: u8, little_endian: bool, body: &[u8]) -> RtpsHeaderExtension {
+    let mut cursor = 0;
+    let mut field = |len: usize| {
+        let start = cursor;
+        cursor += len;
+        &body[start..start + len]
+    };
+    let message_length = (flags & HEADER_EXTENSION_FLAG_LENGTH != 0)
+        .then(|| read_u32(field(4).try_into().unwrap_or([0; 4]), little_endian));
+    let send_timestamp = (flags & HEADER_EXTENSION_FLAG_TIMESTAMP != 0).then(|| {
+        let seconds = read_u32(field(4).try_into().unwrap_or([0; 4]), little_endian);
+        let fraction = read_u32(field(4).try_into().unwrap_or([0; 4]), little_endian);
+        RtpsTime { seconds, fraction }
+    });
+    let u_extension = (flags & HEADER_EXTENSION_FLAG_UEXTENSION4 != 0)
+        .then(|| field(4).try_into().unwrap_or([0; 4]));
+    let w_extension = (flags & HEADER_EXTENSION_FLAG_WEXTENSION8 != 0)
+        .then(|| field(8).try_into().unwrap_or([0; 8]));
+    let checksum = match header_extension_checksum_length(flags) {
+        4 => Some(RtpsChecksum::Crc32c(u32::from_be_bytes(
+            field(4).try_into().unwrap_or([0; 4]),
+        ))),
+        8 => Some(RtpsChecksum::Crc64Xz(u64::from_be_bytes(
+            field(8).try_into().unwrap_or([0; 8]),
+        ))),
+        16 => Some(RtpsChecksum::Md5(field(16).try_into().unwrap_or([0; 16]))),
+        _ => None,
+    };
+    RtpsHeaderExtension {
+        message_length,
+        send_timestamp,
+        u_extension,
+        w_extension,
+        checksum,
+        parameters: flags & HEADER_EXTENSION_FLAG_PARAMETERS != 0,
+    }
+}
+
 /// Les champs typees d'un corps, apres verification de sa longueur
 /// minimale pour le type (§9.4.5.2, HEADER_EXTENSION, a §9.4.5.15,
 /// INFO_REPLY_IP4).
@@ -482,45 +524,8 @@ fn submessage_details(
 
     Ok(match id {
         SUBMESSAGE_HEADER_EXTENSION => {
-            // Les champs que les flags annoncent, dans l'ordre du fil ; la
-            // somme de controle en grand-boutiste quel que soit E (Table
-            // 9.8) ; la ParameterList, s'il y en a une, occupe le reste.
             needs(header_extension_fixed_length(flags))?;
-            let mut cursor = 0;
-            let mut field = |len: usize| {
-                let start = cursor;
-                cursor += len;
-                &body[start..start + len]
-            };
-            let message_length = (flags & HEADER_EXTENSION_FLAG_LENGTH != 0)
-                .then(|| read_u32(field(4).try_into().unwrap_or([0; 4]), little_endian));
-            let send_timestamp = (flags & HEADER_EXTENSION_FLAG_TIMESTAMP != 0).then(|| {
-                let seconds = read_u32(field(4).try_into().unwrap_or([0; 4]), little_endian);
-                let fraction = read_u32(field(4).try_into().unwrap_or([0; 4]), little_endian);
-                RtpsTime { seconds, fraction }
-            });
-            let u_extension = (flags & HEADER_EXTENSION_FLAG_UEXTENSION4 != 0)
-                .then(|| field(4).try_into().unwrap_or([0; 4]));
-            let w_extension = (flags & HEADER_EXTENSION_FLAG_WEXTENSION8 != 0)
-                .then(|| field(8).try_into().unwrap_or([0; 8]));
-            let checksum = match header_extension_checksum_length(flags) {
-                4 => Some(RtpsChecksum::Crc32c(u32::from_be_bytes(
-                    field(4).try_into().unwrap_or([0; 4]),
-                ))),
-                8 => Some(RtpsChecksum::Crc64Xz(u64::from_be_bytes(
-                    field(8).try_into().unwrap_or([0; 8]),
-                ))),
-                16 => Some(RtpsChecksum::Md5(field(16).try_into().unwrap_or([0; 16]))),
-                _ => None,
-            };
-            SubmessageDetails::HeaderExtension(RtpsHeaderExtension {
-                message_length,
-                send_timestamp,
-                u_extension,
-                w_extension,
-                checksum,
-                parameters: flags & HEADER_EXTENSION_FLAG_PARAMETERS != 0,
-            })
+            SubmessageDetails::HeaderExtension(header_extension(flags, little_endian, body))
         }
         SUBMESSAGE_DATA => {
             // extraFlags u16, octetsToInlineQos u16, readerId, writerId, writerSN.
