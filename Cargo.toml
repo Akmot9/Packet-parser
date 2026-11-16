@@ -49,9 +49,10 @@ rustdoc-args = ["--html-in-header", "docs/rustdoc/mermaid.html"]
 thiserror = "2.0.18"
 pcap-file = "2.0.0"
 serde = { version = "1.0.228", features = ["derive"] }
-uuid = { version = "1.23.4", default-features = false, features = ["v4"] }
-chrono = "0.4.45" # for ntp timestamp
-hex = "0.4.3"
+# Pour les horodatages NTP. Sans les features par defaut : `clock` tirait
+# iana-time-zone pour un `Utc::now()` que la crate n'appelle pas ; seuls
+# `DateTime<Utc>` et son rendu RFC 3339 servent (#270).
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 
 # Volontairement sans `pcap` ni `pnet` : leurs bindings natifs (libpcap,
 # Npcap sur Windows) empechaient tests et exemples de compiler hors Linux.
