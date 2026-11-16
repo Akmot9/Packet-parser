@@ -85,7 +85,7 @@ in French.
 
 ## Releasing a version
 
-As done for 11.7.0, 11.8.0, 11.8.1, 11.8.2 and 12.0.0 (#206, #229, #242, #251, #267):
+As done for 11.7.0, 11.8.0, 11.8.1, 11.8.2, 12.0.0 and 12.1.0 (#206, #229, #242, #251, #267, #286):
 
 1. From an up-to-date `main`, create `chore/release-X.Y.Z`. Read `[Non publie]` to
    choose patch, minor or major. A major must be planned in the ROADMAP and come

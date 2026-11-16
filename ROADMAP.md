@@ -1,6 +1,21 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-15 : la **12.0.0 est publiee** (tag `v12.0.0`, publication
+Etat au 2026-11-16 : la **12.1.0 est publiee** (tag `v12.1.0`, publication
+par le workflow). Mineure : un ajout d'API, `DecodeAsProtocol::ALL` (#274),
+et un correctif, deux longueurs QUIC tronquees sur une cible 32 bits (#273).
+Elle solde la revue d'architecture de la 12.0.0 (#269) pour tout ce qui ne
+casse pas l'API : dependances allegees (#270 : `uuid` et `hex` retirees,
+`chrono` sans `clock` ; #271 : `pcap-file` en dependance de developpement,
+un appelant compile 11 crates au lieu de 18), casts tronquants refuses par
+clippy (#273), quatorze cibles de fuzz dediees aux decodeurs applicatifs
+(#272 : 39 cibles, couverture de lignes de 77,9 % a 94,3 % sur les 19
+decodeurs vises), constats de forme (#277), et la decision #276 : toute la
+surface publique est sous semver, decodeurs compris (§4). Aucune etiquette
+ne change, aucune rupture. Reste de #269 : #275 (`CorruptedLayer.error`
+type), qui casse l'API et ouvre la 13.0. Restent ouvertes dans #207 : #211
+et #241 (FOSSA). Reste a faire hors de ce depot : le livre.
+
+Etat anterieur (2026-11-15) : la **12.0.0 est publiee** (tag `v12.0.0`, publication
 par le workflow). Majeure : les quatre taches de la feature #209, en une
 seule version, directement apres la 11.8.2 (la fenetre de stabilite est
 levee, la crate n'a pas d'autre appelant que son auteur).

@@ -6,6 +6,8 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [12.1.0] - 2026-11-16
+
 ### Ajoute
 
 - **DecodeAsProtocol::ALL** (#274) : toutes les variantes de
