@@ -32,7 +32,7 @@ impl Packet {
         // Configurer le PacketWriter avec les paramètres par défaut
         let writer = PcapWriter::new(file);
 
-        let orig_len = self.data.len() as u32;
+        let orig_len = u32::try_from(self.data.len())?;
         let timestamp: std::time::Duration =
             std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH)?;
         let packet = PcapPacket::new(timestamp, orig_len, &self.data);

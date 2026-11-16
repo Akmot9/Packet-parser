@@ -65,7 +65,7 @@ impl TimingSink for ParseTiming {
         {
             let t0 = std::time::Instant::now();
             let out = body();
-            let elapsed = t0.elapsed().as_nanos() as u64;
+            let elapsed = u64::try_from(t0.elapsed().as_nanos()).unwrap_or(u64::MAX);
             match stage {
                 Stage::L2 => self.l2_ns = elapsed,
                 Stage::L3 => self.l3_ns = elapsed,
@@ -91,7 +91,7 @@ impl ParseTiming {
         {
             let t0 = std::time::Instant::now();
             let out = body(self);
-            self.total_ns = t0.elapsed().as_nanos() as u64;
+            self.total_ns = u64::try_from(t0.elapsed().as_nanos()).unwrap_or(u64::MAX);
             out
         }
         #[cfg(not(feature = "parse_timing"))]

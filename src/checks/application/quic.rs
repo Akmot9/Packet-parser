@@ -178,14 +178,22 @@ pub fn validate_payload_available(available: usize, expected: usize) -> Result<(
     Ok(())
 }
 
+/// Une longueur lue dans un varint (jusqu'a 2^62 - 1, RFC 9000 §16) ramenee
+/// a `usize` sans troncature. Sur une cible 32 bits, une valeur qui n'y
+/// tient pas sature : le controle de bornes qui suit la refuse, au lieu de
+/// lire moins d'octets que la longueur annoncee (#273).
+pub fn varint_to_len(value: u64) -> usize {
+    usize::try_from(value).unwrap_or(usize::MAX)
+}
+
 /// The Length field covers Packet Number + payload, so it must be at least
 /// `packet_number_length`. Returns the payload length (Length - PN length).
 pub fn validate_length_field(
     length_field: u64,
     packet_number_length: u8,
 ) -> Result<usize, QuicError> {
-    (length_field as usize)
-        .checked_sub(packet_number_length as usize)
+    varint_to_len(length_field)
+        .checked_sub(usize::from(packet_number_length))
         .ok_or(QuicError::LengthFieldTooSmall {
             length_field,
             pn_length: packet_number_length,
@@ -429,6 +437,19 @@ mod tests {
                 pn_length: 2
             })
         );
+    }
+
+    /// #273 : une longueur de 2^32 ou plus n'est pas tronquee. Sur 64 bits
+    /// elle est rendue telle quelle ; sur 32 bits elle sature, la ou le cast
+    /// `as usize` n'en gardait que les 32 bits bas (ici 5, donc 4 octets de
+    /// payload acceptes).
+    #[test]
+    fn test_validate_length_field_keeps_a_wide_varint_whole() {
+        let wide = (1u64 << 32) + 5;
+
+        assert_eq!(varint_to_len(u64::MAX), usize::MAX);
+        assert!(varint_to_len(wide) > 5);
+        assert_eq!(validate_length_field(wide, 1), Ok(varint_to_len(wide) - 1));
     }
 
     #[test]

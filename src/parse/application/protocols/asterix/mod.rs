@@ -224,7 +224,7 @@ impl<'a> TryFrom<&'a [u8]> for AsterixPacket<'a> {
             blocks.push(AsterixDataBlock {
                 category,
                 // `read_block_header` borne `length` par un u16.
-                length: length as u16,
+                length: u16::try_from(length).unwrap_or(u16::MAX),
                 records,
             });
             rest = &rest[length..];
@@ -280,6 +280,10 @@ fn parse_record<'a>(
             }
             // Sept FRN par octet ; `octet_index` < 7 et `bit` < 7, donc
             // le FRN tient dans un u8.
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "`octet_index` < 7 : le FRN tient dans un u8"
+            )]
             let frn = (octet_index * 7) as u8 + bit + 1;
             let spec = uap
                 .item(frn)
@@ -387,7 +391,7 @@ fn walk_compound<'a>(
                 item,
                 // Numerotation a partir de 1, comme la specification ;
                 // `index` est borne par la longueur du primary subfield.
-                subfield: (index + 1).min(255) as u8,
+                subfield: u8::try_from(index + 1).unwrap_or(u8::MAX),
             };
             let rest = &buf[pos..];
             let sub_truncated = |needed: usize| AsterixError::TruncatedItem {
@@ -521,6 +525,10 @@ fn rfs_len(
     for (octet_index, octet) in fspec.iter().enumerate() {
         for bit in 0..7u8 {
             if octet & (0x80 >> bit) != 0 {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "rang d'un octet du FSPEC, borne par la taille du paquet"
+                )]
                 let frn = (octet_index * 7) as u32 + u32::from(bit) + 1;
                 seen |= 1u64 << frn.min(63);
             }

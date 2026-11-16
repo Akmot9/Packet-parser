@@ -87,11 +87,12 @@ pub fn validate_payload_length(
     length: u16,
     available: usize,
 ) -> Result<usize, IkeParseError> {
+    let declared = length;
     let length = usize::from(length);
     if length < IKE_PAYLOAD_HEADER_LENGTH {
         return Err(IkeParseError::InvalidPayloadLength {
             payload_type,
-            length: length as u16,
+            length: declared,
         });
     }
     if length > available {

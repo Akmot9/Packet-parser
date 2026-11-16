@@ -22,7 +22,7 @@ pub fn validate_tcp_header_length(len: usize) -> Result<(), OpcuaParseError> {
 }
 
 pub fn validate_message_size(message_size: u32) -> Result<(), OpcuaParseError> {
-    if message_size < OPCUA_TCP_HEADER_LEN as u32 {
+    if u64::from(message_size) < OPCUA_TCP_HEADER_LEN as u64 {
         return Err(OpcuaParseError::InvalidMessageSize { size: message_size });
     }
 

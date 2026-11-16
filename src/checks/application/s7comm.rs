@@ -420,10 +420,11 @@ pub fn extract_parameter_item(
     validate_parameter_item_header(offset, data.len())?;
 
     let spec_type = data[offset];
-    let length = data[offset + 1] as usize;
+    let length_byte = data[offset + 1];
+    let length = usize::from(length_byte);
 
     validate_parameter_specification_type(spec_type)?;
-    validate_parameter_syntax_id_present(length as u8)?;
+    validate_parameter_syntax_id_present(length_byte)?;
     validate_parameter_item_length(offset, length, data.len())?;
 
     let syntax_id = if length > 0 { data[offset + 2] } else { 0 };
@@ -434,7 +435,7 @@ pub fn extract_parameter_item(
     )?;
 
     if spec_type == 0x12 && syntax_id == 0x10 {
-        validate_s7any_length(length as u8)?;
+        validate_s7any_length(length_byte)?;
 
         let transport_size = data[offset + 3];
         let count = u16::from_be_bytes([data[offset + 4], data[offset + 5]]);
@@ -446,7 +447,7 @@ pub fn extract_parameter_item(
 
         Ok(S7ParameterItem {
             spec_type,
-            length: length as u8,
+            length: length_byte,
             syntax_id,
             transport_size,
             count,
@@ -458,7 +459,7 @@ pub fn extract_parameter_item(
     } else {
         Ok(S7ParameterItem {
             spec_type,
-            length: length as u8,
+            length: length_byte,
             syntax_id,
             transport_size: 0,
             count: 0,

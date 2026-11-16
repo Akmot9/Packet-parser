@@ -51,7 +51,7 @@ pub fn validate_untyped_header_available(payload: &[u8]) -> Result<(), PostgreSq
 }
 
 pub fn validate_message_length(length: u32) -> Result<(), PostgreSqlError> {
-    if length < POSTGRESQL_LENGTH_FIELD_LEN as u32 {
+    if u64::from(length) < POSTGRESQL_LENGTH_FIELD_LEN as u64 {
         return Err(PostgreSqlError::InvalidMessageLength { got: length });
     }
 
@@ -79,7 +79,7 @@ pub fn validate_untyped_message_available(
     payload: &[u8],
     length: u32,
 ) -> Result<usize, PostgreSqlError> {
-    if length < POSTGRESQL_UNTYPED_HEADER_LEN as u32 {
+    if u64::from(length) < POSTGRESQL_UNTYPED_HEADER_LEN as u64 {
         return Err(PostgreSqlError::InvalidMessageLength { got: length });
     }
 
@@ -130,7 +130,7 @@ pub fn validate_secret_key_length(
     if !(POSTGRESQL_SECRET_KEY_MIN_LEN..=POSTGRESQL_SECRET_KEY_MAX_LEN).contains(&length) {
         return Err(PostgreSqlError::InvalidFieldLength {
             field,
-            got: length as i32,
+            got: i32::try_from(length).unwrap_or(i32::MAX),
         });
     }
 

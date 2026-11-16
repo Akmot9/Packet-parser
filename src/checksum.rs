@@ -40,7 +40,8 @@ fn ones_complement_sum(chunks: &[&[u8]]) -> u16 {
     while sum > 0xFFFF {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
-    sum as u16
+    // La boucle a replie la somme sur 16 bits : le masque ne retire rien.
+    (sum & 0xFFFF) as u16
 }
 
 /// Vérifie le checksum d'un en-tête IPv4 (`packet` commence à l'octet 0 de
@@ -72,7 +73,12 @@ fn pseudo_header_sum(
             bytes.extend_from_slice(&dst.octets());
             bytes.push(0);
             bytes.push(protocol);
-            bytes.extend_from_slice(&(length as u16).to_be_bytes());
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "le pseudo-en-tete IPv4 porte la longueur sur 16 bits"
+            )]
+            let length = length as u16;
+            bytes.extend_from_slice(&length.to_be_bytes());
             Some(bytes)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
@@ -93,7 +99,7 @@ pub fn verify_tcp_checksum(source: IpAddr, destination: IpAddr, segment: &[u8]) 
     if segment.len() < 20 {
         return None;
     }
-    let pseudo = pseudo_header_sum(source, destination, 6, segment.len() as u32)?;
+    let pseudo = pseudo_header_sum(source, destination, 6, u32::try_from(segment.len()).ok()?)?;
     Some(ones_complement_sum(&[&pseudo, segment]) == 0xFFFF)
 }
 
@@ -108,7 +114,7 @@ pub fn verify_udp_checksum(source: IpAddr, destination: IpAddr, datagram: &[u8])
     if checksum == 0 {
         return None;
     }
-    let pseudo = pseudo_header_sum(source, destination, 17, datagram.len() as u32)?;
+    let pseudo = pseudo_header_sum(source, destination, 17, u32::try_from(datagram.len()).ok()?)?;
     Some(ones_complement_sum(&[&pseudo, datagram]) == 0xFFFF)
 }
 
