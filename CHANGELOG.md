@@ -28,6 +28,18 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Interne
 
+- **Fuzz des decodeurs applicatifs** (#272) : quatorze cibles dediees
+  (`parse_dhcpv6`, `parse_ethernet_ip`, `parse_http`, `parse_mqtt`,
+  `parse_netbios`, `parse_ntp`, `parse_opcua`, `parse_openvpn`,
+  `parse_postgresql`, `parse_snmp`, `parse_srvloc`, `parse_ssdp`,
+  `parse_tls`, `parse_umas`), 39 cibles en tout. Dix-neuf decodeurs
+  n'etaient atteints que par le dispatch ; la couverture de lignes mesuree
+  sur eux passe de 77,9 % a 94,3 %. Les cibles partent de trames reelles
+  du depot (synthetiques pour SRVLOC, faute de capture) et appellent aussi
+  ce que le dispatch n'appelle pas : iterateurs, `body()` de SRVLOC,
+  `parse_tls_records`, `Display`. Cinq cibles ecrites puis ecartees :
+  celles d'AMS, Bitcoin, DHCP, Modbus/TCP et SSH n'atteignaient aucune
+  ligne de plus que les cibles generiques. Aucune panique trouvee.
 - **Casts tronquants** (#273) : `clippy::cast_possible_truncation` rejoint
   les lints bloquants de la bibliotheque. Les 32 autres casts releves sont
   remplaces par `try_from` ou `From`, ou portent un `#[expect]` motive (cinq :

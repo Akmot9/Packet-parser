@@ -605,6 +605,20 @@ tshark -r capture.pcap -Y "frame.number==5" -T fields -e tcp.payload
 - Une cible de fuzz de detection doit partir aussi d'une trame structuree
   valide (mutation XOR ou corpus seed), car des octets entierement aleatoires
   atteignent rarement Ethernet + IP + transport + protocole applicatif.
+- Un decodeur applicatif recoit sa cible `fuzz/fuzz_targets/parse_<proto>.rs`,
+  declaree dans `fuzz/Cargo.toml` (la nuit de fuzz et la CI lisent cette
+  liste). Elle appelle le `try_from` du decodeur et tout ce que le dispatch
+  n'appelle pas : iterateurs, accesseurs, `Display`, decodage a la demande.
+  Quand le decodage reussit, elle verifie ce que le fil impose (longueurs
+  declarees, pavage de l'entree) et que chaque emprunt pointe dans l'entree.
+  `fuzz/oracles/seeds.rs` fournit `inside` et `replay_mutated`, qui rejoue
+  les graines reelles sous mutation XOR ; une graine synthetique est dite
+  telle dans son commentaire.
+- Mesurer ce que la cible atteint, et ce que les cibles generiques
+  atteignaient deja, avec `cargo +nightly fuzz coverage <cible>` (composant
+  rustup `llvm-tools`) puis `llvm-cov export`. Une cible qui n'atteint rien
+  de plus que `parse_application`, `parse_packetflow` et `policy_dispatch`
+  ne vaut pas sa nuit de fuzz : cinq ont ete ecartees ainsi (#272).
 
 ## 7. Checklist avant commit
 
