@@ -321,7 +321,7 @@ pub struct CorruptedLayer {
 /// protocols, ports…), not the raw bytes: layer payloads are deliberately
 /// ignored. Two packets of the same conversation carrying different data
 /// therefore compare equal and hash identically.
-#[derive(Debug, Clone, Serialize, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct PacketFlow<'a> {
     /// Link layer (mandatory), tagged with its canonical LINKTYPE.
@@ -378,30 +378,6 @@ impl<'a> TryFrom<&'a [u8]> for PacketFlow<'a> {
     #[inline(always)]
     fn try_from(bytes: &'a [u8]) -> Result<Self, Self::Error> {
         parse(LinkType::ETHERNET, bytes)
-    }
-}
-
-impl<'a> PartialEq for PacketFlow<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        self.data_link == other.data_link
-            && self.internet == other.internet
-            && self.transport == other.transport
-            && self.application == other.application
-            && self.inner == other.inner
-            && self.corrupted == other.corrupted
-    }
-}
-
-use std::hash::{Hash, Hasher};
-
-impl<'a> Hash for PacketFlow<'a> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.data_link.hash(state);
-        self.internet.hash(state);
-        self.transport.hash(state);
-        self.application.hash(state);
-        self.inner.hash(state);
-        self.corrupted.hash(state);
     }
 }
 
