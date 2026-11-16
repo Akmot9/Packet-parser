@@ -25,7 +25,7 @@ use std::path::Path;
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use packet_parser::parse::PacketFlow;
 use packet_parser::parse::transport::protocols::TransportProtocol;
-use packet_parser::{LinkType, parse};
+use packet_parser::{CorruptedLayerKind, LinkType, parse};
 
 #[path = "../../tests/common/mod.rs"]
 mod common;
@@ -95,6 +95,28 @@ fn tcp_segment_60k() -> Vec<u8> {
     frame
 }
 
+/// Trame synthetique : Ethernet, IPv4 et `tcp`, les octets que le paquet IP
+/// annonce comme du TCP. Le corpus n'a de corruption qu'en couche 3 ; ces
+/// trames ne servent qu'a mesurer le cout d'un rapport de couche 4 (#275).
+fn ipv4_carrying_tcp(tcp: &[u8]) -> Vec<u8> {
+    let total_len = u16::try_from(20 + tcp.len()).expect("tient dans un datagramme IPv4");
+    let mut frame = Vec::with_capacity(14 + usize::from(total_len));
+    frame.extend_from_slice(&[0x02, 0, 0, 0, 0, 0x01, 0x02, 0, 0, 0, 0, 0x02, 0x08, 0x00]);
+    frame.extend_from_slice(&[0x45, 0x00]);
+    frame.extend_from_slice(&total_len.to_be_bytes());
+    frame.extend_from_slice(&[0, 1, 0x40, 0x00, 64, 6, 0, 0, 192, 0, 2, 1, 192, 0, 2, 2]);
+    frame.extend_from_slice(tcp);
+    frame
+}
+
+/// La couche que `parse` rapporte corrompue, et si la couche transport est
+/// gardee malgre tout (anomalie semantique).
+fn corruption(frame: &[u8]) -> Option<(CorruptedLayerKind, bool)> {
+    let flow = parse(LinkType::ETHERNET, frame).ok()?;
+    let corrupted = flow.corrupted.as_ref()?;
+    Some((corrupted.layer, flow.transport.is_some()))
+}
+
 fn bench_frames(c: &mut Criterion) {
     let reference = hex::decode(REFERENCE_HEX.trim()).expect("paquet de reference en hexadecimal");
     let segment_60k = tcp_segment_60k();
@@ -108,7 +130,25 @@ fn bench_frames(c: &mut Criterion) {
         "le segment synthetique doit etre un TCP de 60 000 octets non reconnu"
     );
 
-    let cases: [(&str, Frame); 7] = [
+    // En-tete TCP complet, 40000 -> 40001, drapeaux SYN+FIN : lisible, mais
+    // aucune pile conforme ne l'emet.
+    let tcp_syn_fin = ipv4_carrying_tcp(&[
+        0x9c, 0x40, 0x9c, 0x41, 0, 0, 0, 1, 0, 0, 0, 0, 0x50, 0x03, 0xff, 0xff, 0, 0, 0, 0,
+    ]);
+    assert_eq!(
+        corruption(&tcp_syn_fin),
+        Some((CorruptedLayerKind::Transport, true)),
+        "SYN+FIN : anomalie rapportee, couche transport gardee"
+    );
+    // Huit octets seulement la ou l'en-tete TCP en demande vingt.
+    let tcp_truncated = ipv4_carrying_tcp(&[0x9c, 0x40, 0x9c, 0x41, 0, 0, 0, 1]);
+    assert_eq!(
+        corruption(&tcp_truncated),
+        Some((CorruptedLayerKind::Transport, false)),
+        "en-tete TCP tronque : couche transport absente"
+    );
+
+    let cases: [(&str, Frame); 10] = [
         (
             "tcp_pure_ack",
             first_frame("protocols/tcp/tcp_handshake.pcapng", |flow| {
@@ -147,6 +187,21 @@ fn bench_frames(c: &mut Criterion) {
         ),
         ("unknown_l7_reference", (LinkType::ETHERNET, reference)),
         ("tcp_60k_unknown", (LinkType::ETHERNET, segment_60k)),
+        // Les trois formes d'un rapport de corruption (#275). La premiere est
+        // reelle : un paquet IPv4 dont la longueur totale depasse la trame.
+        (
+            "corrupted_ipv4_total_length",
+            first_frame("vlan/pppoe-over-qinq.pcap", |flow| {
+                flow.corrupted
+                    .as_ref()
+                    .is_some_and(|corrupted| corrupted.layer == CorruptedLayerKind::Internet)
+            }),
+        ),
+        (
+            "corrupted_tcp_truncated",
+            (LinkType::ETHERNET, tcp_truncated),
+        ),
+        ("corrupted_tcp_syn_fin", (LinkType::ETHERNET, tcp_syn_fin)),
     ];
 
     let mut group = c.benchmark_group("frame");
