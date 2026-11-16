@@ -56,6 +56,17 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
   `ProfinetPacketError` se lit sur l'erreur typee, plus en cherchant un mot
   dans son texte.
 
+### Outillage
+
+- **FOSSA retire** (#241) : le workflow `fossa.yml` et `.fossa.yml` partent.
+  Le controle « License Compliance » de l'integration GitHub de FOSSA etait
+  rouge en permanence : il lit les textes de licence du corpus
+  (`pcaps_exemple/LICENSES/`) comme des licences du projet et ignore
+  `.fossa.yml`. L'analyse par le CLI, elle, ne bloquait rien
+  (`continue-on-error`). Les licences des dependances restent verifiees par
+  `cargo deny` (liste `allow` de `deny.toml`), avec les avis de securite,
+  les sources et les doublons.
+
 ## [12.1.0] - 2026-11-16
 
 ### Ajoute
@@ -242,6 +253,13 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
 - Le README montre la tendance : `images/perf_by_version.svg`, courbe du
   temps total par version publiee, ecrite par `tools/verbench/report.py
   --svg` (et donc par `run.sh`) a partir de ce meme fichier.
+- **CodSpeed** (#214) : le depot est importe sur codspeed.io. Le job
+  « Benchmarks » mesure chaque run et l'envoie, sans la variable
+  `CODSPEED_ENABLED` qui le gardait eteint ; le README porte le badge.
+- **Tests** (#219) : `tests/classify_payload_parity.rs` fige trois cas sur
+  des octets reels : une requete LLMNR est `LLMNR` sur le port 5355 et
+  `DNS` sans port, et un message MMS sous UDP est lu comme du RADIUS, la
+  garde de transport etant la seule chose qui les separe.
 
 ## [11.8.2] - 2026-11-13
 
