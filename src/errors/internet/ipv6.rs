@@ -6,7 +6,7 @@
 use thiserror::Error;
 
 /// Errors that can occur when parsing or processing IPv6 packets
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Clone, Eq, Hash)]
 #[non_exhaustive]
 pub enum Ipv6Error {
     /// The packet is too short to be a valid IPv6 packet

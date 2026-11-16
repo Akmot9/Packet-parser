@@ -5,7 +5,7 @@
 
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum TcpError {
     #[error("Packet too short to be a valid TCP header")]

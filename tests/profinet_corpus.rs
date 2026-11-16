@@ -17,10 +17,11 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use packet_parser::errors::internet::{InternetError, profinet::ProfinetPacketError};
 use packet_parser::parse::internet::protocols::profinet::{
     FrameId, ProfinetPacket, validate_frame,
 };
-use packet_parser::{CorruptedLayerKind, NetworkProtocol, parse};
+use packet_parser::{CorruptedLayerError, CorruptedLayerKind, NetworkProtocol, parse};
 
 mod common;
 use common::{FileRead, collect_capture_files, read_capture};
@@ -78,24 +79,24 @@ fn read_oracle() -> BTreeMap<(String, usize), OracleRow> {
         .collect()
 }
 
-/// Variante de `ProfinetPacketError` derriere le texte de `CorruptedLayer`.
-fn error_variant(error: &str) -> &'static str {
-    const VARIANTS: &[(&str, &str)] = &[
-        ("Unknown Frame ID", "UnknownFrameId"),
-        ("Invalid DCP block length", "InvalidDcpBlockLength"),
-        ("Invalid name of station", "InvalidNameOfStation"),
-        ("Packet too short", "PacketTooShort"),
-        ("too short for a Frame ID", "FrameTooShort"),
-        ("is not a DCP frame", "NotDcp"),
-        ("DCP data length", "DcpDataOverflow"),
-        ("needed for its BlockInfo", "DcpBlockTooShort"),
-        ("DCP block option", "DcpBlockOverflow"),
-    ];
-    VARIANTS
-        .iter()
-        .find(|(needle, _)| error.contains(needle))
-        .map(|(_, name)| *name)
-        .unwrap_or_else(|| panic!("erreur PROFINET inattendue : {error}"))
+/// Variante de `ProfinetPacketError` que porte `CorruptedLayer` : lue sur
+/// l'erreur typee, plus sur son texte (#275).
+fn error_variant(error: &CorruptedLayerError) -> &'static str {
+    let CorruptedLayerError::Internet(InternetError::ProfinetError(profinet)) = error else {
+        panic!("erreur PROFINET attendue : {error:?}");
+    };
+    match profinet {
+        ProfinetPacketError::UnknownFrameId(_) => "UnknownFrameId",
+        ProfinetPacketError::InvalidDcpBlockLength(_) => "InvalidDcpBlockLength",
+        ProfinetPacketError::InvalidNameOfStation => "InvalidNameOfStation",
+        ProfinetPacketError::PacketTooShort(_) => "PacketTooShort",
+        ProfinetPacketError::FrameTooShort(_) => "FrameTooShort",
+        ProfinetPacketError::NotDcp(_) => "NotDcp",
+        ProfinetPacketError::DcpDataOverflow { .. } => "DcpDataOverflow",
+        ProfinetPacketError::DcpBlockTooShort { .. } => "DcpBlockTooShort",
+        ProfinetPacketError::DcpBlockOverflow { .. } => "DcpBlockOverflow",
+        other => panic!("erreur PROFINET inattendue : {other:?}"),
+    }
 }
 
 #[test]

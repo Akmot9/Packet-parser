@@ -18,13 +18,16 @@
 //!   registre evolutif, et toute struct a champs nommes que le parseur
 //!   construit ;
 //! - **sauf** les types listes dans `CONSTRUCTIBLE`, que les consommateurs
-//!   construisent eux-memes (Sonar batit `CorruptedLayer` et `VlanTag` en
-//!   litteral), et les enums fermes par construction.
+//!   construisent eux-memes (Sonar batit `VlanTag` en litteral), et les
+//!   enums fermes par construction.
+//!
+//! `CorruptedLayer` a quitte la liste en 13.0.0 (#275) : il se construit par
+//! `CorruptedLayer::from(erreur)`, et pourra gagner un champ sans rupture.
 
 use std::{fs, path::Path};
 
 /// Types volontairement exhaustifs, avec la raison.
-const CONSTRUCTIBLE: [(&str, &str); 17] = [
+const CONSTRUCTIBLE: [(&str, &str); 16] = [
     ("PortIdentity", "type valeur fixe par IEEE 1588"),
     ("PtpTimestamp", "type valeur fixe par IEEE 1588"),
     ("ClockQuality", "type valeur fixe par IEEE 1588"),
@@ -33,10 +36,6 @@ const CONSTRUCTIBLE: [(&str, &str); 17] = [
     ("VlanTag", "type valeur construit par les consommateurs"),
     ("TlsVersion", "type valeur { major, minor }"),
     ("BridgeId", "type valeur"),
-    (
-        "CorruptedLayer",
-        "construit en litteral par les consommateurs",
-    ),
     ("ParseConfig", "champs prives, construit par builder"),
     ("GiopMessages", "iterateur a champs prives"),
     ("VlanStack", "vue a champs prives"),

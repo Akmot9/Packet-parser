@@ -6,7 +6,7 @@
 use thiserror::Error;
 
 /// Erreurs de decodage d'un paquet ESP (RFC 4303).
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq, Clone, Hash)]
 #[non_exhaustive]
 pub enum EspError {
     /// Moins que le SPI et le numero de sequence.

@@ -6,7 +6,7 @@
 use thiserror::Error;
 
 /// Erreurs de decodage d'un message PTP (IEEE 1588-2002 et 1588-2008/2019).
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq, Clone, Hash)]
 #[non_exhaustive]
 pub enum PtpPacketParseError {
     #[error("PTP message truncated: expected at least {expected} bytes, got {actual}")]

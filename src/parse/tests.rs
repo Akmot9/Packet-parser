@@ -10,6 +10,8 @@ use crate::parse::application::protocols::postgresql::{
 use crate::parse::transport::protocols::TransportProtocol;
 
 use super::*;
+use crate::errors::internet::ipv4::Ipv4Error;
+use crate::errors::transport::tcp::TcpError;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::net::{IpAddr, Ipv4Addr};
@@ -1795,7 +1797,13 @@ fn corrupt_ipv4_keeps_data_link_and_reports_corruption() {
     assert!(flow.transport.is_none());
     let corrupted = flow.corrupted.as_ref().expect("corruption report");
     assert_eq!(corrupted.layer, CorruptedLayerKind::Internet);
-    assert!(!corrupted.error.is_empty());
+    assert_eq!(
+        corrupted.error,
+        CorruptedLayerError::Internet(InternetError::Ipv4Error(Ipv4Error::InvalidLength {
+            expected: 20,
+            actual: 6,
+        }))
+    );
 }
 
 /// EtherType inconnu (`0x88B5`, l'EtherType experimental local de
@@ -2212,6 +2220,13 @@ fn syn_fin_packet_keeps_its_transport_layer_and_is_reported() {
     assert_eq!(corrupted.layer, CorruptedLayerKind::Transport);
     assert_eq!(
         corrupted.error,
+        CorruptedLayerError::Transport(TransportError::TcpError(TcpError::InvalidFlags {
+            flags: 0x03
+        }))
+    );
+    // Le texte est celui que la cle JSON `error` a toujours porte.
+    assert_eq!(
+        corrupted.error.to_string(),
         "TCP error: Invalid TCP flags 0x03: SYN and FIN are both set"
     );
     assert!(flow.application.is_none(), "pas de sondage applicatif");
@@ -2227,9 +2242,16 @@ fn syn_fin_packet_keeps_its_transport_layer_and_is_reported() {
     packet[syn_index] = 0x02;
     let flow = parse(LinkType::ETHERNET, packet.as_slice()).expect("frame decodes");
     assert!(flow.transport.is_some());
+    let corrupted = flow.corrupted.as_ref().expect("anomalie signalee");
     assert_eq!(
-        flow.corrupted.as_ref().map(|c| c.error.as_str()),
-        Some("TCP error: TCP reserved bits are set: 0b010")
+        corrupted.error,
+        CorruptedLayerError::Transport(TransportError::TcpError(TcpError::ReservedBitsSet {
+            bits: 0b010
+        }))
+    );
+    assert_eq!(
+        corrupted.error.to_string(),
+        "TCP error: TCP reserved bits are set: 0b010"
     );
 
     // Le meme paquet avec SYN seul et bits reserves nuls : rien a signaler.

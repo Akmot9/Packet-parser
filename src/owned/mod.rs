@@ -836,7 +836,7 @@ mod tests {
     /// liaison.
     #[test]
     fn owned_json_member_order_is_pinned() {
-        use crate::parse::CorruptedLayerKind;
+        use crate::errors::transport::{TransportError, tcp::TcpError};
 
         // QinQ : le S-tag annonce le C-tag (0x8100), qui annonce IPv4.
         let tag = |id, next| VlanTag {
@@ -859,10 +859,10 @@ mod tests {
                 inner: None,
                 corrupted: None,
             })),
-            corrupted: Some(CorruptedLayer {
-                layer: CorruptedLayerKind::Transport,
-                error: "TCP error: Invalid TCP flags 0x03: SYN and FIN are both set".to_string(),
-            }),
+            // L'erreur est typee ; la cle JSON `error` garde son texte.
+            corrupted: Some(CorruptedLayer::from(TransportError::TcpError(
+                TcpError::InvalidFlags { flags: 0x03 },
+            ))),
             ..sample_packet_flow_owned()
         };
         assert_eq!(

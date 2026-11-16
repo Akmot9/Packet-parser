@@ -6,7 +6,7 @@
 use thiserror::Error;
 
 /// Erreurs de decodage d'un LLDPDU (IEEE 802.1AB, EtherType `0x88CC`).
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq, Clone, Hash)]
 #[non_exhaustive]
 pub enum LldpParseError {
     /// Un en-tete de TLV (deux octets) commence a `offset` mais la trame

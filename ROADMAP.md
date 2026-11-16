@@ -1,6 +1,19 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-16 : la **12.1.0 est publiee** (tag `v12.1.0`, publication
+Etat au 2026-11-16, apres la 12.1.0 : la **13.0 est ouverte sur `main`**,
+et n'est pas publiee. Sa premiere rupture est #275, la derniere tache de la
+revue d'architecture (#269) : `CorruptedLayer.error` porte l'erreur typee
+(`CorruptedLayerError`, qui enveloppe `InternetError` ou `TransportError`)
+au lieu de son texte, et `CorruptedLayer` devient `#[non_exhaustive]`. Un
+appelant trie les causes par un `match` ; le JSON ne change pas, a l'octet
+pres sur le corpus ; un paquet corrompu ne paie plus d'allocation.
+`Cargo.toml` annonce 13.0.0 : c'est la convention du job semver, et la
+prochaine publication, quelle qu'en soit la raison, sera la 13.0.0 (§1).
+Guide : `MIGRATION-13.md`. La derniere version publiee reste la 12.1.0.
+Restent ouvertes dans #207 : #211 et #241 (FOSSA). Reste a faire hors de ce
+depot : le livre.
+
+Etat anterieur (2026-11-16, 12.1.0) : la **12.1.0 est publiee** (tag `v12.1.0`, publication
 par le workflow). Mineure : un ajout d'API, `DecodeAsProtocol::ALL` (#274),
 et un correctif, deux longueurs QUIC tronquees sur une cible 32 bits (#273).
 Elle solde la revue d'architecture de la 12.0.0 (#269) pour tout ce qui ne
@@ -264,6 +277,21 @@ seule majeure. La fenetre de stabilite ouverte par la 11.0.0 (§4, pas de
 majeure avant mars 2027) est levee le 2026-11-15 : la crate n'a pas d'autre
 appelant que son auteur. La 12.0 suit donc la 11.8.2 sans 11.x
 intermediaire, et son guide est `MIGRATION-12.md`.
+
+**13.0, ouverte le 2026-11-16.** Elle n'a pas de date : ses ruptures sont
+fusionnees sur `main` une a une, chacune avec son entree dans
+`MIGRATION-13.md`, au lieu d'attendre sur une branche de release comme
+celles de la 12.0. `Cargo.toml` porte 13.0.0 des la premiere, pour que le
+job semver de la CI accepte la rupture ; `README.md` garde la 12.1.0, la
+derniere version publiee, jusqu'a la PR de release. Consequence acceptee :
+`main` ne peut plus produire de 12.x, et la prochaine publication, meme
+pour un seul correctif, sera la 13.0.0. La regle de publication ne change
+pas : une version ne sort que pour une correction de bug ou un ajout de
+protocole.
+
+| Rupture | Etat |
+|---|---|
+| #275 `CorruptedLayer.error` type, `CorruptedLayer` `#[non_exhaustive]` | fait, sur `main` |
 
 Decision #218 (2026-11-15) : `Application` ne porte pas de `details`, et la
 crate n'ajoute pas de decodage a la demande. Qui veut les champs du L7
