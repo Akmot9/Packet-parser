@@ -6,6 +6,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **ParseConfig::application_protocol** (#323) : relit une etiquette
+  ecrite en texte avec la configuration qui l'a produite. Pour un protocole
+  de la crate, la reponse est celle de `FromStr`. Pour un parseur ajoute
+  (#319), c'est `ApplicationProtocol::Custom`, que `FromStr` ne sait pas
+  construire. Une application qui enregistre ses etiquettes (export,
+  matrice de flux) retrouve ainsi ses flux `Custom` a la relecture.
+
 ## [13.0.0] - 2026-11-17
 
 Majeure. Guide de migration : `MIGRATION-13.md`.

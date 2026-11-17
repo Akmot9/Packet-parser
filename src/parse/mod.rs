@@ -34,7 +34,7 @@ use application::Application;
 use application::custom::{
     ApplicationParser, ParserRegistrationError, PayloadContext, RegisteredParser,
 };
-use application::protocol::ApplicationProtocol;
+use application::protocol::{ApplicationProtocol, UnknownApplicationLabel};
 use internet::Internet;
 use serde::{Serialize, Serializer};
 use std::sync::Arc;
@@ -195,6 +195,61 @@ impl ParseConfig {
         let payload = transport.payload?;
         let parser = self.parser(label)?;
         Some(parser.fields(payload, &PayloadContext::of(transport)))
+    }
+
+    /// Reads a label back, as [`ApplicationProtocol::label`] wrote it, with
+    /// the parsers of this configuration (issue #323).
+    ///
+    /// The label of a built-in protocol gives the answer of
+    /// [`str::parse`]. The label of a parser registered here gives
+    /// [`ApplicationProtocol::Custom`], which `str::parse` cannot build: it
+    /// knows only the built-in protocols. An application that stored its
+    /// labels as text (an export, a flow matrix) gets its flows back with
+    /// the configuration that labelled them.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use packet_parser::{ApplicationParser, ApplicationProtocol, ParseConfig, PayloadContext};
+    ///
+    /// /// A protocol made up for this example.
+    /// struct Acme;
+    ///
+    /// impl ApplicationParser for Acme {
+    ///     fn label(&self) -> &'static str {
+    ///         "ACME"
+    ///     }
+    ///     fn matches(&self, payload: &[u8], _context: &PayloadContext) -> bool {
+    ///         payload.starts_with(b"ACME")
+    ///     }
+    /// }
+    ///
+    /// let config = ParseConfig::new().with_parser(Arc::new(Acme))?;
+    /// assert_eq!(config.application_protocol("DNS"), Ok(ApplicationProtocol::Dns));
+    /// assert_eq!(config.application_protocol("ACME"), Ok(ApplicationProtocol::Custom("ACME")));
+    /// // `str::parse` does not know the parsers of a configuration.
+    /// assert!("ACME".parse::<ApplicationProtocol>().is_err());
+    /// // The comparison is exact.
+    /// assert!(config.application_protocol("acme").is_err());
+    /// # Ok::<(), packet_parser::ParserRegistrationError>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`UnknownApplicationLabel`] when no built-in protocol and no parser of
+    /// this configuration has exactly this label: a parser removed with
+    /// [`remove_parser`](Self::remove_parser), never registered, or written
+    /// in another case.
+    pub fn application_protocol(
+        &self,
+        label: &str,
+    ) -> Result<ApplicationProtocol, UnknownApplicationLabel> {
+        label.parse().or_else(|unknown| {
+            self.parser_labels()
+                .find(|registered| *registered == label)
+                .map(ApplicationProtocol::Custom)
+                .ok_or(unknown)
+        })
     }
 }
 

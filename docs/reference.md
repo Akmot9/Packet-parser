@@ -437,6 +437,8 @@ registered with `ParseConfig::with_parser` or `add_parser`.
   the flow `ApplicationProtocol::Custom(label)`, written as its label in the
   JSON output.
 - Its fields are decoded on demand: `ParseConfig::custom_fields(&flow)`.
+- A label stored as text reads back with `ParseConfig::application_protocol(label)`,
+  custom labels included; `str::parse` reads only the built-in ones (#323).
 - Registration refuses an empty or invalid label, the label of a built-in
   protocol and a label already registered, ignoring ASCII case.
 
