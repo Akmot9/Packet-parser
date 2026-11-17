@@ -114,6 +114,9 @@ decode_as_protocols![
     ValmetDna,
     /// Modbus over UDP: the MBAP envelope, as on UDP 502.
     ModbusUdp,
+    /// Java RMI (JRMP) over TCP: any message, one-byte Ping and PingAck
+    /// included, for exported objects and JMX connectors off port 1099.
+    JavaRmi,
 ];
 
 impl DecodeAsProtocol {
@@ -201,6 +204,7 @@ impl DecodeAsProtocol {
                 Guard::Udp,
                 ProbeId::ModbusTcp,
             ),
+            Self::JavaRmi => (ApplicationProtocol::JavaRmi, Guard::Tcp, ProbeId::JavaRmi),
         }
     }
 }

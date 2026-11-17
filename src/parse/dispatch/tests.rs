@@ -858,6 +858,70 @@ fn valmet_dna_is_lenient_on_its_ports_and_strict_elsewhere() {
     );
 }
 
+/// Java RMI (#313) : l'en-tete de flux, le Call et le Return se reconnaissent
+/// sur tout port TCP ; les messages courts (Ping, PingAck, DgcAck) sur 1099
+/// et par Decode As seulement ; rien de JRMP sur UDP. Trames reelles de
+/// pcaps_exemple/protocols/java_rmi/jdk11-loopback.pcap.
+#[test]
+fn java_rmi_is_blind_for_calls_and_port_guarded_for_short_messages() {
+    let label = |protocol: TransportProtocol,
+                 source: u16,
+                 destination: u16,
+                 payload: &[u8],
+                 decode_as: &[(u16, DecodeAsProtocol)]| {
+        let transport = Transport {
+            protocol,
+            source_port: Some(source),
+            destination_port: Some(destination),
+            payload: Some(payload),
+            details: None,
+        };
+        classify(&transport, decode_as).map(|a| a.protocol.label())
+    };
+    use TransportProtocol::{Tcp, Udp};
+    // Trame 4 : en-tete StreamProtocol ; trame 60 : `Station.add(2, 3)` ;
+    // trame 61 : son retour.
+    let header = hex::decode("4a524d4900024b").unwrap();
+    let call = hex::decode(concat!(
+        "50aced0005772a18ab9a4555f8f98abfcb98ab000001a1e8ed9c5b8001ffffffff",
+        "94a9af306652c3a60000000200000003",
+    ))
+    .unwrap();
+    let ret = hex::decode("51aced0005771301bfcb98ab000001a1e8ed9c5b800a00000005").unwrap();
+    for message in [&header, &call, &ret] {
+        assert_eq!(label(Tcp, 53372, 50050, message, &[]), Some("Java RMI"));
+        assert_eq!(label(Tcp, 36556, 1099, message, &[]), Some("Java RMI"));
+        assert_ne!(label(Udp, 53372, 50050, message, &[]), Some("Java RMI"));
+    }
+
+    // Trames 36, 37 et 53 : Ping, PingAck et DgcAck.
+    let dgc_ack = hex::decode("54bfcb98ab000001a1e8ed9c5b8007").unwrap();
+    for message in [&[0x52][..], &[0x53][..], &dgc_ack] {
+        assert_eq!(label(Tcp, 36568, 1099, message, &[]), Some("Java RMI"));
+        assert_eq!(label(Tcp, 53372, 50050, message, &[]), Some("Unknown"));
+        assert_eq!(
+            label(
+                Tcp,
+                53372,
+                50050,
+                message,
+                &[(50050, DecodeAsProtocol::JavaRmi)]
+            ),
+            Some("Java RMI")
+        );
+        assert_ne!(
+            label(
+                Udp,
+                36568,
+                1099,
+                message,
+                &[(1099, DecodeAsProtocol::JavaRmi)]
+            ),
+            Some("Java RMI")
+        );
+    }
+}
+
 /// Anti-derive (revue 10.4.0) : chaque protocole Decode-As doit se
 /// resoudre vers une etiquette et une sonde que la table connait — les
 /// deux encodages ne peuvent pas diverger silencieusement.
@@ -987,6 +1051,7 @@ fn blind_rules_order_is_frozen() {
             "SSH",
             "HTTP",
             "GIOP",
+            "Java RMI",
             "DHCP",
             "SRVLOC",
             "UMAS",

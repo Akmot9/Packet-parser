@@ -33,6 +33,21 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
 
 ### Ajoute
 
+- **Java RMI** (#313) : decodeur JRMP (*Java RMI Specification*,
+  chapitre 10), etiquette `Java RMI`. En-tete de flux (`JRMI`, version,
+  protocole Stream, SingleOp ou Multiplex), ProtocolAck et son adresse,
+  ProtocolNotSupported, Call (objet vise, operation, hash de methode ; les
+  methodes du registre et du DGC nommees), Return (normal ou exceptionnel,
+  UID d'acquittement), Ping, PingAck, DgcAck. Les arguments et la valeur de
+  retour restent des octets serialises, empruntes a l'entree. L'en-tete,
+  le Call et le Return se reconnaissent sur tout port TCP ; les messages
+  d'un octet, le DgcAck et le ProtocolAck sur TCP 1099 ou par
+  `DecodeAsProtocol::JavaRmi`, pour les ports que choisit l'application
+  (objets exportes, connecteurs JMX). Corpus : une capture entre deux JVM
+  sur la boucle locale (`pcaps_exemple/protocols/java_rmi/`, script de
+  reproduction `tools/java_rmi_capture.sh`), parite avec tshark sur ses
+  236 segments a charge (`tests/java_rmi_golden.rs`) ; cible de fuzz
+  `parse_java_rmi`.
 - **Derives des erreurs des couches 3 et 4** (#275) : `InternetError`,
   `ArpError`, `Ipv4Error`, `Ipv6Error`, `ProfinetPacketError`,
   `GooseParseError`, `LldpParseError`, `PtpPacketParseError`,

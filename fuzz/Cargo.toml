@@ -287,3 +287,10 @@ path = "fuzz_targets/parse_umas.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_java_rmi"
+path = "fuzz_targets/parse_java_rmi.rs"
+test = false
+doc = false
+bench = false

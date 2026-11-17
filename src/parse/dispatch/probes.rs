@@ -24,6 +24,7 @@ use crate::parse::application::protocols::giop::GiopPacket;
 use crate::parse::application::protocols::http::{HttpRequest, HttpResponse};
 use crate::parse::application::protocols::iec104::Iec104Packet;
 use crate::parse::application::protocols::ike::{IkePacket, UdpEncapsulation};
+use crate::parse::application::protocols::java_rmi::JavaRmiPacket;
 use crate::parse::application::protocols::modbus_tcp::ModbusTcpPacket;
 use crate::parse::application::protocols::mqtt::MqttPacket;
 use crate::parse::application::protocols::netbios::{NbnsPacket, NbssPacket};
@@ -155,11 +156,15 @@ pub(super) enum ProbeId {
     ValmetDnaBlind,
     /// AMS sur TCP : l'en-tete AMS/TCP de 6 octets precede l'en-tete AMS.
     AmsTcp,
+    /// Java RMI sur 1099 et par Decode As : tout message JRMP.
+    JavaRmi,
+    /// Java RMI a l'aveugle : en-tete de flux, Call et Return seulement.
+    JavaRmiBlind,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::AmsTcp;
+    pub(super) const LAST: Self = Self::JavaRmiBlind;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -208,6 +213,10 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         // `cb_data` doit egaler ce qui suit l'en-tete.
         ProbeId::Ams => AmsPacket::try_from(payload).is_ok(),
         ProbeId::AmsTcp => AmsPacket::try_from_tcp(payload).is_ok(),
+        ProbeId::JavaRmi => JavaRmiPacket::try_from(payload).is_ok(),
+        ProbeId::JavaRmiBlind => {
+            JavaRmiPacket::try_from(payload).is_ok_and(|packet| packet.is_self_identifying())
+        }
         ProbeId::QuicShortHeader => is_plausible_short_header(payload),
         ProbeId::Ntp => NtpPacket::try_from(payload).is_ok(),
         // Les champs d'extension et le MAC doivent finir exactement avec le
