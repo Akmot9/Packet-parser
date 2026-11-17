@@ -210,11 +210,14 @@ pub(super) static RULES: &[Rule] = &[
         is_openvpn_port,
         ProbeId::OpenVpnTcp,
     ),
+    // AMS : sur TCP, chaque message est precede de l'en-tete AMS/TCP de
+    // 6 octets (#290). La regle UDP lit l'en-tete AMS nu ; Wireshark
+    // n'enregistre aucun dissecteur AMS sur UDP 48899.
     port_rule(
         ApplicationProtocol::Ams,
         Guard::Tcp,
         is_ams_tcp_port,
-        ProbeId::Ams,
+        ProbeId::AmsTcp,
     ),
     port_rule(
         ApplicationProtocol::Ams,

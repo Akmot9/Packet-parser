@@ -7,6 +7,46 @@ use crate::errors::application::ams::AmsParseError;
 
 pub const AMS_HEADER_LEN: usize = 32;
 
+/// En-tete AMS/TCP : deux octets reserves a zero, puis la longueur du
+/// message AMS qui suit, sur quatre octets en petit-boutiste (documentation
+/// Beckhoff « AMS/TCP Packet », dissecteur Wireshark `packet-ams.c`).
+pub const AMS_TCP_HEADER_LEN: usize = 6;
+
+/// State flags que nomme Wireshark : 0x0001 RESPONSE, 0x0002 NO RETURN,
+/// 0x0004 ADS COMMAND, 0x0008 SYSTEM COMMAND, 0x0010 HIGH PRIORITY,
+/// 0x0020 TIMESTAMP ADDED, 0x0040 UDP COMMAND, 0x0080 INIT COMMAND et
+/// 0x8000 BROADCAST. Les autres bits sont refuses.
+pub const AMS_KNOWN_STATE_FLAGS: u16 = 0x80FF;
+
+/// Lit l'en-tete AMS/TCP et rend le premier message AMS du segment.
+///
+/// Les octets reserves doivent etre nuls et la longueur doit tenir dans le
+/// segment. Un segment peut enchainer plusieurs messages : seul le premier
+/// est rendu, comme pour DNS sur TCP. Un message a cheval sur plusieurs
+/// segments releve du reassemblage TCP, hors de portee d'un parseur
+/// stateless.
+pub fn extract_ams_tcp_message(bytes: &[u8]) -> Result<&[u8], AmsParseError> {
+    if bytes.len() < AMS_TCP_HEADER_LEN {
+        return Err(AmsParseError::HeaderTooShort {
+            expected: AMS_TCP_HEADER_LEN,
+            actual: bytes.len(),
+        });
+    }
+    let reserved = u16::from_le_bytes([bytes[0], bytes[1]]);
+    if reserved != 0 {
+        return Err(AmsParseError::InvalidTcpReserved(reserved));
+    }
+    let length = u32::from_le_bytes([bytes[2], bytes[3], bytes[4], bytes[5]]);
+    let rest = &bytes[AMS_TCP_HEADER_LEN..];
+    usize::try_from(length)
+        .ok()
+        .and_then(|declared| rest.get(..declared))
+        .ok_or(AmsParseError::TcpLengthExceedsSegment {
+            length,
+            available: rest.len(),
+        })
+}
+
 pub fn validate_ams_header_length(len: usize) -> Result<(), AmsParseError> {
     if len < AMS_HEADER_LEN {
         return Err(AmsParseError::HeaderTooShort {
@@ -35,8 +75,7 @@ pub fn validate_cmd_id(cmd_id: u16) -> Result<(), AmsParseError> {
 }
 
 pub fn validate_state_flags(flags: u16) -> Result<(), AmsParseError> {
-    let reserved_mask: u16 = !0x000F;
-    if flags & reserved_mask != 0 {
+    if flags & !AMS_KNOWN_STATE_FLAGS != 0 {
         return Err(AmsParseError::InvalidStateFlags(flags));
     }
 
@@ -248,9 +287,74 @@ mod tests {
         // validate_cmd_id / validate_state_flags.
         assert_eq!(extract_cmd_id(&0xFFFFu16.to_le_bytes()).unwrap(), 0xFFFF);
         assert_eq!(
-            extract_state_flags(&0x0010u16.to_le_bytes()).unwrap(),
-            0x0010
+            extract_state_flags(&0x0100u16.to_le_bytes()).unwrap(),
+            0x0100
         );
+    }
+
+    /// Les bits que nomme Wireshark passent, ADS + UDP (0x0044) compris
+    /// (#290) ; les autres restent refuses.
+    #[test]
+    fn state_flags_accept_the_bits_wireshark_names() {
+        for flags in [
+            0x0000, 0x0004, 0x0005, 0x0044, 0x0010, 0x0080, 0x8000, 0x80FF,
+        ] {
+            assert!(validate_state_flags(flags).is_ok(), "0x{flags:04x}");
+        }
+        for flags in [0x0100, 0x4000, 0xFFFF] {
+            assert!(
+                matches!(
+                    validate_state_flags(flags),
+                    Err(AmsParseError::InvalidStateFlags(f)) if f == flags
+                ),
+                "0x{flags:04x}"
+            );
+        }
+    }
+
+    #[test]
+    fn ams_tcp_header_yields_the_message_it_announces() {
+        let mut bytes = vec![0, 0, 3, 0, 0, 0, 0xAA, 0xBB, 0xCC];
+        assert_eq!(
+            extract_ams_tcp_message(&bytes).unwrap(),
+            &[0xAA, 0xBB, 0xCC]
+        );
+
+        // Un second message dans le meme segment est laisse de cote.
+        bytes.extend_from_slice(&[0, 0, 1, 0, 0, 0, 0xDD]);
+        assert_eq!(
+            extract_ams_tcp_message(&bytes).unwrap(),
+            &[0xAA, 0xBB, 0xCC]
+        );
+    }
+
+    #[test]
+    fn ams_tcp_header_refuses_reserved_bits_and_overlong_lengths() {
+        assert!(matches!(
+            extract_ams_tcp_message(&[0, 0, 0, 0, 0]),
+            Err(AmsParseError::HeaderTooShort {
+                expected: 6,
+                actual: 5
+            })
+        ));
+        assert!(matches!(
+            extract_ams_tcp_message(&[1, 0, 0, 0, 0, 0]),
+            Err(AmsParseError::InvalidTcpReserved(0x0001))
+        ));
+        assert!(matches!(
+            extract_ams_tcp_message(&[0, 0, 4, 0, 0, 0, 1, 2, 3]),
+            Err(AmsParseError::TcpLengthExceedsSegment {
+                length: 4,
+                available: 3
+            })
+        ));
+        assert!(matches!(
+            extract_ams_tcp_message(&[0, 0, 0xFF, 0xFF, 0xFF, 0xFF]),
+            Err(AmsParseError::TcpLengthExceedsSegment {
+                length: u32::MAX,
+                available: 0
+            })
+        ));
     }
 
     #[test]

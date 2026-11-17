@@ -7,10 +7,10 @@ use std::convert::TryFrom;
 
 use crate::{
     checks::application::ams::{
-        AMS_HEADER_LEN, extract_cb_data, extract_cmd_id, extract_error_code, extract_invoke_id,
-        extract_sender_net_id, extract_sender_port, extract_state_flags, extract_target_net_id,
-        extract_target_port, validate_ams_header_length, validate_cb_data_length, validate_cmd_id,
-        validate_state_flags,
+        AMS_HEADER_LEN, extract_ams_tcp_message, extract_cb_data, extract_cmd_id,
+        extract_error_code, extract_invoke_id, extract_sender_net_id, extract_sender_port,
+        extract_state_flags, extract_target_net_id, extract_target_port,
+        validate_ams_header_length, validate_cb_data_length, validate_cmd_id, validate_state_flags,
     },
     errors::application::ams::AmsParseError,
 };
@@ -35,6 +35,10 @@ use crate::{
 /// ```
 ///
 /// Représente un paquet AMS (header + payload)
+///
+/// [`TryFrom`] lit l'en-tete AMS nu, des l'octet 0 ; la regle UDP 48899
+/// l'emploie. Sur TCP 48898, chaque message est precede de l'en-tete AMS/TCP
+/// de 6 octets : [`AmsPacket::try_from_tcp`] le lit d'abord.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct AmsPacket<'a> {
@@ -133,6 +137,19 @@ impl<'a> TryFrom<&'a [u8]> for AmsPacket<'a> {
     }
 }
 
+impl<'a> AmsPacket<'a> {
+    /// Decode un message AMS transporte sur TCP : l'en-tete AMS/TCP (deux
+    /// octets reserves a zero, puis la longueur du message sur quatre octets
+    /// en petit-boutiste) precede l'en-tete AMS.
+    ///
+    /// Seul le premier message du segment est decode ; la longueur annoncee
+    /// doit y tenir. C'est elle, avec les octets reserves nuls, qui
+    /// distingue un flux AMS/TCP d'un payload quelconque.
+    pub fn try_from_tcp(bytes: &'a [u8]) -> Result<Self, AmsParseError> {
+        Self::try_from(extract_ams_tcp_message(bytes)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,11 +237,103 @@ mod tests {
 
     #[test]
     fn test_invalid_state_flags() {
-        // bit réservé (0x0010) positionné
-        let bytes = build_ams(0x0001, 0x0010, 0, &[]);
+        // bit réservé (0x0100) positionné ; 0x0010 est HIGH PRIORITY.
+        let bytes = build_ams(0x0001, 0x0100, 0, &[]);
         assert!(matches!(
             AmsPacket::try_from(bytes.as_slice()),
-            Err(AmsParseError::InvalidStateFlags(0x0010))
+            Err(AmsParseError::InvalidStateFlags(0x0100))
+        ));
+    }
+
+    /// ADS Read Request construit a la main (#290) : en-tete AMS/TCP
+    /// annoncant 44 octets, cible 192.168.1.100.1.1:851, source
+    /// 192.168.1.101.1.1:33000, index group 0xF005, offset 0, longueur 4.
+    /// tshark 4.6.9 y lit « ADS Read (2) », StateFlags 0x0004, cbData 12.
+    const ADS_READ_TCP_HEX: &str = concat!(
+        "00002c000000",
+        "c0a8016401015303c0a801650101e880",
+        "020004000c0000000000000007000000",
+        "05f000000000000004000000"
+    );
+
+    fn ads_read_tcp() -> Vec<u8> {
+        hex::decode(ADS_READ_TCP_HEX).expect("invalid hex fixture")
+    }
+
+    #[test]
+    fn try_from_tcp_reads_an_ads_read_request() {
+        let bytes = ads_read_tcp();
+
+        let ams = AmsPacket::try_from_tcp(&bytes).expect("AMS/TCP valide");
+
+        assert_eq!(ams.ams_target_net_id, [192, 168, 1, 100, 1, 1]);
+        assert_eq!(ams.ams_target_port, 851);
+        assert_eq!(ams.ams_sender_net_id, [192, 168, 1, 101, 1, 1]);
+        assert_eq!(ams.ams_sender_port, 33000);
+        assert_eq!(ams.cmd_id, 2);
+        assert_eq!(ams.state_flags, 0x0004);
+        assert_eq!(ams.cb_data, 12);
+        assert_eq!(ams.invoke_id, 7);
+        assert_eq!(ams.data, &[0x05, 0xf0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0]);
+        // Sans son en-tete AMS/TCP, le meme message reste un AMS nu.
+        assert!(AmsPacket::try_from(&bytes[6..]).is_ok());
+        assert!(AmsPacket::try_from(bytes.as_slice()).is_err());
+    }
+
+    /// Un client ADS enchaine ses requetes : le premier message est decode.
+    #[test]
+    fn try_from_tcp_decodes_the_first_of_two_messages() {
+        let mut bytes = ads_read_tcp();
+        bytes.extend_from_slice(&ads_read_tcp());
+
+        assert_eq!(
+            AmsPacket::try_from_tcp(&bytes).map(|ams| ams.cb_data).ok(),
+            Some(12)
+        );
+    }
+
+    #[test]
+    fn try_from_tcp_accepts_ads_over_udp_state_flags() {
+        let mut bytes = ads_read_tcp();
+        bytes[6 + 18] = 0x44;
+
+        assert_eq!(
+            AmsPacket::try_from_tcp(&bytes)
+                .map(|ams| ams.state_flags)
+                .ok(),
+            Some(0x0044)
+        );
+    }
+
+    #[test]
+    fn try_from_tcp_refuses_a_length_that_disagrees_with_the_message() {
+        // Longueur plus courte que l'en-tete AMS.
+        let mut bytes = ads_read_tcp();
+        bytes[2] = 31;
+        assert!(matches!(
+            AmsPacket::try_from_tcp(&bytes),
+            Err(AmsParseError::HeaderTooShort {
+                expected: 32,
+                actual: 31
+            })
+        ));
+        // Longueur qui depasse le segment.
+        bytes[2] = 45;
+        assert!(matches!(
+            AmsPacket::try_from_tcp(&bytes),
+            Err(AmsParseError::TcpLengthExceedsSegment {
+                length: 45,
+                available: 44
+            })
+        ));
+        // Longueur qui coupe les donnees que cbData annonce.
+        bytes[2] = 43;
+        assert!(matches!(
+            AmsPacket::try_from_tcp(&bytes),
+            Err(AmsParseError::InvalidCbDataLength {
+                cb_data: 12,
+                actual: 11
+            })
         ));
     }
 }

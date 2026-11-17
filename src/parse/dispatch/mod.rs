@@ -119,7 +119,8 @@ decode_as_protocols![
 impl DecodeAsProtocol {
     /// (etiquette, garde, sonde) de la regle equivalente de la table. DNS
     /// choisit sa forme selon le transport : datagramme sur UDP, prefixe de
-    /// longueur sur TCP (RFC 1035 §4.2).
+    /// longueur sur TCP (RFC 1035 §4.2). AMS aussi : en-tete nu hors TCP,
+    /// precede de l'en-tete AMS/TCP sur TCP.
     fn rule(self, protocol: TransportProtocol) -> (ApplicationProtocol, Guard, ProbeId) {
         match self {
             Self::Ftp => (ApplicationProtocol::Ftp, Guard::Tcp, ProbeId::Ftp),
@@ -153,7 +154,10 @@ impl DecodeAsProtocol {
                 Guard::Any,
                 ProbeId::EthernetIp,
             ),
-            Self::Ams => (ApplicationProtocol::Ams, Guard::Any, ProbeId::Ams),
+            Self::Ams => match protocol {
+                TransportProtocol::Tcp => (ApplicationProtocol::Ams, Guard::Tcp, ProbeId::AmsTcp),
+                _ => (ApplicationProtocol::Ams, Guard::Any, ProbeId::Ams),
+            },
             Self::QuicShortHeader => (
                 ApplicationProtocol::Quic,
                 Guard::Udp,

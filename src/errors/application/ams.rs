@@ -19,4 +19,12 @@ pub enum AmsParseError {
 
     #[error("Invalid AMS state flags: reserved bits set (0x{0:04x})")]
     InvalidStateFlags(u16),
+
+    /// En-tete AMS/TCP dont les deux octets reserves ne sont pas nuls.
+    #[error("Invalid AMS/TCP header: reserved bytes must be zero (0x{0:04x})")]
+    InvalidTcpReserved(u16),
+
+    /// Longueur AMS/TCP plus grande que ce qui suit l'en-tete dans le segment.
+    #[error("AMS/TCP length ({length}) exceeds the {available} bytes after its header")]
+    TcpLengthExceedsSegment { length: u32, available: usize },
 }

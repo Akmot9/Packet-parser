@@ -65,6 +65,19 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
   accepte des 4 octets. Les 4 relais du corpus (`The-Ultimate-PCAP.pcapng`,
   trames 36781 a 36784) donnent le meme en-tete que tshark 4.6.9, et leur
   etiquette ne change pas.
+- **AMS sur TCP** (#290) : sur TCP 48898, chaque message AMS est precede
+  de l'en-tete AMS/TCP de 6 octets (deux octets reserves nuls, longueur sur
+  quatre octets en petit-boutiste). La sonde lisait l'en-tete AMS des
+  l'octet 0 : un vrai message ADS sortait Unknown, et seul un en-tete nu,
+  qui ne circule pas seul sur TCP, etait reconnu. La nouvelle constructrice
+  `AmsPacket::try_from_tcp` lit d'abord l'en-tete AMS/TCP, puis le premier
+  message du segment ; la regle TCP 48898 et Decode As sur TCP l'emploient.
+  La regle UDP 48899 garde l'en-tete nu. Les state flags acceptent aussi
+  les bits que nomme Wireshark (0x0010 a 0x0080 et 0x8000) : un en-tete
+  ADS + UDP (0x0044) etait refuse. Nouvelles erreurs
+  `AmsParseError::InvalidTcpReserved` et `TcpLengthExceedsSegment`. Le
+  corpus n'a aucune capture AMS : la preuve est un ADS Read construit a la
+  main, que tshark 4.6.9 lit « ADS Read (2) ».
 
 ### Interne
 
