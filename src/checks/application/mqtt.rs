@@ -38,6 +38,7 @@ pub fn parse_packet_type(first_byte: u8) -> Result<MqttPacketType, MqttError> {
         12 => Ok(MqttPacketType::Pingreq),
         13 => Ok(MqttPacketType::Pingresp),
         14 => Ok(MqttPacketType::Disconnect),
+        15 => Ok(MqttPacketType::Auth),
         _ => Err(MqttError::InvalidPacketType { raw: nibble }),
     }
 }
@@ -146,6 +147,85 @@ const SUBACK_REASON_CODES: &[u8] = &[
 
 /// Reason codes UNSUBACK v5.
 const UNSUBACK_REASON_CODES: &[u8] = &[0x00, 0x11, 0x80, 0x83, 0x87, 0x8F, 0x91];
+
+/// Reason codes AUTH (MQTT 5.0 §3.15.2.1) : Success, Continue
+/// authentication, Re-authenticate.
+const AUTH_REASON_CODES: &[u8] = &[0x00, 0x18, 0x19];
+
+/// Propriete Topic Alias (MQTT 5.0 §3.3.2.3.4).
+const TOPIC_ALIAS: u8 = 0x23;
+
+/// Propriete Authentication Method (MQTT 5.0 §3.15.2.2.2).
+const AUTHENTICATION_METHOD: u8 = 0x15;
+
+/// Taille de la valeur d'une propriete MQTT 5 au debut de `value`, selon le
+/// type que lui donne la table 2-4 (§2.2.2.2). `None` pour un identifiant
+/// inconnu ou une valeur qui deborde.
+fn property_value_len(id: u8, value: &[u8]) -> Option<usize> {
+    let two_byte = |buf: &[u8]| {
+        Some(usize::from(u16::from_be_bytes([
+            *buf.first()?,
+            *buf.get(1)?,
+        ])))
+    };
+    let utf8 = |buf: &[u8]| {
+        let len = two_byte(buf)?;
+        std::str::from_utf8(buf.get(2..2 + len)?).ok()?;
+        Some(2 + len)
+    };
+    let len = match id {
+        // Byte
+        0x01 | 0x17 | 0x19 | 0x24 | 0x25 | 0x28 | 0x29 | 0x2A => 1,
+        // Two Byte Integer
+        0x13 | 0x21 | 0x22 | 0x23 => 2,
+        // Four Byte Integer
+        0x02 | 0x11 | 0x18 | 0x27 => 4,
+        // Variable Byte Integer : Subscription Identifier
+        0x0B => decode_remaining_length(value).ok()?.1,
+        // UTF-8 Encoded String
+        0x03 | 0x08 | 0x12 | 0x15 | 0x1A | 0x1C | 0x1F => utf8(value)?,
+        // Binary Data
+        0x09 | 0x16 => 2 + two_byte(value)?,
+        // UTF-8 String Pair : User Property
+        0x26 => {
+            let key = utf8(value)?;
+            key + utf8(value.get(key..)?)?
+        }
+        _ => return None,
+    };
+    (len <= value.len()).then_some(len)
+}
+
+/// Bloc de proprietes MQTT 5 lu par [`read_properties`].
+struct Properties {
+    /// Longueur du bloc, varint de longueur compris.
+    len: usize,
+    /// Un bit par identifiant rencontre (les identifiants vont de 0x01 a 0x2A).
+    ids: u64,
+}
+
+impl Properties {
+    fn contains(&self, id: u8) -> bool {
+        self.ids & (1 << id) != 0
+    }
+}
+
+/// Lit un bloc de proprietes MQTT 5 au debut de `buf` (§2.2.2) : varint de
+/// longueur, puis des proprietes connues dont chaque valeur tient dans le
+/// bloc. Plus strict qu'un simple controle de longueur : la sonde MQTT est
+/// aveugle, et chaque identifiant inconnu refuse le bloc.
+fn read_properties(buf: &[u8]) -> Option<Properties> {
+    let (props_len, varint_bytes) = decode_remaining_length(buf).ok()?;
+    let end = varint_bytes.checked_add(usize::try_from(props_len).ok()?)?;
+    let mut props = buf.get(varint_bytes..end)?;
+    let mut ids = 0u64;
+    while let [id, value @ ..] = props {
+        let len = property_value_len(*id, value)?;
+        ids |= 1 << id;
+        props = &value[len..];
+    }
+    Some(Properties { len: end, ids })
+}
 
 /// Vérifie qu'un reason code DISCONNECT est plausible : 0x00 (normal),
 /// 0x04 (disconnect with will) ou reason code v5 (0x80-0xA2). Produit la
@@ -362,8 +442,27 @@ fn validate_connack_vh(first_byte: u8, body: &[u8]) -> Result<usize, MqttError> 
     Ok(body.len())
 }
 
+/// Un PUBLISH v5 a topic vide doit porter un Topic Alias (§3.3.2.1) : apres
+/// l'eventuel packet id, le bloc de proprietes doit se lire et le contenir.
+fn publish_has_topic_alias(qos: u8, after_topic: &[u8]) -> bool {
+    let props_start = if qos > 0 {
+        match after_topic {
+            [hi, lo, ..] if u16::from_be_bytes([*hi, *lo]) != 0 => 2,
+            _ => return false,
+        }
+    } else {
+        0
+    };
+    read_properties(&after_topic[props_start..]).is_some_and(|props| props.contains(TOPIC_ALIAS))
+}
+
 /// Variable header PUBLISH : longueur de topic, topic name valide, puis
 /// packet id si QoS > 0.
+///
+/// Le topic vide n'est permis qu'en v5, avec un Topic Alias (§3.3.2.1).
+/// Les proprietes v5 ne comptent pas dans la longueur rendue : le decodeur
+/// ne connait pas la version negociee, elles restent en tete du payload,
+/// comme pour tout PUBLISH v5.
 fn validate_publish_vh(first_byte: u8, body: &[u8]) -> Result<usize, MqttError> {
     if body.len() < 2 {
         return Err(MqttError::VariableHeaderTooShort {
@@ -380,8 +479,11 @@ fn validate_publish_vh(first_byte: u8, body: &[u8]) -> Result<usize, MqttError> 
             available: body.len().saturating_sub(2),
         });
     }
-    validate_publish_topic(&body[2..2 + topic_len])?;
     let qos = (first_byte >> 1) & 0b11;
+    let topic = &body[2..2 + topic_len];
+    if !topic.is_empty() || !publish_has_topic_alias(qos, &body[vh_len..]) {
+        validate_publish_topic(topic)?;
+    }
     if qos > 0 {
         read_packet_id(MqttPacketType::Publish, &body[vh_len..])?;
         vh_len += 2;
@@ -419,25 +521,27 @@ fn validate_ack_vh(packet_type: MqttPacketType, body: &[u8]) -> Result<usize, Mq
 
 /// Corps SUBSCRIBE/UNSUBSCRIBE : packet id non nul, puis une suite
 /// d'entrées de souscription qui remplit exactement le corps. Essai double
-/// v3 puis v5 à propriétés vides ; erreur seulement si les deux échouent,
-/// pour ne pas changer quelle erreur sort sur quel input.
+/// v3 puis v5 ; erreur seulement si les deux échouent, pour ne pas changer
+/// quelle erreur sort sur quel input.
 fn validate_subscription_vh(packet_type: MqttPacketType, body: &[u8]) -> Result<usize, MqttError> {
     read_packet_id(packet_type, body)?;
     let with_qos = packet_type == MqttPacketType::Subscribe;
-    // v3 : les entrées commencent après le packet id ; v5 : après un
-    // bloc de propriétés (toléré uniquement vide : 0x00).
+    // v3 : les entrées commencent après le packet id ; v5 : après le bloc
+    // de propriétés (Subscription Identifier, User Property ; §3.8.2.1).
     let v3 = subscription_entries_fill_exactly(packet_type, body, 2, with_qos);
-    let v5_empty_props = body.len() > 2
-        && body[2] == 0x00
-        && subscription_entries_fill_exactly(packet_type, body, 3, with_qos);
-    if !v3 && !v5_empty_props {
+    let v5 = !v3
+        && read_properties(&body[2..]).is_some_and(|props| {
+            subscription_entries_fill_exactly(packet_type, body, 2 + props.len, with_qos)
+        });
+    if !v3 && !v5 {
         return Err(MqttError::MalformedSubscriptionPayload { packet_type });
     }
     Ok(2)
 }
 
 /// Corps SUBACK : packet id non nul, puis au moins un code de retour, tous
-/// dans la liste des codes SUBACK plausibles.
+/// dans la liste des codes SUBACK plausibles. En v5, un bloc de propriétés
+/// précède les codes (Reason String, User Property ; §3.9.2.1).
 fn validate_suback_vh(body: &[u8]) -> Result<usize, MqttError> {
     read_packet_id(MqttPacketType::Suback, body)?;
     if body.len() < 3 {
@@ -446,19 +550,31 @@ fn validate_suback_vh(body: &[u8]) -> Result<usize, MqttError> {
             remaining_length: body_len_u32(body),
         });
     }
+    let bad_code = |codes: &[u8]| {
+        codes
+            .iter()
+            .find(|code| !SUBACK_REASON_CODES.contains(code))
+            .copied()
+    };
     // v3 : chaque octet après le packet id est un code de retour.
     // (Un SUBACK v5 à propriétés vides passe aussi : 0x00 est un code
     // valide.)
-    if let Some(&bad) = body[2..]
-        .iter()
-        .find(|code| !SUBACK_REASON_CODES.contains(code))
-    {
-        return Err(MqttError::InvalidReasonCode {
-            packet_type: MqttPacketType::Suback,
-            code: bad,
-        });
+    let Some(bad) = bad_code(&body[2..]) else {
+        return Ok(2);
+    };
+    // v5 : bloc de propriétés, puis au moins un code. En cas d'échec,
+    // l'erreur reste celle de la lecture v3.
+    let v5 = read_properties(&body[2..]).is_some_and(|props| {
+        let codes = &body[2 + props.len..];
+        !codes.is_empty() && bad_code(codes).is_none()
+    });
+    if v5 {
+        return Ok(2);
     }
-    Ok(2)
+    Err(MqttError::InvalidReasonCode {
+        packet_type: MqttPacketType::Suback,
+        code: bad,
+    })
 }
 
 /// Corps UNSUBACK : packet id non nul seul (v3.1.1), ou propriétés puis au
@@ -494,6 +610,32 @@ fn validate_unsuback_vh(body: &[u8]) -> Result<usize, MqttError> {
         }
     }
     Ok(2)
+}
+
+/// Corps AUTH (MQTT 5.0 §3.15) : vide (Success sans propriétés), ou reason
+/// code AUTH puis un bloc de propriétés qui remplit le corps et porte
+/// l'Authentication Method, dont l'absence est une erreur de protocole
+/// (§3.15.2.2.2).
+fn validate_auth_vh(body: &[u8]) -> Result<usize, MqttError> {
+    let Some((&code, props)) = body.split_first() else {
+        return Ok(0);
+    };
+    if !AUTH_REASON_CODES.contains(&code) {
+        return Err(MqttError::InvalidReasonCode {
+            packet_type: MqttPacketType::Auth,
+            code,
+        });
+    }
+    let Some(props) = read_properties(props).filter(|block| block.len == props.len()) else {
+        return Err(MqttError::InvalidRemainingLength {
+            packet_type: MqttPacketType::Auth,
+            remaining_length: body_len_u32(body),
+        });
+    };
+    if !props.contains(AUTHENTICATION_METHOD) {
+        return Err(MqttError::MissingAuthenticationMethod);
+    }
+    Ok(body.len())
 }
 
 /// Corps PINGREQ/PINGRESP : doit être vide.
@@ -557,6 +699,7 @@ pub fn variable_header_len(
         MqttPacketType::Unsuback => validate_unsuback_vh(body),
         MqttPacketType::Pingreq | MqttPacketType::Pingresp => validate_ping_vh(packet_type, body),
         MqttPacketType::Disconnect => validate_disconnect_vh(body),
+        MqttPacketType::Auth => validate_auth_vh(body),
     }
 }
 
@@ -581,6 +724,7 @@ mod tests {
             (12, MqttPacketType::Pingreq),
             (13, MqttPacketType::Pingresp),
             (14, MqttPacketType::Disconnect),
+            (15, MqttPacketType::Auth),
         ];
 
         for (nibble, expected) in cases {
@@ -590,10 +734,6 @@ mod tests {
         assert!(matches!(
             parse_packet_type(0x00),
             Err(MqttError::InvalidPacketType { raw: 0 })
-        ));
-        assert!(matches!(
-            parse_packet_type(0xF0),
-            Err(MqttError::InvalidPacketType { raw: 15 })
         ));
     }
 
@@ -923,6 +1063,143 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn read_properties_walks_known_identifiers() {
+        // Vide.
+        let empty = read_properties(&[0x00]).expect("bloc vide");
+        assert_eq!((empty.len, empty.ids), (1, 0));
+        // Topic Alias 1, puis User Property ("k", "v").
+        let block = [
+            0x0A, 0x23, 0x00, 0x01, 0x26, 0x00, 0x01, b'k', 0x00, 0x01, b'v',
+        ];
+        let props = read_properties(&block).expect("bloc valide");
+        assert_eq!(props.len, block.len());
+        assert!(props.contains(TOPIC_ALIAS));
+        assert!(props.contains(0x26));
+        assert!(!props.contains(AUTHENTICATION_METHOD));
+        // Subscription Identifier en varint de deux octets.
+        assert_eq!(
+            read_properties(&[0x03, 0x0B, 0x80, 0x01]).map(|p| p.len),
+            Some(4)
+        );
+        // Identifiant inconnu (0x04), valeur qui deborde du bloc, chaine
+        // non UTF-8 : refuses.
+        assert!(read_properties(&[0x02, 0x04, 0x00]).is_none());
+        assert!(read_properties(&[0x02, 0x23, 0x00]).is_none());
+        assert!(read_properties(&[0x05, 0x1F, 0x00, 0x02, 0xFF, 0xFE]).is_none());
+        // Longueur qui depasse le tampon.
+        assert!(read_properties(&[0x05, 0x01, 0x00]).is_none());
+    }
+
+    /// Les quatre formes v5 de #291 (MQTT 5.0 §3.3.2.1, §3.8.2.1, §3.9.2.1,
+    /// §3.15).
+    #[test]
+    fn mqtt5_forms_with_properties_are_accepted() {
+        // PUBLISH QoS 0, topic vide + Topic Alias 1, payload "hi".
+        let publish = [0x00, 0x00, 0x03, 0x23, 0x00, 0x01, b'h', b'i'];
+        assert_eq!(
+            variable_header_len(MqttPacketType::Publish, 0x30, &publish).ok(),
+            Some(2)
+        );
+        // QoS 1 : le packet id precede les proprietes.
+        let publish_qos1 = [0x00, 0x00, 0x00, 0x07, 0x03, 0x23, 0x00, 0x01, b'h'];
+        assert_eq!(
+            variable_header_len(MqttPacketType::Publish, 0x32, &publish_qos1).ok(),
+            Some(4)
+        );
+        // SUBSCRIBE + Subscription Identifier 1, filtre "a/b", options 1.
+        let subscribe = [
+            0x00, 0x01, 0x02, 0x0B, 0x01, 0x00, 0x03, b'a', b'/', b'b', 0x01,
+        ];
+        assert_eq!(
+            variable_header_len(MqttPacketType::Subscribe, 0x82, &subscribe).ok(),
+            Some(2)
+        );
+        // UNSUBSCRIBE + User Property ("k", "v"), filtre "a".
+        let unsubscribe = [
+            0x00, 0x01, 0x07, 0x26, 0x00, 0x01, b'k', 0x00, 0x01, b'v', 0x00, 0x01, b'a',
+        ];
+        assert_eq!(
+            variable_header_len(MqttPacketType::Unsubscribe, 0xA2, &unsubscribe).ok(),
+            Some(2)
+        );
+        // SUBACK + Reason String "a", puis le code 0x00.
+        let suback = [0x00, 0x01, 0x04, 0x1F, 0x00, 0x01, b'a', 0x00];
+        assert_eq!(
+            variable_header_len(MqttPacketType::Suback, 0x90, &suback).ok(),
+            Some(2)
+        );
+        // AUTH vide, et AUTH Continue authentication + Authentication Method "x".
+        assert_eq!(
+            variable_header_len(MqttPacketType::Auth, 0xF0, &[]).ok(),
+            Some(0)
+        );
+        let auth = [0x18, 0x04, 0x15, 0x00, 0x01, b'x'];
+        assert_eq!(
+            variable_header_len(MqttPacketType::Auth, 0xF0, &auth).ok(),
+            Some(6)
+        );
+    }
+
+    #[test]
+    fn mqtt5_forms_keep_their_guards() {
+        // Topic vide sans Topic Alias, ou avec une propriete inconnue : refuse.
+        for body in [
+            &[0x00, 0x00][..],
+            &[0x00, 0x00, 0x00, b'h'],
+            &[0x00, 0x00, 0x02, 0x01, 0x00],
+            &[0x00, 0x00, 0x03, 0x04, 0x00, 0x01],
+        ] {
+            assert!(
+                matches!(
+                    variable_header_len(MqttPacketType::Publish, 0x30, body),
+                    Err(MqttError::EmptyTopic)
+                ),
+                "{body:02X?}"
+            );
+        }
+        // QoS 1 a packet id nul : l'alias ne sauve pas le topic vide.
+        let zero_pid = [0x00, 0x00, 0x00, 0x00, 0x03, 0x23, 0x00, 0x01];
+        assert!(matches!(
+            variable_header_len(MqttPacketType::Publish, 0x32, &zero_pid),
+            Err(MqttError::EmptyTopic)
+        ));
+        // SUBACK : bloc de proprietes sans code derriere ; code invalide
+        // apres un bloc valide. L'erreur reste celle de la lecture v3.
+        assert!(matches!(
+            variable_header_len(
+                MqttPacketType::Suback,
+                0x90,
+                &[0x00, 0x01, 0x04, 0x1F, 0x00, 0x01, b'a']
+            ),
+            Err(MqttError::InvalidReasonCode { code: 0x04, .. })
+        ));
+        assert!(matches!(
+            variable_header_len(MqttPacketType::Suback, 0x90, &[0x00, 0x01, 0x00, 0x37]),
+            Err(MqttError::InvalidReasonCode { code: 0x37, .. })
+        ));
+        // AUTH : code inconnu, proprietes qui ne remplissent pas le corps,
+        // proprietes sans Authentication Method.
+        assert!(matches!(
+            variable_header_len(MqttPacketType::Auth, 0xF0, &[0x01, 0x00]),
+            Err(MqttError::InvalidReasonCode { code: 0x01, .. })
+        ));
+        assert!(matches!(
+            variable_header_len(MqttPacketType::Auth, 0xF0, &[0x18]),
+            Err(MqttError::InvalidRemainingLength { .. })
+        ));
+        assert!(matches!(
+            variable_header_len(MqttPacketType::Auth, 0xF0, &[0x18, 0x00, 0x00]),
+            Err(MqttError::InvalidRemainingLength { .. })
+        ));
+        assert!(matches!(
+            variable_header_len(MqttPacketType::Auth, 0xF0, &[0x18, 0x00]),
+            Err(MqttError::MissingAuthenticationMethod)
+        ));
+        // AUTH a bits reserves dans l'en-tete fixe.
+        assert!(validate_fixed_header_flags(MqttPacketType::Auth, 0xF1).is_err());
     }
 
     #[test]

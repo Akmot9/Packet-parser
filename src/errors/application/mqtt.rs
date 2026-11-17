@@ -99,6 +99,10 @@ pub enum MqttError {
     /// exacte d'entrées (topic filter [+ QoS]).
     #[error("Malformed MQTT {packet_type:?} payload")]
     MalformedSubscriptionPayload { packet_type: MqttPacketType },
+
+    /// AUTH a proprietes sans Authentication Method (MQTT 5.0 §3.15.2.2.2).
+    #[error("MQTT AUTH packet without an Authentication Method property")]
+    MissingAuthenticationMethod,
 }
 #[cfg(test)]
 mod tests {

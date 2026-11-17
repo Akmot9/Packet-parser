@@ -52,7 +52,7 @@ réellement capturées sur un réseau.
 | `tcp/` | — | ✅ handshake, teardown, RST, retransmissions, zero window — source Chris Sanders |
 | `ip/` | — | ✅ fragmentation v4/v6, TTL — source Chris Sanders |
 | `ieee80211/` | — | ✅ beacon, auth WEP/WPA (ok + échec) — source Chris Sanders |
-| `mqtt/` | — | ✅ session Paho → m2m.eclipse.org:1883 (v3.1 « MQIsdp ») ; source des golden tests anti-faux positifs — voir `SOURCE.md` |
+| `mqtt/` | — | ✅ session Paho → m2m.eclipse.org:1883 (v3.1 « MQIsdp ») ; source des golden tests anti-faux positifs. MQTT 5 : quatre captures Mosquitto du tracker Wireshark (SUBSCRIBE, UNSUBSCRIBE à propriétés, variantes des PUB*), parité tshark dans `tests/mqtt_golden.rs` — voir `SOURCE.md` |
 | `ftp/` | — | ✅ commandes de controle FTP sur IPv6, extraites des samples Wireshark sans authentification — voir `SOURCE.md` |
 | `smtp/` | — | ✅ echange de controle SMTP, tronque avant authentification et corps du message — voir `SOURCE.md` |
 | `nntp/` | — | ✅ commandes/statut NNTP, sans corps d'article — voir `SOURCE.md` |

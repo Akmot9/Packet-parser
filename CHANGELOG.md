@@ -78,6 +78,22 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
   `AmsParseError::InvalidTcpReserved` et `TcpLengthExceedsSegment`. Le
   corpus n'a aucune capture AMS : la preuve est un ADS Read construit a la
   main, que tshark 4.6.9 lit « ADS Read (2) ».
+- **MQTT 5** (#291) : quatre formes v5 valides etaient refusees, et
+  sortaient Unknown. SUBSCRIBE et UNSUBSCRIBE ne toleraient qu'un bloc de
+  proprietes vide ; SUBACK lisait la longueur de ses proprietes comme un
+  code de retour ; un PUBLISH a topic vide etait refuse meme avec un Topic
+  Alias (§3.3.2.1) ; le type 15, AUTH (§3.15), etait inconnu. Un lecteur de
+  proprietes v5 parcourt desormais chaque identifiant selon la table 2-4 de
+  la spec, et refuse un identifiant inconnu : la sonde MQTT est aveugle.
+  `MqttPacketType` gagne la variante `Auth`, `MqttError` la variante
+  `MissingAuthenticationMethod` (un AUTH a proprietes doit porter
+  l'Authentication Method, §3.15.2.2.2). Comme pour tout PUBLISH v5, les
+  proprietes restent en tete du payload. Premier MQTT 5 reel du corpus :
+  quatre captures Mosquitto du tracker Wireshark (#15257, #15428) versees
+  dans `protocols/mqtt/`, 150 paquets que tshark 4.6.9 lit, compares un a
+  un par `tests/mqtt_golden.rs`. 149 sortent MQTT ; le dernier est un
+  UNSUBACK sans reason code, que la spec interdit (§3.11.3) et que la crate
+  refuse. Les captures v3.1 du corpus gardent leurs etiquettes.
 
 ### Interne
 
