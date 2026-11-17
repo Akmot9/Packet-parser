@@ -430,3 +430,62 @@ fn the_inner_flow_of_a_tunnel_goes_through_added_parsers() {
     assert_eq!(config.custom_fields(&flow), None);
     assert!(config.custom_fields(inner).is_some());
 }
+
+/// #323 : une etiquette ecrite se relit avec la configuration qui l'a
+/// produite, celles des parseurs ajoutes comprises.
+#[test]
+fn a_written_label_reads_back_with_its_configuration() {
+    let mut config = config_with(vec![
+        Probe::new("ZZ", |payload| payload.starts_with(b"ZZ")),
+        Probe::new("Acme Bus", |_| false),
+    ]);
+    let empty = ParseConfig::new();
+
+    // Les protocoles de la crate : la reponse de `FromStr`, avec ou sans
+    // parseur ajoute.
+    for protocol in ApplicationProtocol::ALL {
+        let label = protocol.label();
+        assert_eq!(config.application_protocol(label), Ok(*protocol), "{label}");
+        assert_eq!(
+            empty.application_protocol(label),
+            label.parse::<ApplicationProtocol>(),
+            "{label}"
+        );
+    }
+
+    // L'aller-retour d'un flux nomme par un parseur ajoute.
+    let written = label(
+        &config,
+        TransportProtocol::Udp,
+        (Some(40_000), Some(40_001)),
+        SYNTHETIC,
+    )
+    .expect("charge non vide");
+    assert_eq!(written, "ZZ");
+    assert_eq!(
+        config.application_protocol(written),
+        Ok(ApplicationProtocol::Custom("ZZ"))
+    );
+    assert_eq!(
+        config.application_protocol("Acme Bus"),
+        Ok(ApplicationProtocol::Custom("Acme Bus"))
+    );
+
+    // Comparaison exacte, et rien hors de la configuration.
+    for unknown in ["zz", "ZZ ", "acme bus", "", "Unknown?"] {
+        assert_eq!(
+            config.application_protocol(unknown).map_err(|e| e.0),
+            Err(unknown.to_string()),
+            "{unknown:?}"
+        );
+    }
+    assert!(empty.application_protocol("ZZ").is_err());
+
+    // Un parseur retire ne se relit plus.
+    assert!(config.remove_parser("ZZ").is_some());
+    assert!(config.application_protocol("ZZ").is_err());
+    assert_eq!(
+        config.application_protocol("Acme Bus"),
+        Ok(ApplicationProtocol::Custom("Acme Bus"))
+    );
+}

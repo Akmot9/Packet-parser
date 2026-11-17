@@ -111,6 +111,18 @@ leaves it unchanged on a refusal. `remove_parser(label)` removes a parser,
 `parser(label)` returns it, and `parser_labels()` lists them in the order
 they run. `classify_payload_with` goes through the same parsers.
 
+### Reading a stored label back
+
+An application that stores its labels as text, in an export or a flow
+matrix, reads them back with `config.application_protocol(label)`. It gives
+`ApplicationProtocol::Custom` for the parsers of `config`, and the answer of
+`str::parse` for the built-in protocols. `str::parse` alone refuses a custom
+label: it knows only the protocols of the crate, not the parsers of a
+configuration. The comparison is exact, case included, and a parser that
+was removed or never registered is an `UnknownApplicationLabel` error:
+the application decides whether to keep the text or to report the missing
+parser (#323).
+
 ## Writing a plugin
 
 A plugin is a crate of type `cdylib` that calls `export_parser!` once:

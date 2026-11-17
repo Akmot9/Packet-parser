@@ -144,6 +144,10 @@ impl FromStr for ApplicationProtocol {
 
     /// Reads a label back, exactly as [`ApplicationProtocol::label`] writes
     /// it. An unknown text is an error, not [`ApplicationProtocol::Unknown`].
+    ///
+    /// Only the built-in protocols are read: the label of a parser added by
+    /// the caller is an error. [`ParseConfig::application_protocol`](crate::ParseConfig::application_protocol)
+    /// reads those too, with the configuration that registered them.
     fn from_str(label: &str) -> Result<Self, Self::Err> {
         Self::ALL
             .iter()
