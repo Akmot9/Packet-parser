@@ -5,10 +5,9 @@
 
 use std::net::Ipv4Addr;
 
-use chrono::{DateTime, TimeZone, Utc};
-
 use crate::{
-    errors::application::ntp::NtpPacketParseError, parse::application::protocols::ntp::Refid,
+    errors::application::ntp::NtpPacketParseError,
+    parse::application::protocols::ntp::{NtpTimestamp, Refid},
 };
 
 pub const MINIMUM_NTP_PACKET_LENGTH: usize = 48;
@@ -172,56 +171,24 @@ pub fn extract_reference_id(stratum: u8, payload: &[u8]) -> Result<Refid, NtpPac
     }
 }
 
-const NTP_TO_UNIX_EPOCH: i64 = 2_208_988_800;
-
-/// Extracts an NTP timestamp (8 bytes) and returns a `DateTime<Utc>`.
-pub fn extract_timestamp(payload: &[u8]) -> Result<DateTime<Utc>, NtpPacketParseError> {
-    validate_timestamp_size(payload)?;
-
-    // Extraction des 4 premiers octets pour obtenir les secondes NTP.
-    let ntp_seconds = u32::from_be_bytes([payload[0], payload[1], payload[2], payload[3]]);
-
-    // Extraction des 4 derniers octets pour obtenir la fraction de seconde NTP.
-    let ntp_fraction = u32::from_be_bytes([payload[4], payload[5], payload[6], payload[7]]);
-
-    // Conversion des secondes NTP en secondes UNIX. Un horodatage entierement
-    // nul est « inconnu » (RFC 5905 §6) et rendu 1970-01-01 00:00:00 UTC.
-    // Sinon le bit de poids fort choisit l'ere (RFC 4330 §3) : a 1, l'ere 0
-    // (1968 a 2036) ; a 0, l'ere 1 (2036 a 2104) — comme tshark (#162).
-    let unix_seconds = if ntp_seconds == 0 && ntp_fraction == 0 {
-        0
-    } else if ntp_seconds & 0x8000_0000 != 0 {
-        i64::from(ntp_seconds) - NTP_TO_UNIX_EPOCH
-    } else {
-        i64::from(ntp_seconds) + (1_i64 << 32) - NTP_TO_UNIX_EPOCH
-    };
-
-    // Conversion de la fraction de seconde NTP en nanosecondes.
-    let nanos = (((ntp_fraction as u64) * 1_000_000_000) / (1 << 32)) as u32;
-
-    // Construction du `DateTime<Utc>` et validation de la date.
-    Utc.timestamp_opt(unix_seconds, nanos).single().ok_or(
-        NtpPacketParseError::TimestampConversionError {
-            seconds: unix_seconds,
-            nanos,
-        },
-    )
-}
-
-fn validate_timestamp_size(payload: &[u8]) -> Result<(), NtpPacketParseError> {
-    if payload.len() != 8 {
-        return Err(NtpPacketParseError::InvalidTimestampSize {
-            received: payload.len(),
-        });
-    }
-
-    Ok(())
+/// Extrait un horodatage NTP de 8 octets, tel que sur le fil. L'ere (RFC
+/// 4330 §3, comme tshark, #162) et l'horodatage nul (« inconnu », RFC 5905
+/// §6) se lisent ensuite sur le [`NtpTimestamp`] : la date se calcule sans
+/// echec, de 1968 a 2104, et plus rien ne se convertit ici (#315).
+pub fn extract_timestamp(payload: &[u8]) -> Result<NtpTimestamp, NtpPacketParseError> {
+    let bytes: [u8; 8] =
+        payload
+            .try_into()
+            .map_err(|_| NtpPacketParseError::InvalidTimestampSize {
+                received: payload.len(),
+            })?;
+    Ok(NtpTimestamp::from_be_bytes(bytes))
 }
 
 /// Un horodatage NTP entierement nul (« unknown », RFC 5905 §6) : la crate
-/// le rend comme l'epoque Unix.
-pub fn is_null_timestamp(timestamp: DateTime<Utc>) -> bool {
-    timestamp.timestamp() == 0 && timestamp.timestamp_subsec_nanos() == 0
+/// le date de l'epoque Unix.
+pub fn is_null_timestamp(timestamp: NtpTimestamp) -> bool {
+    timestamp.is_null()
 }
 
 /// Receive (T2) et Transmit (T3) sont pris sur l'horloge de l'emetteur :
@@ -232,8 +199,8 @@ pub fn is_null_timestamp(timestamp: DateTime<Utc>) -> bool {
 /// reponses de serveur (#161). Un horodatage nul vaut « inconnu » et ne se
 /// compare pas non plus.
 pub fn validate_datetime_ordering(
-    receive: DateTime<Utc>,
-    transmit: DateTime<Utc>,
+    receive: NtpTimestamp,
+    transmit: NtpTimestamp,
 ) -> Result<(), NtpPacketParseError> {
     if !is_null_timestamp(receive) && !is_null_timestamp(transmit) && receive > transmit {
         return Err(NtpPacketParseError::InconsistentTimestamps);
@@ -362,7 +329,11 @@ pub fn is_valid_trailer(version: u8, trailer: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{TimeZone, Utc};
+
+    /// L'horodatage NTP de l'instant Unix `unix` (de 1968 a 2036, ere 0).
+    fn at(unix: i64, fraction: u32) -> NtpTimestamp {
+        NtpTimestamp::new(u32::try_from(unix + 2_208_988_800).unwrap(), fraction)
+    }
 
     #[test]
     fn test_validate_ntp_packet_length() {
@@ -380,8 +351,8 @@ mod tests {
 
     #[test]
     fn test_valid_ordering() {
-        let receive = Utc.timestamp_opt(1_700_000_002, 0).unwrap();
-        let transmit = Utc.timestamp_opt(1_700_000_003, 0).unwrap();
+        let receive = at(1_700_000_002, 0);
+        let transmit = at(1_700_000_003, 0);
         assert!(validate_datetime_ordering(receive, transmit).is_ok());
         assert!(validate_datetime_ordering(receive, receive).is_ok());
     }
@@ -389,8 +360,8 @@ mod tests {
     #[test]
     fn test_invalid_ordering() {
         // Transmis avant d'etre recu, sur la meme horloge.
-        let receive = Utc.timestamp_opt(1_700_000_003, 0).unwrap();
-        let transmit = Utc.timestamp_opt(1_700_000_002, 999_999_999).unwrap();
+        let receive = at(1_700_000_003, 0);
+        let transmit = at(1_700_000_002, u32::MAX);
         assert!(matches!(
             validate_datetime_ordering(receive, transmit),
             Err(NtpPacketParseError::InconsistentTimestamps)
@@ -400,8 +371,8 @@ mod tests {
     /// #161 : un horodatage nul est inconnu, pas anterieur a tout.
     #[test]
     fn test_null_timestamps_are_not_ordered() {
-        let null = Utc.timestamp_opt(0, 0).unwrap();
-        let later = Utc.timestamp_opt(1_700_000_003, 0).unwrap();
+        let null = NtpTimestamp::new(0, 0);
+        let later = at(1_700_000_003, 0);
         assert!(is_null_timestamp(null));
         assert!(!is_null_timestamp(later));
         assert!(validate_datetime_ordering(later, null).is_ok());
@@ -530,7 +501,14 @@ mod tests {
     fn test_extract_timestamp_zero_is_unix_epoch() {
         let payload = [0u8; 8];
         let result = extract_timestamp(&payload).expect("zero timestamp must be valid");
-        assert_eq!(result, Utc.timestamp_opt(0, 0).unwrap());
+        assert!(result.is_null());
+        assert_eq!(result.unix_seconds(), 0);
+        assert_eq!(result.to_string(), "1970-01-01T00:00:00.000000000Z");
+        // L'epoque Unix exacte n'est pas nulle, et vient apres le nul.
+        let epoch = at(0, 0);
+        assert!(!epoch.is_null());
+        assert_eq!(epoch.unix_seconds(), 0);
+        assert!(result < epoch);
     }
 
     #[test]
@@ -538,7 +516,8 @@ mod tests {
         // NTP seconds for 2004-09-27T03:18:04Z (0xC50204EC).
         let payload = [0xC5, 0x02, 0x04, 0xEC, 0x00, 0x00, 0x00, 0x00];
         let result = extract_timestamp(&payload).expect("valid timestamp");
-        assert_eq!(result.timestamp(), 0xC50204ECu32 as i64 - 2_208_988_800);
+        assert_eq!(result.unix_seconds(), 0xC50204ECu32 as i64 - 2_208_988_800);
+        assert_eq!(result.to_string(), "2004-09-27T03:18:04.000000000Z");
     }
 
     /// #162 : bit de poids fort a 0, ere 1 (RFC 4330 §3) — la requete du
@@ -547,13 +526,50 @@ mod tests {
     #[test]
     fn test_extract_timestamp_era_1() {
         let payload = [0x00, 0x00, 0x00, 0x25, 0x00, 0x00, 0x00, 0x00];
-        let result = extract_timestamp(&payload).expect("ere 1");
-        assert_eq!(result, Utc.with_ymd_and_hms(2036, 2, 7, 6, 28, 53).unwrap());
-        // La fin de l'ere 0 reste dans l'ere 0.
+        let era_1 = extract_timestamp(&payload).expect("ere 1");
+        assert_eq!(era_1.to_string(), "2036-02-07T06:28:53.000000000Z");
+        // La fin de l'ere 0 reste dans l'ere 0, avant le debut de l'ere 1.
         let payload = [0xFF, 0xFF, 0xFF, 0xFF, 0x80, 0x00, 0x00, 0x00];
         let result = extract_timestamp(&payload).expect("fin de l'ere 0");
-        assert_eq!(result.timestamp(), 0xFFFF_FFFF_u32 as i64 - 2_208_988_800);
-        assert_eq!(result.timestamp_subsec_nanos(), 500_000_000);
+        assert_eq!(
+            result.unix_seconds(),
+            0xFFFF_FFFF_u32 as i64 - 2_208_988_800
+        );
+        assert_eq!(result.subsec_nanos(), 500_000_000);
+        assert_eq!(result.to_string(), "2036-02-07T06:28:15.500000000Z");
+        assert!(result < era_1);
+        // Le debut de l'ere 0 (bit de poids fort seul) : 1968, avant 1970.
+        let start = NtpTimestamp::new(0x8000_0000, 0);
+        assert_eq!(start.unix_seconds(), -61_505_152);
+        assert_eq!(start.to_string(), "1968-01-20T03:14:08.000000000Z");
+        assert!(start < at(0, 0));
+        // La fin de l'ere 1 : 2104.
+        let end = NtpTimestamp::new(0x7FFF_FFFF, u32::MAX);
+        assert_eq!(end.to_string(), "2104-02-26T09:42:23.999999999Z");
+    }
+
+    /// `SystemTime` a la nanoseconde, avant et apres l'epoque Unix.
+    #[test]
+    fn test_timestamp_to_system_time() {
+        use std::time::{Duration, SystemTime};
+
+        let half = at(1_700_000_000, 0x8000_0000).to_system_time();
+        assert_eq!(
+            half,
+            Some(SystemTime::UNIX_EPOCH + Duration::new(1_700_000_000, 500_000_000))
+        );
+        let before = NtpTimestamp::new(0x8000_0000, 0x4000_0000).to_system_time();
+        assert_eq!(
+            before,
+            Some(
+                SystemTime::UNIX_EPOCH - Duration::from_secs(61_505_152)
+                    + Duration::from_millis(250)
+            )
+        );
+        assert_eq!(
+            NtpTimestamp::new(0, 0).to_system_time(),
+            Some(SystemTime::UNIX_EPOCH)
+        );
     }
 
     #[test]

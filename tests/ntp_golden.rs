@@ -41,8 +41,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::{DateTime, SecondsFormat, Utc};
-use packet_parser::{PacketFlow, parse, parse::application::protocols::ntp::NtpPacket};
+use packet_parser::{
+    PacketFlow, parse,
+    parse::application::protocols::ntp::{NtpPacket, NtpTimestamp},
+};
 
 mod common;
 use common::{FileRead, collect_capture_files, read_capture};
@@ -143,11 +145,11 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 /// Un horodatage nul est rendu `NULL` par tshark comme par l'oracle.
-fn timestamp(value: DateTime<Utc>) -> String {
-    if value.timestamp() == 0 && value.timestamp_subsec_nanos() == 0 {
+fn timestamp(value: NtpTimestamp) -> String {
+    if value.is_null() {
         "NULL".to_string()
     } else {
-        value.to_rfc3339_opts(SecondsFormat::Nanos, true)
+        value.to_string()
     }
 }
 

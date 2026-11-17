@@ -263,3 +263,50 @@ table, `label()` ou `std::mem::discriminant` conviennent aussi.
   (`#[non_exhaustive]`) : le bras `_` reçoit `Custom`.
 - Sans parseur enregistré, rien ne change : `parse`, `parse_with` et
   `classify_payload_with` ne produisent jamais `Custom`.
+
+## NTP : les horodatages sont des `NtpTimestamp`, plus des `DateTime<Utc>` (#315)
+
+**État : fait, sur `main`.** La crate ne dépend plus de `chrono`, non
+maintenu depuis le 2026-11-17 (RUSTSEC-2026-0543, sans faille). Les quatre
+horodatages de `NtpPacket` sont désormais un type de la crate,
+`packet_parser::parse::application::protocols::ntp::NtpTimestamp`, qui
+garde les deux champs du fil.
+
+```rust
+// 12.x
+pub reference_timestamp: chrono::DateTime<chrono::Utc>, // idem pour originate, receive, transmit
+
+// 13.0
+pub reference_timestamp: NtpTimestamp,
+
+#[non_exhaustive]
+pub struct NtpTimestamp {
+    pub seconds: u32,  // depuis le début de l'ère
+    pub fraction: u32, // en 2^-32 s
+}
+```
+
+Ce que fournissait `DateTime<Utc>` a son équivalent :
+
+| 12.x | 13.0 |
+|---|---|
+| `t.timestamp()` | `t.unix_seconds()` |
+| `t.timestamp_subsec_nanos()` | `t.subsec_nanos()` |
+| `t.to_rfc3339_opts(SecondsFormat::Nanos, true)` | `t.to_string()`, au caractère près |
+| `t == Utc.timestamp_opt(0, 0).unwrap()` (horodatage inconnu) | `t.is_null()` |
+| `a < b` | `a < b`, dans l'ordre du temps, ères comprises |
+| un `SystemTime` | `t.to_system_time()` |
+
+Qui veut garder `chrono` reconstruit la date de son côté :
+`Utc.timestamp_opt(t.unix_seconds(), t.subsec_nanos())`.
+
+Les dates ne changent pas. L'ère se choisit comme avant, comme tshark
+(RFC 4330 §3) : bit de poids fort à 1, ère 0 (1968 à 2036) ; à 0, ère 1
+(2036 à 2104). Un horodatage nul est daté de l'époque Unix.
+`tests/ntp_golden.rs` le vérifie contre tshark, au caractère près, sur
+chaque datagramme NTP du corpus.
+
+`NtpPacketParseError::TimestampConversionError { seconds, nanos }`
+disparaît. Elle signalait une date que `chrono` ne savait pas représenter,
+ce qui ne se produisait jamais sur 64 bits de secondes. Un motif qui la
+nomme ne compile plus (E0599).

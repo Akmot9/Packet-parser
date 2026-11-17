@@ -101,10 +101,10 @@
 ///   printable ASCII code.
 ///
 /// These errors help diagnose malformed or unexpected packets.
+use std::cmp::Ordering;
 use std::fmt;
 use std::net::Ipv4Addr;
-
-use chrono::{DateTime, Utc};
+use std::time::{Duration, SystemTime};
 
 use crate::{checks::application::ntp::*, errors::application::ntp::NtpPacketParseError};
 
@@ -149,13 +149,159 @@ pub struct NtpPacket {
     /// The reference identifier depending on the stratum level.
     pub reference_id: Refid,
     /// The time at which the local clock was last set or corrected.
-    pub reference_timestamp: DateTime<Utc>,
+    pub reference_timestamp: NtpTimestamp,
     /// The time at which the request departed the client for the server.
-    pub originate_timestamp: DateTime<Utc>,
+    pub originate_timestamp: NtpTimestamp,
     /// The time at which the request arrived at the server.
-    pub receive_timestamp: DateTime<Utc>,
+    pub receive_timestamp: NtpTimestamp,
     /// The time at which the reply departed the server for the client.
-    pub transmit_timestamp: DateTime<Utc>,
+    pub transmit_timestamp: NtpTimestamp,
+}
+
+/// Seconds from 1900-01-01, the NTP epoch of era 0, to 1970-01-01, the Unix
+/// epoch.
+const NTP_TO_UNIX_EPOCH: i64 = 2_208_988_800;
+
+/// An NTP timestamp (RFC 5905 §6), as carried on the wire: 32 bits of
+/// seconds and 32 bits of fraction of a second.
+///
+/// The seconds count from the start of an NTP era, and the timestamp does
+/// not say which. The crate places it as tshark does (RFC 4330 §3): with the
+/// most significant bit set, in era 0 (1968 to 2036); clear, in era 1 (2036
+/// to 2104). A timestamp that is all zero means "unknown"
+/// ([`is_null`](Self::is_null)); its date is the Unix epoch.
+///
+/// The order is the order in time, eras included. `Display` writes the
+/// date in RFC 3339, in UTC, to the nanosecond:
+///
+/// ```
+/// use packet_parser::parse::application::protocols::ntp::NtpTimestamp;
+///
+/// let transmit = NtpTimestamp::from_be_bytes([0xcc, 0x2b, 0x0c, 0x4e, 0xfa, 0x8b, 0x00, 0xe5]);
+/// assert_eq!(transmit.to_string(), "2008-07-18T12:34:22.978683524Z");
+/// assert_eq!(transmit.unix_seconds(), 1_216_384_462);
+///
+/// // Era 1 follows era 0.
+/// let era_1 = NtpTimestamp::new(0x0000_0025, 0);
+/// assert_eq!(era_1.to_string(), "2036-02-07T06:28:53.000000000Z");
+/// assert!(transmit < era_1);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct NtpTimestamp {
+    /// Seconds since the start of the era.
+    pub seconds: u32,
+    /// Fraction of a second, in units of 2^-32 s.
+    pub fraction: u32,
+}
+
+impl NtpTimestamp {
+    /// A timestamp from its two fields.
+    pub const fn new(seconds: u32, fraction: u32) -> Self {
+        Self { seconds, fraction }
+    }
+
+    /// A timestamp from its 8 bytes, big-endian as on the wire.
+    pub const fn from_be_bytes(bytes: [u8; 8]) -> Self {
+        let [s0, s1, s2, s3, f0, f1, f2, f3] = bytes;
+        Self::new(
+            u32::from_be_bytes([s0, s1, s2, s3]),
+            u32::from_be_bytes([f0, f1, f2, f3]),
+        )
+    }
+
+    /// Whether the timestamp is all zero: "unknown" (RFC 5905 §6).
+    pub const fn is_null(self) -> bool {
+        self.seconds == 0 && self.fraction == 0
+    }
+
+    /// Whole seconds since the Unix epoch: negative before 1970, 0 for a
+    /// null timestamp.
+    pub const fn unix_seconds(self) -> i64 {
+        let seconds = self.seconds as i64;
+        if self.is_null() {
+            0
+        } else if self.seconds & 0x8000_0000 != 0 {
+            seconds - NTP_TO_UNIX_EPOCH
+        } else {
+            seconds + (1_i64 << 32) - NTP_TO_UNIX_EPOCH
+        }
+    }
+
+    /// The fraction of a second, in nanoseconds, rounded down.
+    pub fn subsec_nanos(self) -> u32 {
+        let nanos = (u64::from(self.fraction) * 1_000_000_000) >> 32;
+        // Toujours sous 10^9 : la fraction est sous 2^32.
+        u32::try_from(nanos).unwrap_or(999_999_999)
+    }
+
+    /// The timestamp as a [`SystemTime`], to the nanosecond, rounded down.
+    /// `None` only where the platform cannot represent the date.
+    pub fn to_system_time(self) -> Option<SystemTime> {
+        let seconds = self.unix_seconds();
+        let whole = Duration::from_secs(seconds.unsigned_abs());
+        let since_epoch = if seconds >= 0 {
+            SystemTime::UNIX_EPOCH.checked_add(whole)?
+        } else {
+            SystemTime::UNIX_EPOCH.checked_sub(whole)?
+        };
+        since_epoch.checked_add(Duration::from_nanos(u64::from(self.subsec_nanos())))
+    }
+}
+
+impl Ord for NtpTimestamp {
+    /// The order in time. The raw seconds only break the tie between a null
+    /// timestamp and the one that falls exactly on the Unix epoch.
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.unix_seconds(), self.fraction, self.seconds).cmp(&(
+            other.unix_seconds(),
+            other.fraction,
+            other.seconds,
+        ))
+    }
+}
+
+impl PartialOrd for NtpTimestamp {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// The proleptic Gregorian date of a day counted from 1970-01-01 (Howard
+/// Hinnant, `civil_from_days`).
+fn civil_from_days(days: i64) -> (i64, i64, i64) {
+    let shifted = days + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let day_of_era = shifted.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+    let month = if month_index < 10 {
+        month_index + 3
+    } else {
+        month_index - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    (year, month, day)
+}
+
+impl fmt::Display for NtpTimestamp {
+    /// RFC 3339, UTC, nine digits of fraction: `2008-07-18T12:34:22.978683524Z`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let seconds = self.unix_seconds();
+        let (year, month, day) = civil_from_days(seconds.div_euclid(86_400));
+        let time = seconds.rem_euclid(86_400);
+        write!(
+            f,
+            "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{:09}Z",
+            time / 3_600,
+            time % 3_600 / 60,
+            time % 60,
+            self.subsec_nanos()
+        )
+    }
 }
 
 /// NTP Reference ID (4 bytes, RFC 5905 section 7.3).
@@ -283,7 +429,6 @@ mod tests {
     use crate::errors::application::ntp::NtpPacketParseError;
     use crate::parse::application::protocols::ntp::NtpPacket;
     use crate::parse::application::protocols::ntp::*;
-    // use chrono::TimeZone;
 
     #[test]
     fn test_valid_ntp_packet() {
@@ -340,9 +485,7 @@ mod tests {
         assert!(packet.receive_timestamp <= packet.transmit_timestamp);
         assert!(packet.reference_timestamp < packet.receive_timestamp);
         assert_eq!(
-            packet
-                .transmit_timestamp
-                .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true),
+            packet.transmit_timestamp.to_string(),
             "2008-07-18T12:34:22.978683524Z"
         );
 

@@ -35,6 +35,15 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
   une donnee : les autres n'ont plus de discriminant defini, et un cast `as`
   ne compile plus. `ALL` et `FromStr` restent limites aux protocoles
   integres. Migration : `MIGRATION-13.md`.
+- **NTP sans chrono** (#315) : les quatre horodatages de `NtpPacket` passent
+  de `DateTime<Utc>` a `NtpTimestamp`, un type de la crate qui garde les
+  secondes et la fraction du fil. Il fournit `unix_seconds`,
+  `subsec_nanos`, `is_null`, `to_system_time`, l'ordre dans le temps (eres
+  comprises) et un `Display` RFC 3339 a la nanoseconde. Les dates ne
+  changent pas : verifie contre tshark sur chaque datagramme NTP du corpus.
+  `NtpPacketParseError::TimestampConversionError` disparait. `chrono`, non
+  maintenu (RUSTSEC-2026-0543), n'est plus une dependance, et son exception
+  quitte `deny.toml`. Migration : `MIGRATION-13.md`.
 
 ### Ajoute
 
