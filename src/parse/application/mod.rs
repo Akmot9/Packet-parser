@@ -6,6 +6,9 @@
 pub mod custom;
 pub mod protocol;
 pub mod protocols;
+#[cfg(feature = "rules")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rules")))]
+pub mod rules;
 use protocol::ApplicationProtocol;
 use serde::Serialize;
 

@@ -90,6 +90,7 @@ on anything else; it is kept for compatibility only.
 | Parse a packet | `parse(LinkType, &[u8])` |
 | Parse with caller-declared ports ("Decode As") | `parse_with(LinkType, &[u8], &ParseConfig)` |
 | Add a parser for a protocol the crate does not decode, in the application or as a `.so`/`.dll` plugin | `ParseConfig::with_parser(Arc<dyn ApplicationParser>)`, see [docs/plugins.md](docs/plugins.md) |
+| Name such a protocol from a TOML rule file, without code (feature `rules`) | `RuleSet::from_toml` then `ParseConfig::with_rules`, see [docs/rules.md](docs/rules.md) |
 | Classify a payload without its frame, from its transport and ports | `classify_payload(TransportProtocol, Option<u16>, Option<u16>, &[u8])` |
 | Detach the result from the buffer | `flow.to_owned_flow()` |
 | Iterate over encapsulated flows | `flow.flatten()` |

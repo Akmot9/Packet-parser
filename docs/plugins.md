@@ -16,6 +16,13 @@ own parser (issue #319). There are two ways:
 A `.rs` file cannot be loaded as it is: Rust is compiled. A plugin is the
 compiled form of that file.
 
+When byte patterns at fixed offsets recognize the protocol, a **rule
+file** is a third way, without code: a TOML file that the application
+reads at run time, behind the `rules` feature ([docs/rules.md](rules.md)).
+It cannot do more than recognize and show fields, and that is its point:
+an application that must show it is passive and verifiable can load rules,
+where it cannot load native code.
+
 ## What an added parser can do
 
 An added parser runs **after** the built-in table, and only on a payload the

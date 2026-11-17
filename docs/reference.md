@@ -447,11 +447,30 @@ loaded at run time: the `packet_parser_plugin` kit, in `plugin/`, exports
 it with `export_parser!` and loads it with `load_parser`. The guide is
 [docs/plugins.md](plugins.md).
 
+## Rule files
+
+With the `rules` feature, such parsers can be declared in a TOML file
+instead of code (issue #325): `RuleSet::from_toml(&text)` reads and checks
+it, and `ParseConfig::with_rules(&rules)` registers one parser per label.
+
+- A rule recognizes a payload by its transport, ports, length bounds, and
+  byte patterns at fixed offsets, each with an optional mask. The patterns
+  of a rule must check at least 16 bits: a port alone is not enough.
+- Fields at fixed offsets are decoded on demand by `custom_fields`:
+  integers of 8 to 64 bits (either byte order, optional mask and value
+  names), hexadecimal bytes, or text.
+- A mistake is refused with its line and column, unknown keys included.
+- A rule file runs no code; the guarantees of custom parsers apply.
+
+The guide, with the whole format, is [docs/rules.md](rules.md);
+`examples/rules_check.rs` tries a rule file on captures, locally.
+
 ## Features
 
 | Feature | Effect |
 | --- | --- |
 | `parse_timing` | Makes `parse_timed` and `PacketFlow::try_from_timed` actually measure each layer; without it the same API exists and `ParseTiming` stays zeroed |
+| `rules` | `RuleSet` and `ParseConfig::with_rules`: parsers declared in a TOML file ([docs/rules.md](rules.md)); adds the `toml` dependency |
 
 The `parse_timing` feature is intended for benchmarks. The normal
 `PacketFlow::try_from` path does not measure parsing time.

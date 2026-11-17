@@ -46,11 +46,17 @@ include = [
 # local : `cargo doc-mermaid` (alias de .cargo/config.toml).
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "docs/rustdoc/mermaid.html"]
+# La feature `rules` (#325) est documentee sur docs.rs, marquee comme telle.
+all-features = true
 
 
 [dependencies]
 thiserror = "2.0.18"
 serde = { version = "1.0.228", features = ["derive"] }
+# Feature `rules` seulement (#325) : lire les regles TOML. Sans les features
+# par defaut : ni ecriture (`display`) ni conservation de l'ordre. La limite
+# de recursion du parseur reste active (pas de `unbounded`).
+toml = { version = "1.2.1", optional = true, default-features = false, features = ["std", "serde", "parse"] }
 
 # Volontairement sans `pcap` ni `pnet` : leurs bindings natifs (libpcap,
 # Npcap sur Windows) empechaient tests et exemples de compiler hors Linux.
@@ -84,3 +90,14 @@ rpath = false         # No runtime path in binary
 default = []
 # Additive : l'API est la meme avec ou sans (voir src/timing/mod.rs).
 parse_timing = []
+# Regles TOML : des parseurs ajoutes declaratifs, sans code (#325).
+rules = ["dep:toml"]
+
+# Outil local de mise au point d'un fichier de regles (#325).
+[[example]]
+name = "rules_check"
+required-features = ["rules"]
+
+[lints.rust]
+# `docsrs` : pose par docs.rs, marque la feature `rules` dans la doc.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)"] }
