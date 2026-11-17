@@ -45,6 +45,16 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
   cout d'un ACK sain (128 ns). `PacketFlow` passe de 440 a 456 octets,
   sans effet mesurable sur les trames saines.
 
+### Corrige
+
+- **NBNS** (#292) : la reponse negative a une requete de nom (rcode 3,
+  NAM_ERR, RFC 1002 §4.2.14) et le refresh a l'opcode 9 (schema du §4.2.4)
+  etaient refuses, et sortaient Unknown sur UDP 137. Un commentaire
+  affirmait que NAM_ERR n'existe pas en NBNS ; il est corrige, et le test
+  qui figeait ce refus devient un test d'acceptation. tshark 4.6.9 lit les
+  deux messages. Le corpus n'en contient aucun : aucune etiquette n'y
+  change.
+
 ### Interne
 
 - **Bench** (#275) : trois cas de paquet corrompu dans le groupe `frame`

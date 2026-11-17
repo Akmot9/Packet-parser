@@ -53,12 +53,19 @@ pub const NBSS_SESSION_REQUEST_MIN_LENGTH: u32 = 68;
 const NBNS_CLASS_IN: u16 = 0x0001;
 
 /// Opcodes NBNS valides (RFC 1002 §4.2.1.1). 0x0 query, 0x5 registration,
-/// 0x6 release, 0x7 WACK, 0x8 refresh ; 0xf est la registration multi-domicile,
-/// extension Microsoft courante sur les reseaux Windows.
-const NBNS_VALID_OPCODES: [u8; 6] = [0x0, 0x5, 0x6, 0x7, 0x8, 0xf];
+/// 0x6 release, 0x7 WACK, 0x8 et 0x9 refresh ; 0xf est la registration
+/// multi-domicile, extension Microsoft courante sur les reseaux Windows.
+///
+/// Le refresh a deux valeurs parce que la RFC se contredit : le §4.2.1.1 dit
+/// « 8 = refresh », le schema de NAME REFRESH REQUEST (§4.2.4) porte 0x9.
+/// Wireshark lit 8 « Refresh » et 9 « Refresh (alternate opcode) » (#292).
+const NBNS_VALID_OPCODES: [u8; 7] = [0x0, 0x5, 0x6, 0x7, 0x8, 0x9, 0xf];
 
-/// Rcodes NBNS valides : 0x3 (NAM_ERR DNS) n'est pas defini pour NBNS.
-const NBNS_VALID_RCODES: [u8; 7] = [0x0, 0x1, 0x2, 0x4, 0x5, 0x6, 0x7];
+/// Rcodes NBNS valides (RFC 1002 §4.2.6 a §4.2.14) : FMT_ERR (0x1),
+/// SRV_ERR (0x2), NAM_ERR (0x3, nom inconnu : la reponse negative d'un
+/// serveur WINS, §4.2.14), IMP_ERR (0x4), RFS_ERR (0x5), ACT_ERR (0x6) et
+/// CFT_ERR (0x7).
+const NBNS_VALID_RCODES: [u8; 8] = [0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7];
 
 /// Bits reserves de NM_FLAGS (entre RA et B) : doivent rester a zero.
 const NBNS_RESERVED_FLAGS_MASK: u16 = 0x0060;
@@ -115,6 +122,11 @@ pub fn extract_nbns_flags(raw: u16) -> Result<NbnsFlags, NbnsError> {
 /// Contrairement au DNS unicast, une reponse NBNS legitime peut n'avoir
 /// aucune question (registration response : QD=0, AN=1) : seul le message
 /// sans aucune entree est rejete.
+///
+/// Le schema de NEGATIVE NAME QUERY RESPONSE (RFC 1002 §4.2.14) montre
+/// quatre compteurs nuls suivis d'un enregistrement. Le decodeur suit les
+/// compteurs, pas le schema : cette forme litterale est refusee, la forme
+/// a ANCOUNT = 1 est lue (#292).
 pub fn extract_nbns_counts(packet: &[u8]) -> Result<[u16; 4], NbnsError> {
     validate_nbns_min_length(packet)?;
 
@@ -553,12 +565,31 @@ mod tests {
         );
     }
 
-    /// Synthetique : rcode 0x3 est une erreur DNS, pas NBNS.
+    /// Synthetique : NAM_ERR (0x3), la reponse negative a une requete de
+    /// nom (RFC 1002 §4.2.14, #292).
     #[test]
-    fn nbns_flags_reject_the_dns_name_error_rcode() {
+    fn nbns_flags_accept_the_name_error_rcode() {
+        let flags = extract_nbns_flags(0x8583).expect("NAM_ERR is defined");
+
+        assert!(flags.response);
+        assert!(flags.authoritative_answer);
+        assert_eq!(flags.rcode, 0x3);
+    }
+
+    /// Synthetique : les deux opcodes de refresh, 0x8 (RFC 1002 §4.2.1.1) et
+    /// 0x9 (schema du §4.2.4), #292.
+    #[test]
+    fn nbns_flags_accept_both_refresh_opcodes() {
+        assert_eq!(extract_nbns_flags(0x4010).map(|f| f.opcode), Ok(0x8));
+        assert_eq!(extract_nbns_flags(0x4810).map(|f| f.opcode), Ok(0x9));
+    }
+
+    /// Synthetique : un rcode hors de la RFC 1002 reste refuse.
+    #[test]
+    fn nbns_flags_reject_an_undefined_rcode() {
         assert_eq!(
-            extract_nbns_flags(0x8003),
-            Err(NbnsError::InvalidRcode(0x3))
+            extract_nbns_flags(0x8008),
+            Err(NbnsError::InvalidRcode(0x8))
         );
     }
 
