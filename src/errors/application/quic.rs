@@ -24,8 +24,13 @@ pub enum QuicError {
     #[error("Unsupported QUIC version: {0:#010x}")]
     UnsupportedVersion(u32),
 
-    #[error("Length field {length_field} is smaller than packet number length {pn_length}")]
-    LengthFieldTooSmall { length_field: u64, pn_length: u8 },
+    /// Champ Length trop court pour l'echantillon de la protection d'en-tete :
+    /// le numero de paquet compte pour 4 octets, puis 16 octets d'echantillon
+    /// (RFC 9001 §5.4.2). Un recepteur doit rejeter ce paquet.
+    #[error(
+        "Length field {length_field} is below the {min} bytes that the header protection sample requires"
+    )]
+    LengthFieldTooSmall { length_field: u64, min: u64 },
 
     #[error("Payload too short: expected {expected} bytes, only {available} available")]
     PayloadTooShort { expected: usize, available: usize },

@@ -25,6 +25,11 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
   `CorruptedLayer::from(InternetError)` et `from(TransportError)` la
   construisent et deduisent `layer` de l'erreur. Elle pourra gagner un
   champ sans nouvelle rupture. Migration : `MIGRATION-13.md`.
+- **QuicError::LengthFieldTooSmall** (#293) : le champ `pn_length` devient
+  `min`. L'erreur comparait Length a une longueur de numero de paquet lue
+  sur des bits proteges ; elle le compare au minimum de 20 octets que
+  l'echantillon de la protection d'en-tete impose (RFC 9001 §5.4.2,
+  `QUIC_MIN_PROTECTED_LENGTH`). Migration : `MIGRATION-13.md`.
 
 ### Ajoute
 
@@ -94,6 +99,19 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
   un par `tests/mqtt_golden.rs`. 149 sortent MQTT ; le dernier est un
   UNSUBACK sans reason code, que la spec interdit (§3.11.3) et que la crate
   refuse. Les captures v3.1 du corpus gardent leurs etiquettes.
+- **QUIC, numero de paquet protege** (#293) : dans un Initial, un 0-RTT ou
+  un Handshake, la protection d'en-tete (RFC 9001 §5.4) masque le numero
+  de paquet et les bits bas de l'octet 0 qui donnent sa longueur. Le
+  decodeur les lisait quand meme : `packet_number` etait du bruit sur tout
+  paquet reel, et la charge commencait de 0 a 3 octets trop tot ou trop
+  tard. Sur les vecteurs de la RFC 9001, l'Initial client (A.2) sortait le
+  numero 123 au lieu de 2, l'Initial serveur (A.3) 0xc0d95a48 au lieu de 1.
+  `packet_number` vaut desormais toujours `None`, `pn_length` garde les
+  bits tels quels et sa rustdoc dit qu'ils sont proteges, et
+  `EncryptedPayload` couvre les `length_field` octets qui suivent Length,
+  numero de paquet compris. Un Length sous 20 octets est refuse : un
+  recepteur doit rejeter un paquet trop court pour l'echantillon (§5.4.2).
+  Les deux vecteurs sont des tests. Aucune etiquette du corpus ne change.
 
 ### Interne
 

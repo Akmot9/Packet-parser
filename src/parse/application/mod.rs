@@ -134,8 +134,8 @@ mod tests {
         packet.push(0); // dcid len
         packet.push(0); // scid len
         packet.push(0); // token len
-        packet.push(1); // length = PN seul
-        packet.push(0); // PN
+        packet.push(20); // length = 20, le minimum (RFC 9001 §5.4.2)
+        packet.extend_from_slice(&[0; 20]); // PN protégé et charge
 
         assert_eq!(label(Udp, &packet), "QUIC");
     }
