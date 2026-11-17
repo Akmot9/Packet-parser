@@ -6,7 +6,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
-Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
+## [13.0.0] - 2026-11-17
+
+Majeure. Guide de migration : `MIGRATION-13.md`.
 
 ### Rupture
 

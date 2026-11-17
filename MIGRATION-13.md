@@ -1,9 +1,8 @@
 # Migrer vers packet_parser 13.0.0
 
-La 13.0.0 n'est pas publiée : la dernière version sur crates.io est la
-12.1.0. Ses ruptures sont fusionnées sur `main` une à une, et `Cargo.toml`
-annonce déjà la version. Qui dépend de `main` par git les reçoit ; qui
-dépend de crates.io ne voit rien tant que la 13.0.0 n'est pas sortie.
+La 13.0.0 est publiée le 2026-11-17 ; la version précédente est la
+12.1.0. Ses cinq ruptures ont été fusionnées sur `main` une à une, chacune
+avec son entrée ci-dessous.
 
 Ce guide a une entrée par rupture, avec l'avant, l'après et la raison. Sa
 liste est recoupée avec `cargo semver-checks`, lancé contre la 12.1.0.
@@ -13,7 +12,7 @@ c'est la suite de tests qui l'a trouvée.
 
 ## `CorruptedLayer.error` est une erreur typée (#275)
 
-**État : fait, sur `main`.** Le champ portait le texte de l'erreur. Il
+**État : publié en 13.0.0.** Le champ portait le texte de l'erreur. Il
 porte maintenant l'erreur.
 
 ```rust
@@ -188,7 +187,7 @@ avec la 12.1.0).
 
 ## QUIC : le numéro de paquet n'est plus lu, `LengthFieldTooSmall` porte `min` (#293)
 
-**État : fait, sur `main`.** Dans un Initial, un 0-RTT ou un Handshake, la
+**État : publié en 13.0.0.** Dans un Initial, un 0-RTT ou un Handshake, la
 protection d'en-tête (RFC 9001 §5.4) masque le numéro de paquet et les
 quatre bits bas de l'octet 0, dont sa longueur. La 12.x les lisait quand
 même : `packet_number` et la longueur prise aux bits bas étaient du bruit
@@ -233,7 +232,7 @@ l'octet 4 de cette même tranche.
 
 ## `ApplicationProtocol` a une variante `Custom(&'static str)` (#319)
 
-**État : fait, sur `main`.** Une application peut ajouter ses propres
+**État : publié en 13.0.0.** Une application peut ajouter ses propres
 parseurs, pour les protocoles que la crate ne décode pas (trait
 `ApplicationParser`, `ParseConfig::with_parser`). Ce qu'ils reconnaissent
 est étiqueté `ApplicationProtocol::Custom(label)`. Cette variante porte une
@@ -266,7 +265,7 @@ table, `label()` ou `std::mem::discriminant` conviennent aussi.
 
 ## NTP : les horodatages sont des `NtpTimestamp`, plus des `DateTime<Utc>` (#315)
 
-**État : fait, sur `main`.** La crate ne dépend plus de `chrono`, non
+**État : publié en 13.0.0.** La crate ne dépend plus de `chrono`, non
 maintenu depuis le 2026-11-17 (RUSTSEC-2026-0543, sans faille). Les quatre
 horodatages de `NtpPacket` sont désormais un type de la crate,
 `packet_parser::parse::application::protocols::ntp::NtpTimestamp`, qui

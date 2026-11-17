@@ -1,6 +1,21 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-16, apres la 12.1.0 : la **13.0 est ouverte sur `main`**,
+Etat au 2026-11-17 : la **13.0.0 est publiee** (tag `v13.0.0`, publication
+par le workflow). Majeure, cinq ruptures, chacune dans `MIGRATION-13.md` :
+`CorruptedLayer.error` type et `CorruptedLayer` `#[non_exhaustive]`
+(#275), `QuicError::LengthFieldTooSmall { length_field, min }` (#293),
+`ApplicationProtocol::Custom` (#319), et des horodatages NTP propres a la
+crate, `NtpTimestamp` (#315), qui retirent `chrono`, non maintenu. Elle
+ajoute les parseurs de l'appelant (#319 : trait `ApplicationParser`, kit
+`plugin/` de bibliotheques natives chargees a l'execution, non publie), la
+couche DDS de RTPS (#317) et un decodeur Java RMI (#313). Elle corrige les
+cinq P2 de la relecture des decodeurs contre leur spec (#288 : NBNS #292,
+DHCPv6 relais #289, AMS/TCP #290, MQTT 5 #291, QUIC #293). Restent ouvertes
+: les quatorze P3 de #288 (#294 a #307), et #241, #211, #207, suspendues a
+la desinstallation de l'application GitHub de FOSSA. Reste a faire hors de
+ce depot : le livre, encore en 12.1.0.
+
+Etat anterieur (2026-11-16, apres la 12.1.0) : la **13.0 est ouverte sur `main`**,
 et n'est pas publiee. Sa premiere rupture est #275, la derniere tache de la
 revue d'architecture (#269) : `CorruptedLayer.error` porte l'erreur typee
 (`CorruptedLayerError`, qui enveloppe `InternetError` ou `TransportError`)
@@ -281,23 +296,20 @@ majeure avant mars 2027) est levee le 2026-11-15 : la crate n'a pas d'autre
 appelant que son auteur. La 12.0 suit donc la 11.8.2 sans 11.x
 intermediaire, et son guide est `MIGRATION-12.md`.
 
-**13.0, ouverte le 2026-11-16.** Elle n'a pas de date : ses ruptures sont
-fusionnees sur `main` une a une, chacune avec son entree dans
+**13.0, ouverte le 2026-11-16, publiee le 2026-11-17.** Ses ruptures ont
+ete fusionnees sur `main` une a une, chacune avec son entree dans
 `MIGRATION-13.md`, au lieu d'attendre sur une branche de release comme
-celles de la 12.0. `Cargo.toml` porte 13.0.0 des la premiere, pour que le
-job semver de la CI accepte la rupture ; `README.md` garde la 12.1.0, la
-derniere version publiee, jusqu'a la PR de release. Consequence acceptee :
-`main` ne peut plus produire de 12.x, et la prochaine publication, meme
-pour un seul correctif, sera la 13.0.0. La regle de publication ne change
-pas : une version ne sort que pour une correction de bug ou un ajout de
-protocole.
+celles de la 12.0. `Cargo.toml` a porte 13.0.0 des la premiere, pour que le
+job semver de la CI accepte la rupture, et `README.md` la 12.1.0 jusqu'a la
+PR de release (#322). La regle de publication ne change pas : une version
+ne sort que pour une correction de bug ou un ajout de protocole.
 
 | Rupture | Etat |
 |---|---|
-| #275 `CorruptedLayer.error` type, `CorruptedLayer` `#[non_exhaustive]` | fait, sur `main` |
-| #293 QUIC : `packet_number` toujours `None`, charge des le champ Length, `LengthFieldTooSmall { length_field, min }` | fait, sur `main` |
-| #319 `ApplicationProtocol::Custom(&'static str)` pour les parseurs ajoutes : plus de cast `as` | fait, sur `main` |
-| #315 NTP : `NtpTimestamp` au lieu de `DateTime<Utc>`, `chrono` retire, `TimestampConversionError` supprimee | fait, sur `main` |
+| #275 `CorruptedLayer.error` type, `CorruptedLayer` `#[non_exhaustive]` | publie, 13.0.0 |
+| #293 QUIC : `packet_number` toujours `None`, charge des le champ Length, `LengthFieldTooSmall { length_field, min }` | publie, 13.0.0 |
+| #319 `ApplicationProtocol::Custom(&'static str)` pour les parseurs ajoutes : plus de cast `as` | publie, 13.0.0 |
+| #315 NTP : `NtpTimestamp` au lieu de `DateTime<Utc>`, `chrono` retire, `TimestampConversionError` supprimee | publie, 13.0.0 |
 
 Decision #218 (2026-11-15) : `Application` ne porte pas de `details`, et la
 crate n'ajoute pas de decodage a la demande. Qui veut les champs du L7
