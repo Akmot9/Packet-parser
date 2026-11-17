@@ -1,7 +1,8 @@
 // Fuzz du decodeur DHCPv6 : type de message, identifiant de transaction sur
-// trois octets, options brutes. Ni panic ni boucle ; quand le decodage
-// reussit, les options sont l'entree privee de ses quatre premiers octets,
-// le type et l'identifiant sont ceux du fil, et l'affichage ne panique pas.
+// trois octets ou en-tete de relais (RFC 8415 §9), options brutes. Ni panic
+// ni boucle ; quand le decodage reussit, les options sont l'entree privee de
+// ses quatre premiers octets (34 pour un relais), le type, l'identifiant et
+// l'en-tete de relais sont ceux du fil, et l'affichage ne panique pas.
 #![no_main]
 
 #[path = "../oracles/seeds.rs"]
@@ -30,21 +31,46 @@ const ADVERTISE: &[u8] = &[
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x35,
 ];
 
+// The-Ultimate-PCAP.pcapng, trame 36781 : Relay-Forward portant un Solicit.
+const RELAY_FORWARD: &[u8] = &[
+    0x0c, 0x00, 0x20, 0x01, 0x04, 0x70, 0x72, 0x50, 0x00, 0x69, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x01, 0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x0c, 0x29, 0xff, 0xfe, 0x48,
+    0x92, 0xfd, 0x00, 0x09, 0x00, 0x4e, 0x01, 0x36, 0x03, 0xeb, 0x00, 0x0e, 0x00, 0x00, 0x00, 0x03,
+    0x00, 0x0c, 0x9f, 0x6e, 0x85, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x27,
+    0x00, 0x0c, 0x01, 0x0a, 0x76, 0x6d, 0x33, 0x34, 0x2d, 0x74, 0x65, 0x73, 0x74, 0x33, 0x00, 0x06,
+    0x00, 0x0a, 0x00, 0x17, 0x00, 0x18, 0x00, 0x38, 0x00, 0x1f, 0x00, 0x0e, 0x00, 0x01, 0x00, 0x0e,
+    0x00, 0x02, 0x00, 0x00, 0xab, 0x11, 0x5b, 0xeb, 0x45, 0xc3, 0xfe, 0x63, 0xe6, 0x2c, 0x00, 0x08,
+    0x00, 0x02, 0x00, 0x00,
+];
+
 fn exercise(data: &[u8]) {
     let Ok(packet) = Dhcpv6Packet::try_from(data) else {
         return;
     };
     assert_eq!(packet.message_type, data[0]);
-    assert_eq!(
-        packet.transaction_id,
-        u32::from_be_bytes([0, data[1], data[2], data[3]])
-    );
-    assert_eq!(packet.options.len() + 4, data.len());
+    match packet.relay {
+        Some(relay) => {
+            assert!(matches!(data[0], 12 | 13));
+            assert_eq!(packet.transaction_id, 0);
+            assert_eq!(relay.hop_count, data[1]);
+            assert_eq!(relay.link_address.octets(), data[2..18]);
+            assert_eq!(relay.peer_address.octets(), data[18..34]);
+            assert_eq!(packet.options.len() + 34, data.len());
+        }
+        None => {
+            assert!(!matches!(data[0], 12 | 13));
+            assert_eq!(
+                packet.transaction_id,
+                u32::from_be_bytes([0, data[1], data[2], data[3]])
+            );
+            assert_eq!(packet.options.len() + 4, data.len());
+        }
+    }
     assert!(data.ends_with(packet.options) && inside(data, packet.options));
     let _ = packet.to_string();
 }
 
 fuzz_target!(|data: &[u8]| {
     exercise(data);
-    replay_mutated(&[SOLICIT, ADVERTISE], data, exercise);
+    replay_mutated(&[SOLICIT, ADVERTISE, RELAY_FORWARD], data, exercise);
 });

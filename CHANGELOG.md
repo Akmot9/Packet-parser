@@ -54,6 +54,17 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
   qui figeait ce refus devient un test d'acceptation. tshark 4.6.9 lit les
   deux messages. Le corpus n'en contient aucun : aucune etiquette n'y
   change.
+- **DHCPv6, messages de relais** (#289) : Relay-Forward (12) et Relay-Reply
+  (13) etaient lus avec l'en-tete client/serveur. `transaction_id` prenait
+  le hop-count et le debut de link-address, et `options` commencait au
+  milieu de cette adresse. Leur en-tete de 34 octets (RFC 8415 §9) est
+  desormais lu dans le nouveau champ `Dhcpv6Packet::relay`
+  (`Dhcpv6Relay` : `hop_count`, `link_address`, `peer_address`) ;
+  `transaction_id` y vaut 0 et `options` commence a l'octet 34. Un relais
+  plus court est refuse (`Dhcpv6PacketParseError::RelayLength`) ; il etait
+  accepte des 4 octets. Les 4 relais du corpus (`The-Ultimate-PCAP.pcapng`,
+  trames 36781 a 36784) donnent le meme en-tete que tshark 4.6.9, et leur
+  etiquette ne change pas.
 
 ### Interne
 
