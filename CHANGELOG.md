@@ -8,6 +8,22 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **Regles TOML, feature `rules`** (#325) : des parseurs ajoutes declares
+  dans un fichier, sans code. `RuleSet::from_toml` lit et valide le
+  fichier ; `ParseConfig::add_rules` / `with_rules` enregistrent un parseur
+  par etiquette, tout ou rien. Une regle reconnait une charge par son
+  transport, ses ports, ses bornes de longueur et des motifs d'octets a
+  position fixe, avec masque ; ses motifs doivent verifier au moins 16
+  bits, une regle sur le seul port est donc impossible. Plusieurs regles
+  sous une etiquette en sont les variantes. Des champs a position fixe
+  (entiers de 8 a 64 bits, deux ordres, masque, noms de valeurs ; octets
+  en hexadecimal ; texte) se decodent a la demande par `custom_fields`.
+  Toute erreur est refusee avec sa ligne et sa colonne, cle inconnue
+  comprise, et des bornes limitent chaque fichier. Les garanties de #319
+  s'appliquent : apres la table, sur les seuls flux `Unknown`. Nouvelle
+  dependance optionnelle : `toml` 1.2, sans ses features par defaut. Outil
+  local `examples/rules_check.rs`, cible de fuzz `parse_rules`, guide
+  `docs/rules.md`.
 - **ParseConfig::application_protocol** (#323) : relit une etiquette
   ecrite en texte avec la configuration qui l'a produite. Pour un protocole
   de la crate, la reponse est celle de `FromStr`. Pour un parseur ajoute

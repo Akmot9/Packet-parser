@@ -1,0 +1,89 @@
+# Fichier de regles d'exemple (#325). ACME et DEMO sont inventes : aucun
+# protocole reel n'a ces octets. Format : docs/rules.md.
+#
+#   cargo run --release --features rules --example rules_check -- \
+#       examples/acme_rules.toml <capture...> --fields 3
+
+version = 1
+
+# ACME, sur UDP 47000 : "ACME", une version 1 sur le quartet bas, un type,
+# une longueur sur 16 bits, puis un identifiant de 4 octets.
+[[rule]]
+label = "ACME"
+transport = "udp"
+ports = [47000]
+min_length = 12
+
+[[rule.pattern]]
+offset = 0
+bytes = "41 43 4D 45"
+
+[[rule.pattern]]
+offset = 4
+bytes = "01"
+mask = "0F"
+
+[[rule.field]]
+name = "version"
+offset = 4
+type = "u8"
+mask = "0F"
+
+[[rule.field]]
+name = "type"
+offset = 5
+type = "u8"
+values = { 1 = "request", 2 = "response", 0x7F = "error" }
+
+[[rule.field]]
+name = "length"
+offset = 6
+type = "u16be"
+
+[[rule.field]]
+name = "id"
+offset = 8
+type = "hex"
+length = 4
+
+# DEMO, sur TCP, deux variantes : la requete commence par "DEMO?", la
+# reponse par "DEMO!" ; un nom de station de 8 octets suit.
+[[rule]]
+label = "DEMO"
+transport = "tcp"
+
+[[rule.pattern]]
+offset = 0
+bytes = "44 45 4D 4F 3F"
+
+[[rule.field]]
+name = "kind"
+offset = 4
+type = "text"
+length = 1
+
+[[rule.field]]
+name = "station"
+offset = 5
+type = "text"
+length = 8
+
+[[rule]]
+label = "DEMO"
+transport = "tcp"
+
+[[rule.pattern]]
+offset = 0
+bytes = "44 45 4D 4F 21"
+
+[[rule.field]]
+name = "kind"
+offset = 4
+type = "text"
+length = 1
+
+[[rule.field]]
+name = "status"
+offset = 5
+type = "u16le"
+values = { 0 = "ok", 1 = "busy" }

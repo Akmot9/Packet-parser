@@ -18,6 +18,8 @@
 // Un cast `as` qui peut tronquer est refuse de meme (#273) : une longueur
 // lue sur le fil se convertit par `try_from`, et un cast voulu porte son
 // #[expect].
+// docs.rs marque ce qui demande une feature (`rules`, #325).
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(
     not(test),
     warn(
@@ -180,6 +182,9 @@ pub use parse::application::custom::{
     ApplicationParser, CustomTransports, ParserRegistrationError, PayloadContext,
 };
 pub use parse::application::protocol::{ApplicationProtocol, UnknownApplicationLabel};
+#[cfg(feature = "rules")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rules")))]
+pub use parse::application::rules::{RuleSet, RulesError};
 /// Exports data link layer parsing functionality.
 pub use parse::data_link::DataLink;
 pub use parse::data_link::mac_address::MacAddress;

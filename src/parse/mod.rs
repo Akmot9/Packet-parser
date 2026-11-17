@@ -157,6 +157,45 @@ impl ParseConfig {
         Ok(self)
     }
 
+    /// Adds the parsers of a rule file, one per label, after those already
+    /// added (issue #325). They follow the rules of
+    /// [`add_parser`](Self::add_parser).
+    ///
+    /// # Errors
+    ///
+    /// [`ParserRegistrationError`] when a label of the file is already
+    /// registered, or has become the label of a built-in protocol since the
+    /// file was written. Nothing is added: the configuration is unchanged.
+    #[cfg(feature = "rules")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rules")))]
+    pub fn add_rules(
+        &mut self,
+        rules: &application::rules::RuleSet,
+    ) -> Result<(), ParserRegistrationError> {
+        let mut parsers = self.parsers.clone();
+        for parser in rules.parsers() {
+            let registered = RegisteredParser::new(parser, &parsers)?;
+            parsers.push(registered);
+        }
+        self.parsers = parsers;
+        Ok(())
+    }
+
+    /// [`add_rules`](Self::add_rules), as a builder.
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`add_rules`](Self::add_rules).
+    #[cfg(feature = "rules")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rules")))]
+    pub fn with_rules(
+        mut self,
+        rules: &application::rules::RuleSet,
+    ) -> Result<Self, ParserRegistrationError> {
+        self.add_rules(rules)?;
+        Ok(self)
+    }
+
     /// Removes the parser registered with this exact label, and returns it.
     pub fn remove_parser(&mut self, label: &str) -> Option<Arc<dyn ApplicationParser>> {
         let index = self

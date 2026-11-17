@@ -311,6 +311,15 @@ ne sort que pour une correction de bug ou un ajout de protocole.
 | #319 `ApplicationProtocol::Custom(&'static str)` pour les parseurs ajoutes : plus de cast `as` | publie, 13.0.0 |
 | #315 NTP : `NtpTimestamp` au lieu de `DateTime<Utc>`, `chrono` retire, `TimestampConversionError` supprimee | publie, 13.0.0 |
 
+**13.x, sur `main`, non publiee.** Des ajouts, sans rupture ; ils sortiront
+avec la prochaine version qu'une correction de bug ou un protocole
+justifiera (§1).
+
+| Ajout | Etat |
+|---|---|
+| #323 `ParseConfig::application_protocol` : relire une etiquette `Custom` | fait, sur `main` |
+| #325 feature `rules` : parseurs ajoutes declares en TOML, sans code (`RuleSet`, `with_rules`, `examples/rules_check.rs`) | fait, sur `main` |
+
 Decision #218 (2026-11-15) : `Application` ne porte pas de `details`, et la
 crate n'ajoute pas de decodage a la demande. Qui veut les champs du L7
 appelle le decodeur du protocole sur `transport.payload`, comme avant.

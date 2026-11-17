@@ -245,25 +245,14 @@ impl RegisteredParser {
         registered: &[RegisteredParser],
     ) -> Result<Self, ParserRegistrationError> {
         let label = parser.label();
-        let refused = || label.to_string();
-        if label.is_empty()
-            || label.len() > MAX_LABEL_LENGTH
-            || label.chars().any(char::is_control)
-            || label.trim() != label
-        {
-            return Err(ParserRegistrationError::InvalidLabel { label: refused() });
-        }
-        if ApplicationProtocol::ALL
-            .iter()
-            .any(|protocol| protocol.label().eq_ignore_ascii_case(label))
-        {
-            return Err(ParserRegistrationError::BuiltInLabel { label: refused() });
-        }
+        check_label(label)?;
         if registered
             .iter()
             .any(|other| other.label.eq_ignore_ascii_case(label))
         {
-            return Err(ParserRegistrationError::DuplicateLabel { label: refused() });
+            return Err(ParserRegistrationError::DuplicateLabel {
+                label: label.to_string(),
+            });
         }
         Ok(Self { label, parser })
     }
@@ -274,6 +263,31 @@ impl RegisteredParser {
             && (ports.is_empty() || ports.iter().any(|port| context.has_port(*port)))
             && self.parser.matches(payload, context)
     }
+}
+
+/// Les regles d'une etiquette prise seule : sa forme, et pas d'etiquette de
+/// la crate. Les doublons se verifient a l'enregistrement, contre les
+/// parseurs deja la ; les regles TOML (#325) l'appellent des la lecture,
+/// pour signaler la ligne fautive.
+pub(crate) fn check_label(label: &str) -> Result<(), ParserRegistrationError> {
+    if label.is_empty()
+        || label.len() > MAX_LABEL_LENGTH
+        || label.chars().any(char::is_control)
+        || label.trim() != label
+    {
+        return Err(ParserRegistrationError::InvalidLabel {
+            label: label.to_string(),
+        });
+    }
+    if ApplicationProtocol::ALL
+        .iter()
+        .any(|protocol| protocol.label().eq_ignore_ascii_case(label))
+    {
+        return Err(ParserRegistrationError::BuiltInLabel {
+            label: label.to_string(),
+        });
+    }
+    Ok(())
 }
 
 /// Le premier parseur ajoute qui reconnait le payload d'un transport que la

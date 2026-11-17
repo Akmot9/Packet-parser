@@ -12,6 +12,8 @@ libfuzzer-sys = "0.4"
 
 [dependencies.packet_parser]
 path = ".."
+# `rules` : la cible parse_rules (#325).
+features = ["rules"]
 
 [[bin]]
 name = "parse_packetflow"
@@ -291,6 +293,13 @@ bench = false
 [[bin]]
 name = "parse_java_rmi"
 path = "fuzz_targets/parse_java_rmi.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_rules"
+path = "fuzz_targets/parse_rules.rs"
 test = false
 doc = false
 bench = false
