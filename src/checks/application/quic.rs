@@ -121,7 +121,13 @@ pub fn validate_fixed_bit(fixed_bit: bool) -> Result<(), QuicError> {
 }
 
 /// Checks the Long Header bits of the first byte (RFC 9000 §17.2) and
-/// returns the packet type together with the Packet Number length (1..=4).
+/// returns the packet type together with the raw Packet Number Length bits
+/// plus one (1..=4).
+///
+/// Ces deux bits, comme les deux bits reserves, sont masques par la
+/// protection d'en-tete (RFC 9001 §5.4.1) dans un Initial, un 0-RTT ou un
+/// Handshake : sans les cles, la valeur rendue n'est pas la longueur du
+/// numero de paquet (#293).
 ///
 /// `NotLongHeader` is checked before `FixedBitNotSet` to preserve the
 /// historical error precedence on a byte failing both checks.
@@ -133,8 +139,9 @@ pub fn extract_first_byte(b0: u8) -> Result<(QuicPacketType, u8), QuicError> {
     validate_fixed_bit(fixed_bit)?;
 
     let lptype = (b0 >> 4) & 0b11; // Long Packet Type (2 bits)
-    // Bits 2-3 are reserved (protected by header protection, not validated).
-    let pn_len_code = b0 & 0b11; // PN length code
+    // Bits 2-3 (reserved) and 0-1 (Packet Number Length) are protected by
+    // header protection : read as is, never validated.
+    let pn_len_code = b0 & 0b11; // PN length code, protected
     let pn_length = pn_len_code + 1; // 1..=4
 
     // Le masque 0b11 borne lptype a 0..=3 : les quatre valeurs sont nommees.
@@ -186,18 +193,24 @@ pub fn varint_to_len(value: u64) -> usize {
     usize::try_from(value).unwrap_or(usize::MAX)
 }
 
-/// The Length field covers Packet Number + payload, so it must be at least
-/// `packet_number_length`. Returns the payload length (Length - PN length).
-pub fn validate_length_field(
-    length_field: u64,
-    packet_number_length: u8,
-) -> Result<usize, QuicError> {
-    varint_to_len(length_field)
-        .checked_sub(usize::from(packet_number_length))
-        .ok_or(QuicError::LengthFieldTooSmall {
+/// Longueur minimale du champ Length d'un paquet protege : l'echantillon
+/// de la protection d'en-tete commence 4 octets apres le debut du numero de
+/// paquet et fait 16 octets pour tous les AEAD de QUIC v1 (RFC 9001
+/// §5.4.2, « An endpoint MUST discard packets that are not long enough to
+/// contain a complete sample »).
+pub const QUIC_MIN_PROTECTED_LENGTH: u64 = 4 + 16;
+
+/// The Length field covers the protected Packet Number and payload. It must
+/// leave room for the header protection sample ([`QUIC_MIN_PROTECTED_LENGTH`]).
+/// Returns the length to read after the field.
+pub fn validate_length_field(length_field: u64) -> Result<usize, QuicError> {
+    if length_field < QUIC_MIN_PROTECTED_LENGTH {
+        return Err(QuicError::LengthFieldTooSmall {
             length_field,
-            pn_length: packet_number_length,
-        })
+            min: QUIC_MIN_PROTECTED_LENGTH,
+        });
+    }
+    Ok(varint_to_len(length_field))
 }
 
 /// Separe le Retry Token du Retry Integrity Tag (RFC 9000 §17.2.5).
@@ -229,37 +242,24 @@ pub(crate) fn read_cid<'a>(cur: &mut QuicCursor<'a>) -> Result<ConnectionId<'a>,
     Ok(ConnectionId { len, bytes })
 }
 
-/// Lit Length (varint), Packet Number puis le payload chiffré.
+/// Lit Length (varint) puis les `Length` octets qui le suivent : le numéro
+/// de paquet et la charge, protégés ensemble (RFC 9001 §5.4).
 ///
-/// Vérifie d'abord tous les champs, puis remplit `length_field` et
-/// `packet_number` dans le header seulement après la dernière validation
-/// (« check puis place »), et retourne le payload emprunté
-/// (Length - PN length octets).
-///
-/// L'ordre des vérifications (varint Length, octets du PN, cohérence
-/// Length/PN, disponibilité du payload) est identique à la séquence
-/// historique pour que les mêmes inputs produisent les mêmes erreurs.
-pub(crate) fn read_pn_and_payload<'a>(
+/// Sans les clés, la longueur du numéro de paquet est inconnue : la charge
+/// rendue commence au numéro de paquet, et `packet_number` reste `None`
+/// (#293). `length_field` n'est placé dans le header qu'après la dernière
+/// validation (« check puis place »).
+pub(crate) fn read_length_and_payload<'a>(
     cur: &mut QuicCursor<'a>,
     header: &mut QuicLongHeader<'a>,
 ) -> Result<&'a [u8], QuicError> {
     let length_field = cur.read_varint()?;
+    let protected_len = validate_length_field(length_field)?;
+    validate_payload_available(cur.remaining(), protected_len)?;
+    let payload = cur.take(protected_len)?;
 
-    // PN (1..=4 octets big-endian)
-    let pn_raw = cur.take(header.pn_length as usize)?;
-    let mut pn: u64 = 0;
-    for &b in pn_raw {
-        pn = (pn << 8) | (b as u64);
-    }
-
-    // Payload (length_field inclut PN + payload)
-    let payload_len = validate_length_field(length_field, header.pn_length)?;
-    validate_payload_available(cur.remaining(), payload_len)?;
-    let payload = cur.take(payload_len)?;
-
-    // Toutes les validations ont réussi : on place les valeurs.
+    // Toutes les validations ont réussi : on place la valeur.
     header.length_field = length_field;
-    header.packet_number = Some(pn);
     Ok(payload)
 }
 
@@ -428,13 +428,13 @@ mod tests {
 
     #[test]
     fn test_validate_length_field() {
-        assert_eq!(validate_length_field(22, 1), Ok(21));
-        assert_eq!(validate_length_field(4, 4), Ok(0));
+        assert_eq!(validate_length_field(22), Ok(22));
+        assert_eq!(validate_length_field(20), Ok(20));
         assert_eq!(
-            validate_length_field(1, 2),
+            validate_length_field(19),
             Err(QuicError::LengthFieldTooSmall {
-                length_field: 1,
-                pn_length: 2
+                length_field: 19,
+                min: 20
             })
         );
     }
@@ -449,7 +449,7 @@ mod tests {
 
         assert_eq!(varint_to_len(u64::MAX), usize::MAX);
         assert!(varint_to_len(wide) > 5);
-        assert_eq!(validate_length_field(wide, 1), Ok(varint_to_len(wide) - 1));
+        assert_eq!(validate_length_field(wide), Ok(varint_to_len(wide)));
     }
 
     #[test]
@@ -570,7 +570,7 @@ mod tests {
         );
     }
 
-    /// En-tête factice pour tester `read_pn_and_payload` isolément.
+    /// En-tête factice pour tester `read_length_and_payload` isolément.
     fn dummy_header<'a>(pn_length: u8) -> QuicLongHeader<'a> {
         QuicLongHeader {
             header_form_long: true,
@@ -586,28 +586,34 @@ mod tests {
     }
 
     #[test]
-    fn test_read_pn_and_payload_places_after_checks() {
-        // length = 3 (PN(1) + payload(2)).
-        let data = [0x03, 0x09, 0x01, 0x02];
+    fn test_read_length_and_payload_places_after_checks() {
+        // length = 20 : numéro de paquet protégé et charge, ensemble, puis
+        // un octet hors du paquet.
+        let mut data = vec![0x14];
+        data.extend(1..=21u8);
         let mut cur = QuicCursor::new(&data);
         let mut header = dummy_header(1);
-        let payload = read_pn_and_payload(&mut cur, &mut header).expect("valide");
-        assert_eq!(payload, &[0x01, 0x02]);
-        assert_eq!(header.length_field, 3);
-        assert_eq!(header.packet_number, Some(9));
+        let payload = read_length_and_payload(&mut cur, &mut header).expect("valide");
+        assert_eq!(payload, &data[1..21]);
+        assert_eq!(cur.remaining(), 1);
+        assert_eq!(header.length_field, 20);
+        assert_eq!(header.packet_number, None);
     }
 
     #[test]
-    fn test_read_pn_and_payload_failure_leaves_header_untouched() {
-        // length = 10 mais un seul octet disponible après le PN.
-        let data = [0x0A, 0x00];
+    fn test_read_length_and_payload_failure_leaves_header_untouched() {
+        // length = 30 mais vingt octets seulement.
+        let mut data = vec![0x1E];
+        data.extend([0u8; 20]);
         let mut cur = QuicCursor::new(&data);
         let mut header = dummy_header(1);
         assert!(matches!(
-            read_pn_and_payload(&mut cur, &mut header),
-            Err(QuicError::PayloadTooShort { .. })
+            read_length_and_payload(&mut cur, &mut header),
+            Err(QuicError::PayloadTooShort {
+                expected: 30,
+                available: 20
+            })
         ));
         assert_eq!(header.length_field, 0);
-        assert_eq!(header.packet_number, None);
     }
 }

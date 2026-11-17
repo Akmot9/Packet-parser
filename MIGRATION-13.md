@@ -185,3 +185,48 @@ saines. L'écart de `corpus/subset` n'est pas à mettre au crédit du
 changement : son chemin n'est pas touché, et d'une passe à l'autre du même
 binaire une trame saine varie davantage (`frame/dns` : 894 puis 758 ns
 avec la 12.1.0).
+
+## QUIC : le numéro de paquet n'est plus lu, `LengthFieldTooSmall` porte `min` (#293)
+
+**État : fait, sur `main`.** Dans un Initial, un 0-RTT ou un Handshake, la
+protection d'en-tête (RFC 9001 §5.4) masque le numéro de paquet et les
+quatre bits bas de l'octet 0, dont sa longueur. La 12.x les lisait quand
+même : `packet_number` et la longueur prise aux bits bas étaient du bruit
+sur tout paquet réel, et la charge commençait de 0 à 3 octets trop tôt ou
+trop tard. Sur les vecteurs de la RFC 9001, l'Initial client (A.2) sortait
+le numéro 123 au lieu de 2, l'Initial serveur (A.3) 0xc0d95a48 au lieu
+de 1.
+
+### L'erreur
+
+`QuicError::LengthFieldTooSmall` comparait Length à cette longueur
+protégée. Elle compare maintenant Length au minimum qu'impose
+l'échantillon de la protection d'en-tête : 4 octets de numéro de paquet
+supposés, puis 16 octets d'échantillon (RFC 9001 §5.4.2, « An endpoint
+MUST discard packets that are not long enough to contain a complete
+sample »). La constante est `QUIC_MIN_PROTECTED_LENGTH`, 20.
+
+```rust
+// 12.x
+QuicError::LengthFieldTooSmall { length_field: u64, pn_length: u8 }
+
+// 13.0
+QuicError::LengthFieldTooSmall { length_field: u64, min: u64 }
+```
+
+Un motif qui nomme `pn_length` ne compile plus (E0026) ; `{ .. }` ne
+change pas.
+
+### Ce qui change sans erreur de compilation
+
+| Champ | 12.x | 13.0 |
+|---|---|---|
+| `QuicLongHeader::packet_number` | `Some(n)`, lu sur les octets protégés | toujours `None` |
+| `QuicLongHeader::pn_length` | présenté comme la longueur du numéro | mêmes bits, documentés comme protégés |
+| `EncryptedPayload` d'un Initial, Handshake, 0-RTT | après `pn_length` octets | dès le champ Length franchi : numéro de paquet protégé compris, `length_field` octets |
+| Length de 1 à 19 | accepté | refusé (`LengthFieldTooSmall`) |
+
+Qui retire lui-même la protection d'en-tête (il a les clés) trouve le
+numéro de paquet au début de `EncryptedPayload`, et l'échantillon à
+l'octet 4 de cette même tranche.
+
