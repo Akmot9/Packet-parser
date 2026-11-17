@@ -297,6 +297,7 @@ protocole.
 | #275 `CorruptedLayer.error` type, `CorruptedLayer` `#[non_exhaustive]` | fait, sur `main` |
 | #293 QUIC : `packet_number` toujours `None`, charge des le champ Length, `LengthFieldTooSmall { length_field, min }` | fait, sur `main` |
 | #319 `ApplicationProtocol::Custom(&'static str)` pour les parseurs ajoutes : plus de cast `as` | fait, sur `main` |
+| #315 NTP : `NtpTimestamp` au lieu de `DateTime<Utc>`, `chrono` retire, `TimestampConversionError` supprimee | fait, sur `main` |
 
 Decision #218 (2026-11-15) : `Application` ne porte pas de `details`, et la
 crate n'ajoute pas de decodage a la demande. Qui veut les champs du L7

@@ -14,8 +14,6 @@ feature-depth = 1
 
 [advisories]
 ignore = [
-    # Herite de packet_parser, voir le deny.toml de la racine.
-    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained, no vulnerability; removal tracked in #315" },
 ]
 
 [licenses]
