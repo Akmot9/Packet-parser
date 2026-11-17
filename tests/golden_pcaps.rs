@@ -401,9 +401,18 @@ fn application_classification_histogram_is_frozen() {
     // 19 reponses, que tshark decode par `mbudp`. La regle de port UDP 502
     // les etiquette tous : "ModbusUDP" 0 -> 38, rien d'autre ne bouge.
     // Parite datagramme par datagramme dans `tests/modbus_golden.rs`.
+    //
+    // 2026-11-17 (#291, MQTT 5) : +4 captures protocols/mqtt/wireshark_*,
+    // pieces jointes des issues Wireshark #15257 et #15428 (auteur de
+    // Mosquitto, boucle locale), 420 trames. 150 paquets MQTT 5 selon
+    // tshark 4.6.9 : 149 sortent "MQTT" (38 -> 187), l'UNSUBACK sans reason
+    // code de #15257 (trame 11, non conforme a §3.11.3) sort "Unknown"
+    // (9 505 -> 9 506) ; les 270 segments sans payload vont en
+    // "(sans application)" (6 307 -> 6 577). Parite paquet par paquet dans
+    // `tests/mqtt_golden.rs`.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 6307),
+        (NO_APPLICATION, 6577),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 32),
@@ -421,7 +430,7 @@ fn application_classification_histogram_is_frozen() {
         ("IKE", 535),
         ("IP-in-IP", 5),
         ("LLMNR", 136),
-        ("MQTT", 38),
+        ("MQTT", 187),
         ("NBNS", 737),
         ("NBSS", 32),
         ("ModbusTCP", 382),
@@ -443,7 +452,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 9_505),
+        ("Unknown", 9_506),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

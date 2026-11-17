@@ -60,6 +60,8 @@ pub enum MqttPacketType {
     Pingreq,
     Pingresp,
     Disconnect,
+    /// Authentification etendue, MQTT 5 seulement (§3.15).
+    Auth,
 }
 
 impl fmt::Display for MqttPacketType {
@@ -79,6 +81,7 @@ impl fmt::Display for MqttPacketType {
             MqttPacketType::Pingreq => "PINGREQ",
             MqttPacketType::Pingresp => "PINGRESP",
             MqttPacketType::Disconnect => "DISCONNECT",
+            MqttPacketType::Auth => "AUTH",
         };
         write!(f, "{s}")
     }
@@ -315,10 +318,33 @@ mod tests {
             MqttPacket::try_from(&[0x00, 0x00][..]),
             Err(MqttError::InvalidPacketType { raw: 0 })
         ));
-        assert!(matches!(
-            MqttPacket::try_from(&[0xF0, 0x00][..]),
-            Err(MqttError::InvalidPacketType { raw: 15 })
-        ));
+    }
+
+    /// Les quatre paquets v5 de #291, tels que tshark 4.6.9 les lit.
+    #[test]
+    fn mqtt5_packets_from_issue_291_parse() {
+        let cases: [(&str, MqttPacketType); 4] = [
+            ("30080000032300016869", MqttPacketType::Publish),
+            ("820b0001020b010003612f6201", MqttPacketType::Subscribe),
+            ("90080001041f00016100", MqttPacketType::Suback),
+            ("f000", MqttPacketType::Auth),
+        ];
+        for (hex_packet, packet_type) in cases {
+            let bytes = hex::decode(hex_packet).expect("invalid hex fixture");
+            let packet = MqttPacket::try_from(bytes.as_slice()).expect(hex_packet);
+            assert_eq!(packet.fixed_header.packet_type, packet_type);
+            assert_eq!(
+                crate::classify_payload(
+                    crate::TransportProtocol::Tcp,
+                    Some(50_000),
+                    Some(1883),
+                    &bytes
+                )
+                .map(|application| application.protocol),
+                Some(crate::ApplicationProtocol::Mqtt),
+                "{hex_packet}"
+            );
+        }
     }
 
     #[test]
@@ -384,6 +410,7 @@ mod tests {
             (MqttPacketType::Pingreq, "PINGREQ"),
             (MqttPacketType::Pingresp, "PINGRESP"),
             (MqttPacketType::Disconnect, "DISCONNECT"),
+            (MqttPacketType::Auth, "AUTH"),
         ];
         for (packet_type, expected) in cases {
             assert_eq!(packet_type.to_string(), *expected);

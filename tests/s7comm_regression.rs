@@ -740,14 +740,19 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // erreur L2 : 187 -> 188 captures, 186 -> 187 fichiers lus,
     // 71 479 -> 71 517 trames, 71 437 -> 71 475 flux. Aucune n'est etiquetee
     // S7Comm ni COTP.
-    assert_eq!(captures.len(), 188);
-    assert_eq!(opened_files, 187);
-    assert_eq!(frame_count, 71_517);
+    // 2026-11-17 (#291) : +4 captures MQTT 5 dans protocols/mqtt/ (voir
+    // SOURCE.md : tracker Wireshark), 420 trames Ethernet/IPv4/TCP decodees
+    // sans erreur L2 : 188 -> 192 captures, 187 -> 191 fichiers lus,
+    // 71 517 -> 71 937 trames, 71 475 -> 71 895 flux. Aucune n'est etiquetee
+    // S7Comm ni COTP.
+    assert_eq!(captures.len(), 192);
+    assert_eq!(opened_files, 191);
+    assert_eq!(frame_count, 71_937);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 71_475);
+    assert_eq!(parsed_flows, 71_895);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,
