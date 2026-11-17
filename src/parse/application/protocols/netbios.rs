@@ -305,6 +305,7 @@ impl<'a> TryFrom<&'a [u8]> for NbssPacket<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{ApplicationProtocol, TransportProtocol};
 
     /// Trame 38172 : registration broadcast de JOHANNES-DELL<00>, question
     /// NB + enregistrement additional dont le nom est un pointeur c00c
@@ -381,6 +382,63 @@ mod tests {
                 expected: 12,
                 actual: 11
             })
+        );
+    }
+
+    /// La reponse negative d'un serveur WINS a la requete de la trame 38229 :
+    /// en-tete `8583` (reponse, AA, RD, NAM_ERR), un enregistrement NULL de
+    /// TTL et RDLENGTH nuls (RFC 1002 §4.2.14). Construite a partir de la
+    /// requete reelle, faute de reponse negative dans le corpus.
+    fn negative_query_response(flags: [u8; 2], answers: u8) -> Vec<u8> {
+        let query = payload(NBNS_QUERY_HEX);
+        let mut bytes = query[..2].to_vec();
+        bytes.extend_from_slice(&flags);
+        bytes.extend_from_slice(&[0, 0, 0, answers, 0, 0, 0, 0]);
+        // Le nom encode (34 octets), puis NULL, IN, TTL et RDLENGTH nuls.
+        bytes.extend_from_slice(&query[12..46]);
+        bytes.extend_from_slice(&[0x00, 0x0a, 0x00, 0x01, 0, 0, 0, 0, 0, 0]);
+        bytes
+    }
+
+    #[test]
+    fn a_name_error_response_is_nbns() {
+        let bytes = negative_query_response([0x85, 0x83], 1);
+
+        let packet = NbnsPacket::try_from(bytes.as_slice()).expect("NAM_ERR response");
+        assert!(packet.flags.response);
+        assert_eq!(packet.flags.rcode, 0x3);
+        assert_eq!(
+            crate::classify_payload(TransportProtocol::Udp, Some(137), Some(137), &bytes)
+                .map(|application| application.protocol),
+            Some(ApplicationProtocol::Nbns)
+        );
+    }
+
+    /// Le schema du §4.2.14 porte quatre compteurs nuls avant son
+    /// enregistrement : le decodeur suit les compteurs et refuse cette forme.
+    #[test]
+    fn a_negative_response_with_the_literal_zero_counts_is_refused() {
+        let bytes = negative_query_response([0x85, 0x83], 0);
+
+        assert_eq!(
+            NbnsPacket::try_from(bytes.as_slice()),
+            Err(NbnsError::EmptyMessage)
+        );
+    }
+
+    /// La registration de la trame 38172 passee en refresh a l'opcode 0x9,
+    /// celui du schema de NAME REFRESH REQUEST (RFC 1002 §4.2.4).
+    #[test]
+    fn a_refresh_with_the_alternate_opcode_is_nbns() {
+        let mut bytes = payload(NBNS_REGISTRATION_HEX);
+        bytes[2..4].copy_from_slice(&[0x48, 0x10]);
+
+        let packet = NbnsPacket::try_from(bytes.as_slice()).expect("refresh, opcode 9");
+        assert_eq!(packet.flags.opcode, 0x9);
+        assert_eq!(
+            crate::classify_payload(TransportProtocol::Udp, Some(137), Some(137), &bytes)
+                .map(|application| application.protocol),
+            Some(ApplicationProtocol::Nbns)
         );
     }
 
