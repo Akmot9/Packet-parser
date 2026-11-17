@@ -68,4 +68,37 @@ pub enum RtpsParseError {
         "RTPS HEADER_EXTENSION declares a message of {declared} bytes, the datagram has {actual}"
     )]
     HeaderExtensionLengthMismatch { declared: u32, actual: usize },
+
+    /// L'`octetsToInlineQos` d'un DATA ou d'un DATA_FRAG pointe dans ses
+    /// champs fixes ou au-dela de son corps (#317).
+    #[error(
+        "RTPS octetsToInlineQos {octets_to_inline_qos} does not point between the fixed fields and the end of the {body}-byte submessage body"
+    )]
+    InvalidOctetsToInlineQos {
+        octets_to_inline_qos: u16,
+        body: usize,
+    },
+
+    /// Un parametre d'une ParameterList deborde de la liste : son en-tete,
+    /// ou la valeur que sa longueur annonce (#317).
+    #[error("RTPS parameter at offset {offset} needs {expected} bytes, {actual} left in the list")]
+    ParameterTruncated {
+        offset: usize,
+        expected: usize,
+        actual: usize,
+    },
+
+    /// Une ParameterList sans PID_SENTINEL (§9.4.2.11) (#317).
+    #[error("RTPS parameter list of {length} bytes has no PID_SENTINEL")]
+    ParameterListUnterminated { length: usize },
+
+    /// Des donnees serialisees plus courtes que leur en-tete
+    /// d'encapsulation de quatre octets (#317).
+    #[error("RTPS serialized payload of {actual} bytes, shorter than its encapsulation header")]
+    SerializedPayloadTooShort { actual: usize },
+
+    /// Des donnees de decouverte dont l'encapsulation n'est pas PL_CDR, la
+    /// seule que la specification prevoit pour SPDP et SEDP (#317).
+    #[error("RTPS discovery data encapsulated as {encapsulation:#06x}, not PL_CDR")]
+    NotAParameterList { encapsulation: u16 },
 }

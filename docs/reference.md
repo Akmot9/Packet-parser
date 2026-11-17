@@ -276,8 +276,17 @@ Application detection is intentionally best-effort. Parser modules include:
   split and typed (DATA, DATA_FRAG, HEARTBEAT, ACKNACK, GAP, INFO_TS,
   INFO_DST, INFO_SRC, fragment submessages, the 2.5 HEADER_EXTENSION with
   its message length, send timestamp, extensions and checksum, DDS Security
-  and vendor ones), entity ids, sequence numbers and counts; user data
-  (CDR), inline QoS and the HEADER_EXTENSION parameter list stay opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
+  and vendor ones), entity ids, sequence numbers and counts. The DDS layer
+  of DATA and DATA_FRAG decodes on demand (`rtps::dds`): inline QoS, the
+  encapsulation header of the serialized payload (CDR, PL_CDR, XCDR2, byte
+  order), and SPDP/SEDP discovery from the built-in writers (DDS Security
+  ones included) as a parameter list, with typed accessors for topic and
+  type names, entity names, participant and endpoint GUIDs, domain,
+  protocol version, vendorId, locators and their role, lease duration,
+  built-in endpoint set, reliability, durability, key hash and status
+  info; vendor parameters stay bytes. User data (the CDR of an application
+  type), DATA_FRAG reassembly and the HEADER_EXTENSION parameter list stay
+  opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
   exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
   `NDDSPING` pings are reported too
 - BACnet/IP (ASHRAE 135 annex J) on UDP 47808: BVLC (function named,

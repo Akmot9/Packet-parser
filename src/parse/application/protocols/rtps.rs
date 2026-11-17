@@ -17,8 +17,10 @@
 //! numeros de sequence, compteurs et horodatages des types de la
 //! specification, et les champs du HEADER_EXTENSION de la 2.5 (longueur du
 //! message, horodatage d'emission, extensions, somme de controle non
-//! verifiee) ; les donnees utilisateur (CDR), les QoS en ligne, les listes
-//! de locateurs et la ParameterList du HEADER_EXTENSION restent en octets.
+//! verifiee) ; la ParameterList du HEADER_EXTENSION reste en octets. La
+//! couche DDS des DATA (QoS en ligne, encapsulation, decouverte SPDP et
+//! SEDP) se decode a la demande, voir [`dds`] ; les donnees d'un type
+//! utilisateur restent des octets.
 //! Un identifiant hors de la table de la 2.5, de DDS Security et de la
 //! plage vendeur refuse le message, la ou le §8.3.4.1 demande de l'ignorer
 //! et de continuer : c'est la signature de la sonde. RTI Connext emet aussi des
@@ -31,20 +33,22 @@
 
 use std::convert::TryFrom;
 
+pub mod dds;
+
 use crate::{
     checks::application::rtps::{
-        HEADER_EXTENSION_FLAG_LENGTH, HEADER_EXTENSION_FLAG_PARAMETERS,
-        HEADER_EXTENSION_FLAG_TIMESTAMP, HEADER_EXTENSION_FLAG_UEXTENSION4,
-        HEADER_EXTENSION_FLAG_WEXTENSION8, RTPS_FLAG_ENDIANNESS, RTPS_HEADER_LENGTH,
-        RTPS_PING_LENGTH, RTPS_PING_TEXT, RTPS_SUBMESSAGE_HEADER_LENGTH, SUBMESSAGE_ACKNACK,
-        SUBMESSAGE_DATA, SUBMESSAGE_DATA_FRAG, SUBMESSAGE_GAP, SUBMESSAGE_HEADER_EXTENSION,
-        SUBMESSAGE_HEARTBEAT, SUBMESSAGE_HEARTBEAT_FRAG, SUBMESSAGE_INFO_DST,
-        SUBMESSAGE_INFO_REPLY, SUBMESSAGE_INFO_REPLY_IP4, SUBMESSAGE_INFO_SRC, SUBMESSAGE_INFO_TS,
-        SUBMESSAGE_NACK_FRAG, SUBMESSAGE_PAD, SUBMESSAGE_SEC_BODY, SUBMESSAGE_SEC_POSTFIX,
-        SUBMESSAGE_SEC_PREFIX, SUBMESSAGE_SRTPS_POSTFIX, SUBMESSAGE_SRTPS_PREFIX, bitmap_length,
-        ensure_len, extract_magic, extract_version, header_extension_checksum_length,
-        header_extension_fixed_length, read_sequence_number, read_u16, read_u32,
-        submessage_body_length, validate_body_length, validate_submessage_id,
+        DATA_FLAG_DATA, DATA_FLAG_INLINE_QOS, DATA_FLAG_KEY, HEADER_EXTENSION_FLAG_LENGTH,
+        HEADER_EXTENSION_FLAG_PARAMETERS, HEADER_EXTENSION_FLAG_TIMESTAMP,
+        HEADER_EXTENSION_FLAG_UEXTENSION4, HEADER_EXTENSION_FLAG_WEXTENSION8, RTPS_FLAG_ENDIANNESS,
+        RTPS_HEADER_LENGTH, RTPS_PING_LENGTH, RTPS_PING_TEXT, RTPS_SUBMESSAGE_HEADER_LENGTH,
+        SUBMESSAGE_ACKNACK, SUBMESSAGE_DATA, SUBMESSAGE_DATA_FRAG, SUBMESSAGE_GAP,
+        SUBMESSAGE_HEADER_EXTENSION, SUBMESSAGE_HEARTBEAT, SUBMESSAGE_HEARTBEAT_FRAG,
+        SUBMESSAGE_INFO_DST, SUBMESSAGE_INFO_REPLY, SUBMESSAGE_INFO_REPLY_IP4, SUBMESSAGE_INFO_SRC,
+        SUBMESSAGE_INFO_TS, SUBMESSAGE_NACK_FRAG, SUBMESSAGE_PAD, SUBMESSAGE_SEC_BODY,
+        SUBMESSAGE_SEC_POSTFIX, SUBMESSAGE_SEC_PREFIX, SUBMESSAGE_SRTPS_POSTFIX,
+        SUBMESSAGE_SRTPS_PREFIX, bitmap_length, ensure_len, extract_magic, extract_version,
+        header_extension_checksum_length, header_extension_fixed_length, read_sequence_number,
+        read_u16, read_u32, submessage_body_length, validate_body_length, validate_submessage_id,
     },
     errors::application::rtps::RtpsParseError,
     parse::application::protocols::bounded_capacity,
@@ -534,9 +538,9 @@ fn submessage_details(
                 reader_id: entity_at(4),
                 writer_id: entity_at(8),
                 writer_sequence_number: sn_at(12),
-                inline_qos: flags & 0x02 != 0,
-                serialized_payload: flags & 0x04 != 0,
-                serialized_key: flags & 0x08 != 0,
+                inline_qos: flags & DATA_FLAG_INLINE_QOS != 0,
+                serialized_payload: flags & DATA_FLAG_DATA != 0,
+                serialized_key: flags & DATA_FLAG_KEY != 0,
             }
         }
         SUBMESSAGE_DATA_FRAG => {

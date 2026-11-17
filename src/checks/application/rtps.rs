@@ -236,6 +236,148 @@ pub fn bitmap_length(num_bits: u32) -> usize {
     (num_bits as usize).div_ceil(32) * 4
 }
 
+// Couche DDS (#317) : QoS en ligne, encapsulation, decouverte.
+
+/// Flag Q d'un DATA et d'un DATA_FRAG : des QoS en ligne precedent les
+/// donnees (§9.4.5.3.1, §9.4.5.4.1).
+pub const DATA_FLAG_INLINE_QOS: u8 = 0x02;
+/// Flag D d'un DATA : le corps porte des donnees serialisees.
+pub const DATA_FLAG_DATA: u8 = 0x04;
+/// Flag K d'un DATA : le corps porte une cle serialisee.
+pub const DATA_FLAG_KEY: u8 = 0x08;
+
+/// En-tete d'un parametre : parameterId u16 puis length u16 (§9.4.2.11).
+pub const RTPS_PARAMETER_HEADER_LENGTH: usize = 4;
+/// En-tete d'encapsulation des donnees serialisees : identifiant de
+/// representation puis options, deux octets chacun (§10.2).
+pub const RTPS_ENCAPSULATION_HEADER_LENGTH: usize = 4;
+
+/// Identifiants de parametre (Table 9.13). Le bit 15 marque un PID
+/// propre a une implementation, le bit 14 un PID qu'un recepteur doit
+/// comprendre pour accepter le sous-message (§9.6.2.2.1).
+pub const PID_VENDOR_SPECIFIC_FLAG: u16 = 0x8000;
+pub const PID_MUST_UNDERSTAND_FLAG: u16 = 0x4000;
+pub const PID_SENTINEL: u16 = 0x0001;
+pub const PID_PARTICIPANT_LEASE_DURATION: u16 = 0x0002;
+pub const PID_TOPIC_NAME: u16 = 0x0005;
+pub const PID_TYPE_NAME: u16 = 0x0007;
+pub const PID_DOMAIN_ID: u16 = 0x000f;
+pub const PID_PROTOCOL_VERSION: u16 = 0x0015;
+pub const PID_VENDOR_ID: u16 = 0x0016;
+pub const PID_RELIABILITY: u16 = 0x001a;
+pub const PID_DURABILITY: u16 = 0x001d;
+pub const PID_UNICAST_LOCATOR: u16 = 0x002f;
+pub const PID_MULTICAST_LOCATOR: u16 = 0x0030;
+pub const PID_DEFAULT_UNICAST_LOCATOR: u16 = 0x0031;
+pub const PID_METATRAFFIC_UNICAST_LOCATOR: u16 = 0x0032;
+pub const PID_METATRAFFIC_MULTICAST_LOCATOR: u16 = 0x0033;
+pub const PID_DEFAULT_MULTICAST_LOCATOR: u16 = 0x0048;
+pub const PID_PARTICIPANT_GUID: u16 = 0x0050;
+pub const PID_BUILTIN_ENDPOINT_SET: u16 = 0x0058;
+pub const PID_ENDPOINT_GUID: u16 = 0x005a;
+pub const PID_ENTITY_NAME: u16 = 0x0062;
+pub const PID_KEY_HASH: u16 = 0x0070;
+pub const PID_STATUS_INFO: u16 = 0x0071;
+
+/// Types de `Locator_t` (§9.3.2).
+pub const LOCATOR_KIND_UDPV4: i32 = 1;
+pub const LOCATOR_KIND_UDPV6: i32 = 2;
+
+/// Writers integres de la decouverte (§9.3.1.4, Table 9.2 ; DDS Security
+/// 1.1 Table 9 pour les variantes securisees).
+pub const ENTITYID_SPDP_PARTICIPANT_WRITER: u32 = 0x0001_00c2;
+pub const ENTITYID_SEDP_TOPICS_WRITER: u32 = 0x0000_02c2;
+pub const ENTITYID_SEDP_PUBLICATIONS_WRITER: u32 = 0x0000_03c2;
+pub const ENTITYID_SEDP_SUBSCRIPTIONS_WRITER: u32 = 0x0000_04c2;
+pub const ENTITYID_SPDP_PARTICIPANT_SECURE_WRITER: u32 = 0xff01_01c2;
+pub const ENTITYID_SEDP_PUBLICATIONS_SECURE_WRITER: u32 = 0xff00_03c2;
+pub const ENTITYID_SEDP_SUBSCRIPTIONS_SECURE_WRITER: u32 = 0xff00_04c2;
+
+/// Identifiants de representation des donnees serialisees (DDS-XTypes 1.3
+/// §7.6.3.1.2, Table 60).
+pub const ENCAPSULATION_CDR_BE: u16 = 0x0000;
+pub const ENCAPSULATION_CDR_LE: u16 = 0x0001;
+pub const ENCAPSULATION_PL_CDR_BE: u16 = 0x0002;
+pub const ENCAPSULATION_PL_CDR_LE: u16 = 0x0003;
+pub const ENCAPSULATION_XML: u16 = 0x0004;
+pub const ENCAPSULATION_CDR2_BE: u16 = 0x0010;
+pub const ENCAPSULATION_CDR2_LE: u16 = 0x0011;
+pub const ENCAPSULATION_PL_CDR2_BE: u16 = 0x0012;
+pub const ENCAPSULATION_PL_CDR2_LE: u16 = 0x0013;
+pub const ENCAPSULATION_D_CDR2_BE: u16 = 0x0014;
+pub const ENCAPSULATION_D_CDR2_LE: u16 = 0x0015;
+
+/// Offset, dans le corps d'un DATA ou d'un DATA_FRAG, de ce qui suit ses
+/// champs fixes : QoS en ligne s'il y en a, sinon donnees.
+/// `octetsToInlineQos` se compte depuis l'octet qui suit ce champ, lui-meme
+/// a l'offset 2 ; il doit pointer entre la fin des champs fixes (`fixed`
+/// octets, 20 pour un DATA, 32 pour un DATA_FRAG) et la fin du corps, qui
+/// porte au moins `fixed` octets.
+pub fn inline_qos_offset(
+    body: &[u8],
+    little_endian: bool,
+    fixed: usize,
+) -> Result<usize, RtpsParseError> {
+    let octets = read_u16([body[2], body[3]], little_endian);
+    let offset = 4 + usize::from(octets);
+    if offset < fixed || offset > body.len() {
+        return Err(RtpsParseError::InvalidOctetsToInlineQos {
+            octets_to_inline_qos: octets,
+            body: body.len(),
+        });
+    }
+    Ok(offset)
+}
+
+/// Une ParameterList qui commence en tete de `bytes` (§9.4.2.11) : rend la
+/// longueur des parametres avant le PID_SENTINEL, et celle de la liste
+/// sentinel compris. La longueur du sentinel est ignoree, comme le veut la
+/// specification ; un parametre qui deborde, ou une liste sans sentinel,
+/// est refuse.
+pub fn parameter_list_length(
+    bytes: &[u8],
+    little_endian: bool,
+) -> Result<(usize, usize), RtpsParseError> {
+    let mut offset = 0;
+    loop {
+        if offset == bytes.len() {
+            return Err(RtpsParseError::ParameterListUnterminated {
+                length: bytes.len(),
+            });
+        }
+        let Some(header) = bytes.get(offset..offset + RTPS_PARAMETER_HEADER_LENGTH) else {
+            return Err(RtpsParseError::ParameterTruncated {
+                offset,
+                expected: RTPS_PARAMETER_HEADER_LENGTH,
+                actual: bytes.len() - offset,
+            });
+        };
+        let id = read_u16([header[0], header[1]], little_endian);
+        if id == PID_SENTINEL {
+            return Ok((offset, offset + RTPS_PARAMETER_HEADER_LENGTH));
+        }
+        let length = usize::from(read_u16([header[2], header[3]], little_endian));
+        let available = bytes.len() - offset - RTPS_PARAMETER_HEADER_LENGTH;
+        if length > available {
+            return Err(RtpsParseError::ParameterTruncated {
+                offset,
+                expected: length,
+                actual: available,
+            });
+        }
+        offset += RTPS_PARAMETER_HEADER_LENGTH + length;
+    }
+}
+
+/// Une chaine CDR en tete de la valeur d'un parametre : longueur u32, NUL
+/// final compris, puis les octets. Rend les octets sans le NUL ; `None` si
+/// la longueur deborde de la valeur.
+pub fn cdr_string(value: &[u8], little_endian: bool) -> Option<&[u8]> {
+    let length = read_u32(value.get(..4)?.try_into().ok()?, little_endian);
+    let text = value.get(4..4 + usize::try_from(length).ok()?)?;
+    Some(text.strip_suffix(&[0]).unwrap_or(text))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
