@@ -69,7 +69,7 @@ const GENEVE_PORT: u16 = 6081;
 pub(crate) fn detect_inner<'a>(
     transport: &Transport<'a>,
     depth: u8,
-    decode_as: &[(u16, crate::parse::DecodeAsProtocol)],
+    config: &crate::parse::ParseConfig,
 ) -> Option<(ApplicationProtocol, PacketFlow<'a>)> {
     if depth + 1 >= MAX_TUNNEL_DEPTH {
         return None;
@@ -83,7 +83,7 @@ pub(crate) fn detect_inner<'a>(
             || transport.destination_port == Some(CAPWAP_DATA_PORT))
         && let Some(inner_link) = peel_capwap_ieee80211(payload)
         && let Ok(inner) =
-            PacketFlow::parse_decoded_with(DecodedLink::new(inner_link), depth + 1, decode_as)
+            PacketFlow::parse_decoded_with(DecodedLink::new(inner_link), depth + 1, config)
     {
         return Some((ApplicationProtocol::Capwap, inner));
     }
@@ -93,7 +93,7 @@ pub(crate) fn detect_inner<'a>(
         && (transport.source_port == Some(VXLAN_PORT)
             || transport.destination_port == Some(VXLAN_PORT))
         && let Some(inner_link) = peel_vxlan(payload)
-        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
+        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, config)
     {
         return Some((ApplicationProtocol::Vxlan, inner));
     }
@@ -103,7 +103,7 @@ pub(crate) fn detect_inner<'a>(
         && (transport.source_port == Some(GENEVE_PORT)
             || transport.destination_port == Some(GENEVE_PORT))
         && let Some(inner_link) = peel_geneve(payload)
-        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
+        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, config)
     {
         return Some((ApplicationProtocol::Geneve, inner));
     }
@@ -121,7 +121,7 @@ pub(crate) fn detect_inner<'a>(
         && (transport.source_port == Some(GTP_U_PORT)
             || transport.destination_port == Some(GTP_U_PORT))
         && let Some(inner_link) = peel_gtp_u(payload)
-        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
+        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, config)
         && inner.corrupted.is_none()
     {
         return Some((ApplicationProtocol::GtpU, inner));
@@ -137,7 +137,7 @@ pub(crate) fn detect_inner<'a>(
 pub(crate) fn detect_inner_l3<'a>(
     internet: &Internet<'a>,
     depth: u8,
-    decode_as: &[(u16, crate::parse::DecodeAsProtocol)],
+    config: &crate::parse::ParseConfig,
 ) -> Option<(ApplicationProtocol, PacketFlow<'a>)> {
     if depth + 1 >= MAX_TUNNEL_DEPTH {
         return None;
@@ -159,7 +159,7 @@ pub(crate) fn detect_inner_l3<'a>(
         _ => return None,
     };
 
-    PacketFlow::parse_decoded_with(inner_link, depth + 1, decode_as)
+    PacketFlow::parse_decoded_with(inner_link, depth + 1, config)
         .ok()
         .map(|inner| (label, inner))
 }

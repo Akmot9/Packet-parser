@@ -230,3 +230,36 @@ Qui retire lui-même la protection d'en-tête (il a les clés) trouve le
 numéro de paquet au début de `EncryptedPayload`, et l'échantillon à
 l'octet 4 de cette même tranche.
 
+
+## `ApplicationProtocol` a une variante `Custom(&'static str)` (#319)
+
+**État : fait, sur `main`.** Une application peut ajouter ses propres
+parseurs, pour les protocoles que la crate ne décode pas (trait
+`ApplicationParser`, `ParseConfig::with_parser`). Ce qu'ils reconnaissent
+est étiqueté `ApplicationProtocol::Custom(label)`. Cette variante porte une
+donnée : les autres n'ont plus de discriminant défini, et un cast `as` ne
+compile plus.
+
+```rust
+// 12.x
+let index = flow_protocol as usize; // compilait
+
+// 13.0
+let index = ApplicationProtocol::ALL
+    .iter()
+    .position(|protocol| *protocol == flow_protocol); // None pour Custom
+```
+
+Le cast refusé est l'erreur E0605 (`non-primitive cast`). Pour une clé de
+table, `label()` ou `std::mem::discriminant` conviennent aussi.
+
+### Ce qui change sans erreur de compilation
+
+- `ALL` ne liste que les protocoles intégrés : `Custom` n'y est pas.
+- `FromStr` ne relit pas une étiquette ajoutée : `"ACME".parse()` reste une
+  erreur `UnknownApplicationLabel`. Seule la configuration qui a enregistré
+  le parseur connaît l'étiquette (`ParseConfig::parser`).
+- Un `match` exhaustif était déjà impossible hors de la crate
+  (`#[non_exhaustive]`) : le bras `_` reçoit `Custom`.
+- Sans parseur enregistré, rien ne change : `parse`, `parse_with` et
+  `classify_payload_with` ne produisent jamais `Custom`.

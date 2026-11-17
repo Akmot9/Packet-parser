@@ -1,0 +1,56 @@
+# cargo deny du kit de plugins (#319), qui a son propre workspace. Memes
+# regles que le deny.toml de la racine, plus une exception : libloading, le
+# chargeur de bibliotheques natives, est sous licence ISC (permissive,
+# equivalente a MIT). Elle ne vaut que pour cette crate, et seulement ici :
+# packet_parser lui-meme n'en depend pas.
+
+[graph]
+targets = []
+all-features = false
+no-default-features = false
+
+[output]
+feature-depth = 1
+
+[advisories]
+ignore = [
+    # Herite de packet_parser, voir le deny.toml de la racine.
+    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained, no vulnerability; removal tracked in #315" },
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.8
+exceptions = [
+    { allow = ["ISC"], crate = "libloading" },
+]
+
+[licenses.private]
+ignore = false
+registries = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+allow = []
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+github = []
+gitlab = []
+bitbucket = []

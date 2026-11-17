@@ -11,6 +11,9 @@
 // - `tests/fuzz_policy_parity.rs` confronte les listes de l'oracle a la table
 //   a chaque PR, verbe par verbe et port par port ;
 // - le fuzz nocturne cherche les octets hostiles qui separent les deux.
+//
+// S'y ajoute la regle des parseurs ajoutes par l'appelant (#319) : un parseur
+// qui accepte tout ne renomme que les flux que la table laissait `Unknown`.
 #![no_main]
 
 #[path = "../oracles/frames.rs"]
@@ -22,9 +25,12 @@ use frames::{
     ARTICLE_COMMAND, COTP_CONNECTION_REQUEST, EHLO_COMMAND, EPHEMERAL_PORT, READ_VAR_REQUEST,
     STOR_COMMAND, ethernet_ipv4_payload, xor_overlay,
 };
+use std::sync::Arc;
+
 use libfuzzer_sys::fuzz_target;
 use packet_parser::{
-    DecodeAsProtocol, LinkType, PacketFlow, ParseConfig,
+    ApplicationParser, ApplicationProtocol, DecodeAsProtocol, LinkType, PacketFlow, ParseConfig,
+    PayloadContext,
     parse::{
         application::protocols::{ftp::FtpMessage, nntp::NntpMessage, smtp::SmtpMessage},
         transport::protocols::TransportProtocol,
@@ -55,10 +61,77 @@ fn check(frame: &[u8], declared: DecodeAsProtocol) {
         }
     }
     let config = ParseConfig::new().decode_as(DECLARED_PORT, declared);
-    if let Ok(flow) = parse_with(LinkType::ETHERNET, frame, &config) {
+    let flow = parse_with(LinkType::ETHERNET, frame, &config);
+    if let Ok(flow) = &flow {
         for parsed in flow.flatten() {
             check_decode_as_policy(parsed, declared);
         }
+    }
+    let with_parser = config
+        .with_parser(Arc::new(CatchAll))
+        .expect("etiquette libre");
+    check_added_parser_policy(flow, parse_with(LinkType::ETHERNET, frame, &with_parser));
+}
+
+/// Un parseur ajoute qui accepte tout (#319).
+struct CatchAll;
+
+const CATCH_ALL: &str = "CATCH-ALL";
+
+impl ApplicationParser for CatchAll {
+    fn label(&self) -> &'static str {
+        CATCH_ALL
+    }
+    fn matches(&self, _payload: &[u8], _context: &PayloadContext) -> bool {
+        true
+    }
+}
+
+/// Avec `CatchAll` en plus, chaque flux garde l'etiquette de la table, sauf
+/// un `Unknown` sur une charge TCP ou UDP non vide, qui devient `CATCH-ALL`.
+fn check_added_parser_policy<E>(
+    plain: Result<PacketFlow<'_>, E>,
+    added: Result<PacketFlow<'_>, E>,
+) {
+    let (Ok(plain), Ok(added)) = (&plain, &added) else {
+        assert_eq!(
+            plain.is_ok(),
+            added.is_ok(),
+            "un parseur ajoute change l'issue"
+        );
+        return;
+    };
+    let (plain, added) = (plain.flatten(), added.flatten());
+    assert_eq!(
+        plain.len(),
+        added.len(),
+        "un parseur ajoute change les tunnels"
+    );
+    for (before, after) in plain.iter().zip(&added) {
+        let reads = before.transport.as_ref().is_some_and(|transport| {
+            matches!(
+                transport.protocol,
+                TransportProtocol::Tcp | TransportProtocol::Udp
+            ) && transport.payload.is_some_and(|payload| !payload.is_empty())
+        });
+        let expected = match before
+            .application
+            .as_ref()
+            .map(|application| application.protocol)
+        {
+            Some(ApplicationProtocol::Unknown) if reads => {
+                Some(ApplicationProtocol::Custom(CATCH_ALL))
+            }
+            protocol => protocol,
+        };
+        assert_eq!(
+            after
+                .application
+                .as_ref()
+                .map(|application| application.protocol),
+            expected,
+            "un parseur ajoute a pris un flux a la table"
+        );
     }
 }
 

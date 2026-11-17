@@ -30,9 +30,37 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
   sur des bits proteges ; elle le compare au minimum de 20 octets que
   l'echantillon de la protection d'en-tete impose (RFC 9001 §5.4.2,
   `QUIC_MIN_PROTECTED_LENGTH`). Migration : `MIGRATION-13.md`.
+- **ApplicationProtocol::Custom(&'static str)** (#319) : l'etiquette d'un
+  protocole reconnu par un parseur ajoute par l'appelant. La variante porte
+  une donnee : les autres n'ont plus de discriminant defini, et un cast `as`
+  ne compile plus. `ALL` et `FromStr` restent limites aux protocoles
+  integres. Migration : `MIGRATION-13.md`.
 
 ### Ajoute
 
+- **Parseurs ajoutes par l'appelant** (#319) : pour les protocoles que la
+  crate ne decode pas.
+  - Trait `ApplicationParser` (etiquette, transports, ports, `matches`,
+    `fields`), avec `CustomTransports`, `PayloadContext` et
+    `ParserRegistrationError`, reexportes a la racine.
+  - `ParseConfig::with_parser`, `add_parser`, `remove_parser`, `parser`,
+    `parser_labels` et `custom_fields`. L'enregistrement refuse une
+    etiquette invalide, celle d'un protocole integre ou une etiquette deja
+    prise, sans tenir compte de la casse ASCII.
+  - Un parseur ajoute ne passe qu'apres la table, sur une charge TCP ou UDP
+    qu'elle a laissee `Unknown`, flux internes des tunnels compris : il ne
+    prend jamais une trame a la crate. Verifie sur tout le corpus avec un
+    parseur qui accepte tout (`tests/custom_parsers.rs`), et par
+    `policy_dispatch` en fuzz. Sans parseur, rien ne change.
+  - Kit `plugin/` (crate `packet_parser_plugin`, non publiee, workspace a
+    part) : le parseur vit dans une bibliotheque native (`.so`, `.dylib`,
+    `.dll`) chargee a l'execution, derriere une ABI C versionnee.
+    `export_parser!` cote plugin, avec les paniques rattrapees a la
+    frontiere ; `load_parser` cote hote, qui verifie version, taille,
+    etiquette, transports et ports. Exemples `demo_parser` et
+    `plugin_host`, test d'integration qui compile le plugin, le charge et le
+    rejoue. Seul code `unsafe` du depot, hors de la crate publiee. Guide :
+    `docs/plugins.md`.
 - **Couche DDS de RTPS** (#317) : nouveau module `rtps::dds`, decode a la
   demande depuis un `RtpsSubmessage` ; la detection ne change pas.
   - `inline_qos()` : les QoS en ligne d'un DATA ou d'un DATA_FRAG.

@@ -1,0 +1,35 @@
+[package]
+name = "packet_parser_plugin"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+authors = ["Cyprien Avico avicocyprien@yahoo.com"]
+description = "Export packet_parser application parsers from native libraries (.so, .dylib, .dll) and load them at run time."
+license = "MIT"
+repository = "https://github.com/Akmot9/Packet-parser"
+# Pas de publication tant qu'elle n'est pas demandee (#319) : le kit suit
+# packet_parser par chemin, et la 13.0.0 n'est pas sortie.
+publish = false
+
+# Son propre workspace, comme fuzz/ et tools/lab/ : la crate packet_parser
+# reste seule dans le sien (#223), et sans unsafe.
+[workspace]
+
+[dependencies]
+packet_parser = { path = ".." }
+libloading = "0.8.9"
+thiserror = "2.0.18"
+
+[dev-dependencies]
+pcap-file = "2.0.0"
+serde_json = "1.0.150"
+
+# Un parseur de demonstration, compile en bibliotheque native : le modele
+# d'un plugin, et la bibliotheque que chargent les tests.
+[[example]]
+name = "demo_parser"
+crate-type = ["cdylib"]
+
+# Un hote : charge des plugins et compte les etiquettes d'une capture.
+[[example]]
+name = "plugin_host"

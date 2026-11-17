@@ -32,3 +32,8 @@ jobs:
 
       - name: Run cargo-deny
         run: cargo deny check --hide-inclusion-graph
+
+      # Le kit de plugins (#319) a son workspace et son deny.toml, avec la
+      # seule exception de licence du depot : ISC pour libloading.
+      - name: Run cargo-deny on the plugin kit
+        run: cargo deny --manifest-path plugin/Cargo.toml check --hide-inclusion-graph
