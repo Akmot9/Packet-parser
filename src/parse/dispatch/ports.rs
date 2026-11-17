@@ -81,6 +81,11 @@ pub(super) fn is_iec104_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(2404))
 }
 
+/// Java RMI : TCP 1099 (IANA `rmiregistry`).
+pub(super) fn is_java_rmi_tcp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(1099))
+}
+
 /// RDP : TCP 3389 (IANA `ms-wbt-server`).
 pub(super) fn is_rdp_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(3389))

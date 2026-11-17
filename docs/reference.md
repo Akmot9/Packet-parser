@@ -250,6 +250,17 @@ Application detection is intentionally best-effort. Parser modules include:
 - COTP
 - AMS
 - GIOP
+- Java RMI (JRMP, *Java RMI Specification* chapter 10) over TCP: stream
+  header (`JRMI`, version, Stream, SingleOp or Multiplex protocol),
+  ProtocolAck with its endpoint, ProtocolNotSupported, Call (target `ObjID`,
+  operation, method hash; the registry and DGC methods named), Return
+  (normal or exceptional, acknowledgement UID), Ping, PingAck, DgcAck.
+  Arguments and return values stay serialized bytes, borrowed. The header,
+  Call and Return are recognised on any TCP port; the one-byte messages,
+  DgcAck and ProtocolAck only on TCP 1099 or a Decode As port
+  (`DecodeAsProtocol::JavaRmi`), where exported objects and JMX connectors
+  usually listen. The client's EndpointIdentifier, which has no type byte,
+  and continuation segments stay `Unknown`
 - SRVLOC
 - ASTERIX (EUROCONTROL surveillance data, eleven categories: CAT 048 and
   034 monoradar reports and service messages, CAT 001 and 002 their

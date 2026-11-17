@@ -410,9 +410,20 @@ fn application_classification_histogram_is_frozen() {
     // (9 505 -> 9 506) ; les 270 segments sans payload vont en
     // "(sans application)" (6 307 -> 6 577). Parite paquet par paquet dans
     // `tests/mqtt_golden.rs`.
+    //
+    // 2026-11-17 (#313, Java RMI) : +1 capture protocols/java_rmi/
+    // jdk11-loopback.pcap, deux JVM sur la boucle locale, 394 trames. Les
+    // 158 segments sans charge vont en "(sans application)" (6 577 ->
+    // 6 735). Sur les 236 segments a charge, 143 sortent "Java RMI" : les
+    // 114 en-tetes de flux, Call et Return des ports 50050 et 50051, et 29
+    // messages du port 1099 ; les 93 autres sortent "Unknown" (9 506 ->
+    // 9 599) : Ping, PingAck et DgcAck hors de 1099 (sans Decode As), les
+    // EndpointIdentifier des clients, qui n'ont pas d'octet de type, et un
+    // en-tete au protocole inconnu. Aucune autre capture ne change
+    // d'etiquette. Parite segment par segment dans `tests/java_rmi_golden.rs`.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 6577),
+        (NO_APPLICATION, 6735),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 32),
@@ -428,6 +439,7 @@ fn application_classification_histogram_is_frozen() {
         ("HTTP", 146),
         ("IEC 104", 374),
         ("IKE", 535),
+        ("Java RMI", 143),
         ("IP-in-IP", 5),
         ("LLMNR", 136),
         ("MQTT", 187),
@@ -452,7 +464,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 9_506),
+        ("Unknown", 9_599),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

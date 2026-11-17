@@ -324,6 +324,18 @@ pub(super) static RULES: &[Rule] = &[
         is_iec104_tcp_port,
         ProbeId::Iec104,
     ),
+    // Java RMI (JRMP) : TCP 1099, le registre (IANA `rmiregistry`). Sur ce
+    // port, tout message JRMP : les messages d'un octet (Ping, PingAck,
+    // ProtocolNotSupported), le DgcAck et le ProtocolAck compris. Ailleurs,
+    // la sonde aveugle plus bas ne retient que l'en-tete de flux, le Call et
+    // le Return. Les objets exportes et les connecteurs JMX ecoutent sur le
+    // port que choisit l'application : il se declare par Decode As (#313).
+    port_rule(
+        ApplicationProtocol::JavaRmi,
+        Guard::Tcp,
+        is_java_rmi_tcp_port,
+        ProbeId::JavaRmi,
+    ),
     // PostgreSQL sur son port : decodage et forme compatible suffisent — un
     // Terminate, un ReadyForQuery ou un mot de passe seuls dans leur
     // segment, la reponse d'un octet a SSLRequest (S ou N) — la ou la sonde
@@ -495,6 +507,15 @@ pub(super) static RULES: &[Rule] = &[
     rule(ApplicationProtocol::Http, Guard::Tcp, ProbeId::Http),
     // GIOP/IIOP est transporte par TCP.
     rule(ApplicationProtocol::Giop, Guard::Tcp, ProbeId::Giop),
+    // Java RMI (JRMP) hors de 1099 : `JRMI` suivi d'une version et d'un
+    // protocole connus, ou un Call ou un Return, dont l'octet de type est
+    // suivi de la magie `AC ED 00 05` du flux de serialisation et d'un bloc
+    // assez long pour leur en-tete — au moins 48 bits fixes (#313).
+    rule(
+        ApplicationProtocol::JavaRmi,
+        Guard::Tcp,
+        ProbeId::JavaRmiBlind,
+    ),
     // DHCP avant SRVLOC : un BOOTP mimait un en-tete SLP (issue #3).
     rule(ApplicationProtocol::Dhcp, Guard::Udp, ProbeId::Dhcp),
     // SLP accepte TCP et UDP (RFC 2608 §6.1) : bi-transport.

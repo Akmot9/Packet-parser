@@ -105,6 +105,7 @@ application_protocols![
     (Vxlan, "VXLAN"),
     (WireGuard, "WireGuard"),
     (ModbusUdp, "ModbusUDP"),
+    (JavaRmi, "Java RMI"),
 ];
 
 impl fmt::Display for ApplicationProtocol {
@@ -146,7 +147,7 @@ mod tests {
 
     /// Les etiquettes de la 11.8.2, triees : la table de dispatch, les
     /// tunnels, STP et `Unknown`. Aucune ne change de texte en 12.0.
-    const FROZEN_LABELS: [&str; 54] = [
+    const FROZEN_LABELS: [&str; 55] = [
         "AMS",
         "ASTERIX",
         "BACnet/IP",
@@ -169,6 +170,7 @@ mod tests {
         "IEC 104",
         "IKE",
         "IP-in-IP",
+        "Java RMI",
         "LLMNR",
         "MQTT",
         "ModbusTCP",
