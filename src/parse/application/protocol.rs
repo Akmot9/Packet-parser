@@ -24,7 +24,8 @@ macro_rules! application_protocols {
         ///
         /// The enum is `#[non_exhaustive]`: a new protocol is a new variant,
         /// in a minor release. `Unknown` is a payload that was probed and
-        /// matched no rule.
+        /// matched no rule. [`Custom`](Self::Custom) is a protocol that a
+        /// parser added by the caller recognized (issue #319).
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         #[non_exhaustive]
         pub enum ApplicationProtocol {
@@ -32,16 +33,28 @@ macro_rules! application_protocols {
                 #[doc = concat!("Label `", $label, "`.")]
                 $variant,
             )+
+            /// A protocol this crate does not decode, recognized by a parser
+            /// registered with [`ParseConfig::with_parser`](crate::ParseConfig::with_parser).
+            /// Its label is the one of that parser,
+            /// [`ApplicationParser::label`](crate::ApplicationParser::label),
+            /// and no built-in protocol has it.
+            ///
+            /// It is not in [`ALL`](Self::ALL), and [`FromStr`] does not
+            /// read it back: only the configuration that registered the
+            /// parser knows the label.
+            Custom(&'static str),
         }
 
         impl ApplicationProtocol {
-            /// Every variant, in declaration order.
+            /// Every built-in variant, in declaration order.
+            /// [`Custom`](Self::Custom) is not one of them.
             pub const ALL: &'static [Self] = &[$(Self::$variant),+];
 
             /// The text label of the protocol, as written in the JSON output.
             pub const fn label(self) -> &'static str {
                 match self {
                     $(Self::$variant => $label,)+
+                    Self::Custom(label) => label,
                 }
             }
         }
@@ -226,14 +239,37 @@ mod tests {
         assert_eq!(labels, FROZEN_LABELS);
     }
 
-    /// `ALL` suit la declaration : la position d'une variante dans `ALL` est
-    /// son discriminant, et aucune n'y manque.
+    /// `ALL` liste chaque variante integree une fois, et pas `Custom` (#319).
+    /// La macro le tire de la meme liste que l'enum : l'ordre de declaration
+    /// suit. `Custom` porte une donnee, ce qui interdit le cast `as usize`
+    /// qui le verifiait avant.
     #[test]
-    fn all_lists_every_variant_in_declaration_order() {
-        for (index, protocol) in ApplicationProtocol::ALL.iter().enumerate() {
-            assert_eq!(*protocol as usize, index);
-        }
+    fn all_lists_every_built_in_variant_once() {
+        let discriminants: HashSet<_> = ApplicationProtocol::ALL
+            .iter()
+            .map(std::mem::discriminant)
+            .collect();
+        assert_eq!(discriminants.len(), ApplicationProtocol::ALL.len());
+        assert!(
+            !discriminants.contains(&std::mem::discriminant(&ApplicationProtocol::Custom(
+                "ACME"
+            )))
+        );
         assert_eq!(ApplicationProtocol::ALL.len(), FROZEN_LABELS.len());
+    }
+
+    /// Une etiquette ajoutee s'ecrit comme les autres, mais ne se relit pas :
+    /// seule la configuration qui a enregistre le parseur la connait.
+    #[test]
+    fn custom_label_is_written_but_not_read_back() {
+        let custom = ApplicationProtocol::Custom("ACME");
+        assert_eq!(custom.label(), "ACME");
+        assert_eq!(custom.to_string(), "ACME");
+        assert_eq!(serde_json::to_string(&custom).unwrap(), r#""ACME""#);
+        assert_eq!(
+            "ACME".parse::<ApplicationProtocol>(),
+            Err(UnknownApplicationLabel("ACME".to_string()))
+        );
     }
 
     #[test]

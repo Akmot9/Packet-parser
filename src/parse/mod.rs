@@ -31,8 +31,13 @@
 //! It expects a complete packet buffer (e.g. from PCAP capture).
 
 use application::Application;
+use application::custom::{
+    ApplicationParser, ParserRegistrationError, PayloadContext, RegisteredParser,
+};
+use application::protocol::ApplicationProtocol;
 use internet::Internet;
 use serde::{Serialize, Serializer};
+use std::sync::Arc;
 use transport::Transport;
 use transport::protocols::TransportProtocol;
 
@@ -79,20 +84,30 @@ pub fn parse_with<'a>(
     bytes: &'a [u8],
     config: &ParseConfig,
 ) -> Result<PacketFlow<'a>, ParseError> {
-    PacketFlow::parse_decoded_with(link::decode(link_type, bytes)?, 0, &config.decode_as)
+    PacketFlow::parse_decoded_with(link::decode(link_type, bytes)?, 0, config)
 }
 
 /// Caller-side parsing configuration ("Decode As"). Built as a builder;
 /// empty by default, in which case [`parse_with`] behaves exactly like
 /// [`fn@parse`].
+///
+/// It also holds the parsers the caller added for protocols this crate does
+/// not decode ([`ParseConfig::with_parser`], issue #319).
 #[derive(Debug, Clone, Default)]
 pub struct ParseConfig {
     decode_as: Vec<(u16, DecodeAsProtocol)>,
+    parsers: Vec<RegisteredParser>,
 }
 
+/// La configuration de [`fn@parse`] : vide.
+pub(crate) static DEFAULT_CONFIG: ParseConfig = ParseConfig::new();
+
 impl ParseConfig {
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            decode_as: Vec::new(),
+            parsers: Vec::new(),
+        }
     }
 
     /// Declares that an additional port carries this protocol. The port
@@ -102,6 +117,84 @@ impl ParseConfig {
     pub fn decode_as(mut self, port: u16, protocol: DecodeAsProtocol) -> Self {
         self.decode_as.push((port, protocol));
         self
+    }
+
+    /// Adds a parser for a protocol this crate does not decode, after those
+    /// already added. See [`ApplicationParser`] for the rules its label
+    /// follows.
+    ///
+    /// The parser runs after the built-in table, only on a non-empty TCP or
+    /// UDP payload that the table left `Unknown`, so it never takes a payload
+    /// from the crate. The parsers run in the order they were added, and the
+    /// first one that accepts the payload names it
+    /// [`ApplicationProtocol::Custom`]. Flows inside a tunnel go through
+    /// them too.
+    ///
+    /// # Errors
+    ///
+    /// [`ParserRegistrationError`] when the label is invalid, is the label
+    /// of a built-in protocol, or is already registered. The configuration
+    /// is unchanged.
+    pub fn add_parser(
+        &mut self,
+        parser: Arc<dyn ApplicationParser>,
+    ) -> Result<(), ParserRegistrationError> {
+        let registered = RegisteredParser::new(parser, &self.parsers)?;
+        self.parsers.push(registered);
+        Ok(())
+    }
+
+    /// [`add_parser`](Self::add_parser), as a builder.
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`add_parser`](Self::add_parser).
+    pub fn with_parser(
+        mut self,
+        parser: Arc<dyn ApplicationParser>,
+    ) -> Result<Self, ParserRegistrationError> {
+        self.add_parser(parser)?;
+        Ok(self)
+    }
+
+    /// Removes the parser registered with this exact label, and returns it.
+    pub fn remove_parser(&mut self, label: &str) -> Option<Arc<dyn ApplicationParser>> {
+        let index = self
+            .parsers
+            .iter()
+            .position(|registered| registered.label == label)?;
+        Some(self.parsers.remove(index).parser)
+    }
+
+    /// The parser registered with this exact label: the one that named a
+    /// flow [`ApplicationProtocol::Custom`] with it.
+    pub fn parser(&self, label: &str) -> Option<&Arc<dyn ApplicationParser>> {
+        self.parsers
+            .iter()
+            .find(|registered| registered.label == label)
+            .map(|registered| &registered.parser)
+    }
+
+    /// The labels of the parsers added, in the order they run.
+    pub fn parser_labels(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.parsers.iter().map(|registered| registered.label)
+    }
+
+    /// The fields of a flow that an added parser named, from
+    /// [`ApplicationParser::fields`]. `None` when the flow is not labelled
+    /// [`ApplicationProtocol::Custom`] by a parser of this configuration,
+    /// or has no transport payload.
+    ///
+    /// Only this level of the flow is read: the flows of a tunnel are in
+    /// [`PacketFlow::inner`].
+    pub fn custom_fields(&self, flow: &PacketFlow<'_>) -> Option<Vec<(String, String)>> {
+        let ApplicationProtocol::Custom(label) = flow.application.as_ref()?.protocol else {
+            return None;
+        };
+        let transport = flow.transport.as_ref()?;
+        let payload = transport.payload?;
+        let parser = self.parser(label)?;
+        Some(parser.fields(payload, &PayloadContext::of(transport)))
     }
 }
 
@@ -180,7 +273,13 @@ pub fn classify_payload(
     destination_port: Option<u16>,
     payload: &[u8],
 ) -> Option<Application> {
-    classify_transport_payload(protocol, source_port, destination_port, payload, &[])
+    classify_transport_payload(
+        protocol,
+        source_port,
+        destination_port,
+        payload,
+        &DEFAULT_CONFIG,
+    )
 }
 
 /// Like [`classify_payload`], with the caller's configuration: the answer is
@@ -217,13 +316,7 @@ pub fn classify_payload_with(
     payload: &[u8],
     config: &ParseConfig,
 ) -> Option<Application> {
-    classify_transport_payload(
-        protocol,
-        source_port,
-        destination_port,
-        payload,
-        &config.decode_as,
-    )
+    classify_transport_payload(protocol, source_port, destination_port, payload, config)
 }
 
 fn classify_transport_payload(
@@ -231,7 +324,7 @@ fn classify_transport_payload(
     source_port: Option<u16>,
     destination_port: Option<u16>,
     payload: &[u8],
-    decode_as: &[(u16, DecodeAsProtocol)],
+    config: &ParseConfig,
 ) -> Option<Application> {
     if !matches!(protocol, TransportProtocol::Tcp | TransportProtocol::Udp) {
         return None;
@@ -246,7 +339,7 @@ fn classify_transport_payload(
     // Profondeur 0 : la fonction repond comme pour le flux externe d'une
     // trame. Le flux interne d'un tunnel est decode puis jete : c'est lui
     // qui prouve le tunnel, comme dans `parse`.
-    PacketFlow::application_and_inner(&transport, 0, decode_as).0
+    PacketFlow::application_and_inner(&transport, 0, config).0
 }
 
 /// Timed counterpart of [`fn@parse`]: the exact same pipeline, reporting the
@@ -263,7 +356,7 @@ pub fn parse_timed<'a>(
 ) -> Result<PacketFlow<'a>, ParseError> {
     timing.time_total(|timing| {
         let decoded = link::decode_into(link_type, bytes, timing)?;
-        PacketFlow::parse_decoded_into(decoded, 0, &[], timing)
+        PacketFlow::parse_decoded_into(decoded, 0, &DEFAULT_CONFIG, timing)
     })
 }
 

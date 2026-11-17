@@ -147,9 +147,16 @@ jobs:
 
       - name: Cache cargo registry and target
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\nplugin -> target"
 
       - name: Run tests
         run: cargo test -p packet_parser --all-features --all-targets --locked
+
+      # Le kit de plugins charge des .dylib sous macOS : son test
+      # d'integration en compile une et la charge (#319).
+      - name: Run plugin kit tests
+        run: cargo test --manifest-path plugin/Cargo.toml --locked
 
   # `fuzz/` est exclu du workspace (il exige cargo-fuzz et nightly), donc rien
   # ne le compilait : les cibles pourrissaient en silence dès qu'une signature
@@ -180,6 +187,37 @@ jobs:
 
       - name: Check the lab workspace
         run: cargo check --manifest-path tools/lab/Cargo.toml --workspace --all-targets --all-features --locked
+
+  # Le kit des parseurs charges a l'execution (#319) a son propre workspace,
+  # comme fuzz/ et tools/lab/ : rien d'autre ne le compile. Son test
+  # d'integration construit le plugin de demonstration en .so, le charge et
+  # le rejoue ; macOS le fait aussi, dans le job cross-os.
+  plugin:
+    name: Plugin kit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "plugin -> target"
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path plugin/Cargo.toml --all -- --check
+
+      - name: Lint with Clippy
+        run: cargo clippy --manifest-path plugin/Cargo.toml --all-targets --locked -- -D warnings
+
+      - name: Run tests
+        run: cargo test --manifest-path plugin/Cargo.toml --locked
 
   fuzz-targets-build:
     name: Fuzz targets still compile

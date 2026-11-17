@@ -109,6 +109,7 @@ silently manufacture Ethernet fields.
 | Check whether a link decoder exists | `is_supported(LinkType)` |
 | **Parse a packet (canonical)** | `parse(LinkType, &[u8])` |
 | Parse with caller-declared ports ("Decode As": my FTP runs on 2121) | `parse_with(LinkType, &[u8], &ParseConfig::new().decode_as(port, DecodeAsProtocol::..))` |
+| Name a protocol the crate does not decode, with your own parser | `parse_with(LinkType, &[u8], &ParseConfig::new().with_parser(Arc::new(MyParser))?)`; see [Custom parsers](#custom-parsers) |
 | Parse Ethernet, compat shortcut — assumes Ethernet, see above | `PacketFlow::try_from(&[u8])` |
 | Parse only Ethernet/VLAN — assumes Ethernet, see above | `DataLink::try_from(&[u8])` |
 | Parse only L3, from the protocol the link layer announced | `Internet::try_from_network_parts(NetworkProtocol, &[u8])` |
@@ -421,6 +422,28 @@ for level in flow.flatten() {
     println!("{:?} -> {:?}", level.internet, level.transport);
 }
 ```
+
+## Custom parsers
+
+A protocol the crate does not decode can still be named, by a parser the
+application adds (issue #319). The parser implements `ApplicationParser`
+(label, transports, ports, `matches`, and optionally `fields`) and is
+registered with `ParseConfig::with_parser` or `add_parser`.
+
+- It runs after the built-in table, only on a non-empty TCP or UDP payload
+  the table left `Unknown`, at every flow level, tunnels included. It never
+  takes a payload from the crate.
+- The first parser that accepts the payload, in registration order, names
+  the flow `ApplicationProtocol::Custom(label)`, written as its label in the
+  JSON output.
+- Its fields are decoded on demand: `ParseConfig::custom_fields(&flow)`.
+- Registration refuses an empty or invalid label, the label of a built-in
+  protocol and a label already registered, ignoring ASCII case.
+
+The parser can also live in a native library (`.so`, `.dylib`, `.dll`)
+loaded at run time: the `packet_parser_plugin` kit, in `plugin/`, exports
+it with `export_parser!` and loads it with `load_parser`. The guide is
+[docs/plugins.md](plugins.md).
 
 ## Features
 
