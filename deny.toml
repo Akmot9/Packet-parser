@@ -70,6 +70,10 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
+    # chrono non maintenu (2026-11-17), toutes versions, sans correctif. Pas
+    # une faille : la crate ne s'en sert que pour les horodatages NTP, dont
+    # le type est public. Retrait avant la 13.0 : #315.
+    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained, no vulnerability; removal tracked in #315" },
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
