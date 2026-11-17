@@ -153,11 +153,13 @@ pub(super) enum ProbeId {
     /// taille exacte seulement.
     ValmetDna,
     ValmetDnaBlind,
+    /// AMS sur TCP : l'en-tete AMS/TCP de 6 octets precede l'en-tete AMS.
+    AmsTcp,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::ValmetDnaBlind;
+    pub(super) const LAST: Self = Self::AmsTcp;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -205,6 +207,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::NntpUnambiguous => is_unambiguous_nntp_command(text),
         // `cb_data` doit egaler ce qui suit l'en-tete.
         ProbeId::Ams => AmsPacket::try_from(payload).is_ok(),
+        ProbeId::AmsTcp => AmsPacket::try_from_tcp(payload).is_ok(),
         ProbeId::QuicShortHeader => is_plausible_short_header(payload),
         ProbeId::Ntp => NtpPacket::try_from(payload).is_ok(),
         // Les champs d'extension et le MAC doivent finir exactement avec le

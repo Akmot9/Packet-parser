@@ -1061,3 +1061,60 @@ fn http_guards_never_refuse_what_the_decoders_accept() {
     // acceptees par les decodeurs.
     assert!(accepted > 2_000, "{accepted} cas acceptes seulement");
 }
+
+/// AMS (#290) : sur TCP 48898, l'en-tete AMS/TCP de 6 octets precede chaque
+/// message ; la regle UDP 48899 lit l'en-tete AMS nu. Chaque transport n'a
+/// que sa forme, Decode As compris.
+#[test]
+fn ams_reads_its_tcp_header_on_tcp_and_the_bare_header_on_udp() {
+    // ADS Read Request construit a la main, lu « ADS Read (2) » par tshark.
+    let ams_tcp = hex::decode(concat!(
+        "00002c000000",
+        "c0a8016401015303c0a801650101e880",
+        "020004000c0000000000000007000000",
+        "05f000000000000004000000"
+    ))
+    .expect("fixture");
+    let bare = &ams_tcp[6..];
+    let on = |protocol, port, payload| Transport {
+        protocol,
+        source_port: Some(33_000),
+        destination_port: Some(port),
+        payload: Some(payload),
+        details: None,
+    };
+    let label = |transport: &Transport<'_>, decode_as: &[(u16, DecodeAsProtocol)]| {
+        classify(transport, decode_as).map(|a| a.protocol.label())
+    };
+
+    assert_eq!(
+        label(&on(TransportProtocol::Tcp, 48898, &ams_tcp), &[]),
+        Some("AMS")
+    );
+    assert_ne!(
+        label(&on(TransportProtocol::Tcp, 48898, bare), &[]),
+        Some("AMS")
+    );
+    assert_eq!(
+        label(&on(TransportProtocol::Udp, 48899, bare), &[]),
+        Some("AMS")
+    );
+    assert_ne!(
+        label(&on(TransportProtocol::Udp, 48899, &ams_tcp), &[]),
+        Some("AMS")
+    );
+
+    let decode_as = [(50_000_u16, DecodeAsProtocol::Ams)];
+    assert_eq!(
+        label(&on(TransportProtocol::Tcp, 50_000, &ams_tcp), &decode_as),
+        Some("AMS")
+    );
+    assert_ne!(
+        label(&on(TransportProtocol::Tcp, 50_000, bare), &decode_as),
+        Some("AMS")
+    );
+    assert_eq!(
+        label(&on(TransportProtocol::Udp, 50_000, bare), &decode_as),
+        Some("AMS")
+    );
+}
