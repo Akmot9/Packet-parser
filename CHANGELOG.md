@@ -33,6 +33,25 @@ Prochaine version : la 13.0.0. Guide : `MIGRATION-13.md`.
 
 ### Ajoute
 
+- **Couche DDS de RTPS** (#317) : nouveau module `rtps::dds`, decode a la
+  demande depuis un `RtpsSubmessage` ; la detection ne change pas.
+  - `inline_qos()` : les QoS en ligne d'un DATA ou d'un DATA_FRAG.
+  - `serialized_payload()` : l'en-tete d'encapsulation (CDR, PL_CDR, XCDR2
+    et leurs variantes, ordre d'octets, options) et les donnees qui le
+    suivent.
+  - `discovery()` : pour un DATA d'un writer SPDP ou SEDP, DDS Security
+    compris, le topic integre et sa ParameterList.
+  - `RtpsParameterList` : iteration sur les parametres, PID vendeur et
+    « must understand » signales, accesseurs typees (noms de topic, de type
+    et d'entite, GUID, domaine, version, vendorId, locators et leur role,
+    duree de bail, endpoints integres, fiabilite, durabilite, key hash,
+    status info).
+  - Cinq variantes en fin de `RtpsParseError`.
+  - Les donnees d'un type utilisateur restent des octets.
+  - Golden `tests/rtps_dds_golden.rs` : parite avec tshark 4.6.9 sur les 137
+    trames du corpus RTPS qui portent la couche DDS (`tools/rtps_dds_oracle.sh`),
+    101 annonces SPDP et SEDP de cinq implementations ; cible de fuzz
+    `parse_rtps` etendue.
 - **Java RMI** (#313) : decodeur JRMP (*Java RMI Specification*,
   chapitre 10), etiquette `Java RMI`. En-tete de flux (`JRMI`, version,
   protocole Stream, SingleOp ou Multiplex), ProtocolAck et son adresse,

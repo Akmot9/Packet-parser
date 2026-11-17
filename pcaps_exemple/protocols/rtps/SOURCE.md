@@ -67,6 +67,16 @@ tshark : le magic `RTPX` (4 trames de `RTPS_Discovery.pcapng`) et le
 « ping » de seize octets `RTPS`/version/vendorId/`NDDSPING` (7 trames de la
 même capture, 1 de `rtps.pcap`).
 
+La couche DDS (#317) a son propre oracle,
+`tests/data/rtps_dds_tshark_oracle.tsv`, produit par
+`tools/rtps_dds_oracle.sh` (tshark 4.6.9, sans réassemblage IP, suivi des
+topics coupé). Il couvre les 137 trames qui portent des QoS en ligne ou des
+données sérialisées : identifiants d'encapsulation, PID dans l'ordre du fil,
+noms de topic, de type et d'entité, GUID, key hash, locators, status info,
+fiabilité, durabilité, endpoints intégrés. `tests/rtps_dds_golden.rs` le
+rejoue trame par trame et recoupe les 101 annonces SPDP et SEDP avec leur
+émetteur.
+
 ## Écartés
 
 - `rtps_cooked.pcapng` du wiki Wireshark : la page le dit généré à la main ;
