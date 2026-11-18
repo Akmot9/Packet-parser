@@ -1043,6 +1043,8 @@ fn blind_rules_order_is_frozen() {
             "BACnet/IP",
             "Bitcoin",
             "OPC UA",
+            // TCP, puis UDP (#288).
+            "EtherNet/IP",
             "EtherNet/IP",
             "PostgreSQL",
             "DNS",

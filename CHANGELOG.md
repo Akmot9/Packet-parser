@@ -153,6 +153,17 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   opcode non nul reste refuse, comme un RCODE de reponse au-dela de 5. Une
   reponse DNS recursive (RA dans Z) devient un en-tete LLMNR valide : seul
   le port 5355, deja seul a lancer cette sonde, separe les deux.
+- **EtherNet/IP et Bitcoin, plusieurs messages dans un segment TCP**
+  (#288) : leurs sondes exigeaient que la longueur declaree couvre tout le
+  segment. TCP ne garde pourtant pas les frontieres des messages : deux
+  RegisterSession, ou `verack` suivi de `ping`, dans un segment donnaient
+  `LengthMismatch`, et le segment sortait Unknown, meme sur TCP 44818. Des
+  messages complets qui pavent le segment, chacun valide, sont desormais
+  reconnus, comme pour PostgreSQL et OPC UA (#296) ; en Bitcoin, tous sur
+  le reseau du premier. Un dernier message coupe par la fin du segment
+  reste refuse, ces sondes etant aveugles. Sur UDP, un datagramme
+  EtherNet/IP porte toujours un seul message. Les decodeurs ne changent
+  pas : `TryFrom` lit un message.
 
 ## [13.0.0] - 2026-11-17
 

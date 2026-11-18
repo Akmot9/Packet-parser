@@ -209,6 +209,36 @@ impl<'a> TryFrom<&'a [u8]> for EtherNetIpPacket<'a> {
     }
 }
 
+impl EtherNetIpPacket<'_> {
+    /// Sonde TCP : un ou plusieurs messages d'encapsulation complets pavent
+    /// le segment, du premier au dernier octet (#288).
+    ///
+    /// TCP ne garde pas les frontieres des messages : un segment peut
+    /// porter deux RegisterSession, ou deux SendUnitData. Chacun est valide
+    /// comme par [`TryFrom`]. Un dernier message coupe par la fin du segment
+    /// fait refuser le segment : la sonde est aveugle, sans regle de port.
+    /// Sur UDP, un datagramme porte un seul message, lu par [`TryFrom`].
+    pub(crate) fn is_tcp_match(payload: &[u8]) -> bool {
+        let mut rest = payload;
+        loop {
+            let Some(&[low, high]) = rest.get(2..4) else {
+                return false;
+            };
+            let end = ENCAPSULATION_HEADER_LEN + usize::from(u16::from_le_bytes([low, high]));
+            let Some((message, tail)) = rest.split_at_checked(end) else {
+                return false;
+            };
+            if EtherNetIpPacket::try_from(message).is_err() {
+                return false;
+            }
+            if tail.is_empty() {
+                return true;
+            }
+            rest = tail;
+        }
+    }
+}
+
 fn parse_command_data<'a>(
     command: EtherNetIpCommand,
     data: &'a [u8],
@@ -342,6 +372,49 @@ mod tests {
             cpf.items.get(1).expect("item present").data,
             &[0x4C, 0x02, 0x20, 0x01]
         );
+    }
+
+    const REGISTER_SESSION: &str = "65000400000000000000000001020304050607080000000001000000";
+    const SEND_RR_DATA: &str =
+        "6f0014007856341200000000000000000000000000000000000000000000020000000000b20004004c022001";
+
+    #[test]
+    fn tcp_match_accepts_complete_messages_that_tile_the_segment() {
+        let register = hex::decode(REGISTER_SESSION).expect("invalid hex fixture");
+        let send = hex::decode(SEND_RR_DATA).expect("invalid hex fixture");
+        assert!(EtherNetIpPacket::is_tcp_match(&register));
+        assert!(EtherNetIpPacket::is_tcp_match(
+            &[register.clone(), register.clone()].concat()
+        ));
+        assert!(EtherNetIpPacket::is_tcp_match(
+            &[send.clone(), register, send].concat()
+        ));
+    }
+
+    #[test]
+    fn tcp_match_refuses_a_cut_last_message_and_trailing_bytes() {
+        let register = hex::decode(REGISTER_SESSION).expect("invalid hex fixture");
+        let send = hex::decode(SEND_RR_DATA).expect("invalid hex fixture");
+        let two = [register.clone(), send].concat();
+        for cut in [1, 3, 23, 24, 30] {
+            assert!(
+                !EtherNetIpPacket::is_tcp_match(&two[..register.len() + cut]),
+                "{cut}"
+            );
+        }
+        assert!(!EtherNetIpPacket::is_tcp_match(
+            &[register.as_slice(), &[0]].concat()
+        ));
+        assert!(!EtherNetIpPacket::is_tcp_match(&[]));
+    }
+
+    #[test]
+    fn tcp_match_validates_every_message() {
+        let register = hex::decode(REGISTER_SESSION).expect("invalid hex fixture");
+        // Le second RegisterSession annonce la version 2 du protocole.
+        let mut bad = register.clone();
+        bad[24] = 0x02;
+        assert!(!EtherNetIpPacket::is_tcp_match(&[register, bad].concat()));
     }
 
     #[test]

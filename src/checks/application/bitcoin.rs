@@ -17,7 +17,7 @@ const VALID_MAGIC_NUMBERS: [u32; 5] = [
     u32::from_le_bytes([0x0A, 0x03, 0xCF, 0x40]), // Signet
 ];
 
-const BITCOIN_HEADER_LENGTH: usize = 24;
+pub(crate) const BITCOIN_HEADER_LENGTH: usize = 24;
 
 pub fn check_minimum_length(payload: &[u8]) -> Result<(), BitcoinError> {
     if payload.len() < BITCOIN_HEADER_LENGTH {
