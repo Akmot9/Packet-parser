@@ -97,12 +97,13 @@ fn classic_dns_query_overlaps_with_llmnr_format() {
     assert!(DnsPacket::try_from(llmnr_bytes.as_slice()).is_ok());
 }
 
-/// Une reponse DNS recursive (flags 0x8180 : RD+RA) est refusee par le
-/// validateur LLMNR : RA occupe un bit Z de LLMNR, qui doit etre nul.
-/// Fixture synthetique minimale (en-tete + question racine) : le corpus ne
-/// contient pas de reponse LLMNR.
+/// Une reponse DNS recursive (flags 0x8180 : RD+RA) est aussi un en-tete
+/// LLMNR : RA occupe un bit Z de LLMNR, que le recepteur ignore (RFC 4795
+/// §2.1.1, « MUST ignore them », #288). Comme pour les requetes, seul le
+/// port UDP tranche. Fixture synthetique minimale (en-tete + question
+/// racine) : le corpus ne contient pas de reponse LLMNR.
 #[test]
-fn recursive_dns_response_flags_are_rejected_by_llmnr() {
+fn recursive_dns_response_flags_are_also_an_llmnr_header() {
     let mut bytes = vec![
         0x00, 0x2b, // transaction id
         0x81, 0x80, // flags : reponse recursive RD+RA
@@ -111,6 +112,7 @@ fn recursive_dns_response_flags_are_rejected_by_llmnr() {
     ];
     bytes.extend_from_slice(&[0x00, 0x00, 0x01, 0x00, 0x01]); // racine, A, IN
 
-    assert!(DnsPacket::try_from_llmnr(&bytes).is_err());
+    let as_llmnr = DnsPacket::try_from_llmnr(&bytes).expect("Z bits are ignored");
+    assert_eq!(as_llmnr.header.flags, 0x8180);
     assert!(DnsPacket::try_from(bytes.as_slice()).is_ok());
 }

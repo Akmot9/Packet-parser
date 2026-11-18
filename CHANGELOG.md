@@ -144,6 +144,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   lit les autres versions par leurs invariants (RFC 8999 §5.1). La sonde
   aveugle ne prend que la v1. Les 74 datagrammes UDP 443 de
   `ndpi_quic_interop_V.pcapng` sont desormais du QUIC, comme dans tshark.
+- **LLMNR, bits Z et RCODE d'une requete** (#288) : la RFC 4795
+  (§2.1.1) demande a l'emetteur de mettre les 4 bits Z a zero, mais au
+  recepteur de les ignorer (« MUST ignore them ») ; de meme, le RCODE
+  d'une requete est ignore et suppose nul. Le decodeur les refusait
+  (`InvalidZField`, `InvalidRCode`), et une telle requete sortait Unknown
+  sur UDP 5355. Il les ignore desormais, et rend les flags tels que lus. Un
+  opcode non nul reste refuse, comme un RCODE de reponse au-dela de 5. Une
+  reponse DNS recursive (RA dans Z) devient un en-tete LLMNR valide : seul
+  le port 5355, deja seul a lancer cette sonde, separe les deux.
 
 ## [13.0.0] - 2026-11-17
 
