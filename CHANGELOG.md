@@ -50,6 +50,25 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   (§7.1.10) la permet a un Counter64. Elle etait refusee
   (`InvalidUnsignedLength`) et le message sortait Unknown sur UDP 161. Le
   zero de tete est accepte, et un 9e octet non nul reste refuse.
+- **FTP, SMTP, NNTP, segment coupe entre CR et LF** (#305) : un CR en
+  dernier octet etait pris pour un saut de ligne nu (`BareLineBreak`), et
+  tout le segment sortait Unknown. TCP coupe pourtant ou il veut : une
+  ligne coupee entre son CR et son LF vaut desormais une ligne coupee avant
+  son CR. Un CR suivi d'autre chose qu'un LF reste refuse.
+- **FTP et NNTP, verbes standard** (#306) : `XPWD`, `XMKD`, `XRMD`, `XCUP`
+  et `XCWD`, que la RFC 1123 (§4.1.3.1) demande de reconnaitre et que
+  `ftp.exe` de Windows envoie, `LPSV` (RFC 1639), `ADAT`, `CCC`, `MIC`,
+  `CONF` et `ENC` (RFC 2228), `LANG` (RFC 2640) et `HOST` (RFC 7151)
+  s'ajoutent aux commandes FTP ; `STARTTLS` (RFC 4642), `CHECK` et
+  `TAKETHIS` (RFC 4644) aux commandes NNTP. `CAPABILITIES` admet son
+  mot-cle (RFC 3977 §5.2). La detection hors port ne change pas.
+- **SSH, lignes avant la banniere** (#307) : la RFC 4253 (§4.2) permet au
+  serveur d'envoyer d'autres lignes avant sa chaine d'identification. Un
+  segment qui ne commencait pas par `SSH-` etait refuse. Ces lignes sont
+  sautees quand elles finissent par CRLF, ne commencent pas par `SSH-`,
+  sont du texte sans octet de controle et tiennent dans 1024 octets
+  (`SSH_MAX_PRELUDE_LENGTH`) ; sinon le segment reste refuse, la regle SSH
+  etant aveugle sur TCP.
 
 ## [13.0.0] - 2026-11-17
 

@@ -295,9 +295,9 @@ mod tests {
             ))
         );
         assert_eq!(
-            NntpMessage::try_from(&b"CAPABILITIES extra\r\n"[..]),
+            NntpMessage::try_from(&b"CAPABILITIES two words\r\n"[..]),
             Err(NntpParseError::InvalidCommandSyntax(
-                "CAPABILITIES extra".to_string()
+                "CAPABILITIES two words".to_string()
             ))
         );
         assert_eq!(

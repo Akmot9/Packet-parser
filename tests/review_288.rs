@@ -95,3 +95,57 @@ fn issue_304_a_counter64_of_2_pow_63_or_more_is_snmp() {
     assert_eq!(udp(161, &response(&max)), "SNMP");
     assert_ne!(udp(161, &response(&wide)), "SNMP");
 }
+
+/// #305 : TCP coupe où il veut. Un segment FTP, SMTP ou NNTP coupé entre
+/// le CR et le LF d'une ligne vaut le même segment coupé avant son CR ; un
+/// CR suivi d'autre chose qu'un LF reste refusé.
+#[test]
+fn issue_305_a_segment_cut_between_cr_and_lf_keeps_its_label() {
+    assert_eq!(tcp(21, b"150 Opening\r\n226 Done\r"), "FTP");
+    let mail = b"MAIL FROM:<a@b.example>\r\nRCPT TO:<c@d.example>\r";
+    assert_eq!(tcp(25, mail), "SMTP");
+    assert_eq!(tcp(25, &mail[..mail.len() - 1]), "SMTP");
+    // RFC 3977 §6.2.1.3, l'article de l'exemple, coupé dans sa 3e ligne.
+    let article = b"220 3000234 <45223423@example.com>\r\n\
+        Path: pathost!demo!whitehouse!not-for-mail\r\n\
+        From: \"Demo User\" <nobody@example.net>\r";
+    assert_eq!(tcp(119, article), "NNTP");
+    assert_ne!(tcp(21, b"150 Opening\r\n226 Done\r\r"), "FTP");
+}
+
+/// #306 : les verbes standard absents des listes, sur leur port.
+#[test]
+fn issue_306_standard_verbs_are_labelled_on_their_port() {
+    for command in [&b"XPWD\r\n"[..], b"LPSV\r\n", b"XMKD dir\r\n", b"CCC\r\n"] {
+        assert_eq!(
+            tcp(21, command),
+            "FTP",
+            "{:?}",
+            String::from_utf8_lossy(command)
+        );
+    }
+    for command in [
+        &b"STARTTLS\r\n"[..],
+        b"CHECK <a@b>\r\n",
+        b"TAKETHIS <a@b>\r\n",
+        b"CAPABILITIES AUTOUPDATE\r\n",
+    ] {
+        assert_eq!(
+            tcp(119, command),
+            "NNTP",
+            "{:?}",
+            String::from_utf8_lossy(command)
+        );
+    }
+}
+
+/// #307 : RFC 4253 §4.2, « The server MAY send other lines of data before
+/// sending the version string ». Un texte sans ligne `SSH-` reste refusé.
+#[test]
+fn issue_307_lines_before_the_ssh_banner_keep_the_label() {
+    let welcome = b"Welcome\r\nSSH-2.0-OpenSSH_9.6\r\n";
+    assert_eq!(tcp(22, welcome), "SSH");
+    assert_eq!(tcp(40_001, welcome), "SSH");
+    assert_eq!(tcp(22, b"SSH-2.0-OpenSSH_9.6\r\n"), "SSH");
+    assert_ne!(tcp(22, b"Welcome\r\nno banner here\r\n"), "SSH");
+}

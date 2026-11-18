@@ -75,13 +75,18 @@ pub(crate) fn find_data_block_fault(block: &[u8]) -> Option<TextOctetFault> {
     scan_octets(block, |byte| byte == 0)
 }
 
+/// Un CR en dernier octet n'est pas nu : TCP coupe ou il veut, et une ligne
+/// coupee entre son CR et son LF vaut une ligne coupee avant son CR (#305).
 fn scan_octets(octets: &[u8], is_control: impl Fn(u8) -> bool) -> Option<TextOctetFault> {
     let mut offset = 0;
     while let Some(&byte) = octets.get(offset) {
-        match byte {
-            b'\r' if octets.get(offset + 1) == Some(&b'\n') => offset += 2,
-            b'\r' | b'\n' => return Some(TextOctetFault::BareLineBreak { offset }),
-            byte if is_control(byte) => {
+        match octets.get(offset + 1) {
+            Some(&b'\n') if byte == b'\r' => offset += 2,
+            None if byte == b'\r' => offset += 1,
+            _ if byte == b'\r' || byte == b'\n' => {
+                return Some(TextOctetFault::BareLineBreak { offset });
+            }
+            _ if is_control(byte) => {
                 return Some(TextOctetFault::ControlCharacter { offset, byte });
             }
             _ => offset += 1,
@@ -116,9 +121,13 @@ mod text_octet_tests {
             find_text_line_fault(b"STOR a\rb\r\n"),
             Some(TextOctetFault::BareLineBreak { offset: 6 })
         );
-        // Un CR final sans LF est nu lui aussi.
+        // Un CR final est une ligne coupee entre CR et LF (#305), pas un CR
+        // nu ; suivi d'autre chose qu'un LF, il reste nu.
+        assert_eq!(find_text_line_fault(b"STOR a\r"), None);
+        assert_eq!(find_text_line_fault(b"150 Opening\r\n226 Done\r"), None);
+        assert_eq!(find_data_block_fault(b"ARTICLE 1\r\nbody\r"), None);
         assert_eq!(
-            find_text_line_fault(b"STOR a\r"),
+            find_text_line_fault(b"STOR a\r\r"),
             Some(TextOctetFault::BareLineBreak { offset: 6 })
         );
         // Un LF qui suit un CRLF complet est nu.

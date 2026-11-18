@@ -29,6 +29,13 @@ pub const SSH_MIN_LENGTH: usize = 10;
 /// RFC 4253 §4.2 : la chaine ne doit pas depasser 255 octets, CR et LF inclus.
 pub const SSH_MAX_IDENTIFICATION_LENGTH: usize = 255;
 
+/// Borne des lignes qu'un serveur envoie avant sa chaine d'identification
+/// (RFC 4253 §4.2, « The server MAY send other lines of data before sending
+/// the version string »), en octets, fins de ligne incluses (#307). Elle est
+/// du meme ordre que la borne de la chaine elle-meme : au-dela, le segment
+/// n'est plus lu comme du SSH.
+pub const SSH_MAX_PRELUDE_LENGTH: usize = 1024;
+
 /// Les deux seules valeurs de `protoversion` definies.
 const SUPPORTED_PROTOCOL_VERSIONS: [&str; 2] = ["2.0", "1.99"];
 
@@ -49,6 +56,45 @@ pub fn validate_ssh_prefix(payload: &[u8]) -> Result<(), SshError> {
         return Err(SshError::MissingPrefix);
     }
     Ok(())
+}
+
+/// Renvoie le segment a partir de sa chaine d'identification, apres les
+/// lignes que le serveur a pu envoyer avant elle (#307).
+///
+/// Chacune de ces lignes est terminee par CRLF, ne commence pas par `SSH-`
+/// (RFC 4253 §4.2 : « Such lines MUST NOT begin with "SSH-" »), est de
+/// l'UTF-8 sans octet de controle autre que TAB, et toutes tiennent dans
+/// [`SSH_MAX_PRELUDE_LENGTH`] octets. Sinon, et quand aucune ligne ne
+/// commence par `SSH-`, le segment est refuse ([`SshError::MissingPrefix`]) :
+/// la regle SSH est aveugle sur TCP, et seule une chaine en tete de ligne
+/// apres du texte borne y reste une signature forte.
+pub fn locate_ssh_identification(payload: &[u8]) -> Result<&[u8], SshError> {
+    let mut start = 0;
+    loop {
+        let rest = payload.get(start..).ok_or(SshError::MissingPrefix)?;
+        if rest.starts_with(SSH_PREFIX) {
+            return Ok(rest);
+        }
+        let line_feed = rest
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .ok_or(SshError::MissingPrefix)?;
+        let line = line_feed
+            .checked_sub(1)
+            .and_then(|end| rest.get(..end).filter(|_| rest.get(end) == Some(&b'\r')))
+            .ok_or(SshError::MissingPrefix)?;
+        let text = core::str::from_utf8(line).map_err(|_| SshError::MissingPrefix)?;
+        if text
+            .chars()
+            .any(|character| character.is_control() && character != '\t')
+        {
+            return Err(SshError::MissingPrefix);
+        }
+        start += line_feed + 1;
+        if start > SSH_MAX_PRELUDE_LENGTH {
+            return Err(SshError::MissingPrefix);
+        }
+    }
 }
 
 /// Renvoie la ligne d'identification, terminateur exclu.

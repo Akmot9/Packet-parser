@@ -12,7 +12,9 @@ pub enum SshError {
     #[error("SSH identification too short: expected at least {expected} bytes, got {actual}")]
     InvalidLength { expected: usize, actual: usize },
 
-    #[error("payload does not start with the SSH- identification prefix")]
+    #[error(
+        "no line starts with the SSH- identification prefix, at the start of the payload or after the lines a server may send before it"
+    )]
     MissingPrefix,
 
     #[error(

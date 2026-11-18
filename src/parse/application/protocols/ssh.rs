@@ -14,8 +14,8 @@ use std::convert::TryFrom;
 use crate::{
     checks::application::ssh::{
         extract_ssh_identification_line, extract_ssh_protocol_version,
-        extract_ssh_software_and_comments, validate_ssh_min_length, validate_ssh_prefix,
-        validate_ssh_printable,
+        extract_ssh_software_and_comments, locate_ssh_identification, validate_ssh_min_length,
+        validate_ssh_prefix, validate_ssh_printable,
     },
     errors::application::ssh::SshError,
 };
@@ -53,9 +53,11 @@ impl<'a> TryFrom<&'a [u8]> for SshPacket<'a> {
 
     fn try_from(payload: &'a [u8]) -> Result<Self, SshError> {
         validate_ssh_min_length(payload)?;
-        validate_ssh_prefix(payload)?;
+        let identification = locate_ssh_identification(payload)?;
+        validate_ssh_min_length(identification)?;
+        validate_ssh_prefix(identification)?;
 
-        let line = extract_ssh_identification_line(payload)?;
+        let line = extract_ssh_identification_line(identification)?;
         validate_ssh_printable(line)?;
 
         let (protocol_version, rest) = extract_ssh_protocol_version(line)?;
@@ -72,6 +74,7 @@ impl<'a> TryFrom<&'a [u8]> for SshPacket<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::checks::application::ssh::SSH_MAX_PRELUDE_LENGTH;
 
     /// Trame 5211 : client OpenSSH sur Ubuntu, terminaison CRLF et
     /// commentaires (pcaps_exemple/The-Ultimate-PCAP.pcapng).
@@ -174,6 +177,62 @@ mod tests {
         let result = SshPacket::try_from(&b"GET /index.html HTTP/1.1\r\n"[..]);
 
         assert_eq!(result.unwrap_err(), SshError::MissingPrefix);
+    }
+
+    /// RFC 4253 §4.2 : « The server MAY send other lines of data before
+    /// sending the version string » (#307).
+    #[test]
+    fn lines_before_the_identification_are_skipped() {
+        let packet = SshPacket::try_from(&b"Welcome\r\nSSH-2.0-OpenSSH_9.6\r\n"[..])
+            .expect("ligne avant la banniere");
+        assert_eq!(packet.protocol_version, "2.0");
+        assert_eq!(packet.software_version, "OpenSSH_9.6");
+
+        let packet = SshPacket::try_from(&b"Hello\r\n\tcaf\xc3\xa9\r\n\r\nSSH-1.99-Server\n"[..])
+            .expect("plusieurs lignes, TAB, UTF-8, ligne vide");
+        assert_eq!(packet.protocol_version, "1.99");
+
+        // La premiere ligne en SSH- est la banniere, et elle est validee.
+        assert_eq!(
+            SshPacket::try_from(&b"Welcome\r\nSSH-3.0-Bad\r\nSSH-2.0-Good\r\n"[..]),
+            Err(SshError::UnsupportedProtocolVersion)
+        );
+    }
+
+    /// Les lignes qui precedent la banniere restent du texte borne : la regle
+    /// SSH est aveugle sur TCP.
+    #[test]
+    fn lines_before_the_identification_stay_bounded_text() {
+        for payload in [
+            // Pas de ligne SSH-.
+            &b"Welcome\r\nnothing else here\r\n"[..],
+            // Une ligne sans fin de ligne avant SSH-.
+            b"Welcome SSH-2.0-OpenSSH_9.6\r\n",
+            // Un LF nu termine la ligne qui precede.
+            b"Welcome\nSSH-2.0-OpenSSH_9.6\r\n",
+            // Un octet de controle, ou du binaire, dans la ligne qui precede.
+            b"Wel\x01come\r\nSSH-2.0-OpenSSH_9.6\r\n",
+            b"\xff\xfe\r\nSSH-2.0-OpenSSH_9.6\r\n",
+        ] {
+            assert_eq!(
+                SshPacket::try_from(payload),
+                Err(SshError::MissingPrefix),
+                "{payload:?}"
+            );
+        }
+
+        let banner = b"SSH-2.0-OpenSSH_9.6\r\n";
+        let within = |prelude: usize| {
+            let mut payload = vec![b'a'; prelude - 2];
+            payload.extend_from_slice(b"\r\n");
+            payload.extend_from_slice(banner);
+            payload
+        };
+        assert!(SshPacket::try_from(within(SSH_MAX_PRELUDE_LENGTH).as_slice()).is_ok());
+        assert_eq!(
+            SshPacket::try_from(within(SSH_MAX_PRELUDE_LENGTH + 1).as_slice()),
+            Err(SshError::MissingPrefix)
+        );
     }
 
     /// Synthetique : octet de controle au milieu de la ligne.
