@@ -216,6 +216,24 @@ mod tests {
     }
 
     #[test]
+    fn unknown_opcode_message_names_the_defined_range() {
+        // Le texte de l'erreur suit la table : 1 a 11 (#288). Il disait
+        // « 1 to 10 » alors que l'opcode 11 est decode.
+        for wire in 0..=31 {
+            assert_eq!(
+                OpenVpnOpcode::from_wire(wire).is_some(),
+                (1..=11).contains(&wire),
+                "{wire}"
+            );
+        }
+        assert!(
+            OpenVpnError::UnknownOpcode { opcode: 12 }
+                .to_string()
+                .ends_with("defined opcodes are 1 to 11")
+        );
+    }
+
+    #[test]
     fn every_defined_opcode_round_trips_through_the_wire_byte() {
         for wire in 1u8..=10 {
             let byte = wire << 3;

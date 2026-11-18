@@ -164,6 +164,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   reste refuse, ces sondes etant aveugles. Sur UDP, un datagramme
   EtherNet/IP porte toujours un seul message. Les decodeurs ne changent
   pas : `TryFrom` lit un message.
+- **OpenVPN, texte de `UnknownOpcode`** (#288) : le message annoncait
+  « defined opcodes are 1 to 10 », alors que l'opcode 11
+  (`P_CONTROL_WKC_V1`) est decode. Il dit desormais « 1 to 11 ».
 
 ## [13.0.0] - 2026-11-17
 
