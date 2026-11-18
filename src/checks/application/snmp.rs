@@ -249,12 +249,21 @@ pub(crate) fn parse_u32_value(value: &[u8], field: &'static str) -> Result<u32, 
     u32::try_from(parsed).map_err(|_| SnmpError::UnsignedOverflow { field })
 }
 
-/// Vérifie la longueur d'un entier non signé BER (1 à 8 octets) puis décode sa valeur.
+/// Vérifie la longueur d'un entier non signé BER (1 à 8 octets, plus un zéro
+/// de tête) puis décode sa valeur.
+///
+/// En BER (X.690 §8.3), un entier est en complément à deux : une valeur de
+/// 2^63 ou plus, permise à un Counter64 (RFC 2578 §7.1.10), prend 9 octets
+/// dont un zéro de tête (#304). Un 9e octet non nul reste refusé.
 pub(crate) fn parse_unsigned_value(value: &[u8], field: &'static str) -> Result<u64, SnmpError> {
-    validate_unsigned_length(field, value.len())?;
+    let digits = match value {
+        [0, rest @ ..] if rest.len() == 8 => rest,
+        _ => value,
+    };
+    validate_unsigned_length(field, digits.len())?;
 
     let mut parsed = 0u64;
-    for &byte in value {
+    for &byte in digits {
         parsed = (parsed << 8) | u64::from(byte);
     }
 
