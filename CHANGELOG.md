@@ -94,6 +94,34 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   `iti_Sample_File_MMS_and_GOOSE.pcap` en envoie pourtant un (trame 107),
   que tshark decode, et la regle COTP est deja gardee par le port : il est
   tolere. `s7comm_regression` compte 33 segments COTP, comme tshark.
+- **DHCP et SRVLOC sur leurs ports** (#294) : ils n'avaient qu'une regle
+  aveugle, placee apres celles de DIS et de RADIUS. Un DHCP dont `secs`
+  egale la longueur du datagramme sortait DIS, meme sur 68 -> 67, et un
+  SrvTypeRqst SLPv1 de 20 octets sortait RADIUS sur UDP 427. Deux regles de
+  port les gardent desormais, DHCP sur UDP 67 et 68, SRVLOC sur UDP et TCP
+  427, parmi les regles de port. Hors de ces ports, l'etiquetage aveugle ne
+  change pas.
+- **DHCP, `hlen` nul et BOOTP sans cookie** (#303) : un `hlen` nul etait
+  refuse, alors que la RFC 4390 (IP sur InfiniBand, htype 32) et la
+  RFC 2855 (IEEE 1394, htype 24) l'imposent. Il est accepte pour ces deux
+  types, avec le `chaddr` nul qu'elles exigent. Un BOOTP (RFC 951) dont la
+  zone `vend` est nulle etait refuse (`InvalidMagicCookie`), alors que le
+  meme sans zone `vend` passait : il est lu sans options, comme lui. Une
+  zone non nulle sans cookie reste refusee.
+- **SRVLOC, erreurs tronquees et encodages SLPv1** (#302) : un SrvRply
+  d'erreur arrete apres son code, que la RFC 2608 (§7) permet, etait refuse
+  (`Truncated`) ; il est lu sans URL entry. Les chaines d'un DAAdvert SLPv1
+  etaient toutes lues en UTF-8, quel que soit l'encodage annonce (RFC 2165
+  §17.1) : une scope Latin-1 non ASCII faisait refuser le message, et une
+  URL UCS-2 se lisait avec ses octets nuls. Elles se lisent desormais dans
+  leur encodage, US-ASCII, ISO-8859-1, UTF-8 ou UCS-2 ; un autre encodage
+  est refuse (`UnsupportedCharEncoding`), comme un UCS-2 invalide
+  (`InvalidUcs2`). `SrvlocHeaderV1` gagne `url_bytes` et `scope_list_bytes`,
+  les octets du fil, et les methodes `url_text()` et `scope_list_text()`,
+  qui les decodent. `url` et `scope_list` restent empruntes quand leurs
+  octets sont deja ce texte en UTF-8, et vides sinon. La rustdoc de
+  `SrvlocPacket::body` disait `SrvlocMessage` exhaustive : il est
+  `#[non_exhaustive]` depuis la 11.0.0.
 
 ## [13.0.0] - 2026-11-17
 

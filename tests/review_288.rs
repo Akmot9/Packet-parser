@@ -241,3 +241,116 @@ fn issue_298_a_class_0_cr_with_a_large_tpdu_is_cotp() {
         assert_eq!(tcp(102, &request(size)), "COTP", "TPDU size {size:#04x}");
     }
 }
+
+/// Un DHCP Discover d'Ethernet (RFC 2131), `length` octets, cookie et
+/// options puis bourrage nul, sur le modèle du Discover de `dhcp.pcap`.
+fn dhcp_discover(length: usize, secs: u16) -> Vec<u8> {
+    let mut message = vec![0x01, 0x01, 0x06, 0x00, 0x00, 0x00, 0x3d, 0x1d];
+    message.extend_from_slice(&secs.to_be_bytes());
+    message.resize(28, 0); // flags, ciaddr, yiaddr, siaddr, giaddr
+    message.extend_from_slice(&[0x00, 0x0b, 0x82, 0x01, 0xfc, 0x42]);
+    message.resize(236, 0); // fin de chaddr, sname, file
+    message.extend_from_slice(&[0x63, 0x82, 0x53, 0x63, 0x35, 0x01, 0x01, 0xff]);
+    message.resize(length, 0);
+    message
+}
+
+/// #294 : sur UDP 67/68 et 427, DHCP et SRVLOC passent devant les sondes
+/// aveugles de DIS et de RADIUS ; hors de ces ports, rien ne change.
+#[test]
+fn issue_294_dhcp_and_srvloc_keep_their_ports() {
+    // `secs` égal à la longueur du datagramme : aussi un en-tête DIS valide.
+    let discover = dhcp_discover(272, 272);
+    assert_eq!(udp(67, &discover), "DHCP");
+    assert_eq!(udp(68, &discover), "DHCP");
+    assert_eq!(udp(40_001, &discover), "DIS");
+    assert_eq!(udp(67, &dhcp_discover(272, 271)), "DHCP");
+
+    // SrvTypeRqst SLPv1 de 20 octets : aussi un Access-Request RADIUS.
+    let request = [
+        0x01, 0x09, 0x00, 0x14, 0x00, 0x00, 0x65, 0x6e, 0x00, 0x6a, 0x12, 0x34, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x02, 0x49, 0x54,
+    ];
+    assert_eq!(udp(427, &request), "SRVLOC");
+    assert_eq!(tcp(427, &request), "SRVLOC");
+    assert_eq!(udp(40_001, &request), "RADIUS");
+}
+
+/// #303 : RFC 4390 §2.1 (IP sur InfiniBand, htype 32) et RFC 2855 (IEEE
+/// 1394, htype 24) imposent `hlen` = 0 et un `chaddr` nul ; un BOOTP
+/// (RFC 951) dont la zone `vend` est nulle vaut celui qui n'en a pas.
+#[test]
+fn issue_303_zero_hlen_links_and_bootp_without_cookie_are_dhcp() {
+    for htype in [32, 24] {
+        let mut discover = dhcp_discover(300, 0);
+        discover[1] = htype;
+        discover[2] = 0;
+        discover[28..34].fill(0);
+        assert_eq!(udp(67, &discover), "DHCP", "htype {htype}");
+        // Un chaddr non nul contredit le hlen nul.
+        discover[28] = 0x01;
+        assert_ne!(udp(67, &discover), "DHCP", "htype {htype}, chaddr non nul");
+    }
+    let mut ethernet = dhcp_discover(300, 0);
+    ethernet[2] = 0;
+    assert_ne!(udp(67, &ethernet), "DHCP", "Ethernet sans hlen");
+
+    let mut bootp = dhcp_discover(300, 0);
+    bootp[236..].fill(0);
+    assert_eq!(udp(67, &bootp), "DHCP");
+    assert_eq!(udp(67, &bootp[..236]), "DHCP");
+    bootp[240] = 0x43; // une zone vend non nulle sans cookie reste refusée
+    assert_ne!(udp(67, &bootp), "DHCP");
+}
+
+/// #302 : RFC 2608 §7, une réponse d'erreur peut s'arrêter après son code ;
+/// RFC 2165 §17.1, les chaînes SLPv1 se lisent dans l'encodage annoncé.
+#[test]
+fn issue_302_srvloc_error_replies_and_v1_encodings() {
+    use packet_parser::parse::application::protocols::srvloc::{SrvlocHeader, SrvlocPacket};
+
+    let truncated = [
+        0x02, 0x02, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x42, 0x00, 0x02, 0x65,
+        0x6e, 0x00, 0x04,
+    ];
+    assert_eq!(udp(427, &truncated), "SRVLOC");
+
+    let da_advert = |encoding: u16, url: &[u8], scope_list: &[u8]| {
+        let mut message = vec![0x01, 0x08, 0x00, 0x00, 0x00, 0x00, b'f', b'r'];
+        message.extend_from_slice(&encoding.to_be_bytes());
+        message.extend_from_slice(&[0x00, 0x04, 0x00, 0x00]); // xid, error code
+        for string in [url, scope_list] {
+            message.extend_from_slice(&u16::try_from(string.len()).expect("court").to_be_bytes());
+            message.extend_from_slice(string);
+        }
+        let length = u16::try_from(message.len()).expect("court");
+        message[2..4].copy_from_slice(&length.to_be_bytes());
+        message
+    };
+    let texts = |message: &[u8]| match SrvlocPacket::try_from(message).map(|packet| packet.header) {
+        Ok(SrvlocHeader::V1(header)) => (
+            header.url_text().into_owned(),
+            header.scope_list_text().into_owned(),
+        ),
+        other => panic!("DAAdvert v1 attendu : {other:?}"),
+    };
+
+    let latin1 = da_advert(4, b"service:directory-agent://h", b"caf\xe9");
+    assert_eq!(udp(427, &latin1), "SRVLOC");
+    assert_eq!(texts(&latin1).1, "caf\u{e9}");
+
+    let ucs2 = |text: &str| -> Vec<u8> { text.encode_utf16().flat_map(u16::to_be_bytes).collect() };
+    let wide = da_advert(
+        1000,
+        &ucs2("service:directory-agent://h"),
+        &ucs2("caf\u{e9}"),
+    );
+    assert_eq!(udp(427, &wide), "SRVLOC");
+    assert_eq!(
+        texts(&wide),
+        (
+            "service:directory-agent://h".to_string(),
+            "caf\u{e9}".to_string()
+        )
+    );
+}
