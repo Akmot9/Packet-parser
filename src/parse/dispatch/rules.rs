@@ -97,6 +97,31 @@ pub(super) static RULES: &[Rule] = &[
         is_dhcpv6_udp_port,
         ProbeId::Dhcpv6,
     ),
+    // DHCP et SRVLOC sur leurs ports, avant les sondes aveugles de DIS et
+    // de RADIUS (#294) : un DHCP dont `secs` egale la longueur du
+    // datagramme est aussi un en-tete DIS valide, et un SrvTypeRqst SLPv1
+    // de 20 octets un Access-Request RADIUS sans attribut. Leurs regles
+    // aveugles restent plus bas, a leur rang.
+    port_rule(
+        ApplicationProtocol::Dhcp,
+        Guard::Udp,
+        is_dhcp_udp_port,
+        ProbeId::Dhcp,
+    ),
+    // SLP circule sur UDP et TCP 427 : une regle par transport, comme
+    // l'exige `port_rules_carry_a_transport_guard`.
+    port_rule(
+        ApplicationProtocol::Srvloc,
+        Guard::Udp,
+        is_srvloc_port,
+        ProbeId::Srvloc,
+    ),
+    port_rule(
+        ApplicationProtocol::Srvloc,
+        Guard::Tcp,
+        is_srvloc_port,
+        ProbeId::Srvloc,
+    ),
     // Signature assez forte pour le probing aveugle sur TCP, et doit gagner
     // sur l'etiquette COTP generique, y compris sur le port 102.
     rule(ApplicationProtocol::S7Comm, Guard::Tcp, ProbeId::S7Comm),

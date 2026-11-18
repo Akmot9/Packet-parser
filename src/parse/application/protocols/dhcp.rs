@@ -10,9 +10,9 @@ use std::convert::TryFrom;
 use crate::{
     checks::application::dhcp::{
         DHCP_MIN_LEN, extract_chaddr, extract_file, extract_flags, extract_hardware_address_length,
-        extract_hardware_type, extract_hops, extract_ipv4_addr, extract_operation, extract_secs,
-        extract_sname, extract_xid, validate_dhcp_min_length, validate_hardware_consistency,
-        validate_magic_cookie,
+        extract_hardware_type, extract_hops, extract_ipv4_addr, extract_operation, extract_options,
+        extract_secs, extract_sname, extract_xid, validate_dhcp_min_length,
+        validate_hardware_consistency, validate_unused_chaddr,
     },
     errors::application::dhcp::DhcpParseError,
 };
@@ -62,6 +62,8 @@ pub struct DhcpPacket<'a> {
     pub chaddr: &'a [u8; 16],
     pub sname: &'a [u8; 64],
     pub file: &'a [u8; 128],
+    /// The options area, magic cookie included; empty for plain BOOTP, with
+    /// no area or an all-zero `vend` area.
     pub options: &'a [u8],
 }
 
@@ -100,11 +102,13 @@ pub fn parse_dhcp_packet(payload: &[u8]) -> Result<DhcpPacket<'_>, DhcpParseErro
     // slice lengths are guaranteed by `validate_dhcp_min_length`, so these
     // extractions cannot fail here; no `unwrap()` is involved.
     let chaddr = extract_chaddr(&payload[28..44])?;
+    validate_unused_chaddr(hlen, chaddr)?;
     let sname = extract_sname(&payload[44..108])?;
     let file = extract_file(&payload[108..236])?;
 
-    let options = &payload[DHCP_MIN_LEN..];
-    validate_magic_cookie(options)?;
+    // Avec le cookie, la zone d'options entiere ; sans lui, une zone `vend`
+    // BOOTP nulle, qui n'en porte aucune (#303).
+    let options = extract_options(&payload[DHCP_MIN_LEN..])?;
 
     Ok(DhcpPacket {
         op,

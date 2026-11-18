@@ -218,23 +218,66 @@ pub fn extract_length_prefixed_str<'a>(
     Ok((length, value))
 }
 
-/// Extracts the SLPv1 URL: a `u16` length prefix followed by that many bytes
-/// of validated UTF-8. Returns `(url_length, url)`; the `&str` borrows from
-/// `buf`.
-pub fn extract_url<'a>(
-    buf: &'a [u8],
-    offset: &mut usize,
-) -> Result<(u16, &'a str), SrvlocPacketParseError> {
-    extract_length_prefixed_str(buf, offset, "url")
+/// SLPv1 character encodings that are read (RFC 2165 §17.1), as IANA
+/// MIBenum values (#302).
+pub const SRVLOC_V1_US_ASCII: u16 = 3;
+pub const SRVLOC_V1_ISO_8859_1: u16 = 4;
+pub const SRVLOC_V1_UTF_8: u16 = 106;
+pub const SRVLOC_V1_UCS_2: u16 = 1000;
+
+/// A SLPv1 string as read from the wire, in the header's encoding.
+pub struct V1String<'a> {
+    pub length: u16,
+    /// The bytes on the wire.
+    pub bytes: &'a [u8],
+    /// The same text borrowed as `&str`, when the bytes are already that
+    /// text in UTF-8; empty otherwise.
+    pub borrowed: &'a str,
 }
 
-/// Extracts the SLPv1 scope list: a `u16` length prefix followed by that many
-/// bytes of validated UTF-8. Returns `(scope_list_length, scope_list)`.
-pub fn extract_scope_list<'a>(
+/// Extracts a SLPv1 string: a `u16` length prefix, then that many bytes
+/// read in `encoding` (RFC 2165 §17.1 : the encoding « will determine the
+/// interpretation of all character data », #302).
+///
+/// - US-ASCII (3) and UTF-8 (106): validated UTF-8, borrowed as is;
+/// - ISO-8859-1 (4): every byte is a character; borrowed when all ASCII;
+/// - UCS-2 (1000): an even length of big-endian code units, none of them a
+///   surrogate; never borrowed, unless empty;
+/// - any other encoding is refused ([`SrvlocPacketParseError::UnsupportedCharEncoding`]).
+pub fn extract_v1_string<'a>(
     buf: &'a [u8],
     offset: &mut usize,
-) -> Result<(u16, &'a str), SrvlocPacketParseError> {
-    extract_length_prefixed_str(buf, offset, "scope_list")
+    encoding: u16,
+    field: &'static str,
+) -> Result<V1String<'a>, SrvlocPacketParseError> {
+    let length = read_u16(buf, offset)?;
+    ensure_len(buf, *offset + usize::from(length))?;
+    let bytes = &buf[*offset..*offset + usize::from(length)];
+    *offset += usize::from(length);
+    let borrowed = match encoding {
+        SRVLOC_V1_US_ASCII | SRVLOC_V1_UTF_8 => validate_utf8(bytes, field)?,
+        SRVLOC_V1_ISO_8859_1 => core::str::from_utf8(bytes)
+            .ok()
+            .filter(|text| text.is_ascii())
+            .unwrap_or(""),
+        SRVLOC_V1_UCS_2 => {
+            let (units, rest) = bytes.as_chunks::<2>();
+            let valid = rest.is_empty()
+                && units
+                    .iter()
+                    .all(|unit| char::from_u32(u32::from(u16::from_be_bytes(*unit))).is_some());
+            if !valid {
+                return Err(SrvlocPacketParseError::InvalidUcs2(field));
+            }
+            ""
+        }
+        other => return Err(SrvlocPacketParseError::UnsupportedCharEncoding(other)),
+    };
+    Ok(V1String {
+        length,
+        bytes,
+        borrowed,
+    })
 }
 
 /// Taille minimale d'un authentication block SLPv2 (RFC 2608 section 9.2) :
@@ -496,39 +539,71 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_extract_url_length_prefixed() {
-        // longueur u16 = 3 puis "svc"
-        let buf = [0x00, 0x03, b's', b'v', b'c'];
+    fn v1(buf: &[u8], encoding: u16) -> Result<(u16, Vec<u8>, String), SrvlocPacketParseError> {
         let mut offset = 0;
-        assert_eq!(extract_url(&buf, &mut offset), Ok((3, "svc")));
-        assert_eq!(offset, 5);
+        let string = extract_v1_string(buf, &mut offset, encoding, "url")?;
+        assert_eq!(offset, 2 + string.bytes.len());
+        Ok((
+            string.length,
+            string.bytes.to_vec(),
+            string.borrowed.to_string(),
+        ))
     }
 
     #[test]
-    fn test_extract_url_truncated_and_invalid_utf8() {
-        let mut offset = 0;
-        assert!(matches!(
-            extract_url(&[0x00, 0x09, b'a'], &mut offset),
+    fn a_v1_string_is_read_in_the_header_encoding() {
+        // US-ASCII et UTF-8 : empruntee telle quelle.
+        let utf8 = [0x00, 0x05, b'c', b'a', b'f', 0xC3, 0xA9];
+        for encoding in [SRVLOC_V1_US_ASCII, SRVLOC_V1_UTF_8] {
+            assert_eq!(
+                v1(&utf8, encoding),
+                Ok((5, utf8[2..].to_vec(), "caf\u{e9}".to_string()))
+            );
+        }
+        // ISO-8859-1 : tout octet est un caractere ; empruntee si ASCII.
+        let latin1 = [0x00, 0x04, b'c', b'a', b'f', 0xE9];
+        assert_eq!(
+            v1(&latin1, SRVLOC_V1_ISO_8859_1),
+            Ok((4, latin1[2..].to_vec(), String::new()))
+        );
+        assert_eq!(
+            v1(&[0x00, 0x02, b's', b'c'], SRVLOC_V1_ISO_8859_1),
+            Ok((2, b"sc".to_vec(), "sc".to_string()))
+        );
+        // UCS-2 : jamais empruntee, longueur paire, aucun code de substitution.
+        let ucs2 = [0x00, 0x04, 0x00, b's', 0x00, b'c'];
+        assert_eq!(
+            v1(&ucs2, SRVLOC_V1_UCS_2),
+            Ok((4, ucs2[2..].to_vec(), String::new()))
+        );
+        for invalid in [
+            &[0x00, 0x03, 0x00, b's', 0x00][..],
+            &[0x00, 0x02, 0xD8, 0x00],
+        ] {
+            assert_eq!(
+                v1(invalid, SRVLOC_V1_UCS_2),
+                Err(SrvlocPacketParseError::InvalidUcs2("url"))
+            );
+        }
+    }
+
+    #[test]
+    fn a_v1_string_refuses_what_its_encoding_cannot_hold() {
+        assert_eq!(
+            v1(&[0x00, 0x09, b'a'], SRVLOC_V1_UTF_8),
             Err(SrvlocPacketParseError::Truncated {
                 expected_at_least: 11,
                 actual: 3
             })
-        ));
-
-        let mut offset = 0;
-        assert!(matches!(
-            extract_url(&[0x00, 0x01, 0xFF], &mut offset),
+        );
+        assert_eq!(
+            v1(&[0x00, 0x01, 0xFF], SRVLOC_V1_UTF_8),
             Err(SrvlocPacketParseError::InvalidUtf8("url"))
-        ));
-    }
-
-    #[test]
-    fn test_extract_scope_list_length_prefixed() {
-        let buf = [0x00, 0x02, b's', b'c'];
-        let mut offset = 0;
-        assert_eq!(extract_scope_list(&buf, &mut offset), Ok((2, "sc")));
-        assert_eq!(offset, 4);
+        );
+        assert_eq!(
+            v1(&[0x00, 0x01, b'a'], 17),
+            Err(SrvlocPacketParseError::UnsupportedCharEncoding(17))
+        );
     }
 
     #[test]

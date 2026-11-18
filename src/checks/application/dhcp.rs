@@ -48,9 +48,17 @@ pub fn validate_hardware_type(htype: u8) -> Result<(), DhcpParseError> {
     Ok(())
 }
 
+/// Types de lien dont l'adresse ne tient pas dans `chaddr`, et qui imposent
+/// `hlen` = 0 et un `chaddr` nul (#303) : 32, IP sur InfiniBand (RFC 4390
+/// §2.1, « 'hlen' (hardware address length) MUST be 0 »), et 24, IEEE 1394
+/// (RFC 2855).
+pub const DHCP_HTYPES_WITHOUT_CHADDR: [u8; 2] = [24, 32];
+
 pub fn validate_hardware_address_length(hlen: u8) -> Result<(), DhcpParseError> {
-    // hlen doit tenir dans la zone chaddr de 16 octets, et 0 n'a pas de sens.
-    if !(1..=DHCP_CHADDR_LEN).contains(&hlen) {
+    // hlen doit tenir dans la zone chaddr de 16 octets. 0 n'est permis qu'aux
+    // types de DHCP_HTYPES_WITHOUT_CHADDR, verifie par
+    // `validate_hardware_consistency`.
+    if hlen > DHCP_CHADDR_LEN {
         return Err(DhcpParseError::InvalidHardwareAddressLength { hlen });
     }
 
@@ -58,11 +66,26 @@ pub fn validate_hardware_address_length(hlen: u8) -> Result<(), DhcpParseError> 
 }
 
 /// Verifie la coherence croisee entre htype et hlen deja extraits :
-/// pour Ethernet (htype=1), hlen doit rester 6 (adresse MAC). Les autres
-/// types gardent la borne generale 1..=16 deja appliquee par
-/// `validate_hardware_address_length`.
+/// pour Ethernet (htype=1), hlen doit rester 6 (adresse MAC) ; un hlen nul
+/// n'est permis qu'a InfiniBand et IEEE 1394 (#303). Les autres types
+/// gardent la borne generale 1..=16.
 pub fn validate_hardware_consistency(htype: u8, hlen: u8) -> Result<(), DhcpParseError> {
-    if htype == 1 && hlen != DHCP_ETHERNET_HLEN {
+    let inconsistent = match hlen {
+        0 => !DHCP_HTYPES_WITHOUT_CHADDR.contains(&htype),
+        _ => htype == 1 && hlen != DHCP_ETHERNET_HLEN,
+    };
+    if inconsistent {
+        return Err(DhcpParseError::InvalidHardwareAddressLength { hlen });
+    }
+
+    Ok(())
+}
+
+/// Un hlen nul laisse `chaddr` vide : RFC 4390 §2.1 et RFC 2855 exigent
+/// qu'il soit nul (« MUST be zeroed »). Un chaddr non nul rend le hlen nul
+/// incoherent, d'ou la meme erreur.
+pub fn validate_unused_chaddr(hlen: u8, chaddr: &[u8; 16]) -> Result<(), DhcpParseError> {
+    if hlen == 0 && chaddr.iter().any(|byte| *byte != 0) {
         return Err(DhcpParseError::InvalidHardwareAddressLength { hlen });
     }
 
@@ -74,17 +97,27 @@ pub const DHCP_MAGIC_COOKIE: [u8; 4] = [0x63, 0x82, 0x53, 0x63];
 
 /// Validates the DHCP magic cookie when an options area is present.
 ///
-/// An empty options area is accepted (plain BOOTP, RFC 951). A non-empty
+/// An empty options area is accepted (plain BOOTP, RFC 951), and so is an
+/// all-zero one: the `vend` area of a BOOTP client that has no vendor data
+/// (RFC 951: « vend 64 optional vendor-specific area », #303). Any other
 /// area must start with the RFC 2131 magic cookie: this keeps arbitrary
 /// 236+-byte payloads from being misdetected as DHCP.
 pub fn validate_magic_cookie(options: &[u8]) -> Result<(), DhcpParseError> {
-    if options.is_empty() {
+    if options.iter().all(|byte| *byte == 0) || options.starts_with(&DHCP_MAGIC_COOKIE) {
         return Ok(());
     }
-    if options.len() < DHCP_MAGIC_COOKIE.len() || options[..4] != DHCP_MAGIC_COOKIE {
-        return Err(DhcpParseError::InvalidMagicCookie);
+    Err(DhcpParseError::InvalidMagicCookie)
+}
+
+/// The options after the magic cookie's check: the area itself when it
+/// starts with the cookie, nothing for a BOOTP `vend` area without one.
+pub fn extract_options(area: &[u8]) -> Result<&[u8], DhcpParseError> {
+    validate_magic_cookie(area)?;
+    if area.starts_with(&DHCP_MAGIC_COOKIE) {
+        Ok(area)
+    } else {
+        Ok(&[])
     }
-    Ok(())
 }
 
 /// Checks the DHCP operation code (must be BOOTREQUEST=1 or BOOTREPLY=2)
@@ -101,7 +134,7 @@ pub fn extract_hardware_type(htype: u8) -> Result<u8, DhcpParseError> {
     Ok(htype)
 }
 
-/// Checks the hardware address length (1..=16, the chaddr area size) and
+/// Checks the hardware address length (0..=16, the chaddr area size) and
 /// returns it. Consistency with htype is checked separately by
 /// `validate_hardware_consistency`.
 pub fn extract_hardware_address_length(hlen: u8) -> Result<u8, DhcpParseError> {
@@ -297,11 +330,9 @@ mod tests {
         assert!(validate_hardware_address_length(6).is_ok());
         assert!(validate_hardware_address_length(DHCP_CHADDR_LEN).is_ok());
 
-        // 0 et au-dela de la zone chaddr : refuses
-        assert!(matches!(
-            validate_hardware_address_length(0),
-            Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 0 })
-        ));
+        // 0 passe ici : `validate_hardware_consistency` le reserve a
+        // InfiniBand et IEEE 1394 (#303). Au-dela de la zone chaddr : refuse.
+        assert!(validate_hardware_address_length(0).is_ok());
         assert!(matches!(
             validate_hardware_address_length(17),
             Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 17 })
@@ -325,6 +356,43 @@ mod tests {
         assert!(validate_hardware_consistency(6, 6).is_ok()); // IEEE 802
         assert!(validate_hardware_consistency(7, 1).is_ok()); // ARCNET
         assert!(validate_hardware_consistency(16, 16).is_ok()); // ATM, NSAP 16 octets
+
+        // hlen nul : InfiniBand (32, RFC 4390) et IEEE 1394 (24, RFC 2855)
+        // seulement (#303).
+        assert!(validate_hardware_consistency(32, 0).is_ok());
+        assert!(validate_hardware_consistency(24, 0).is_ok());
+        for htype in [1, 6, 20] {
+            assert!(matches!(
+                validate_hardware_consistency(htype, 0),
+                Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 0 })
+            ));
+        }
+    }
+
+    #[test]
+    fn a_zero_hlen_requires_a_zeroed_chaddr() {
+        assert!(validate_unused_chaddr(0, &[0; 16]).is_ok());
+        let mut chaddr = [0; 16];
+        chaddr[15] = 1;
+        assert!(matches!(
+            validate_unused_chaddr(0, &chaddr),
+            Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 0 })
+        ));
+        assert!(validate_unused_chaddr(6, &chaddr).is_ok());
+    }
+
+    #[test]
+    fn a_bootp_vend_area_without_cookie_must_be_zero() {
+        assert_eq!(extract_options(&[]), Ok(&[][..]));
+        assert_eq!(extract_options(&[0; 64]), Ok(&[][..]));
+        let dhcp = [0x63, 0x82, 0x53, 0x63, 0x35, 0x01, 0x01, 0xff];
+        assert_eq!(extract_options(&dhcp), Ok(&dhcp[..]));
+        let mut vendor = [0u8; 64];
+        vendor[0] = 0x43; // donnees de constructeur sans cookie
+        assert_eq!(
+            extract_options(&vendor),
+            Err(DhcpParseError::InvalidMagicCookie)
+        );
     }
 
     #[test]
@@ -356,10 +424,7 @@ mod tests {
     fn test_extract_hardware_address_length() {
         assert_eq!(extract_hardware_address_length(6), Ok(6));
         assert_eq!(extract_hardware_address_length(16), Ok(16));
-        assert!(matches!(
-            extract_hardware_address_length(0),
-            Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 0 })
-        ));
+        assert_eq!(extract_hardware_address_length(0), Ok(0));
         assert!(matches!(
             extract_hardware_address_length(17),
             Err(DhcpParseError::InvalidHardwareAddressLength { hlen: 17 })

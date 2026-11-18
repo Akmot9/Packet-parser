@@ -58,6 +58,28 @@ fn exercise(data: &[u8]) {
             assert_eq!(usize::from(header.packet_length), data.len());
             assert!(text(data, header.language) && text(data, header.url));
             assert!(text(data, header.scope_list));
+            // Les octets du fil, et leur texte dans l'encodage annonce
+            // (#302) : rien n'y est remplace pour un paquet accepte.
+            assert_eq!(header.url_bytes.len(), usize::from(header.url_length));
+            assert_eq!(
+                header.scope_list_bytes.len(),
+                usize::from(header.scope_list_length)
+            );
+            assert!(inside(data, header.url_bytes) && inside(data, header.scope_list_bytes));
+            for (borrowed, bytes, decoded) in [
+                (header.url, header.url_bytes, header.url_text()),
+                (header.scope_list, header.scope_list_bytes, header.scope_list_text()),
+            ] {
+                if !borrowed.is_empty() {
+                    assert_eq!(decoded, borrowed);
+                }
+                // UCS-2 : un caractere par unite de deux octets, aucune
+                // substitution.
+                if header.char_encoding == 1000 {
+                    assert_eq!(decoded.chars().count() * 2, bytes.len());
+                    assert!(!decoded.contains(char::REPLACEMENT_CHARACTER));
+                }
+            }
             assert!(matches!(body, Ok(SrvlocBody::Raw(body)) if body == *raw));
         }
         SrvlocHeader::V2(header) => {

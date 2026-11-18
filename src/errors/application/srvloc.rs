@@ -31,4 +31,15 @@ pub enum SrvlocPacketParseError {
 
     #[error("SRVLOC v1 language {0:02x?} is not a two-letter ISO 639 code")]
     InvalidLanguageCode([u8; 2]),
+
+    /// SLPv1 : un encodage de caracteres que le decodeur ne lit pas (#302).
+    #[error(
+        "SRVLOC v1 character encoding {0} is not read: expected 3 (US-ASCII), 4 (ISO-8859-1), 106 (UTF-8) or 1000 (UCS-2)"
+    )]
+    UnsupportedCharEncoding(u16),
+
+    /// SLPv1 : une chaine UCS-2 de longueur impaire, ou qui porte un code
+    /// de substitution (#302).
+    #[error("Invalid UCS-2 in SRVLOC field '{0}'")]
+    InvalidUcs2(&'static str),
 }

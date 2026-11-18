@@ -24,6 +24,16 @@ pub(super) fn is_dhcpv6_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(546 | 547))
 }
 
+/// DHCP et BOOTP : UDP 67 (serveur) et 68 (client), RFC 2131 §4.1 (#294).
+pub(super) fn is_dhcp_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(67 | 68))
+}
+
+/// SRVLOC : 427 sur UDP et TCP, RFC 2608 §6.1 et RFC 2165 §2 (#294).
+pub(super) fn is_srvloc_port(port: Option<u16>) -> bool {
+    matches!(port, Some(427))
+}
+
 /// Modbus/TCP : TCP 502 (IANA `mbap`).
 pub(super) fn is_modbus_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(502))

@@ -4,6 +4,7 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 use core::convert::TryFrom;
+use std::borrow::Cow;
 
 use crate::{checks::application::srvloc::*, errors::application::srvloc::SrvlocPacketParseError};
 
@@ -81,10 +82,56 @@ pub struct SrvlocHeaderV1<'a> {
     pub error_code: u16,
 
     pub url_length: u16,
+    /// L'URL empruntee au paquet, quand ses octets sont deja ce texte en
+    /// UTF-8 : encodage US-ASCII ou UTF-8, ou ISO-8859-1 sans octet non
+    /// ASCII. Vide sinon : [`SrvlocHeaderV1::url_text`] la decode (#302).
     pub url: &'a str,
 
     pub scope_list_length: u16,
+    /// La liste de scopes, empruntee aux memes conditions que `url` ; sinon
+    /// vide, et [`SrvlocHeaderV1::scope_list_text`] la decode (#302).
     pub scope_list: &'a str,
+
+    /// Les octets de l'URL sur le fil, dans l'encodage `char_encoding`.
+    pub url_bytes: &'a [u8],
+    /// Les octets de la liste de scopes sur le fil.
+    pub scope_list_bytes: &'a [u8],
+}
+
+impl<'a> SrvlocHeaderV1<'a> {
+    /// L'URL d'un DAAdvert, decodee selon `char_encoding` (RFC 2165 §17.1,
+    /// #302) : US-ASCII, ISO-8859-1, UTF-8 ou UCS-2. Empruntee quand elle le
+    /// peut ; vide pour les autres codes fonction.
+    pub fn url_text(&self) -> Cow<'a, str> {
+        decode_v1_text(self.url_bytes, self.char_encoding)
+    }
+
+    /// La liste de scopes d'un DAAdvert, decodee comme [`Self::url_text`].
+    pub fn scope_list_text(&self) -> Cow<'a, str> {
+        decode_v1_text(self.scope_list_bytes, self.char_encoding)
+    }
+}
+
+/// Le texte d'une chaine SLPv1 deja validee par `extract_v1_string` :
+/// aucun remplacement n'y survient pour un paquet construit par `try_from`.
+fn decode_v1_text(bytes: &[u8], encoding: u16) -> Cow<'_, str> {
+    match encoding {
+        SRVLOC_V1_ISO_8859_1 if !bytes.is_ascii() => {
+            Cow::Owned(bytes.iter().copied().map(char::from).collect())
+        }
+        SRVLOC_V1_UCS_2 => Cow::Owned(
+            char::decode_utf16(
+                bytes
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|unit| u16::from_be_bytes(*unit)),
+            )
+            .map(|unit| unit.unwrap_or(char::REPLACEMENT_CHARACTER))
+            .collect(),
+        ),
+        _ => String::from_utf8_lossy(bytes),
+    }
 }
 
 /// Body brut du message, tel que porte par [`SrvlocPacket::payload`].
@@ -227,9 +274,10 @@ impl<'a> TryFrom<&'a [u8]> for SrvlocPacket<'a> {
 impl<'a> SrvlocPacket<'a> {
     /// Decode le body du message selon la version et le code fonction.
     ///
-    /// Chemin additif (epic #76) : `SrvlocMessage` est une enum exhaustive
-    /// figee jusqu'a la prochaine majeure, le body typed est donc expose par
-    /// cette methode plutot que par de nouvelles variantes de `payload`.
+    /// Chemin additif (epic #76) : le body type est expose par cette methode
+    /// plutot que par de nouvelles variantes de `payload`. `SrvlocMessage`
+    /// est pourtant `#[non_exhaustive]` depuis la 11.0.0 : une variante typee
+    /// pourrait s'y ajouter sans rupture.
     ///
     /// - SLPv2 SrvRqst / SrvRply : body decode ; deja valide par `try_from`,
     ///   le re-decodage est zero-copy et ne peut pas echouer sur un paquet
@@ -281,10 +329,21 @@ fn parse_srv_rqst_v2(body: &[u8]) -> Result<SrvRqstV2<'_>, SrvlocPacketParseErro
 
 /// Decode un body SrvRply v2 (RFC 2608 section 8.2) : error code, compteur
 /// d'URL entries puis les entries elles-memes.
+///
+/// RFC 2608 §7 : « If the Error Code in a SLP reply message is nonzero, the
+/// rest of the message MAY be truncated. » Une reponse d'erreur arretee
+/// apres son code est lue sans entry (#302).
 fn parse_srv_rply_v2(body: &[u8]) -> Result<SrvRplyV2<'_>, SrvlocPacketParseError> {
     let mut offset = 0;
 
     let error_code = extract_error_code(body, &mut offset)?;
+    if error_code != 0 && offset == body.len() {
+        return Ok(SrvRplyV2 {
+            error_code,
+            url_entry_count: 0,
+            url_entries: Vec::new(),
+        });
+    }
     let url_entry_count = read_u16(body, &mut offset)?;
 
     // Pre-allocation bornee : un compteur hostile ne pilote jamais seul la
@@ -374,20 +433,24 @@ fn parse_v1_packet(payload: &[u8]) -> Result<SrvlocPacket<'_>, SrvlocPacketParse
     // Dispatch par code fonction (issue #50) : seul le DAAdvert (function 8)
     // porte le body error code / url / scope list. Les fonctions non
     // implementees gardent leur body brut dans SrvlocMessage::Raw.
-    let (error_code, url_length, url, scope_list_length, scope_list) =
-        if function == SRVLOC_FUNCTION_DA_ADVERT {
-            let error_code = extract_error_code(payload, &mut offset)?;
-            let (url_length, url) = extract_url(payload, &mut offset)?;
-            let (scope_list_length, scope_list) = extract_scope_list(payload, &mut offset)?;
-            (error_code, url_length, url, scope_list_length, scope_list)
-        } else {
-            // Champs specifiques au DAAdvert : SrvlocHeaderV1 est une struct
-            // publique exhaustive, figee jusqu'a la prochaine majeure
-            // (epic #76), on ne peut ni retirer ces champs ni les rendre
-            // optionnels. Pour les autres fonctions ils recoivent des valeurs
-            // neutres et le body complet reste dans SrvlocMessage::Raw.
-            (0, 0, "", 0, "")
+    let (error_code, url, scope_list) = if function == SRVLOC_FUNCTION_DA_ADVERT {
+        let error_code = extract_error_code(payload, &mut offset)?;
+        // Les chaines dans l'encodage annonce (RFC 2165 §17.1, #302).
+        let url = extract_v1_string(payload, &mut offset, char_encoding, "url")?;
+        let scope_list = extract_v1_string(payload, &mut offset, char_encoding, "scope_list")?;
+        (error_code, url, scope_list)
+    } else {
+        // Champs specifiques au DAAdvert : on ne peut ni les retirer ni les
+        // rendre optionnels sans rupture. Pour les autres fonctions ils
+        // recoivent des valeurs neutres et le body complet reste dans
+        // SrvlocMessage::Raw.
+        let empty = || V1String {
+            length: 0,
+            bytes: &[],
+            borrowed: "",
         };
+        (0, empty(), empty())
+    };
 
     let header_v1 = SrvlocHeaderV1 {
         version,
@@ -399,10 +462,12 @@ fn parse_v1_packet(payload: &[u8]) -> Result<SrvlocPacket<'_>, SrvlocPacketParse
         char_encoding,
         transaction_id,
         error_code,
-        url_length,
-        url,
-        scope_list_length,
-        scope_list,
+        url_length: url.length,
+        url: url.borrowed,
+        scope_list_length: scope_list.length,
+        scope_list: scope_list.borrowed,
+        url_bytes: url.bytes,
+        scope_list_bytes: scope_list.bytes,
     };
 
     // Le reste part dans le payload brut en zero-copy : rien pour un
@@ -528,6 +593,88 @@ mod tests {
         bytes.extend_from_slice(b"en");
         bytes.extend_from_slice(body);
         bytes
+    }
+
+    /// DAAdvert v1 dans l'encodage `encoding`, URL et scopes deja encodes.
+    fn da_advert_v1(encoding: u16, url: &[u8], scope_list: &[u8]) -> Vec<u8> {
+        let mut bytes = vec![1, 8, 0, 0, 0x20, 0];
+        bytes.extend_from_slice(b"fr");
+        bytes.extend_from_slice(&encoding.to_be_bytes());
+        bytes.extend_from_slice(&0x1234u16.to_be_bytes()); // transaction id
+        bytes.extend_from_slice(&0u16.to_be_bytes()); // error code
+        for string in [url, scope_list] {
+            bytes.extend_from_slice(&(string.len() as u16).to_be_bytes());
+            bytes.extend_from_slice(string);
+        }
+        let length = bytes.len() as u16;
+        bytes[2..4].copy_from_slice(&length.to_be_bytes());
+        bytes
+    }
+
+    fn v1_header<'p>(packet: &'p SrvlocPacket<'p>) -> &'p SrvlocHeaderV1<'p> {
+        match &packet.header {
+            SrvlocHeader::V1(header) => header,
+            other => panic!("v1 attendu : {other:?}"),
+        }
+    }
+
+    /// RFC 2165 §17.1 : l'encodage annonce determine la lecture de toutes
+    /// les chaines (#302).
+    #[test]
+    fn v1_strings_follow_the_announced_encoding() {
+        let latin1 = da_advert_v1(4, b"service:directory-agent://a", b"caf\xe9");
+        let packet = SrvlocPacket::try_from(latin1.as_slice()).expect("Latin-1");
+        let header = v1_header(&packet);
+        assert_eq!(header.scope_list_text(), "caf\u{e9}");
+        assert_eq!(header.scope_list, "");
+        assert_eq!(header.scope_list_bytes, b"caf\xe9");
+        assert_eq!(header.url, "service:directory-agent://a");
+        assert!(matches!(
+            header.url_text(),
+            Cow::Borrowed("service:directory-agent://a")
+        ));
+
+        let ucs2 =
+            |text: &str| -> Vec<u8> { text.encode_utf16().flat_map(u16::to_be_bytes).collect() };
+        let wide = da_advert_v1(1000, &ucs2("service:x://h"), &ucs2("caf\u{e9}"));
+        let packet = SrvlocPacket::try_from(wide.as_slice()).expect("UCS-2");
+        let header = v1_header(&packet);
+        assert_eq!(header.url_text(), "service:x://h");
+        assert_eq!(header.scope_list_text(), "caf\u{e9}");
+        assert_eq!((header.url, header.url_length), ("", 26));
+
+        let utf8 = da_advert_v1(106, b"service:x://h", "caf\u{e9}".as_bytes());
+        let packet = SrvlocPacket::try_from(utf8.as_slice()).expect("UTF-8");
+        assert_eq!(v1_header(&packet).scope_list, "caf\u{e9}");
+
+        assert_eq!(
+            SrvlocPacket::try_from(da_advert_v1(17, b"a", b"b").as_slice()).err(),
+            Some(SrvlocPacketParseError::UnsupportedCharEncoding(17))
+        );
+        assert_eq!(
+            SrvlocPacket::try_from(da_advert_v1(1000, b"abc", b"").as_slice()).err(),
+            Some(SrvlocPacketParseError::InvalidUcs2("url"))
+        );
+    }
+
+    /// RFC 2608 §7 : une reponse d'erreur peut s'arreter apres son code
+    /// (#302).
+    #[test]
+    fn an_error_reply_may_stop_after_its_code() {
+        let packet = build_v2_packet_fn(2, &[0x00, 0x04]);
+        let parsed = SrvlocPacket::try_from(packet.as_slice()).expect("erreur tronquee");
+        match parsed.body() {
+            Ok(SrvlocBody::SrvRplyV2(reply)) => {
+                assert_eq!((reply.error_code, reply.url_entry_count), (4, 0));
+                assert!(reply.url_entries.is_empty());
+            }
+            other => panic!("SrvRply attendu : {other:?}"),
+        }
+        // Sans erreur, le compteur reste obligatoire.
+        assert!(matches!(
+            SrvlocPacket::try_from(build_v2_packet_fn(2, &[0x00, 0x00]).as_slice()),
+            Err(SrvlocPacketParseError::Truncated { .. })
+        ));
     }
 
     /// Header SLP v2 DAAdvert (fonction 8), comme avant le dispatch du body.
