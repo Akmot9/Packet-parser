@@ -81,12 +81,34 @@ pub fn parse_dns_name(message: &[u8], start: usize) -> Result<(String, usize), D
         wire_length += 1 + len;
         check_dns_name_length(wire_length)?;
         check_dns_label_bounds(message, offset, len)?;
-        let label = String::from_utf8(message[offset..offset + len].to_vec())?;
-        labels.push(label);
+        labels.push(label_text(&message[offset..offset + len]));
         offset += len;
     }
 
     Ok((labels.join("."), resume_offset.unwrap_or(offset)))
+}
+
+/// Le texte d'un label. RFC 2181 §11 : « any binary string whatever can be
+/// used as the label of any resource record » (#297). Un label UTF-8 reste
+/// tel quel ; un autre prend la forme de presentation de la RFC 1035 §5.1 :
+/// l'ASCII graphique tel quel, `.` et `\` precedes de `\`, tout autre octet
+/// en `\DDD` decimal. `Jägermeister` en Latin-1 devient `J\228germeister`.
+fn label_text(bytes: &[u8]) -> String {
+    if let Ok(text) = core::str::from_utf8(bytes) {
+        return text.to_owned();
+    }
+    let mut text = String::with_capacity(bytes.len() * 2);
+    for &byte in bytes {
+        match byte {
+            b'.' | b'\\' => {
+                text.push('\\');
+                text.push(char::from(byte));
+            }
+            0x21..=0x7E => text.push(char::from(byte)),
+            _ => text.push_str(&format!("\\{byte:03}")),
+        }
+    }
+    text
 }
 
 /// Resource record brut (RFC 1035 §4.1.3), partagé par les sections answer,

@@ -63,7 +63,12 @@ impl<'a> DnsPacket<'a> {
         check_dns_minimum_size(bytes)?;
 
         let header = DnsHeader::try_from(bytes)?;
+        Self::parse_sections(bytes, header)
+    }
 
+    /// Decode les quatre sections qui suivent `header`, et retourne l'offset
+    /// ou s'arrete la derniere.
+    fn parse_sections(bytes: &'a [u8], header: DnsHeader) -> Result<(Self, usize), DnsPacketError> {
         // Les sections sont parsées sur le message complet : les pointeurs de
         // compression (RFC 1035 §4.1.4) sont des offsets depuis l'octet 0.
         let mut offset = 12;
@@ -96,10 +101,43 @@ impl<'a> DnsPacket<'a> {
     /// en-tete aux quatre compteurs nuls n'apporte aucune preuve. Sans ces
     /// deux gardes, tout datagramme dont les douze premiers octets forment un
     /// en-tete vide plausible passait pour du DNS.
+    ///
+    /// Un nom echappe n'y est pas une preuve non plus : hors UTF-8, un label
+    /// prend la forme `\DDD` (#297), et un `\` dans un nom ecarte le
+    /// datagramme. Le port 53 lit ces noms ; la sonde aveugle garde
+    /// l'exigence d'UTF-8 qu'elle avait.
     pub(crate) fn is_blind_udp_match(bytes: &[u8]) -> bool {
         DnsPacket::parse_datagram(bytes).is_ok_and(|(packet, end)| {
-            end == bytes.len() && packet.header.counts.iter().any(|&count| count != 0)
+            end == bytes.len()
+                && packet.header.counts.iter().any(|&count| count != 0)
+                && packet.names().all(|name| !name.contains('\\'))
         })
+    }
+
+    /// Les noms de toutes les sections, dans l'ordre du message.
+    fn names(&self) -> impl Iterator<Item = &str> {
+        self.queries
+            .queries
+            .iter()
+            .map(|query| query.name.as_str())
+            .chain(
+                self.answers
+                    .iter()
+                    .flatten()
+                    .map(|record| record.name.as_str()),
+            )
+            .chain(
+                self.authorities
+                    .iter()
+                    .flatten()
+                    .map(|record| record.name.as_str()),
+            )
+            .chain(
+                self.additionals
+                    .iter()
+                    .flatten()
+                    .map(|record| record.name.as_str()),
+            )
     }
 
     /// Decode un message DNS transporte sur TCP (RFC 1035 §4.2.2) : le flux
@@ -121,7 +159,11 @@ impl<'a> DnsPacket<'a> {
                 expected: 2 + declared,
                 actual: bytes.len(),
             })?;
-        Self::try_from(message)
+        // Une reponse peut laisser sa question vide : les messages AXFR qui
+        // suivent le premier (RFC 5936 §2.2.1, #297).
+        check_dns_minimum_size(message)?;
+        let header = DnsHeader::try_from_tcp(message)?;
+        Self::parse_sections(message, header).map(|(packet, _)| packet)
     }
 
     /// Like [`TryFrom::try_from`], but tolerates an empty question section.

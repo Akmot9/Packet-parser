@@ -122,6 +122,17 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   octets sont deja ce texte en UTF-8, et vides sinon. La rustdoc de
   `SrvlocPacket::body` disait `SrvlocMessage` exhaustive : il est
   `#[non_exhaustive]` depuis la 11.0.0.
+- **DNS, labels binaires et AXFR sans question** (#297) : un seul label
+  hors UTF-8 faisait refuser tout le message (`Utf8Error`), alors que la
+  RFC 2181 (§11) permet un label binaire quelconque ; une requete dont un
+  label porte `ä` en Latin-1 sortait Unknown sur UDP 53. Un tel label
+  prend desormais la forme de presentation de la RFC 1035 (§5.1) : l'ASCII
+  graphique tel quel, `.` et `\` echappes, tout autre octet en `\DDD`
+  (`j\228germeister`). Les noms UTF-8 ne changent pas. Sur TCP, une
+  reponse peut laisser sa question vide, comme les messages AXFR qui
+  suivent le premier (RFC 5936 §2.2.1) ; une requete garde l'exigence
+  d'une question. La sonde aveugle UDP garde les siennes : une question
+  (#118), et des noms UTF-8, un nom echappe n'y etant pas une preuve.
 
 ## [13.0.0] - 2026-11-17
 

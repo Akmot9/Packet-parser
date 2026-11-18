@@ -42,6 +42,28 @@ impl TryFrom<&[u8]> for DnsHeader {
 }
 
 impl DnsHeader {
+    /// Like [`TryFrom::try_from`], for a message carried by TCP: a response
+    /// may leave its question section empty. RFC 5936 §2.2.1, on the AXFR
+    /// response messages after the first : « it MAY do the same or leave the
+    /// Question section empty » (#297). A query still needs its question.
+    pub(crate) fn try_from_tcp(bytes: &[u8]) -> Result<Self, DnsHeaderError> {
+        check_packet_length(bytes)?;
+
+        let transaction_id = u16::from_be_bytes([bytes[0], bytes[1]]);
+        let flags = verify_dns_flags(u16::from_be_bytes([bytes[2], bytes[3]]))?;
+        let is_response = flags & 0x8000 != 0;
+        let counts = if is_response {
+            parse_count_allow_empty_question(&bytes[4..12])?
+        } else {
+            validate_and_parse_count(&bytes[4..12])?
+        };
+        Ok(Self {
+            transaction_id,
+            flags,
+            counts,
+        })
+    }
+
     /// Like [`TryFrom::try_from`], but tolerates an empty question section
     /// (mDNS responses, RFC 6762 §6).
     pub(crate) fn try_from_mdns(bytes: &[u8]) -> Result<Self, DnsHeaderError> {

@@ -42,6 +42,8 @@ pub enum DnsQueryParseError {
     /// sur le fil, pointeurs de compression suivis (RFC 1035 §3.1).
     #[error("Out of bound parse")]
     OutOfBoundParse,
+    /// Plus produite depuis #297 : un label hors UTF-8 prend la forme de
+    /// presentation de la RFC 1035 §5.1. Gardee pour ne rien rompre.
     #[error("UTF-8 parsing error: {0}")]
     Utf8Error(#[from] std::string::FromUtf8Error),
     #[error("Invalid DNS compression pointer at offset {0} (loop or forward reference)")]
