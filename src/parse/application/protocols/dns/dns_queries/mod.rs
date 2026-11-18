@@ -157,21 +157,21 @@ mod tests {
         assert_eq!(offset, 16);
     }
 
+    /// RFC 2181 §11 : un label peut etre une chaine binaire quelconque
+    /// (#297). Hors UTF-8, il prend la forme de presentation de la RFC 1035
+    /// §5.1 ; un label UTF-8 voisin reste tel quel.
     #[test]
     fn test_parse_name_invalid_utf8() {
-        // This data includes bytes that do not form valid UTF-8 sequences for labels.
         let data = vec![
-            0x02, 0xFF, 0xFF, // Invalid UTF-8 bytes
-            0x00, // Null terminator
+            0x02, 0xFF, 0xFF, // octets hors UTF-8
+            0x05, b'a', b'.', b'\\', b' ', 0xE4, // ASCII a echapper, et Latin-1
+            0x03, b'c', b'o', b'm', // UTF-8
+            0x00,
         ];
 
-        let result = parse_name(&data, 0);
-        assert!(result.is_err());
-        if let Err(DnsQueryParseError::Utf8Error(_)) = result {
-            // Passed: The error is as expected.
-        } else {
-            panic!("Expected Utf8Error, but got {:?}", result);
-        }
+        let (name, offset) = parse_name(&data, 0).expect("labels binaires");
+        assert_eq!(name, "\\255\\255.a\\.\\\\\\032\\228.com");
+        assert_eq!(offset, data.len());
     }
 
     #[test]

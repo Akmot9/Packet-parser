@@ -354,3 +354,69 @@ fn issue_302_srvloc_error_replies_and_v1_encodings() {
         )
     );
 }
+
+/// Un nom DNS sur le fil, labels donnés en octets.
+fn dns_name(labels: &[&[u8]]) -> Vec<u8> {
+    let mut name = Vec::new();
+    for label in labels {
+        name.push(u8::try_from(label.len()).expect("label court"));
+        name.extend_from_slice(label);
+    }
+    name.push(0);
+    name
+}
+
+/// #297 : RFC 2181 §11, un label peut être binaire ; RFC 5936 §2.2.1, une
+/// réponse AXFR qui suit la première peut laisser sa question vide. La
+/// sonde aveugle UDP garde ses exigences : UTF-8 et question (#118).
+#[test]
+fn issue_297_binary_labels_and_axfr_responses_without_question_are_dns() {
+    use packet_parser::parse::application::protocols::dns::DnsPacket;
+
+    // Une requête A dont un label porte « ä » en Latin-1, comme la trame
+    // 38951 de The-Ultimate-PCAP.pcapng.
+    let query = |label: &[u8]| {
+        let mut message = vec![
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        message.extend_from_slice(&dns_name(&[label, b"example"]));
+        message.extend_from_slice(&[0x00, 0x01, 0x00, 0x01]);
+        message
+    };
+    let latin1 = query(b"j\xe4germeister");
+    assert_eq!(udp(53, &latin1), "DNS");
+    let packet = DnsPacket::try_from(latin1.as_slice()).expect("label binaire");
+    assert_eq!(packet.queries.queries[0].name, "j\\228germeister.example");
+    assert_ne!(udp(40_001, &latin1), "DNS");
+    assert_eq!(udp(40_001, &query(b"jagermeister")), "DNS");
+
+    // Une réponse AXFR sans question : un enregistrement A de ns1.example.
+    let axfr = |question: bool| {
+        let mut message = vec![0x7b, 0xae, 0x84, 0x00, 0x00, u8::from(question), 0x00, 0x01];
+        message.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]);
+        if question {
+            message.extend_from_slice(&dns_name(&[b"example"]));
+            message.extend_from_slice(&[0x00, 0xfc, 0x00, 0x01]); // AXFR, IN
+        }
+        message.extend_from_slice(&dns_name(&[b"ns1", b"example"]));
+        message.extend_from_slice(&[0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x0e, 0x10]);
+        message.extend_from_slice(&[0x00, 0x04, 0xc0, 0x00, 0x02, 0x01]);
+        message
+    };
+    let framed = |message: Vec<u8>| {
+        let mut segment = u16::try_from(message.len())
+            .expect("court")
+            .to_be_bytes()
+            .to_vec();
+        segment.extend_from_slice(&message);
+        segment
+    };
+    assert_eq!(tcp(53, &framed(axfr(false))), "DNS");
+    assert_eq!(tcp(53, &framed(axfr(true))), "DNS");
+    assert_ne!(udp(40_001, &axfr(false)), "DNS");
+
+    // Une requête sans question mais avec un enregistrement reste refusée.
+    let mut query_without_question = axfr(false);
+    query_without_question[2] = 0x00;
+    assert!(DnsPacket::try_from_tcp(&framed(query_without_question)).is_err());
+}
