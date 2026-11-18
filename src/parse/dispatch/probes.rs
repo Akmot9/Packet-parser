@@ -8,6 +8,7 @@
 
 use crate::checks::application::http::{may_start_request, may_start_response};
 use crate::checks::application::quic::is_plausible_short_header;
+use crate::checks::application::ssh::SSH_PREFIX;
 use crate::parse::application::protocols::ams::AmsPacket;
 use crate::parse::application::protocols::asterix::AsterixPacket;
 use crate::parse::application::protocols::bacnet::BacnetPacket;
@@ -123,6 +124,8 @@ pub(super) enum ProbeId {
     DnsTcp,
     Tls,
     Ssh,
+    /// La banniere apres des lignes de preambule (#307), essayee apres HTTP.
+    SshAfterLines,
     Http,
     Giop,
     Dhcp,
@@ -240,7 +243,11 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::DnsTcp => DnsPacket::try_from_tcp(payload).is_ok(),
         // Un record TLS 1.2 va jusqu'a 18 437 octets, au-dela de PROBE_CAP.
         ProbeId::Tls => TlsPacket::try_from(payload).is_ok(),
-        ProbeId::Ssh => SshPacket::try_from(payload).is_ok(),
+        // La banniere en tete du segment, avant HTTP ; apres des lignes de
+        // preambule (#307), apres HTTP, pour qu'une reponse HTTP dont le
+        // corps cite une banniere reste HTTP.
+        ProbeId::Ssh => payload.starts_with(SSH_PREFIX) && SshPacket::try_from(payload).is_ok(),
+        ProbeId::SshAfterLines => SshPacket::try_from(payload).is_ok(),
         // Requete ou reponse (#176) : la tete, jusqu'au premier CRLF CRLF,
         // est validee en UTF-8 et ligne par ligne ; sans separateur, tout le
         // prefixe est la tete. Chaque decodeur est precede de sa garde a cout

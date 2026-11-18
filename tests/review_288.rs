@@ -149,3 +149,12 @@ fn issue_307_lines_before_the_ssh_banner_keep_the_label() {
     assert_eq!(tcp(22, b"SSH-2.0-OpenSSH_9.6\r\n"), "SSH");
     assert_ne!(tcp(22, b"Welcome\r\nno banner here\r\n"), "SSH");
 }
+
+/// #307 : une réponse HTTP dont le corps cite une bannière SSH reste HTTP.
+/// La bannière après des lignes de préambule n'est essayée qu'après HTTP.
+#[test]
+fn issue_307_an_http_body_quoting_a_banner_stays_http() {
+    let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\
+        Content-Length: 21\r\n\r\nSSH-2.0-OpenSSH_9.6\r\n";
+    assert_eq!(tcp(8080, response), "HTTP");
+}

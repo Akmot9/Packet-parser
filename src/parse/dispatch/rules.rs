@@ -505,6 +505,10 @@ pub(super) static RULES: &[Rule] = &[
     // recouvrement avec les methodes HTTP.
     rule(ApplicationProtocol::Ssh, Guard::Tcp, ProbeId::Ssh),
     rule(ApplicationProtocol::Http, Guard::Tcp, ProbeId::Http),
+    // La banniere SSH apres les lignes qu'un serveur peut envoyer avant elle
+    // (RFC 4253 §4.2, #307) : apres HTTP, dont un corps peut citer une
+    // banniere.
+    rule(ApplicationProtocol::Ssh, Guard::Tcp, ProbeId::SshAfterLines),
     // GIOP/IIOP est transporte par TCP.
     rule(ApplicationProtocol::Giop, Guard::Tcp, ProbeId::Giop),
     // Java RMI (JRMP) hors de 1099 : `JRMI` suivi d'une version et d'un

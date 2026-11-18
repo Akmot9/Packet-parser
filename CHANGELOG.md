@@ -68,7 +68,10 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   sautees quand elles finissent par CRLF, ne commencent pas par `SSH-`,
   sont du texte sans octet de controle et tiennent dans 1024 octets
   (`SSH_MAX_PRELUDE_LENGTH`) ; sinon le segment reste refuse, la regle SSH
-  etant aveugle sur TCP.
+  etant aveugle sur TCP. La banniere en tete du segment est toujours
+  essayee avant HTTP ; apres des lignes, elle l'est apres HTTP, par une
+  seconde regle : une reponse HTTP dont le corps cite une banniere reste
+  HTTP.
 
 ## [13.0.0] - 2026-11-17
 
