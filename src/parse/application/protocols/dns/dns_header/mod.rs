@@ -205,19 +205,16 @@ mod tests {
     }
 
     #[test]
-    fn test_llmnr_header_rejects_ra_position_as_z_bit() {
+    fn test_llmnr_header_ignores_ra_position_as_z_bit() {
         // Flags 0x0180 : RD+RA en DNS classique — en LLMNR, le bit 7 fait
-        // partie de Z et doit etre nul.
+        // partie de Z, que le recepteur ignore (RFC 4795 §2.1.1). Les flags
+        // restent ceux du fil.
         let data = [
             0x00, 0x00, 0x01, 0x80, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
 
-        assert!(matches!(
-            DnsHeader::try_from_llmnr(&data),
-            Err(DnsHeaderError::FlagsError(DnsFlagsError::InvalidZField(
-                0b1000
-            )))
-        ));
+        let header = DnsHeader::try_from_llmnr(&data).unwrap();
+        assert_eq!(header.flags, 0x0180);
     }
 
     #[test]

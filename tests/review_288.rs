@@ -509,3 +509,25 @@ fn issue_299_the_udp_443_datagrams_of_the_ndpi_capture_are_quic() {
     }
     assert_eq!((on_443, elsewhere), (74, 141));
 }
+
+/// #288, « Laissés à décider » : RFC 4795 §2.1.1. Le récepteur ignore les
+/// bits Z (« MUST ignore them ») et le RCODE d'une requête (« the responder
+/// ignores the RCODE and assumes it to be zero ») : une requête qui les
+/// porte reste du LLMNR sur UDP 5355.
+#[test]
+fn issue_288_llmnr_receivers_ignore_z_bits_and_the_rcode_of_a_query() {
+    let query = |flags: u16| {
+        let mut message = vec![0x37, 0x4c];
+        message.extend_from_slice(&flags.to_be_bytes());
+        message.extend_from_slice(&[0x00, 0x01, 0, 0, 0, 0, 0, 0]); // 1 question
+        message.extend_from_slice(&dns_name(&[b"demo"]));
+        message.extend_from_slice(&[0x00, 0x01, 0x00, 0x01]); // A, IN
+        message
+    };
+    assert_eq!(udp(5355, &query(0x0000)), "LLMNR");
+    for flags in [0x0080, 0x0010, 0x00f0, 0x0003, 0x00f5] {
+        assert_eq!(udp(5355, &query(flags)), "LLMNR", "{flags:#06x}");
+    }
+    // Un opcode inconnu reste écarté : « MUST be silently discarded ».
+    assert_ne!(udp(5355, &query(0x0800)), "LLMNR");
+}

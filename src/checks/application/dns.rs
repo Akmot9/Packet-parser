@@ -160,25 +160,26 @@ pub(crate) fn verify_mdns_flags(flags: u16) -> Result<u16, DnsFlagsError> {
 ///
 /// La disposition differe de DNS : le bit 10 est C (conflict), le bit 8 est
 /// T (tentative), et Z couvre 4 bits (7-4) — la position RA de DNS fait
-/// partie de Z. Regles appliquees :
-/// - seul l'opcode 0 (requete standard) est defini, tout autre est ecarte ;
-/// - les 4 bits Z doivent etre a zero (les emetteurs les envoient a zero) ;
-/// - RCODE doit etre nul dans une requete, et reste borne aux rcodes DNS
-///   classiques (0..=5) dans une reponse ;
+/// partie de Z. Regles appliquees, celles du recepteur :
+/// - seul l'opcode 0 (requete standard) est defini ; un autre opcode « MUST
+///   be silently discarded » ;
+/// - les 4 bits Z sont ignores : l'emetteur doit les mettre a zero, mais le
+///   recepteur « MUST ignore them » (#288) ;
+/// - le RCODE d'une requete est ignore (« the responder ignores the RCODE
+///   and assumes it to be zero ») ; celui d'une reponse reste borne aux
+///   rcodes DNS classiques (0..=5) ;
 /// - les bits C et T sont libres dans les deux sens.
+///
+/// Les flags sont rendus tels que lus sur le fil, bits ignores compris.
+/// Seul le port UDP 5355, reserve a LLMNR, separe donc une reponse DNS
+/// recursive (RA dans Z) d'une reponse LLMNR.
 pub(crate) fn verify_llmnr_flags(flags: u16) -> Result<u16, DnsFlagsError> {
-    let (qr, opcode, z, rcode) = extract_llmnr_flags(flags);
+    let (qr, opcode, rcode) = extract_llmnr_flags(flags);
 
     if opcode != 0 {
         return Err(DnsFlagsError::InvalidOpcode(opcode));
     }
-    if z != 0 {
-        return Err(DnsFlagsError::InvalidZField(z));
-    }
-    if qr == 0 && rcode != 0 {
-        return Err(DnsFlagsError::InvalidRCode(rcode));
-    }
-    if rcode > 5 {
+    if qr == 1 && rcode > 5 {
         return Err(DnsFlagsError::InvalidRCode(rcode));
     }
 
@@ -221,15 +222,14 @@ fn extract_dns_flags(flags: u16) -> (u16, u16, u16, u16, u16, u16, u16, u16) {
     (qr, opcode, aa, tc, rd, ra, z, rcode)
 }
 
-/// Decoupe les flags selon la disposition LLMNR : (qr, opcode, z, rcode).
-/// C (bit 10) et T (bit 8) ne sont pas retournes car aucune regle de
-/// validation ne les contraint.
-fn extract_llmnr_flags(flags: u16) -> (u16, u16, u16, u16) {
+/// Decoupe les flags selon la disposition LLMNR : (qr, opcode, rcode).
+/// C (bit 10), T (bit 8) et Z (bits 7-4) ne sont pas retournes car aucune
+/// regle de validation ne les contraint.
+fn extract_llmnr_flags(flags: u16) -> (u16, u16, u16) {
     let qr = (flags >> 15) & 0b1;
     let opcode = (flags >> 11) & 0b1111;
-    let z = (flags >> 4) & 0b1111;
     let rcode = flags & 0b1111;
-    (qr, opcode, z, rcode)
+    (qr, opcode, rcode)
 }
 
 fn verify_z_field(z: u16) -> Result<(), DnsFlagsError> {
@@ -349,27 +349,22 @@ mod tests {
     }
 
     #[test]
-    fn llmnr_flags_reject_nonzero_z_bits() {
-        // Bit 7 (position RA en DNS) fait partie de Z en LLMNR.
-        assert_eq!(
-            verify_llmnr_flags(0x0080),
-            Err(DnsFlagsError::InvalidZField(0b1000))
-        );
-        // Bit 4, dernier bit de Z.
-        assert_eq!(
-            verify_llmnr_flags(0x0010),
-            Err(DnsFlagsError::InvalidZField(0b0001))
-        );
+    fn llmnr_flags_ignore_z_bits() {
+        // RFC 4795 §2.1.1 : « implementations of this specification MUST
+        // ignore them ». Bit 7 (position RA en DNS), bit 4 (dernier bit de
+        // Z), puis les quatre, en requete et en reponse.
+        for flags in [0x0080, 0x0010, 0x00F0, 0x80F0] {
+            assert_eq!(verify_llmnr_flags(flags), Ok(flags), "{flags:#06x}");
+        }
     }
 
     #[test]
-    fn llmnr_flags_reject_rcode_in_query_and_out_of_range_rcode() {
-        // RCODE non nul dans une requete.
-        assert_eq!(
-            verify_llmnr_flags(0x0003),
-            Err(DnsFlagsError::InvalidRCode(3))
-        );
-        // RCODE hors bornes dans une reponse.
+    fn llmnr_flags_ignore_query_rcode_and_bound_response_rcode() {
+        // Requete : « the responder ignores the RCODE and assumes it to be
+        // zero », quelle que soit sa valeur.
+        assert_eq!(verify_llmnr_flags(0x0003), Ok(0x0003));
+        assert_eq!(verify_llmnr_flags(0x000F), Ok(0x000F));
+        // Reponse : RCODE hors des rcodes DNS classiques.
         assert_eq!(
             verify_llmnr_flags(0x8006),
             Err(DnsFlagsError::InvalidRCode(6))
