@@ -75,6 +75,25 @@ pub fn validate_chunk_available(
 /// Checks the 3-byte message type field against the known OPC UA TCP message
 /// types (`HEL`, `ACK`, `ERR`, `RHE`, `OPN`, `MSG`, `CLO`) and returns the
 /// typed variant.
+/// Les sept types de message UACP, ceux que lit [`extract_message_type`].
+const MESSAGE_TYPES: [&[u8; 3]; 7] = [b"HEL", b"ACK", b"ERR", b"RHE", b"OPN", b"MSG", b"CLO"];
+
+/// Checks that `present`, the first one to three bytes of a header that TCP
+/// cut, begin a known message type (#296). With fewer than three bytes, the
+/// error pads the missing ones with zero, which no message type contains.
+pub fn validate_message_type_prefix(present: &[u8]) -> Result<(), OpcuaParseError> {
+    let present = present.get(..3).unwrap_or(present);
+    if MESSAGE_TYPES.iter().any(|known| known.starts_with(present)) {
+        return Ok(());
+    }
+    let mut bytes = [0u8; 3];
+    bytes
+        .iter_mut()
+        .zip(present)
+        .for_each(|(slot, byte)| *slot = *byte);
+    Err(OpcuaParseError::UnknownMessageType(bytes))
+}
+
 pub fn extract_message_type(bytes: [u8; 3]) -> Result<OpcuaMessageType, OpcuaParseError> {
     match &bytes {
         b"HEL" => Ok(OpcuaMessageType::Hello),
@@ -147,6 +166,44 @@ pub fn extract_ua_string(bytes: &[u8]) -> Result<(Option<&str>, usize), OpcuaPar
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn message_types_are_the_ones_extract_message_type_reads() {
+        for known in MESSAGE_TYPES {
+            assert!(extract_message_type(*known).is_ok(), "{known:?}");
+        }
+    }
+
+    /// #333 : un en-tete coupe a un ou deux octets doit commencer un type
+    /// connu, comme a trois.
+    #[test]
+    fn message_type_prefix_is_checked_from_the_first_byte() {
+        for present in [
+            &b"H"[..],
+            b"M",
+            b"C",
+            b"MS",
+            b"OP",
+            b"RH",
+            b"MSG",
+            b"CLO",
+            b"MSGF",
+        ] {
+            assert_eq!(validate_message_type_prefix(present), Ok(()), "{present:?}");
+        }
+        for (present, reported) in [
+            (&b"d"[..], *b"d\0\0"),
+            (b"MX", *b"MX\0"),
+            (b"XYZ", *b"XYZ"),
+            (b"MSX", *b"MSX"),
+        ] {
+            assert_eq!(
+                validate_message_type_prefix(present),
+                Err(OpcuaParseError::UnknownMessageType(reported)),
+                "{present:?}"
+            );
+        }
+    }
 
     #[test]
     fn test_validate_tcp_header_length_ok() {

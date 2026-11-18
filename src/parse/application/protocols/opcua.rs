@@ -9,7 +9,7 @@ use crate::{
     checks::application::opcua::{
         OPCUA_TCP_HEADER_LEN, extract_chunk_type, extract_message_type, extract_u32_le,
         extract_ua_string, validate_body_len, validate_chunk_available, validate_message_size,
-        validate_tcp_header_length,
+        validate_message_type_prefix, validate_tcp_header_length,
     },
     errors::application::opcua::OpcuaParseError,
 };
@@ -242,11 +242,10 @@ fn next_chunk<'a>(remaining: &'a [u8]) -> Result<(OpcuaChunk<'a>, usize), OpcuaP
 pub const OPCUA_BLIND_MAX_PARTIAL_SIZE: u32 = 1 << 24;
 
 /// Verifie le debut d'en-tete d'un reste de moins de 8 octets apres un chunk
-/// complet : les octets presents du type de message et du type de chunk.
+/// complet : les octets presents du type de message, des le premier (#333),
+/// puis le type de chunk.
 fn validate_chunk_start(rest: &[u8]) -> Result<(), OpcuaParseError> {
-    if let [a, b, c, ..] = *rest {
-        extract_message_type([a, b, c])?;
-    }
+    validate_message_type_prefix(rest)?;
     if let Some(&chunk_type) = rest.get(3) {
         extract_chunk_type(chunk_type)?;
     }
@@ -502,7 +501,9 @@ mod tests {
             assert_eq!(packet.chunks.len(), 1, "{cut} octets");
             assert!(!OpcuaPacket::is_blind_tcp_match(&bytes), "{cut} octets");
         }
-        for wrong in [&b"XYZ"[..], b"MSGZ"] {
+        // Un ou deux octets doivent aussi commencer un type connu (#333) :
+        // aucun ne commence par `d`, ni par `MX`.
+        for wrong in [&b"d"[..], b"MX", b"XYZ", b"MSGZ"] {
             let mut bytes = ack.clone();
             bytes.extend_from_slice(wrong);
             assert!(
