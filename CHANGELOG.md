@@ -6,6 +6,10 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [13.1.1] - 2026-11-18
+
+Correctif : une seule correction, trouvee par le fuzz nocturne.
+
 ### Corrige
 
 - **OPC UA, en-tete coupe a un ou deux octets** (#333) : depuis #296, un

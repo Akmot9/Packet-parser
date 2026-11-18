@@ -1,6 +1,15 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-18 : la **13.1.0 est publiee** (tag `v13.1.0`, publication
+Etat au 2026-11-18, 13.1.1 : la **13.1.1 est publiee** (tag `v13.1.1`,
+publication par le workflow). Correctif d'une seule correction, que le fuzz
+nocturne a trouvee le jour meme (#333) : depuis #296, le decodeur OPC UA
+acceptait, sur le port et par Decode As, un chunk complet suivi d'un ou
+deux octets quelconques. Ces octets doivent desormais commencer un type de
+message. L'oracle de `parse_opcua`, reste a l'ancienne regle, est a jour.
+Aucune issue n'est ouverte. Reste a faire hors de ce depot : le livre,
+encore en 12.1.0.
+
+Etat anterieur (2026-11-18, 13.1.0) : la **13.1.0 est publiee** (tag `v13.1.0`, publication
 par le workflow). Mineure, sans rupture. Elle ajoute la relecture d'une
 etiquette `Custom` (`ParseConfig::application_protocol`, #323) et la
 feature `rules` (#325) : des parseurs ajoutes declares en TOML, sans code.
