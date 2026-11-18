@@ -17,9 +17,11 @@
 use core::convert::TryFrom;
 
 use crate::{
-    checks::application::umas::{extract_umas_header, validate_umas_function_code},
+    checks::application::umas::{
+        UMAS_MODBUS_FUNCTION_CODE, extract_umas_header, validate_umas_function_code,
+    },
     errors::application::umas::UmasError,
-    parse::application::protocols::modbus_tcp::MBAP,
+    parse::application::protocols::modbus_tcp::{MBAP, ModbusTcpPacket},
 };
 
 /// Deuxieme octet du PDU UMAS : code fonction d'une requete, ou statut d'une
@@ -113,6 +115,27 @@ impl<'a> TryFrom<&'a [u8]> for UmasPacket<'a> {
             function: UmasFunction::from(function_code),
             data,
         })
+    }
+}
+
+impl UmasPacket<'_> {
+    /// Sonde UMAS de la table, sur le port 502 comme a l'aveugle (#295).
+    ///
+    /// [`TryFrom::try_from`] ne lit que le premier MBAP, et ignore la fin du
+    /// segment. La sonde exige en plus ce qu'exige Modbus/TCP : des MBAP qui
+    /// pavent le segment ([`ModbusTcpPacket`]), chacun de code fonction 0x5A
+    /// avec un en-tete UMAS. Sans cela, quatre octets `5a ss ff` apres un
+    /// MBAP suivi de texte passaient pour de l'UMAS, devant la sonde Modbus
+    /// que #167 a resserree. Le code fonction du premier MBAP est lu d'abord :
+    /// la sonde est essayee sur chaque segment TCP non reconnu.
+    pub(crate) fn is_tcp_match(payload: &[u8]) -> bool {
+        payload.get(7) == Some(&UMAS_MODBUS_FUNCTION_CODE)
+            && ModbusTcpPacket::try_from(payload).is_ok_and(|packet| {
+                packet.mbaps.iter().all(|mbap| {
+                    validate_umas_function_code(mbap.pdu.function_code).is_ok()
+                        && extract_umas_header(mbap.pdu.pdu_data).is_ok()
+                })
+            })
     }
 }
 

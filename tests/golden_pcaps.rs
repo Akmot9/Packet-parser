@@ -421,12 +421,17 @@ fn application_classification_histogram_is_frozen() {
     // EndpointIdentifier des clients, qui n'ont pas d'octet de type, et un
     // en-tete au protocole inconnu. Aucune autre capture ne change
     // d'etiquette. Parite segment par segment dans `tests/java_rmi_golden.rs`.
+    //
+    // 2026-11-18 (#298, COTP) : le CR de classe 0 a TPDU de 8192 octets du
+    // poste IEC 61850 (iti_Sample_File_MMS_and_GOOSE.pcap, trame 107), que
+    // tshark decode, est tolere : "COTP" 32 -> 33, "Unknown" 9 599 -> 9 598.
+    // Les autres constats de #288 ne changent aucune etiquette du corpus.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 6735),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
-        ("COTP", 32),
+        ("COTP", 33),
         ("DHCP", 71),
         ("DIS", 390),
         ("DNP3", 218),
@@ -464,7 +469,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 9_599),
+        ("Unknown", 9_598),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

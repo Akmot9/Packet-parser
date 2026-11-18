@@ -568,12 +568,24 @@ fn packetflow_validates_concatenated_non_user_tpdus() {
 #[test]
 fn strict_fingerprint_rejects_class_zero_only_parameter_combinations() {
     let mut payload = tpkt_cotp_connection(0xE0);
-    // The CR is class 0; TPDU sizes 4096/8192 are only valid outside
-    // class 0 even though 0x0c/0x0d are valid TPDU-size codes in general.
-    payload[13] = 0x0D;
+    // The CR is class 0; additional option selection (0xC6) is only valid
+    // outside class 0.
+    payload[11] = 0xC6;
+    payload[13] = 0x01;
 
     assert!(CotpHeader::try_from(&payload[4..]).is_ok());
     assert!(cotp_from_tpkt(&payload).is_none());
+}
+
+#[test]
+fn strict_fingerprint_tolerates_large_tpdu_sizes_in_class_zero() {
+    // RFC 905 §13.3.4 excludes 4096 and 8192 from class 0, but a real IEC
+    // 61850 station sends 8192 (#298) and the COTP rule is port-guarded.
+    for size in [0x0C, 0x0D] {
+        let mut payload = tpkt_cotp_connection(0xE0);
+        payload[13] = size;
+        assert!(cotp_from_tpkt(&payload).is_some(), "TPDU size {size:#04x}");
+    }
 }
 
 #[test]

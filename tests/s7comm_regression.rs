@@ -778,7 +778,9 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     let (mms_cotp, cotp_frames): (Vec<_>, Vec<_>) = cotp_frames
         .into_iter()
         .partition(|frame| frame.starts_with("goose/iti_Sample_File_MMS_and_GOOSE.pcap:"));
-    assert_eq!(mms_cotp.len(), 32, "segments COTP du poste IEC 61850");
+    // 33 depuis #298, comme tshark sur TCP 102 : le CR de la trame 107
+    // annonce une TPDU de 8192 octets en classe 0.
+    assert_eq!(mms_cotp.len(), 33, "segments COTP du poste IEC 61850");
     assert!(
         cotp_frames.is_empty(),
         "false-positive COTP labels: {cotp_frames:?}"

@@ -479,7 +479,9 @@ pub(super) static RULES: &[Rule] = &[
     // port (#102).
     rule(ApplicationProtocol::BacnetIp, Guard::Udp, ProbeId::Bacnet),
     rule(ApplicationProtocol::Bitcoin, Guard::Tcp, ProbeId::Bitcoin),
-    rule(ApplicationProtocol::OpcUa, Guard::Tcp, ProbeId::Opcua),
+    // OPC UA hors port : chunks qui pavent le segment, partiel de taille
+    // plausible (#296).
+    rule(ApplicationProtocol::OpcUa, Guard::Tcp, ProbeId::OpcuaBlind),
     // EtherNet/IP est reellement bi-transport (TCP 44818, UDP 2222).
     rule(
         ApplicationProtocol::EthernetIp,
