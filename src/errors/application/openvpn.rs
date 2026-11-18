@@ -12,7 +12,7 @@ pub enum OpenVpnError {
     #[error("OpenVPN packet is empty")]
     EmptyPacket,
 
-    #[error("unknown OpenVPN opcode {opcode:#04x}: defined opcodes are 1 to 10")]
+    #[error("unknown OpenVPN opcode {opcode:#04x}: defined opcodes are 1 to 11")]
     UnknownOpcode { opcode: u8 },
 
     #[error(

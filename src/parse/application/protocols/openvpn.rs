@@ -64,7 +64,7 @@ pub enum OpenVpnOpcode {
 }
 
 impl OpenVpnOpcode {
-    /// Mappe la valeur 5 bits du fil vers l'opcode, `None` hors de 1..=10.
+    /// Mappe la valeur 5 bits du fil vers l'opcode, `None` hors de 1..=11.
     pub fn from_wire(wire: u8) -> Option<Self> {
         Some(match wire {
             1 => Self::ControlHardResetClientV1,
