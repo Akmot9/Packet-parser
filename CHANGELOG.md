@@ -6,6 +6,11 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [13.1.0] - 2026-11-18
+
+Mineure : des ajouts d'API, sans rupture, et les corrections de la relecture
+des decodeurs contre leur spec (#288).
+
 ### Ajoute
 
 - **Regles TOML, feature `rules`** (#325) : des parseurs ajoutes declares

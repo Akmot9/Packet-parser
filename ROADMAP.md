@@ -1,6 +1,18 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-17 : la **13.0.0 est publiee** (tag `v13.0.0`, publication
+Etat au 2026-11-18 : la **13.1.0 est publiee** (tag `v13.1.0`, publication
+par le workflow). Mineure, sans rupture. Elle ajoute la relecture d'une
+etiquette `Custom` (`ParseConfig::application_protocol`, #323) et la
+feature `rules` (#325) : des parseurs ajoutes declares en TOML, sans code.
+Elle solde la relecture des decodeurs contre leur spec (#288, fermee) : les
+quatorze P3 (#294 a #307, PR #327 a #332), puis ses trois decisions,
+LLMNR selon la RFC 4795 (#334), EtherNet/IP et Bitcoin a plusieurs
+messages par segment TCP (#335), et le texte d'OpenVPN (#336) ; SMTP
+`BDAT` reste refuse. #241, #211 et #207 sont fermees : le statut FOSSA a
+disparu de `main`. Reste a faire hors de ce depot : le livre, encore en
+12.1.0, et des decodeurs que la relecture n'a pas couverts.
+
+Etat anterieur (2026-11-17, 13.0.0) : la **13.0.0 est publiee** (tag `v13.0.0`, publication
 par le workflow). Majeure, cinq ruptures, chacune dans `MIGRATION-13.md` :
 `CorruptedLayer.error` type et `CorruptedLayer` `#[non_exhaustive]`
 (#275), `QuicError::LengthFieldTooSmall { length_field, min }` (#293),
@@ -311,14 +323,13 @@ ne sort que pour une correction de bug ou un ajout de protocole.
 | #319 `ApplicationProtocol::Custom(&'static str)` pour les parseurs ajoutes : plus de cast `as` | publie, 13.0.0 |
 | #315 NTP : `NtpTimestamp` au lieu de `DateTime<Utc>`, `chrono` retire, `TimestampConversionError` supprimee | publie, 13.0.0 |
 
-**13.x, sur `main`, non publiee.** Des ajouts, sans rupture ; ils sortiront
-avec la prochaine version qu'une correction de bug ou un protocole
-justifiera (§1).
+**13.1.0.** Des ajouts, sans rupture, sortis avec les corrections de #288
+(§1).
 
 | Ajout | Etat |
 |---|---|
-| #323 `ParseConfig::application_protocol` : relire une etiquette `Custom` | fait, sur `main` |
-| #325 feature `rules` : parseurs ajoutes declares en TOML, sans code (`RuleSet`, `with_rules`, `examples/rules_check.rs`) | fait, sur `main` |
+| #323 `ParseConfig::application_protocol` : relire une etiquette `Custom` | publie, 13.1.0 |
+| #325 feature `rules` : parseurs ajoutes declares en TOML, sans code (`RuleSet`, `with_rules`, `examples/rules_check.rs`) | publie, 13.1.0 |
 
 Decision #218 (2026-11-15) : `Application` ne porte pas de `details`, et la
 crate n'ajoute pas de decodage a la demande. Qui veut les champs du L7
