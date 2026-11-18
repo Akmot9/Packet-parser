@@ -133,6 +133,17 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   suivent le premier (RFC 5936 §2.2.1) ; une requete garde l'exigence
   d'une question. La sonde aveugle UDP garde les siennes : une question
   (#118), et des noms UTF-8, un nom echappe n'y etant pas une preuve.
+- **QUIC, Version Negotiation, versions reservees et CID v1** (#299) : un
+  Version Negotiation (version 0, RFC 9000 §17.2.1) et une version
+  reservee 0x?a?a?a?a (RFC 9000 §15) sortaient Unknown sur UDP 443, alors
+  qu'un en-tete long v1 au Connection ID de 21 a 255 octets etait du QUIC.
+  Le decodeur lit le Version Negotiation (nouvelle variante
+  `QuicPacket::VersionNegotiation`, avec `version()` et
+  `supported_versions()`) et refuse un CID v1 de plus de 20 octets
+  (`QuicError::ConnectionIdTooLong`). Une nouvelle regle de port UDP 443
+  lit les autres versions par leurs invariants (RFC 8999 §5.1). La sonde
+  aveugle ne prend que la v1. Les 74 datagrammes UDP 443 de
+  `ndpi_quic_interop_V.pcapng` sont desormais du QUIC, comme dans tshark.
 
 ## [13.0.0] - 2026-11-17
 

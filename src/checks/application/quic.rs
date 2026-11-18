@@ -11,6 +11,16 @@ use crate::{
 /// QUIC v1 version number (RFC 9000).
 pub const QUIC_V1: u32 = 1;
 
+/// La version d'un paquet Version Negotiation (RFC 9000 §17.2.1, RFC 8999
+/// §6) : aucune version ne la porte.
+pub const QUIC_VERSION_NEGOTIATION: u32 = 0;
+
+/// Longueur maximale d'un Connection ID en QUIC v1. RFC 9000 §17.2 :
+/// « Endpoints that receive a version 1 long header with a value larger
+/// than 20 MUST drop the packet. » Les invariants (RFC 8999 §5.1) en
+/// permettent 255 pour les autres versions.
+pub const QUIC_V1_MAX_CID_LEN: u8 = 20;
+
 /// Taille du Retry Integrity Tag (RFC 9001 §5.8) : tag AEAD de 128 bits
 /// place a la fin de tout paquet Retry.
 pub const QUIC_RETRY_INTEGRITY_TAG_LEN: usize = 16;
@@ -31,6 +41,19 @@ pub const QUIC_SHORT_HEADER_MIN_LEN: usize = 21;
 /// Signature faible : à n'utiliser que derrière un garde-fou de port.
 pub fn is_plausible_short_header(payload: &[u8]) -> bool {
     payload.len() >= QUIC_SHORT_HEADER_MIN_LEN && payload[0] & 0b1100_0000 == 0b0100_0000
+}
+
+/// Les invariants d'un en-tete long (RFC 8999 §5.1), communs a toutes les
+/// versions : le bit de forme a 1, la version sur 4 octets, puis deux
+/// Connection IDs, chacun precede de sa longueur, dans le datagramme. Le
+/// reste de l'en-tete, le Fixed Bit compris, est propre a la version.
+/// Signature faible : a n'utiliser que derriere un garde-fou de port.
+pub fn is_invariant_long_header(payload: &[u8]) -> bool {
+    let mut cur = QuicCursor::new(payload);
+    cur.take_u8().is_ok_and(|b0| b0 & 0b1000_0000 != 0)
+        && cur.take(4).is_ok()
+        && read_cid(&mut cur).is_ok()
+        && read_cid(&mut cur).is_ok()
 }
 
 /// Bounds-checked cursor over a QUIC packet slice.
@@ -235,11 +258,48 @@ pub(crate) fn split_retry_token_and_tag(
 }
 
 /// Lit un Connection ID (longueur u8 + octets) sans copie, en vérifiant
-/// les bornes avant chaque lecture.
+/// les bornes avant chaque lecture. Toute longueur est lue : c'est la
+/// forme des invariants (RFC 8999 §5.1), et d'un Version Negotiation.
 pub(crate) fn read_cid<'a>(cur: &mut QuicCursor<'a>) -> Result<ConnectionId<'a>, QuicError> {
     let len = cur.take_u8()?;
     let bytes = cur.take(len as usize)?;
     Ok(ConnectionId { len, bytes })
+}
+
+/// Un Connection ID de QUIC v1 tient en [`QUIC_V1_MAX_CID_LEN`] octets
+/// (RFC 9000 §17.2, #299).
+pub fn validate_v1_cid_length(length: u8) -> Result<(), QuicError> {
+    if length > QUIC_V1_MAX_CID_LEN {
+        return Err(QuicError::ConnectionIdTooLong {
+            length,
+            max: QUIC_V1_MAX_CID_LEN,
+        });
+    }
+    Ok(())
+}
+
+/// Comme [`read_cid`], pour un en-tete long de QUIC v1 : la longueur est
+/// verifiee avant que les octets soient lus.
+pub(crate) fn read_v1_cid<'a>(cur: &mut QuicCursor<'a>) -> Result<ConnectionId<'a>, QuicError> {
+    let len = cur.take_u8()?;
+    validate_v1_cid_length(len)?;
+    let bytes = cur.take(len as usize)?;
+    Ok(ConnectionId { len, bytes })
+}
+
+/// La liste des versions d'un Version Negotiation (RFC 8999 §6) : des
+/// blocs de 4 octets jusqu'a la fin du datagramme. Un bloc incomplet est
+/// refuse avec `Truncated`. Une liste vide reste lisible : la notation
+/// `Supported Version (32) ...` admet zero repetition (RFC 9000 §1.3).
+pub fn validate_supported_versions(versions: &[u8]) -> Result<(), QuicError> {
+    let partial = versions.len() % 4;
+    if partial != 0 {
+        return Err(QuicError::Truncated {
+            needed: 4,
+            remaining: partial,
+        });
+    }
+    Ok(())
 }
 
 /// Lit Length (varint) puis les `Length` octets qui le suivent : le numéro
@@ -402,6 +462,44 @@ mod tests {
     fn test_validate_fixed_bit() {
         assert_eq!(validate_fixed_bit(true), Ok(()));
         assert_eq!(validate_fixed_bit(false), Err(QuicError::FixedBitNotSet));
+    }
+
+    #[test]
+    fn a_v1_connection_id_holds_twenty_bytes() {
+        assert_eq!(validate_v1_cid_length(0), Ok(()));
+        assert_eq!(validate_v1_cid_length(20), Ok(()));
+        assert_eq!(
+            validate_v1_cid_length(21),
+            Err(QuicError::ConnectionIdTooLong {
+                length: 21,
+                max: 20
+            })
+        );
+        // La longueur est refusee avant la lecture des octets : un CID de
+        // 21 octets tronque donne la meme erreur.
+        let mut cur = QuicCursor::new(&[21, 0xAA]);
+        assert_eq!(
+            read_v1_cid(&mut cur),
+            Err(QuicError::ConnectionIdTooLong {
+                length: 21,
+                max: 20
+            })
+        );
+        let mut cur = QuicCursor::new(&[21; 22]);
+        assert_eq!(read_cid(&mut cur).map(|cid| cid.len), Ok(21));
+    }
+
+    #[test]
+    fn supported_versions_come_in_blocks_of_four_bytes() {
+        assert_eq!(validate_supported_versions(&[]), Ok(()));
+        assert_eq!(validate_supported_versions(&[0, 0, 0, 1]), Ok(()));
+        assert_eq!(
+            validate_supported_versions(&[0, 0, 0, 1, 0xFF]),
+            Err(QuicError::Truncated {
+                needed: 4,
+                remaining: 1
+            })
+        );
     }
 
     #[test]

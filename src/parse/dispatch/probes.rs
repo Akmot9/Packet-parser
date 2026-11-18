@@ -164,11 +164,14 @@ pub(super) enum ProbeId {
     JavaRmi,
     /// Java RMI a l'aveugle : en-tete de flux, Call et Return seulement.
     JavaRmiBlind,
+    /// QUIC sur UDP 443 : la v1 et le Version Negotiation lus en entier,
+    /// les autres versions par leurs invariants (#299).
+    QuicLongHeaderPort,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::JavaRmiBlind;
+    pub(super) const LAST: Self = Self::QuicLongHeaderPort;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -221,6 +224,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::JavaRmiBlind => {
             JavaRmiPacket::try_from(payload).is_ok_and(|packet| packet.is_self_identifying())
         }
+        ProbeId::QuicLongHeaderPort => QuicPacket::is_port_match(payload),
         ProbeId::QuicShortHeader => is_plausible_short_header(payload),
         ProbeId::Ntp => NtpPacket::try_from(payload).is_ok(),
         // Les champs d'extension et le MAC doivent finir exactement avec le
@@ -274,7 +278,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::ModbusTcp => ModbusTcpPacket::try_from(payload).is_ok(),
         ProbeId::ModbusTcpBlind => ModbusTcpPacket::is_blind_tcp_match(payload),
         // La longueur de l'en-tete long doit tenir dans le datagramme.
-        ProbeId::QuicLongHeader => QuicPacket::try_from(payload).is_ok(),
+        ProbeId::QuicLongHeader => QuicPacket::is_blind_udp_match(payload),
         // Les paquets doivent paver le segment.
         ProbeId::Mqtt => MqttPacket::try_from(payload).is_ok(),
         // Les sections doivent consommer exactement le datagramme, au-dela de

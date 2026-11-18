@@ -8,7 +8,12 @@
 //! sur son port. Les octets sont construits d'après la spécification citée
 //! par chaque issue.
 
-use packet_parser::{TransportProtocol, classify_payload};
+use std::path::Path;
+
+use packet_parser::{TransportProtocol, classify_payload, parse};
+
+mod common;
+use common::{FileRead, read_capture};
 
 /// L'étiquette d'une charge envoyée de 40000 vers `port`.
 fn label(transport: TransportProtocol, port: u16, payload: &[u8]) -> &'static str {
@@ -419,4 +424,88 @@ fn issue_297_binary_labels_and_axfr_responses_without_question_are_dns() {
     let mut query_without_question = axfr(false);
     query_without_question[2] = 0x00;
     assert!(DnsPacket::try_from_tcp(&framed(query_without_question)).is_err());
+}
+
+/// Un en-tête long : octet 0, version, DCID, SCID vide, puis `rest`.
+fn quic_long_header(b0: u8, version: u32, dcid_len: u8, rest: &[u8]) -> Vec<u8> {
+    let mut packet = vec![b0];
+    packet.extend_from_slice(&version.to_be_bytes());
+    packet.push(dcid_len);
+    packet.extend(std::iter::repeat_n(0xAB, usize::from(dcid_len)));
+    packet.push(0);
+    packet.extend_from_slice(rest);
+    packet
+}
+
+/// #299 : RFC 8999. Sur UDP 443, un Version Negotiation (version 0) et une
+/// version réservée 0x?a?a?a?a sont du QUIC ; RFC 9000 §17.2, un en-tête
+/// long v1 au CID de plus de 20 octets ne l'est pas. Hors port, la sonde
+/// aveugle ne prend que la v1.
+#[test]
+fn issue_299_version_negotiation_reserved_versions_and_v1_connection_ids() {
+    // Un Version Negotiation qui propose la v1 et la v2 (RFC 9369).
+    let negotiation = quic_long_header(0xC6, 0, 8, &[0, 0, 0, 1, 0x6B, 0x33, 0x43, 0xCF]);
+    assert_eq!(udp(443, &negotiation), "QUIC");
+    assert_ne!(udp(40_001, &negotiation), "QUIC");
+
+    // Un Initial en version réservée : son contenu est propre à la version.
+    let mut protected = vec![0x00, 0x44, 0xBE]; // token vide, Length 1214
+    protected.extend([0x5A; 1214]);
+    let reserved = quic_long_header(0xC6, 0x0A0A_0A0A, 8, &protected);
+    assert_eq!(udp(443, &reserved), "QUIC");
+    assert_ne!(udp(40_001, &reserved), "QUIC");
+
+    // L'exemple de l'issue : `c0 00000001 15`, 21 octets de DCID, SCID vide,
+    // token vide, Length 21, puis 21 octets. Avec 20 octets de DCID, c'est
+    // un Initial v1.
+    let initial = |dcid_len| {
+        let mut rest = vec![0x00, 0x15];
+        rest.extend([0x5A; 21]);
+        quic_long_header(0xC0, 1, dcid_len, &rest)
+    };
+    assert_eq!(udp(443, &initial(20)), "QUIC");
+    assert_eq!(udp(40_001, &initial(20)), "QUIC");
+    assert_ne!(udp(443, &initial(21)), "QUIC");
+    assert_ne!(udp(40_001, &initial(21)), "QUIC");
+}
+
+/// #299, sur la capture de l'issue : les 74 datagrammes UDP 443 de
+/// `ndpi_quic_interop_V.pcapng`, 13 Version Negotiation et 61 paquets en
+/// version 0x0a0a0a0a, sont du QUIC, comme les décode tshark. Les mêmes
+/// sur 4433 et 4434 restent hors de la sonde aveugle.
+#[test]
+fn issue_299_the_udp_443_datagrams_of_the_ndpi_capture_are_quic() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("pcaps_exemple/protocols/ntp/ndpi_quic_interop_V.pcapng");
+    let FileRead::Frames {
+        frames,
+        read_error_after: None,
+    } = read_capture(&path)
+    else {
+        panic!("capture illisible");
+    };
+    let (mut on_443, mut elsewhere) = (0, 0);
+    for (index, (link_type, data)) in frames.iter().enumerate() {
+        let number = index + 1;
+        let flow = parse(*link_type, data).unwrap_or_else(|error| panic!("{number} : {error}"));
+        let Some(transport) = flow
+            .transport
+            .as_ref()
+            .filter(|transport| transport.protocol == TransportProtocol::Udp)
+        else {
+            continue;
+        };
+        let quic = flow
+            .application
+            .as_ref()
+            .is_some_and(|application| application.protocol.label() == "QUIC");
+        if [transport.source_port, transport.destination_port].contains(&Some(443)) {
+            assert!(quic, "trame {number}");
+            on_443 += 1;
+        } else {
+            assert!(!quic, "trame {number}");
+            elsewhere += 1;
+        }
+    }
+    assert_eq!((on_443, elsewhere), (74, 141));
 }
