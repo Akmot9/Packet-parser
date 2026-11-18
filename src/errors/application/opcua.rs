@@ -11,6 +11,8 @@ pub enum OpcuaParseError {
     #[error("OPC UA packet too short: expected at least {expected} bytes, got {actual}")]
     PacketTooShort { expected: usize, actual: usize },
 
+    /// Les octets d'un en-tete que TCP a coupe avant son troisieme octet
+    /// sont completes par des zeros, qu'aucun type ne contient (#333).
     #[error("unknown OPC UA message type: {0:?}")]
     UnknownMessageType([u8; 3]),
 

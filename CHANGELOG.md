@@ -6,6 +6,20 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Corrige
+
+- **OPC UA, en-tete coupe a un ou deux octets** (#333) : depuis #296, un
+  chunk complet suivi de 1 a 7 octets du suivant, que TCP a coupe, est lu
+  sur le port et par Decode As, et la rustdoc promettait que les octets
+  presents de ses types sont verifies. A un ou deux octets, rien ne
+  l'etait : un chunk OPN suivi de l'octet `d` etait accepte, alors
+  qu'aucun type de message ne commence par `d`. Ces octets doivent
+  desormais commencer l'un des sept types (`HEL`, `ACK`, `ERR`, `RHE`,
+  `OPN`, `MSG`, `CLO`), sinon `UnknownMessageType`, complete par des zeros.
+  La sonde aveugle, qui refuse tout reste, ne change pas. L'oracle de la
+  cible de fuzz `parse_opcua`, qui exigeait encore des chunks pavant toute
+  l'entree, admet ce reste et en verifie les types.
+
 ## [13.1.0] - 2026-11-18
 
 Mineure : des ajouts d'API, sans rupture, et les corrections de la relecture

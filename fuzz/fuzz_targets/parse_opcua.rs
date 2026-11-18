@@ -2,8 +2,11 @@
 // enchaines et parcourus a la demande, Hello, Acknowledge, Error,
 // ReverseHello, conversation securisee, dernier chunk tronque. Ni panic ni
 // boucle ; quand le decodage reussit, les chunks rendus par l'iterateur
-// pavent exactement l'entree, seul le dernier peut etre partiel, chaque
-// emprunt pointe dans l'entree, et `len` et `get` s'accordent avec lui.
+// pavent l'entree, seul le dernier peut etre partiel, chaque emprunt pointe
+// dans l'entree, et `len` et `get` s'accordent avec lui. Apres un chunk
+// complet, un reste de moins de 8 octets est le debut d'en-tete du suivant,
+// que TCP a coupe (#296) : l'iterateur s'arrete avant lui, et ses octets
+// presents commencent un type de message et un type de chunk connus (#333).
 #![no_main]
 
 #[path = "../oracles/seeds.rs"]
@@ -41,6 +44,10 @@ const MESSAGE: &[u8] = &[
 
 // Synthetique, la capture n'a pas de message d'erreur : ERR,
 // Bad_TcpMessageTypeInvalid et sa raison.
+// Les sept types de message UACP, recopies de la specification (Part 6,
+// §7.1.2.2) plutot que lus dans la crate.
+const MESSAGE_TYPES: [&[u8]; 7] = [b"HEL", b"ACK", b"ERR", b"RHE", b"OPN", b"MSG", b"CLO"];
+
 const ERROR: &[u8] = &[
     0x45, 0x52, 0x52, 0x46, 0x13, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7e, 0x80, 0x03, 0x00, 0x00, 0x00,
     0x62, 0x61, 0x64,
@@ -86,7 +93,21 @@ fn exercise(data: &[u8]) {
         covered += size;
         count += 1;
     }
-    assert_eq!(covered, data.len());
+    let rest = &data[covered..];
+    if !rest.is_empty() {
+        assert!(covered > 0 && rest.len() < 8, "reste de {} octets", rest.len());
+        let message_type = rest.get(..3).unwrap_or(rest);
+        assert!(
+            MESSAGE_TYPES
+                .iter()
+                .any(|known| known.starts_with(message_type)),
+            "{message_type:?}"
+        );
+        assert!(
+            rest.get(3)
+                .is_none_or(|chunk| OpcuaChunkType::try_from(*chunk).is_ok())
+        );
+    }
     assert_eq!(packet.chunks.len(), count);
     assert!(packet.chunks.get(0).is_some() && packet.chunks.get(count).is_none());
     let _ = format!("{:?}", packet.chunks);
