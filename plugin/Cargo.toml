@@ -8,7 +8,7 @@ description = "Export packet_parser application parsers from native libraries (.
 license = "MIT"
 repository = "https://github.com/Akmot9/Packet-parser"
 # Pas de publication tant qu'elle n'est pas demandee (#319) : le kit suit
-# packet_parser par chemin, et la 13.0.0 n'est pas sortie.
+# packet_parser par chemin.
 publish = false
 
 # Son propre workspace, comme fuzz/ et tools/lab/ : la crate packet_parser

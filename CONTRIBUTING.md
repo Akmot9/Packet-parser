@@ -86,15 +86,15 @@ in French.
 
 ## Releasing a version
 
-As done for 11.7.0, 11.8.0, 11.8.1, 11.8.2, 12.0.0, 12.1.0 and 13.0.0 (#206, #229, #242, #251, #267, #286, #322):
+As done for 11.7.0, 11.8.0, 11.8.1, 11.8.2, 12.0.0, 12.1.0, 13.0.0 and 13.1.0 (#206, #229, #242, #251, #267, #286, #322, #337):
 
 1. From an up-to-date `main`, create `chore/release-X.Y.Z`. Read `[Non publie]` to
    choose patch, minor or major. A major must be planned in the ROADMAP and come
    with a `MIGRATION-<N>.md`.
 2. Set `version = "X.Y.Z"` in `Cargo.toml`, then run `cargo update -p packet_parser`,
-   and again with `--manifest-path` for `fuzz/Cargo.toml`, `benches/Cargo.toml` and
-   `tools/lab/Cargo.toml`: their CI jobs build with `--locked`. In each of the four
-   lock files, only the `packet_parser` line changes.
+   and again with `--manifest-path` for `fuzz/Cargo.toml`, `benches/Cargo.toml`,
+   `tools/lab/Cargo.toml` and `plugin/Cargo.toml`: their CI jobs build with `--locked`.
+   In each of the five lock files, only the `packet_parser` line changes.
 3. Change the install line `packet_parser = "X.Y.Z"` in `README.md`.
 4. In `CHANGELOG.md`, insert `## [X.Y.Z] - YYYY-MM-DD` right below `## [Non publie]` (now empty).
 5. In `ROADMAP.md`, write a new `Etat au YYYY-MM-DD` paragraph at the top; the
