@@ -425,6 +425,11 @@ fn application_classification_histogram_is_frozen() {
     // 2026-11-18 (#298, COTP) : le CR de classe 0 a TPDU de 8192 octets du
     // poste IEC 61850 (iti_Sample_File_MMS_and_GOOSE.pcap, trame 107), que
     // tshark decode, est tolere : "COTP" 32 -> 33, "Unknown" 9 599 -> 9 598.
+    //
+    // 2026-11-18 (#299, QUIC) : les 74 datagrammes UDP 443 de
+    // ndpi_quic_interop_V.pcapng, 13 Version Negotiation et 61 paquets en
+    // version reservee 0x0a0a0a0a, sont lus selon les invariants de QUIC
+    // (RFC 8999), comme tshark : "QUIC" 0 -> 74, "Unknown" 9 598 -> 9 524.
     // Les autres constats de #288 ne changent aucune etiquette du corpus.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
@@ -459,6 +464,7 @@ fn application_classification_histogram_is_frozen() {
         ("OpenVPN", 766),
         ("PTP", 3221),
         ("PostgreSQL", 278),
+        ("QUIC", 74),
         ("RADIUS", 23),
         ("RDP", 89),
         ("SMTP", 6),
@@ -469,7 +475,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 9_598),
+        ("Unknown", 9_524),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

@@ -391,15 +391,18 @@ fn former_false_positives_are_no_longer_ntp() {
             let (link_type, data) = &frames[number - 1];
             let flow = parse(*link_type, data).expect("trame decodable");
             assert!(ntp_level(&flow).is_none(), "{name}:{number} : encore NTP");
+            let transport = flow.transport.as_ref().expect("UDP");
             // L'etiquette qu'ils gardent : ASTERIX pour les datagrammes de
-            // surveillance, Unknown pour les autres.
+            // surveillance, QUIC pour ceux d'UDP 443, lus selon les
+            // invariants de QUIC depuis #299, Unknown pour les autres.
             let expected = if name.starts_with("asterix/") {
                 "ASTERIX"
+            } else if [transport.source_port, transport.destination_port].contains(&Some(443)) {
+                "QUIC"
             } else {
                 "Unknown"
             };
             assert_eq!(label(&flow), Some(expected), "{name}:{number}");
-            let transport = flow.transport.as_ref().expect("UDP");
             assert!(transport.source_port != Some(123) && transport.destination_port != Some(123));
             let payload = transport.payload.expect("payload UDP");
             assert!(

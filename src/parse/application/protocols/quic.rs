@@ -5,8 +5,10 @@
 
 use crate::{
     checks::application::quic::{
-        QUIC_RETRY_INTEGRITY_TAG_LEN, QuicCursor, extract_first_byte, extract_version, read_cid,
-        read_length_and_payload, split_retry_token_and_tag, varint_to_len,
+        QUIC_RETRY_INTEGRITY_TAG_LEN, QUIC_V1, QUIC_VERSION_NEGOTIATION, QuicCursor,
+        extract_first_byte, extract_version, is_invariant_long_header, read_cid,
+        read_length_and_payload, read_v1_cid, split_retry_token_and_tag,
+        validate_supported_versions, varint_to_len,
     },
     errors::application::quic::QuicError,
 };
@@ -47,6 +49,9 @@ use crate::{
 ///   garde les deux bits tels quels, et la charge commence au numéro de
 ///   paquet (#293).
 /// - La charge n'est pas déchiffrée : `QuicPayload::EncryptedPayload(&'a [u8])`.
+/// - Un Version Negotiation (version 0, RFC 9000 §17.2.1) se lit aussi : il
+///   appartient a la v1, et sa forme est celle des invariants (RFC 8999 §6).
+///   Les autres versions sont refusees (`UnsupportedVersion`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum QuicPacket<'a> {
@@ -82,9 +87,86 @@ pub enum QuicPacket<'a> {
         header: QuicLongHeader<'a>,
         payload: QuicPayload<'a>,
     },
+    /// Version Negotiation (RFC 9000 §17.2.1, RFC 8999 §6) : un en-tete long
+    /// de version 0, que le serveur envoie quand il ne parle pas la version
+    /// du client. Il n'a ni type, ni longueur, ni protection (#299).
+    VersionNegotiation {
+        /// Les sept bits bas de l'octet 0, libres (« Unused ») : le serveur
+        /// les tire au hasard, le Fixed Bit compris.
+        unused: u8,
+        /// Destination Connection ID : le SCID du client. Les invariants en
+        /// permettent 255 octets, et non 20 comme la v1.
+        dcid: ConnectionId<'a>,
+        /// Source Connection ID : le DCID du client.
+        scid: ConnectionId<'a>,
+        /// Les versions proposees, brutes : des blocs de 4 octets
+        /// big-endian, jusqu'a la fin du datagramme. Voir
+        /// [`QuicPacket::supported_versions`].
+        versions: &'a [u8],
+    },
 }
 
 impl<'a> QuicPacket<'a> {
+    /// La version de l'en-tete long : 1, ou 0 pour un Version Negotiation.
+    pub fn version(&self) -> u32 {
+        match self {
+            QuicPacket::Initial { header, .. }
+            | QuicPacket::Handshake { header, .. }
+            | QuicPacket::OtherLong { header, .. } => header.version,
+            QuicPacket::VersionNegotiation { .. } => QUIC_VERSION_NEGOTIATION,
+        }
+    }
+
+    /// Les versions d'un Version Negotiation, dans l'ordre du paquet. `None`
+    /// si le paquet n'en est pas un.
+    pub fn supported_versions(&self) -> Option<impl Iterator<Item = u32> + 'a> {
+        match self {
+            QuicPacket::VersionNegotiation { versions, .. } => {
+                let versions: &'a [u8] = versions;
+                let (chunks, _) = versions.as_chunks::<4>();
+                Some(chunks.iter().map(|chunk| u32::from_be_bytes(*chunk)))
+            }
+            _ => None,
+        }
+    }
+
+    /// Sonde de port, UDP 443 (#299) : la v1 et le Version Negotiation
+    /// doivent se lire en entier. Les autres versions n'ont que leurs
+    /// invariants (RFC 8999 §5.1), un en-tete long et deux Connection IDs
+    /// dans le datagramme : une version reservee 0x?a?a?a?a (RFC 9000 §15),
+    /// une version de brouillon ou a venir.
+    pub(crate) fn is_port_match(payload: &[u8]) -> bool {
+        let version = payload
+            .get(1..5)
+            .map(|bytes| u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
+        match version {
+            Some(QUIC_V1 | QUIC_VERSION_NEGOTIATION) => QuicPacket::try_from(payload).is_ok(),
+            Some(_) => is_invariant_long_header(payload),
+            None => false,
+        }
+    }
+
+    /// Sonde aveugle : la v1 seule. Hors port, les invariants et le Version
+    /// Negotiation, quelques octets de forme libre, ne prouvent rien.
+    pub(crate) fn is_blind_udp_match(payload: &[u8]) -> bool {
+        QuicPacket::try_from(payload).is_ok_and(|packet| packet.version() == QUIC_V1)
+    }
+
+    /// Lit un Version Negotiation, `cur` place apres l'octet 0.
+    fn version_negotiation(b0: u8, mut cur: QuicCursor<'a>) -> Result<Self, QuicError> {
+        cur.take(4)?; // version 0
+        let dcid = read_cid(&mut cur)?;
+        let scid = read_cid(&mut cur)?;
+        let versions = cur.take_rest();
+        validate_supported_versions(versions)?;
+        Ok(QuicPacket::VersionNegotiation {
+            unused: b0 & 0b0111_1111,
+            dcid,
+            scid,
+            versions,
+        })
+    }
+
     /// Token et tag d'un paquet Retry, separes sans copie.
     ///
     /// `None` si le paquet n'est pas un Retry, ou si un `OtherLong` construit
@@ -153,11 +235,12 @@ pub enum QuicPacketType {
     Retry,
 }
 
-/// Connection ID générique (0..=20 octets courants, mais extensible).
+/// Connection ID : au plus 20 octets en v1 (RFC 9000 §17.2), 255 dans un
+/// Version Negotiation (RFC 8999 §5.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ConnectionId<'a> {
-    /// Longueur du CID (0..=20 dans ta capture).
+    /// Longueur du CID.
     pub len: u8,
     /// Octets du CID (slice empruntée au paquet).
     pub bytes: &'a [u8],
@@ -238,14 +321,22 @@ impl<'a> TryFrom<&'a [u8]> for QuicPacket<'a> {
 
         // 1) Octet 0 : Long Header bits (NotLongHeader prime sur FixedBitNotSet)
         let b0 = cur.take_u8()?;
+        // Version Negotiation : version 0, sans Fixed Bit ni type (RFC 8999
+        // §6). Les autres paquets gardent l'ordre de leurs erreurs.
+        let mut ahead = cur;
+        if b0 & 0b1000_0000 != 0
+            && ahead.take(4).ok() == Some(&QUIC_VERSION_NEGOTIATION.to_be_bytes()[..])
+        {
+            return Self::version_negotiation(b0, cur);
+        }
         let (packet_type, pn_length) = extract_first_byte(b0)?;
 
         // 2) Version
         let version = extract_version(&mut cur)?;
 
-        // 3) DCID / SCID
-        let dcid = read_cid(&mut cur)?;
-        let scid = read_cid(&mut cur)?;
+        // 3) DCID / SCID, 20 octets au plus chacun en v1 (#299)
+        let dcid = read_v1_cid(&mut cur)?;
+        let scid = read_v1_cid(&mut cur)?;
 
         // 4) En-tête commun assemblé (length_field complété par
         //    read_length_and_payload après ses validations)
@@ -319,6 +410,139 @@ impl<'a> TryFrom<&'a [u8]> for QuicPacket<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Un Version Negotiation : octet 0, version 0, DCID, SCID, versions.
+    fn version_negotiation(b0: u8, dcid: &[u8], scid: &[u8], versions: &[u8]) -> Vec<u8> {
+        let mut buf = vec![b0, 0, 0, 0, 0];
+        buf.push(u8::try_from(dcid.len()).expect("CID court"));
+        buf.extend_from_slice(dcid);
+        buf.push(u8::try_from(scid.len()).expect("CID court"));
+        buf.extend_from_slice(scid);
+        buf.extend_from_slice(versions);
+        buf
+    }
+
+    /// Un Initial v1 dont le DCID fait `dcid_len` octets, sans SCID ni
+    /// token, et 21 octets proteges : l'exemple de #299.
+    fn initial_with_dcid(version: u32, dcid_len: u8) -> Vec<u8> {
+        let mut buf = vec![0xC0];
+        buf.extend_from_slice(&version.to_be_bytes());
+        buf.push(dcid_len);
+        buf.extend(std::iter::repeat_n(0xAB, usize::from(dcid_len)));
+        buf.extend_from_slice(&[0x00, 0x00, 0x15]); // SCID vide, token vide, Length 21
+        buf.extend_from_slice(&[0x5A; 21]);
+        buf
+    }
+
+    #[test]
+    fn a_version_negotiation_lists_its_versions() {
+        // Les sept bits bas sont libres : le Fixed Bit est ici a 0.
+        let buf = version_negotiation(0x95, &[0x11; 8], &[], &[0, 0, 0, 1, 0x6B, 0x33, 0x43, 0xCF]);
+        let packet = QuicPacket::try_from(buf.as_slice()).expect("Version Negotiation");
+        assert_eq!(packet.version(), 0);
+        let QuicPacket::VersionNegotiation {
+            unused, dcid, scid, ..
+        } = &packet
+        else {
+            panic!("attendu un Version Negotiation : {packet:?}");
+        };
+        assert_eq!(*unused, 0x15);
+        assert_eq!(dcid.bytes, &[0x11; 8]);
+        assert!(scid.bytes.is_empty());
+        assert_eq!(
+            packet.supported_versions().map(Iterator::collect::<Vec<_>>),
+            Some(vec![1, 0x6B33_43CF])
+        );
+
+        let empty = version_negotiation(0x80, &[], &[], &[]);
+        let packet = QuicPacket::try_from(empty.as_slice()).expect("liste vide");
+        assert_eq!(packet.supported_versions().map(Iterator::count), Some(0));
+    }
+
+    #[test]
+    fn a_version_negotiation_refuses_a_partial_version() {
+        let buf = version_negotiation(0xC0, &[0x11; 8], &[0x22; 8], &[0, 0, 0, 1, 0xFF]);
+        assert_eq!(
+            QuicPacket::try_from(buf.as_slice()),
+            Err(QuicError::Truncated {
+                needed: 4,
+                remaining: 1
+            })
+        );
+    }
+
+    #[test]
+    fn a_version_negotiation_may_echo_long_connection_ids() {
+        // Le client d'une autre version peut avoir choisi 255 octets : le
+        // serveur les renvoie (RFC 8999 §6).
+        let buf = version_negotiation(0xC0, &[0x11; 255], &[0x22; 21], &[0, 0, 0, 1]);
+        let packet = QuicPacket::try_from(buf.as_slice()).expect("CID des invariants");
+        assert!(matches!(
+            packet,
+            QuicPacket::VersionNegotiation { ref dcid, .. } if dcid.len == 255
+        ));
+    }
+
+    #[test]
+    fn a_v1_connection_id_over_twenty_bytes_is_refused() {
+        assert!(QuicPacket::try_from(initial_with_dcid(1, 20).as_slice()).is_ok());
+        assert_eq!(
+            QuicPacket::try_from(initial_with_dcid(1, 21).as_slice()),
+            Err(QuicError::ConnectionIdTooLong {
+                length: 21,
+                max: 20
+            })
+        );
+        let mut long_scid = vec![0xC0, 0, 0, 0, 1, 0, 21];
+        long_scid.extend([0xCD; 21]);
+        assert_eq!(
+            QuicPacket::try_from(long_scid.as_slice()),
+            Err(QuicError::ConnectionIdTooLong {
+                length: 21,
+                max: 20
+            })
+        );
+    }
+
+    #[test]
+    fn the_port_probe_reads_other_versions_by_their_invariants() {
+        // v1 : lue en entier, au plus 20 octets de CID.
+        assert!(QuicPacket::is_port_match(&initial_with_dcid(1, 20)));
+        assert!(!QuicPacket::is_port_match(&initial_with_dcid(1, 21)));
+        // Version reservee, Fixed Bit a 0 : seuls les invariants comptent,
+        // et un CID de 30 octets y est permis.
+        let mut reserved = initial_with_dcid(0x1A2A_3A4A, 30);
+        reserved[0] = 0x80;
+        assert!(QuicPacket::is_port_match(&reserved));
+        assert_eq!(
+            QuicPacket::try_from(reserved.as_slice()),
+            Err(QuicError::FixedBitNotSet)
+        );
+        // Un SCID qui deborde du datagramme n'est pas un en-tete long.
+        assert!(!QuicPacket::is_port_match(&[
+            0xC0, 0x0A, 0x0A, 0x0A, 0x0A, 0, 4, 1
+        ]));
+        // Un Version Negotiation se lit en entier.
+        let negotiation = version_negotiation(0xC0, &[0x11; 8], &[], &[0, 0, 0, 1]);
+        assert!(QuicPacket::is_port_match(&negotiation));
+        assert!(!QuicPacket::is_port_match(
+            &negotiation[..negotiation.len() - 1]
+        ));
+        // Un en-tete court n'est pas pour cette sonde.
+        assert!(!QuicPacket::is_port_match(&[0x40; 32]));
+    }
+
+    #[test]
+    fn the_blind_probe_takes_version_1_only() {
+        assert!(QuicPacket::is_blind_udp_match(&initial_with_dcid(1, 8)));
+        assert!(!QuicPacket::is_blind_udp_match(&initial_with_dcid(1, 21)));
+        let negotiation = version_negotiation(0xC0, &[0x11; 8], &[], &[0, 0, 0, 1]);
+        assert!(!QuicPacket::is_blind_udp_match(&negotiation));
+        assert!(!QuicPacket::is_blind_udp_match(&initial_with_dcid(
+            0x0A0A_0A0A,
+            8
+        )));
+    }
 
     // -------- Tests --------
 

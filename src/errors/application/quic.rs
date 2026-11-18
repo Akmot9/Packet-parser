@@ -34,4 +34,10 @@ pub enum QuicError {
 
     #[error("Payload too short: expected {expected} bytes, only {available} available")]
     PayloadTooShort { expected: usize, available: usize },
+
+    /// Un Connection ID de plus de 20 octets dans un en-tete long de QUIC
+    /// v1 : RFC 9000 §17.2, « Endpoints that receive a version 1 long header
+    /// with a value larger than 20 MUST drop the packet » (#299).
+    #[error("Connection ID of {length} bytes exceeds the {max} bytes of QUIC version 1")]
+    ConnectionIdTooLong { length: u8, max: u8 },
 }

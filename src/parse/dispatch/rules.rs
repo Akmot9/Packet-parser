@@ -258,6 +258,15 @@ pub(super) static RULES: &[Rule] = &[
         is_quic_udp_port,
         ProbeId::QuicShortHeader,
     ),
+    // QUIC a en-tete long sur UDP 443 (#299) : la v1 et le Version
+    // Negotiation lus en entier, toute autre version par ses invariants
+    // (RFC 8999 §5.1). La regle aveugle ne prend que la v1.
+    port_rule(
+        ApplicationProtocol::Quic,
+        Guard::Udp,
+        is_quic_udp_port,
+        ProbeId::QuicLongHeaderPort,
+    ),
     // Priorites de port sur sondes par ailleurs aveugles : le port ne suffit
     // jamais, mais il fait passer la sonde avant le reste de la cascade.
     port_rule(
