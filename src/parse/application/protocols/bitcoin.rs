@@ -5,8 +5,8 @@
 
 use crate::{
     checks::application::bitcoin::{
-        check_magic_number, check_minimum_length, extract_checksum, extract_command,
-        extract_length, extract_payload, validate_total_length,
+        BITCOIN_HEADER_LENGTH, check_magic_number, check_minimum_length, extract_checksum,
+        extract_command, extract_length, extract_payload, validate_total_length,
     },
     errors::application::bitcoin::BitcoinError,
 };
@@ -78,9 +78,105 @@ impl<'a> TryFrom<&'a [u8]> for BitcoinPacket<'a> {
     }
 }
 
+impl BitcoinPacket<'_> {
+    /// Sonde TCP : un ou plusieurs messages complets pavent le segment, du
+    /// premier au dernier octet, tous sur le reseau du premier (#288).
+    ///
+    /// TCP ne garde pas les frontieres des messages, et un noeud en envoie
+    /// souvent plusieurs par segment (`version` puis `verack`, `inv`,
+    /// `getdata`, `headers`...). Chacun est valide comme par [`TryFrom`],
+    /// et porte le magic du premier : une connexion ne parle qu'un reseau.
+    /// Un dernier message coupe par la fin du segment fait refuser le
+    /// segment : la sonde est aveugle, sans regle de port.
+    pub(crate) fn is_tcp_match(payload: &[u8]) -> bool {
+        let Ok(network) = check_magic_number(payload) else {
+            return false;
+        };
+        let mut rest = payload;
+        loop {
+            let Some(end) = extract_length(rest)
+                .ok()
+                .and_then(|length| usize::try_from(length).ok())
+                .and_then(|length| length.checked_add(BITCOIN_HEADER_LENGTH))
+            else {
+                return false;
+            };
+            let Some((message, tail)) = rest.split_at_checked(end) else {
+                return false;
+            };
+            if !BitcoinPacket::try_from(message).is_ok_and(|packet| packet.magic == network) {
+                return false;
+            }
+            if tail.is_empty() {
+                return true;
+            }
+            rest = tail;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Un message mainnet : `command`, puis `payload` et sa longueur. La
+    /// somme de controle n'est pas verifiee par le decodeur.
+    fn message(magic: [u8; 4], command: &[u8], payload: &[u8]) -> Vec<u8> {
+        let mut bytes = magic.to_vec();
+        let mut field = [0u8; 12];
+        field[..command.len()].copy_from_slice(command);
+        bytes.extend_from_slice(&field);
+        bytes.extend_from_slice(&u32::try_from(payload.len()).unwrap().to_le_bytes());
+        bytes.extend_from_slice(&[0, 0, 0, 0]);
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    const MAINNET: [u8; 4] = [0xF9, 0xBE, 0xB4, 0xD9];
+    const TESTNET3: [u8; 4] = [0x0B, 0x11, 0x09, 0x07];
+
+    #[test]
+    fn tcp_match_accepts_complete_messages_that_tile_the_segment() {
+        let verack = message(MAINNET, b"verack", &[]);
+        let ping = message(MAINNET, b"ping", &[7; 8]);
+        assert!(BitcoinPacket::is_tcp_match(&verack));
+        assert!(BitcoinPacket::is_tcp_match(
+            &[verack.clone(), ping.clone()].concat()
+        ));
+        assert!(BitcoinPacket::is_tcp_match(
+            &[ping, verack.clone(), verack].concat()
+        ));
+    }
+
+    #[test]
+    fn tcp_match_refuses_a_cut_last_message_and_trailing_bytes() {
+        let verack = message(MAINNET, b"verack", &[]);
+        let ping = message(MAINNET, b"ping", &[7; 8]);
+        let two = [verack.clone(), ping].concat();
+        for cut in [1, 8, 23, 24, 31] {
+            assert!(
+                !BitcoinPacket::is_tcp_match(&two[..verack.len() + cut]),
+                "{cut}"
+            );
+        }
+        assert!(!BitcoinPacket::is_tcp_match(
+            &[verack.as_slice(), &[0]].concat()
+        ));
+        assert!(!BitcoinPacket::is_tcp_match(&[]));
+    }
+
+    #[test]
+    fn tcp_match_requires_one_network_and_valid_messages() {
+        let verack = message(MAINNET, b"verack", &[]);
+        let other_network = message(TESTNET3, b"verack", &[]);
+        let bad_command = message(MAINNET, b"ver\xc3ck", &[]);
+        assert!(!BitcoinPacket::is_tcp_match(
+            &[verack.clone(), other_network].concat()
+        ));
+        assert!(!BitcoinPacket::is_tcp_match(
+            &[verack, bad_command].concat()
+        ));
+    }
 
     #[test]
     fn test_extract_checksum() {

@@ -516,10 +516,17 @@ pub(super) static RULES: &[Rule] = &[
     // OPC UA hors port : chunks qui pavent le segment, partiel de taille
     // plausible (#296).
     rule(ApplicationProtocol::OpcUa, Guard::Tcp, ProbeId::OpcuaBlind),
-    // EtherNet/IP est reellement bi-transport (TCP 44818, UDP 2222).
+    // EtherNet/IP est reellement bi-transport (TCP 44818, UDP 2222). Sur
+    // TCP, plusieurs messages peuvent partager un segment (#288) ; sur UDP,
+    // un datagramme porte un seul message.
     rule(
         ApplicationProtocol::EthernetIp,
-        Guard::Any,
+        Guard::Tcp,
+        ProbeId::EthernetIpTcp,
+    ),
+    rule(
+        ApplicationProtocol::EthernetIp,
+        Guard::Udp,
         ProbeId::EthernetIp,
     ),
     // PostgreSQL ne circule que sur TCP : la garde manquait et la sonde

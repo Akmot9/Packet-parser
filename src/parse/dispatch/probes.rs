@@ -167,11 +167,13 @@ pub(super) enum ProbeId {
     /// QUIC sur UDP 443 : la v1 et le Version Negotiation lus en entier,
     /// les autres versions par leurs invariants (#299).
     QuicLongHeaderPort,
+    /// EtherNet/IP sur TCP : des messages complets pavent le segment (#288).
+    EthernetIpTcp,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::QuicLongHeaderPort;
+    pub(super) const LAST: Self = Self::EthernetIpTcp;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -233,16 +235,19 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         // Tous les data blocks doivent paver le datagramme jusqu'a son
         // dernier octet.
         ProbeId::Asterix => AsterixPacket::try_from(payload).is_ok(),
-        // La longueur declaree doit egaler le segment.
-        ProbeId::Bitcoin => BitcoinPacket::try_from(payload).is_ok(),
+        // Des messages complets doivent paver le segment, sur un seul reseau
+        // (#288).
+        ProbeId::Bitcoin => BitcoinPacket::is_tcp_match(payload),
         // Sur le port et par Decode As : lecture tolerante, dernier chunk
         // partiel ou coupe dans son en-tete.
         ProbeId::Opcua => OpcuaPacket::try_from(payload).is_ok(),
         // A l'aveugle : les chunks pavent le segment, un partiel de taille
         // plausible (#296).
         ProbeId::OpcuaBlind => OpcuaPacket::is_blind_tcp_match(payload),
-        // La longueur declaree doit egaler ce qui suit l'en-tete.
+        // UDP : la longueur declaree doit egaler ce qui suit l'en-tete.
         ProbeId::EthernetIp => EtherNetIpPacket::try_from(payload).is_ok(),
+        // TCP : des messages complets doivent paver le segment (#288).
+        ProbeId::EthernetIpTcp => EtherNetIpPacket::is_tcp_match(payload),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),

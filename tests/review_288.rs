@@ -531,3 +531,48 @@ fn issue_288_llmnr_receivers_ignore_z_bits_and_the_rcode_of_a_query() {
     // Un opcode inconnu reste écarté : « MUST be silently discarded ».
     assert_ne!(udp(5355, &query(0x0800)), "LLMNR");
 }
+
+/// #288, « Laissés à décider » : TCP ne garde pas les frontières des
+/// messages. Des messages EtherNet/IP ou Bitcoin complets qui pavent le
+/// segment sont reconnus ; un dernier message coupé ne l'est pas, ces
+/// sondes étant aveugles. Sur UDP, un datagramme EtherNet/IP porte un seul
+/// message.
+#[test]
+fn issue_288_complete_messages_that_tile_a_tcp_segment() {
+    // EtherNet/IP (CIP Vol. 2, §2-4.4) : RegisterSession, version 1.
+    let register_session = |context: u8| {
+        let mut message = vec![0x65, 0x00, 0x04, 0x00]; // commande, longueur
+        message.extend_from_slice(&[0; 8]); // session, statut
+        message.extend_from_slice(&[context; 8]); // sender context
+        message.extend_from_slice(&[0; 4]); // options
+        message.extend_from_slice(&[0x01, 0x00, 0x00, 0x00]); // version, options
+        message
+    };
+    let two = [register_session(1), register_session(2)].concat();
+    assert_eq!(tcp(44818, &register_session(1)), "EtherNet/IP");
+    assert_eq!(tcp(44818, &two), "EtherNet/IP");
+    assert_eq!(tcp(44818, &two[..two.len() - 1]), "Unknown");
+    assert_ne!(udp(44818, &two), "EtherNet/IP");
+
+    // Bitcoin (protocole P2P de Bitcoin Core) : `verack`, puis `ping`.
+    let message = |command: &[u8], checksum: [u8; 4], payload: &[u8]| {
+        let mut message = vec![0xf9, 0xbe, 0xb4, 0xd9]; // mainnet
+        let mut field = [0u8; 12];
+        field[..command.len()].copy_from_slice(command);
+        message.extend_from_slice(&field);
+        message.extend_from_slice(&u32::try_from(payload.len()).unwrap().to_le_bytes());
+        message.extend_from_slice(&checksum); // sha256d du payload
+        message.extend_from_slice(payload);
+        message
+    };
+    let verack = message(b"verack", [0x5d, 0xf6, 0xe0, 0xe2], &[]);
+    let ping = message(b"ping", [0x25, 0x02, 0xfa, 0x94], &[1, 2, 3, 4, 5, 6, 7, 8]);
+    let both = [verack.clone(), ping].concat();
+    assert_eq!(tcp(8333, &verack), "Bitcoin");
+    assert_eq!(tcp(8333, &both), "Bitcoin");
+    assert_eq!(tcp(8333, &both[..both.len() - 1]), "Unknown");
+    // Un second message d'un autre réseau (testnet3) : refusé.
+    let mut other_network = verack.clone();
+    other_network[..4].copy_from_slice(&[0x0b, 0x11, 0x09, 0x07]);
+    assert_eq!(tcp(8333, &[verack, other_network].concat()), "Unknown");
+}
