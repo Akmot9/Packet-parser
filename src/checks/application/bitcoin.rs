@@ -5,12 +5,16 @@
 
 use crate::errors::application::bitcoin::BitcoinError;
 
+/// Les magics des reseaux, ecrits dans l'ordre des octets sur le fil
+/// (`pchMessageStart` de `src/kernel/chainparams.cpp`, Bitcoin Core), puis
+/// lus en petit-boutiste comme `check_magic_number` les lit : la valeur ne
+/// peut pas etre retournee a la main (#301).
 const VALID_MAGIC_NUMBERS: [u32; 5] = [
-    0xD9B4BEF9, // Mainnet
-    0x0709110B, // Testnet
-    0x0B110907, // Testnet3
-    0xFABFB5DA, // Regtest
-    0x40CF030A, // Signet
+    u32::from_le_bytes([0xF9, 0xBE, 0xB4, 0xD9]), // Mainnet
+    u32::from_le_bytes([0x0B, 0x11, 0x09, 0x07]), // Testnet3
+    u32::from_le_bytes([0x1C, 0x16, 0x3F, 0x28]), // Testnet4 (BIP 94)
+    u32::from_le_bytes([0xFA, 0xBF, 0xB5, 0xDA]), // Regtest
+    u32::from_le_bytes([0x0A, 0x03, 0xCF, 0x40]), // Signet
 ];
 
 const BITCOIN_HEADER_LENGTH: usize = 24;
@@ -161,6 +165,37 @@ mod tests {
             check_magic_number(&[0x99, 0xBE, 0xB4, 0xD9]),
             Err(BitcoinError::InvalidMagic { magic: 0xD9B4BE99 })
         ));
+    }
+
+    #[test]
+    fn every_network_is_recognized_from_its_bytes_on_the_wire() {
+        for (network, wire) in [
+            ("mainnet", [0xF9, 0xBE, 0xB4, 0xD9]),
+            ("testnet3", [0x0B, 0x11, 0x09, 0x07]),
+            ("testnet4", [0x1C, 0x16, 0x3F, 0x28]),
+            ("regtest", [0xFA, 0xBF, 0xB5, 0xDA]),
+            ("signet", [0x0A, 0x03, 0xCF, 0x40]),
+        ] {
+            assert_eq!(
+                check_magic_number(&wire),
+                Ok(u32::from_le_bytes(wire)),
+                "{network}"
+            );
+        }
+    }
+
+    #[test]
+    fn reversed_magics_are_refused() {
+        // Les deux valeurs que la table portait avant #301 : testnet3 et
+        // regtest lus a l'envers, aucun reseau.
+        for wire in [[0x07, 0x09, 0x11, 0x0B], [0xDA, 0xB5, 0xBF, 0xFA]] {
+            assert_eq!(
+                check_magic_number(&wire),
+                Err(BitcoinError::InvalidMagic {
+                    magic: u32::from_le_bytes(wire)
+                })
+            );
+        }
     }
 
     #[test]

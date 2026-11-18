@@ -676,6 +676,36 @@ mod extra_tests {
     }
 
     #[test]
+    fn a_counter64_of_2_pow_63_or_more_takes_a_leading_zero() {
+        // RFC 2578 §7.1.10 et X.690 §8.3 : 9 octets dont un zero de tete (#304).
+        let mut top = vec![0x00, 0x80];
+        top.extend_from_slice(&[0x00; 7]);
+        let mut max = vec![0x00];
+        max.extend_from_slice(&[0xFF; 8]);
+        for (value, expected) in [(top, 1u64 << 63), (max, u64::MAX)] {
+            let rendered = first_value(&v2c_response_with_value(&tlv(SNMP_COUNTER64_TAG, &value)));
+            assert_eq!(rendered, format!("Counter64({expected})"));
+        }
+        let mut wide = vec![0x01];
+        wide.extend_from_slice(&[0x00; 8]);
+        let mut ten = vec![0x00, 0x00];
+        ten.extend_from_slice(&[0xFF; 8]);
+        for value in [wide, ten] {
+            let actual = value.len();
+            assert_eq!(
+                SnmpPacket::try_from(
+                    v2c_response_with_value(&tlv(SNMP_COUNTER64_TAG, &value)).as_slice()
+                )
+                .err(),
+                Some(SnmpError::InvalidUnsignedLength {
+                    field: "counter64",
+                    actual
+                })
+            );
+        }
+    }
+
+    #[test]
     fn rejects_invalid_values() {
         // NULL non vide
         assert!(

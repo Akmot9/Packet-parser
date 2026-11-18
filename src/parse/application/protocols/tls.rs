@@ -94,6 +94,10 @@ pub struct TlsVersion {
 impl TlsVersion {
     pub fn new(major: u8, minor: u8) -> Result<Self, TlsError> {
         match (major, minor) {
+            // SSL 3.0, et le record qu'un client peut envoyer pour joindre un
+            // vieux serveur : RFC 5246, annexe E.1, « {03,00}, the lowest
+            // version number supported by the client » (#300).
+            (3, 0) |
             (3, 1) | // TLS 1.0
             (3, 2) | // TLS 1.1
             (3, 3) | // TLS 1.2 (utilisé aussi comme "legacy version" TLS 1.3)
@@ -107,6 +111,7 @@ impl TlsVersion {
 impl fmt::Display for TlsVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let version_str = match (self.major, self.minor) {
+            (3, 0) => "SSL 3.0",
             (3, 1) => "TLS 1.0",
             (3, 2) => "TLS 1.1",
             (3, 3) => "TLS 1.2",
@@ -492,11 +497,24 @@ mod tests {
 
     #[test]
     fn test_tls_version_new_invalid_version() {
-        let err = TlsVersion::new(3, 0).unwrap_err();
-        assert!(matches!(
-            err,
-            TlsError::InvalidVersion { major: 3, minor: 0 }
-        ));
+        for (major, minor) in [(2, 0), (3, 5), (4, 1)] {
+            assert_eq!(
+                TlsVersion::new(major, minor),
+                Err(TlsError::InvalidVersion { major, minor })
+            );
+        }
+    }
+
+    #[test]
+    fn a_client_hello_in_a_version_3_0_record_is_tls() {
+        // RFC 5246, annexe E.1 : un ClientHello TLS 1.2 dans un record 3.0.
+        let mut record = vec![0x16, 0x03, 0x00, 0x00, 0x2d];
+        record.extend_from_slice(&[0x01, 0x00, 0x00, 0x29, 0x03, 0x03]);
+        record.extend_from_slice(&[0x42; 32]); // random
+        record.extend_from_slice(&[0x00, 0x00, 0x02, 0xc0, 0x2f, 0x01, 0x00]);
+        let packet = TlsPacket::try_from(record.as_slice()).expect("record 3.0");
+        assert_eq!(packet.version, TlsVersion { major: 3, minor: 0 });
+        assert_eq!(packet.version.to_string(), "SSL 3.0");
     }
 }
 

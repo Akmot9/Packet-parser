@@ -31,6 +31,26 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   construire. Une application qui enregistre ses etiquettes (export,
   matrice de flux) retrouve ainsi ses flux `Custom` a la relecture.
 
+### Corrige
+
+- **TLS, record en version 3.0** (#300) : `TlsVersion::new` refusait
+  (3, 0). La RFC 5246 (annexe E.1) permet pourtant a un client d'envoyer
+  un ClientHello dans un record 3.0 pour joindre un vieux serveur, et
+  SSL 3.0 l'emploie lui-meme : ces records sortaient Unknown, meme sur TCP
+  443. Ils sont lus, et s'affichent `SSL 3.0`. Le test qui figeait ce refus
+  devient un test d'acceptation.
+- **Bitcoin, magics de reseau** (#301) : deux des cinq valeurs de la table
+  etaient retournees. Le vrai regtest (`fa bf b5 da` sur le fil) etait
+  refuse, et deux valeurs qui ne sont aucun reseau (`da b5 bf fa`,
+  `07 09 11 0b`) etaient acceptees. Testnet4 (BIP 94, `1c 16 3f 28`)
+  manquait. La table s'ecrit desormais dans l'ordre des octets du fil,
+  comme `pchMessageStart` de Bitcoin Core, et les cinq reseaux ont un test.
+- **SNMP, Counter64 de 2^63 ou plus** (#304) : en BER, une telle valeur
+  prend 9 octets, dont un zero de tete (X.690 §8.3), et la RFC 2578
+  (§7.1.10) la permet a un Counter64. Elle etait refusee
+  (`InvalidUnsignedLength`) et le message sortait Unknown sur UDP 161. Le
+  zero de tete est accepte, et un 9e octet non nul reste refuse.
+
 ## [13.0.0] - 2026-11-17
 
 Majeure. Guide de migration : `MIGRATION-13.md`.
