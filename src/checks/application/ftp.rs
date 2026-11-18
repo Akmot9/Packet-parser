@@ -11,11 +11,18 @@ use crate::{
 /// Standard FTP commands (RFC 959 and common extensions) accepted by the
 /// parser. Restricting to known verbs keeps random text payloads from being
 /// classified as FTP.
-const FTP_COMMANDS: [&str; 46] = [
+///
+/// Issue #306 adds the experimental forms that RFC 1123 §4.1.3.1 asks every
+/// implementation to recognize (`XPWD`, `XMKD`, `XRMD`, `XCUP`, `XCWD`,
+/// which Windows `ftp.exe` sends), `LPSV` (RFC 1639), the security commands
+/// of RFC 2228 (`ADAT`, `CCC`, `MIC`, `CONF`, `ENC`), `LANG` (RFC 2640) and
+/// `HOST` (RFC 7151).
+const FTP_COMMANDS: [&str; 59] = [
     "USER", "PASS", "ACCT", "CWD", "CDUP", "SMNT", "QUIT", "REIN", "PORT", "PASV", "TYPE", "STRU",
     "MODE", "RETR", "STOR", "STOU", "APPE", "ALLO", "REST", "RNFR", "RNTO", "ABOR", "DELE", "RMD",
     "MKD", "PWD", "LIST", "NLST", "SITE", "SYST", "STAT", "HELP", "NOOP", "FEAT", "CLNT", "OPTS",
-    "EPSV", "EPRT", "SIZE", "MDTM", "MLST", "MLSD", "AUTH", "PBSZ", "PROT", "LPRT",
+    "EPSV", "EPRT", "SIZE", "MDTM", "MLST", "MLSD", "AUTH", "PBSZ", "PROT", "LPRT", "XPWD", "XMKD",
+    "XRMD", "XCUP", "XCWD", "LPSV", "ADAT", "CCC", "MIC", "CONF", "ENC", "LANG", "HOST",
 ];
 
 /// Checks that the FTP payload is not empty.
@@ -84,7 +91,8 @@ pub fn validate_command_syntax(
     let has_args = args.is_some_and(|value| !value.is_empty());
 
     if [
-        "CDUP", "QUIT", "REIN", "PASV", "ABOR", "PWD", "SYST", "NOOP", "FEAT",
+        "CDUP", "QUIT", "REIN", "PASV", "ABOR", "PWD", "SYST", "NOOP", "FEAT", "XPWD", "XCUP",
+        "LPSV", "CCC",
     ]
     .iter()
     .any(|command| command.eq_ignore_ascii_case(verb))
@@ -96,7 +104,8 @@ pub fn validate_command_syntax(
     if [
         "USER", "PASS", "ACCT", "CWD", "SMNT", "PORT", "TYPE", "STRU", "MODE", "RETR", "STOR",
         "APPE", "ALLO", "REST", "RNFR", "RNTO", "DELE", "RMD", "MKD", "SITE", "CLNT", "OPTS",
-        "EPRT", "SIZE", "MDTM", "AUTH", "PBSZ", "PROT", "LPRT",
+        "EPRT", "SIZE", "MDTM", "AUTH", "PBSZ", "PROT", "LPRT", "XMKD", "XRMD", "XCWD", "ADAT",
+        "MIC", "CONF", "ENC", "HOST",
     ]
     .iter()
     .any(|command| command.eq_ignore_ascii_case(verb))

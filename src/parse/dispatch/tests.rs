@@ -1050,6 +1050,7 @@ fn blind_rules_order_is_frozen() {
             "TLS",
             "SSH",
             "HTTP",
+            "SSH",
             "GIOP",
             "Java RMI",
             "DHCP",

@@ -11,7 +11,10 @@ use crate::{
 /// Standard NNTP commands (RFC 3977 and common extensions) accepted by the
 /// parser. Restricting to known verbs keeps random text payloads from being
 /// classified as NNTP.
-const NNTP_COMMANDS: [&str; 26] = [
+///
+/// Issue #306 adds `STARTTLS` (RFC 4642) and the streaming feed between
+/// servers, `CHECK` and `TAKETHIS` (RFC 4644).
+const NNTP_COMMANDS: [&str; 29] = [
     "CAPABILITIES",
     "ARTICLE",
     "BODY",
@@ -38,6 +41,9 @@ const NNTP_COMMANDS: [&str; 26] = [
     "XPAT",
     "AUTHINFO",
     "DATE",
+    "STARTTLS",
+    "CHECK",
+    "TAKETHIS",
 ];
 
 /// Validates that the payload contains at least one byte before any parsing
@@ -132,26 +138,27 @@ pub fn validate_command_syntax(
 ) -> Result<(), NntpParseError> {
     let count = args.map_or(0, |value| value.split_ascii_whitespace().count());
     let valid = if [
-        "CAPABILITIES",
-        "DATE",
-        "HELP",
-        "LAST",
-        "NEXT",
-        "POST",
-        "QUIT",
-        "SLAVE",
+        "DATE", "HELP", "LAST", "NEXT", "POST", "QUIT", "SLAVE", "STARTTLS",
     ]
     .iter()
     .any(|command| command.eq_ignore_ascii_case(verb))
     {
         count == 0
-    } else if ["GROUP", "IHAVE", "MODE"]
+    } else if ["GROUP", "IHAVE", "MODE", "CHECK", "TAKETHIS"]
         .iter()
         .any(|command| command.eq_ignore_ascii_case(verb))
     {
         count == 1
     } else if [
-        "ARTICLE", "BODY", "HEAD", "STAT", "OVER", "XOVER", "XGTITLE",
+        // RFC 3977 §5.2 : `CAPABILITIES [keyword]` (#306).
+        "CAPABILITIES",
+        "ARTICLE",
+        "BODY",
+        "HEAD",
+        "STAT",
+        "OVER",
+        "XOVER",
+        "XGTITLE",
     ]
     .iter()
     .any(|command| command.eq_ignore_ascii_case(verb))
@@ -368,7 +375,16 @@ mod tests {
             validate_command_syntax("CAPABILITIES", None, "CAPABILITIES"),
             Ok(())
         );
-        assert!(validate_command_syntax("CAPABILITIES", Some("extra"), "bad").is_err());
+        // RFC 3977 §5.2 : `CAPABILITIES [keyword]` (#306), un mot-cle au plus.
+        assert_eq!(
+            validate_command_syntax(
+                "CAPABILITIES",
+                Some("AUTOUPDATE"),
+                "CAPABILITIES AUTOUPDATE"
+            ),
+            Ok(())
+        );
+        assert!(validate_command_syntax("CAPABILITIES", Some("a b"), "bad").is_err());
         assert_eq!(
             validate_command_syntax("HDR", Some("Subject"), "HDR Subject"),
             Ok(())
