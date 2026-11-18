@@ -72,6 +72,28 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   essayee avant HTTP ; apres des lignes, elle l'est apres HTTP, par une
   seconde regle : une reponse HTTP dont le corps cite une banniere reste
   HTTP.
+- **UMAS, sonde** (#295) : la sonde ne lisait que le premier MBAP, dont la
+  longueur declaree, et ignorait la fin du segment, malgre son commentaire
+  (« Les MBAP doivent paver le segment »). Un MBAP UMAS suivi de texte, ou
+  plus court que le segment, sortait UMAS sur tout port TCP, devant la
+  sonde Modbus que #167 a resserree. La sonde exige desormais des MBAP qui
+  pavent le segment, comme Modbus/TCP, chacun de fonction 0x5A avec un
+  en-tete UMAS. Les 181 UMAS du corpus le restent.
+- **OPC UA, sonde aveugle et chunk coupe** (#296) : hors des ports 4840 et
+  12001, trois lettres de type de message et une de type de chunk
+  suffisaient, le chunk etant lu comme partiel : `CLOCK 12:00:00` sortait
+  OPC UA. La sonde aveugle exige des chunks qui pavent le segment, et un
+  chunk partiel d'au plus 16 Mio (`OPCUA_BLIND_MAX_PARTIAL_SIZE`). Sur le
+  port, a l'inverse, un chunk complet suivi de 1 a 7 octets du suivant etait
+  refuse : ce reste est desormais le debut d'en-tete du chunk suivant, ses
+  types presents sont verifies, et l'iteration s'arrete avant lui. Les 187
+  OPC UA du corpus gardent leur etiquette.
+- **COTP, grande TPDU en classe 0** (#298) : le detecteur refusait un CR de
+  classe 0 annoncant une TPDU de 4096 ou 8192 octets, que la RFC 905
+  (§13.3.4) exclut de cette classe. Le poste IEC 61850 de
+  `iti_Sample_File_MMS_and_GOOSE.pcap` en envoie pourtant un (trame 107),
+  que tshark decode, et la regle COTP est deja gardee par le port : il est
+  tolere. `s7comm_regression` compte 33 segments COTP, comme tshark.
 
 ## [13.0.0] - 2026-11-17
 

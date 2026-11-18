@@ -670,11 +670,15 @@ fn is_strict_connection_header(header: &CotpHeader<'_>) -> bool {
             }
         }
 
+        // RFC 905 §13.3.4 exclut les TPDU de 8192 et 4096 octets (0x0D,
+        // 0x0C) de la classe 0. Le detecteur les tolere pourtant (#298) : le
+        // poste IEC 61850 de `iti_Sample_File_MMS_and_GOOSE.pcap` envoie un
+        // tel CR, que tshark decode, et la regle COTP est deja gardee par le
+        // port. Le repondeur choisit une taille valide dans son CC.
         if header.class == 0
             && matches!(
                 parameter,
-                CotpParameter::TpduSize(0x0C | 0x0D)
-                    | CotpParameter::Checksum(_)
+                CotpParameter::Checksum(_)
                     | CotpParameter::AtnExtendedChecksum16(_)
                     | CotpParameter::AtnExtendedChecksum32(_)
                     | CotpParameter::Other(

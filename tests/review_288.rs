@@ -158,3 +158,86 @@ fn issue_307_an_http_body_quoting_a_banner_stays_http() {
         Content-Length: 21\r\n\r\nSSH-2.0-OpenSSH_9.6\r\n";
     assert_eq!(tcp(8080, response), "HTTP");
 }
+
+/// #295 : la sonde UMAS exige des MBAP qui pavent le segment, comme
+/// Modbus/TCP. Un MBAP UMAS suivi de texte, ou plus court que le segment,
+/// n'est plus de l'UMAS ; un UMAS réel le reste.
+#[test]
+fn issue_295_umas_mbaps_must_tile_the_segment() {
+    let read_id = [0x00, 0x01, 0x00, 0x00, 0x00, 0x04, 0x00, 0x5a, 0x00, 0x02];
+    assert_eq!(tcp(502, &read_id), "UMAS");
+    assert_eq!(tcp(40_001, &read_id), "UMAS");
+
+    let mut with_text = read_id.to_vec();
+    with_text.extend_from_slice(b"some text after the MBAP.");
+    assert_ne!(tcp(40_001, &with_text), "UMAS");
+    assert_ne!(tcp(502, &with_text), "UMAS");
+
+    let mut longer = vec![0xbe, 0xef, 0x00, 0x00, 0x00, 0x10, 0x01, 0x5a, 0x59, 0x58];
+    longer.extend_from_slice(&[0x41; 28]); // 32 octets apres la longueur, 16 declares
+    assert_ne!(tcp(40_001, &longer), "UMAS");
+
+    // Deux MBAP UMAS qui pavent le segment restent de l'UMAS.
+    let mut two = read_id.to_vec();
+    two.extend_from_slice(&read_id);
+    assert_eq!(tcp(40_001, &two), "UMAS");
+}
+
+/// #296 : à l'aveugle, des chunks OPC UA qui pavent le segment, ou un
+/// partiel de taille plausible ; sur le port, un chunk complet suivi de 1 à
+/// 7 octets du suivant reste de l'OPC UA.
+#[test]
+fn issue_296_opcua_is_strict_off_port_and_tolerates_a_cut_header_on_port() {
+    assert_ne!(tcp(40_001, b"CLOCK 12:00:00\r\n"), "OPC UA");
+    assert_ne!(tcp(40_001, b"MSGCOUNT 3\r\n"), "OPC UA");
+
+    let ack = [
+        0x41, 0x43, 0x4b, 0x46, 0x1c, 0x00, 0x00, 0x00, // ACKF, 28 octets
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+    let next = [0x4d, 0x53, 0x47, 0x46, 0x18, 0x00, 0x00, 0x00]; // MSGF, 24 octets
+    assert_eq!(tcp(4840, &ack), "OPC UA");
+    for cut in 1..=8 {
+        let mut segment = ack.to_vec();
+        segment.extend_from_slice(&next[..cut]);
+        assert_eq!(
+            tcp(4840, &segment),
+            "OPC UA",
+            "{cut} octets du chunk suivant"
+        );
+    }
+    // Un reste dont le type de message n'existe pas reste refusé.
+    let mut wrong = ack.to_vec();
+    wrong.extend_from_slice(b"XYZF");
+    assert_ne!(tcp(4840, &wrong), "OPC UA");
+
+    // Hors port, l'ACK complet reste de l'OPC UA, et un MSG partiel de taille
+    // plausible aussi ; l'ACK suivi d'un reste ne l'est pas.
+    assert_eq!(tcp(40_001, &ack), "OPC UA");
+    let mut partial = next.to_vec();
+    partial.extend_from_slice(&[0x00; 8]);
+    assert_eq!(tcp(40_001, &partial), "OPC UA");
+    let mut cut = ack.to_vec();
+    cut.extend_from_slice(&next[..4]);
+    assert_ne!(tcp(40_001, &cut), "OPC UA");
+}
+
+/// #298 : le CR réel de la trame 107 de
+/// `pcaps_exemple/protocols/goose/iti_Sample_File_MMS_and_GOOSE.pcap`,
+/// classe 0 avec une TPDU de 8192 octets (RFC 905 l'exclut de la classe 0,
+/// tshark le décode). Le même avec 2048 octets était déjà du COTP.
+#[test]
+fn issue_298_a_class_0_cr_with_a_large_tpdu_is_cotp() {
+    let request = |tpdu_size: u8| {
+        let mut segment = vec![
+            0x03, 0x00, 0x00, 0x16, 0x11, 0xe0, 0x00, 0x00, 0x07, 0x78, 0x00, 0xc1, 0x02, 0x00,
+            0x01, 0xc2, 0x02, 0x00, 0x01, 0xc0, 0x01,
+        ];
+        segment.push(tpdu_size);
+        segment
+    };
+    for size in [0x0b, 0x0c, 0x0d] {
+        assert_eq!(tcp(102, &request(size)), "COTP", "TPDU size {size:#04x}");
+    }
+}

@@ -115,6 +115,7 @@ pub(super) enum ProbeId {
     Asterix,
     Bitcoin,
     Opcua,
+    OpcuaBlind,
     EthernetIp,
     Postgresql,
     /// Port 5432 ou port declare : decodage et forme compatible suffisent,
@@ -230,8 +231,12 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Asterix => AsterixPacket::try_from(payload).is_ok(),
         // La longueur declaree doit egaler le segment.
         ProbeId::Bitcoin => BitcoinPacket::try_from(payload).is_ok(),
-        // Les chunks doivent paver le segment.
+        // Sur le port et par Decode As : lecture tolerante, dernier chunk
+        // partiel ou coupe dans son en-tete.
         ProbeId::Opcua => OpcuaPacket::try_from(payload).is_ok(),
+        // A l'aveugle : les chunks pavent le segment, un partiel de taille
+        // plausible (#296).
+        ProbeId::OpcuaBlind => OpcuaPacket::is_blind_tcp_match(payload),
         // La longueur declaree doit egaler ce qui suit l'en-tete.
         ProbeId::EthernetIp => EtherNetIpPacket::try_from(payload).is_ok(),
         // Les messages doivent paver le segment.
@@ -264,8 +269,8 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Dhcp => DhcpPacket::try_from(payload).is_ok(),
         // La longueur declaree doit egaler le payload.
         ProbeId::Srvloc => SrvlocPacket::try_from(payload).is_ok(),
-        // Les MBAP doivent paver le segment.
-        ProbeId::Umas => UmasPacket::try_from(payload).is_ok(),
+        // Les MBAP doivent paver le segment, tous en UMAS (#295).
+        ProbeId::Umas => UmasPacket::is_tcp_match(payload),
         ProbeId::ModbusTcp => ModbusTcpPacket::try_from(payload).is_ok(),
         ProbeId::ModbusTcpBlind => ModbusTcpPacket::is_blind_tcp_match(payload),
         // La longueur de l'en-tete long doit tenir dans le datagramme.

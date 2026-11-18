@@ -174,14 +174,16 @@ pub struct OpcuaChunks<'a> {
 }
 
 impl<'a> OpcuaChunks<'a> {
-    /// Les chunks, dans l'ordre du wire.
+    /// Les chunks, dans l'ordre du wire. Un reste de moins de 8 octets apres
+    /// le dernier chunk n'en est pas un (#296).
     pub fn iter(&self) -> impl Iterator<Item = OpcuaChunk<'a>> + 'a {
         let mut remaining = self.bytes;
         std::iter::from_fn(move || {
             if remaining.is_empty() {
                 return None;
             }
-            // Infaillible : le segment a ete marche en entier au parsing.
+            // Infaillible : le segment a ete marche en entier au parsing ;
+            // seul un reste de moins de 8 octets echoue, et termine.
             let (chunk, consumed) = next_chunk(remaining).ok()?;
             remaining = &remaining[consumed..];
             Some(chunk)
@@ -232,22 +234,77 @@ fn next_chunk<'a>(remaining: &'a [u8]) -> Result<(OpcuaChunk<'a>, usize), OpcuaP
     Ok((OpcuaChunk { header, payload }, consumed))
 }
 
+/// Borne du `message_size` d'un chunk partiel pour la sonde aveugle (#296),
+/// 16 Mio. Elle depasse de loin les tampons de reception des piles courantes
+/// (64 Kio par defaut), et quatre octets ASCII imprimables lus en
+/// petit-boutiste valent au moins `0x2020_2020` : un texte qui commence
+/// par `CLO`, `MSG` ou `ERR` suivi d'une lettre n'y passe plus.
+pub const OPCUA_BLIND_MAX_PARTIAL_SIZE: u32 = 1 << 24;
+
+/// Verifie le debut d'en-tete d'un reste de moins de 8 octets apres un chunk
+/// complet : les octets presents du type de message et du type de chunk.
+fn validate_chunk_start(rest: &[u8]) -> Result<(), OpcuaParseError> {
+    if let [a, b, c, ..] = *rest {
+        extract_message_type([a, b, c])?;
+    }
+    if let Some(&chunk_type) = rest.get(3) {
+        extract_chunk_type(chunk_type)?;
+    }
+    Ok(())
+}
+
 impl<'a> TryFrom<&'a [u8]> for OpcuaPacket<'a> {
     type Error = OpcuaParseError;
 
+    /// Lecture tolerante, celle du port et de Decode As. Le dernier chunk
+    /// peut etre partiel ; apres un chunk, un reste de moins de 8 octets est
+    /// le debut d'en-tete du suivant, que TCP a coupe (#296) : les octets
+    /// presents de ses types sont verifies, et l'iteration s'arrete avant
+    /// lui.
     fn try_from(bytes: &'a [u8]) -> Result<Self, Self::Error> {
         validate_tcp_header_length(bytes.len())?;
 
         // Passe de validation : chaque chunk est decode, aucun n'est garde.
         let mut offset = 0usize;
-        while offset < bytes.len() {
-            let (_, consumed) = next_chunk(&bytes[offset..])?;
+        while let Some(rest) = bytes.get(offset..).filter(|rest| !rest.is_empty()) {
+            if offset > 0 && rest.len() < OPCUA_TCP_HEADER_LEN {
+                validate_chunk_start(rest)?;
+                break;
+            }
+            let (_, consumed) = next_chunk(rest)?;
             offset += consumed;
         }
 
         Ok(OpcuaPacket {
             chunks: OpcuaChunks { bytes },
         })
+    }
+}
+
+impl OpcuaPacket<'_> {
+    /// Sonde aveugle, hors des ports 4840 et 12001 (#296).
+    ///
+    /// Plus stricte que [`TryFrom::try_from`] : les chunks pavent le segment
+    /// sans reste, et un chunk partiel annonce au plus
+    /// [`OPCUA_BLIND_MAX_PARTIAL_SIZE`] octets. Sans cela, trois lettres de
+    /// type de message et une de type de chunk suffisaient : `CLOCK 12:00:00`
+    /// passait pour un CloseSecureChannel de 842 Mo. La crate tranche ce cas
+    /// comme pour DIS (#123) et NTP (#164) : tolerante sur le port, stricte
+    /// ailleurs.
+    pub(crate) fn is_blind_tcp_match(bytes: &[u8]) -> bool {
+        let mut offset = 0usize;
+        while let Some(rest) = bytes.get(offset..).filter(|rest| !rest.is_empty()) {
+            let Ok((chunk, consumed)) = next_chunk(rest) else {
+                return false;
+            };
+            if matches!(chunk.payload, OpcuaPayload::Partial(_))
+                && chunk.header.message_size > OPCUA_BLIND_MAX_PARTIAL_SIZE
+            {
+                return false;
+            }
+            offset += consumed;
+        }
+        offset > 0
     }
 }
 
@@ -428,6 +485,53 @@ mod tests {
             OpcuaPayload::Partial(body) => assert!(body.is_empty()),
             _ => panic!("expected partial OPC UA payload"),
         }
+    }
+
+    /// #296 : apres un chunk complet, un reste de 1 a 7 octets est le debut
+    /// du suivant ; ses types presents sont verifies, et il n'est pas un
+    /// chunk de l'iteration.
+    #[test]
+    fn a_header_cut_after_a_chunk_is_tolerated_and_checked() {
+        let mut ack = b"ACKF".to_vec();
+        ack.extend_from_slice(&28u32.to_le_bytes());
+        ack.extend_from_slice(&[0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        for cut in 1..8 {
+            let mut bytes = ack.clone();
+            bytes.extend_from_slice(&b"MSGF\x18\x00\x00"[..cut]);
+            let packet = OpcuaPacket::try_from(bytes.as_slice()).expect("reste tolere");
+            assert_eq!(packet.chunks.len(), 1, "{cut} octets");
+            assert!(!OpcuaPacket::is_blind_tcp_match(&bytes), "{cut} octets");
+        }
+        for wrong in [&b"XYZ"[..], b"MSGZ"] {
+            let mut bytes = ack.clone();
+            bytes.extend_from_slice(wrong);
+            assert!(
+                OpcuaPacket::try_from(bytes.as_slice()).is_err(),
+                "{wrong:?}"
+            );
+        }
+        assert!(OpcuaPacket::is_blind_tcp_match(&ack));
+    }
+
+    /// #296 : a l'aveugle, un chunk partiel annonce une taille plausible.
+    #[test]
+    fn the_blind_probe_bounds_a_partial_chunk() {
+        for text in [&b"CLOCK 12:00:00\r\n"[..], b"MSGCOUNT 3\r\n"] {
+            assert!(OpcuaPacket::try_from(text).is_ok(), "{text:?}");
+            assert!(!OpcuaPacket::is_blind_tcp_match(text), "{text:?}");
+        }
+        let partial = |size: u32| {
+            let mut bytes = b"MSGF".to_vec();
+            bytes.extend_from_slice(&size.to_le_bytes());
+            bytes.extend_from_slice(&[0; 8]);
+            bytes
+        };
+        assert!(OpcuaPacket::is_blind_tcp_match(&partial(
+            OPCUA_BLIND_MAX_PARTIAL_SIZE
+        )));
+        assert!(!OpcuaPacket::is_blind_tcp_match(&partial(
+            OPCUA_BLIND_MAX_PARTIAL_SIZE + 1
+        )));
     }
 
     #[test]
