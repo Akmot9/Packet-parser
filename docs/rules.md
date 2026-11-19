@@ -22,11 +22,11 @@ Rules have the guarantees of every parser added to the crate (#319):
 
 ```toml
 [dependencies]
-packet_parser = { version = "13", features = ["rules"] }
+packet_parser = { version = "13.1", features = ["rules"] }
 ```
 
-The feature is on `main` and ships with the next 13.x release. Without it,
-the crate has no dependency on `toml`.
+The feature arrived in 13.1.0. Without it, the crate has no dependency on
+`toml`.
 
 ## Loading rules
 

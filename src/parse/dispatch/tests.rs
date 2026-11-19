@@ -956,6 +956,20 @@ fn decode_as_protocols_resolve_to_table_rules() {
     let _ = [P::Snmp]; // use alias
 }
 
+/// Decode As EtherNet/IP suit ses regles aveugles (#288) : sur TCP, des
+/// messages complets qui pavent le segment, la sonde de la regle TCP ; sur
+/// UDP, un seul message. Un port declare n'est jamais plus strict que la
+/// table sans port.
+#[test]
+fn decode_as_ethernet_ip_follows_the_transport() {
+    let (label, guard, probe) = DecodeAsProtocol::EthernetIp.rule(TransportProtocol::Tcp);
+    assert_eq!(label, ApplicationProtocol::EthernetIp);
+    assert!(matches!(guard, Guard::Tcp));
+    assert_eq!(probe as u32, ProbeId::EthernetIpTcp as u32);
+    let (_, _, probe) = DecodeAsProtocol::EthernetIp.rule(TransportProtocol::Udp);
+    assert_eq!(probe as u32, ProbeId::EthernetIp as u32);
+}
+
 /// Les ports terminaux de la table ne sont pas contournables par
 /// Decode-As : un paquet mDNS sur UDP 5353 declare "DNS" par l'appelant
 /// reste arbitre par la regle terminale.
