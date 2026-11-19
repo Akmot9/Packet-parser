@@ -1,9 +1,10 @@
 // Fuzz du decodeur Java RMI (JRMP) : en-tete de flux, ProtocolAck, Call et
 // Return et leur bloc de donnees court ou long, messages de taille fixe. Ni
 // panic ni boucle ; quand le decodage reussit, le type est le premier
-// octet, chaque champ est celui du fil, les tranches (messages qui suivent
-// l'en-tete, nom d'hote, arguments, valeur) pointent dans l'entree et la
-// finissent, et le decodage a la demande du message suivant un en-tete,
+// octet, chaque champ est celui du fil, les tranches pointent dans
+// l'entree, celles qui la terminent (messages qui suivent l'en-tete,
+// arguments, valeur) la finissent, le nom d'hote du ProtocolAck est suivi
+// de son port, et le decodage a la demande du message suivant un en-tete,
 // l'affichage et les accesseurs ne paniquent pas.
 #![no_main]
 

@@ -6,6 +6,32 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Corrige
+
+- **Decode As EtherNet/IP sur TCP** (#288) : un port TCP declare
+  `DecodeAsProtocol::EthernetIp` lisait un seul message par segment, alors
+  que la regle aveugle TCP accepte, depuis la 13.1.0, des messages complets
+  qui pavent le segment. Un port declare etait donc plus strict que la
+  table sans port. Il prend desormais la sonde de la regle TCP ; sur UDP,
+  un datagramme porte toujours un seul message. L'etiquette ne changeait
+  pas en pratique, la regle aveugle reprenant le segment apres l'echec du
+  port declare.
+
+### Documentation
+
+- `docs/rules.md` : la feature `rules` est sortie en 13.1.0, et l'exemple
+  de dependance demande `13.1`.
+- Rustdoc de `DecodeAsProtocol::JavaRmi` : les cinq messages que seuls le
+  port 1099 et Decode As reconnaissent. Rustdoc de
+  `RtpsSerializedPayload::options` : toutes les implementations n'y rangent
+  pas le bourrage (trame 70 de `talker-listener-rtps.pcapng`, Cyclone DDS).
+  `PID_VENDOR_ID` rappelle que la specification l'appelle `PID_VENDORID`,
+  le nom que rend `RtpsParameter::name`.
+- Commentaires de `FROZEN_LABELS` et de la cible de fuzz `parse_java_rmi`,
+  remis d'accord avec ce que le code verifie.
+
+Constats faits en mettant le livre a jour pour la 13.1.1 (PR book #101).
+
 ## [13.1.1] - 2026-11-18
 
 Correctif : une seule correction, trouvee par le fuzz nocturne.

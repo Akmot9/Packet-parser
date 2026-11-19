@@ -114,8 +114,10 @@ decode_as_protocols![
     ValmetDna,
     /// Modbus over UDP: the MBAP envelope, as on UDP 502.
     ModbusUdp,
-    /// Java RMI (JRMP) over TCP: any message, one-byte Ping and PingAck
-    /// included, for exported objects and JMX connectors off port 1099.
+    /// Java RMI (JRMP) over TCP: any message, for exported objects and JMX
+    /// connectors off port 1099. That includes the messages that the blind
+    /// rule cannot prove: Ping, PingAck, ProtocolNotSupported, DgcAck and
+    /// ProtocolAck.
     JavaRmi,
 ];
 
@@ -123,7 +125,9 @@ impl DecodeAsProtocol {
     /// (etiquette, garde, sonde) de la regle equivalente de la table. DNS
     /// choisit sa forme selon le transport : datagramme sur UDP, prefixe de
     /// longueur sur TCP (RFC 1035 §4.2). AMS aussi : en-tete nu hors TCP,
-    /// precede de l'en-tete AMS/TCP sur TCP.
+    /// precede de l'en-tete AMS/TCP sur TCP. EtherNet/IP comme ses regles
+    /// aveugles : sur TCP, des messages complets qui pavent le segment
+    /// (#288) ; ailleurs, un seul message.
     fn rule(self, protocol: TransportProtocol) -> (ApplicationProtocol, Guard, ProbeId) {
         match self {
             Self::Ftp => (ApplicationProtocol::Ftp, Guard::Tcp, ProbeId::Ftp),
@@ -152,11 +156,18 @@ impl DecodeAsProtocol {
                 Guard::Tcp,
                 ProbeId::ModbusTcp,
             ),
-            Self::EthernetIp => (
-                ApplicationProtocol::EthernetIp,
-                Guard::Any,
-                ProbeId::EthernetIp,
-            ),
+            Self::EthernetIp => match protocol {
+                TransportProtocol::Tcp => (
+                    ApplicationProtocol::EthernetIp,
+                    Guard::Tcp,
+                    ProbeId::EthernetIpTcp,
+                ),
+                _ => (
+                    ApplicationProtocol::EthernetIp,
+                    Guard::Any,
+                    ProbeId::EthernetIp,
+                ),
+            },
             Self::Ams => match protocol {
                 TransportProtocol::Tcp => (ApplicationProtocol::Ams, Guard::Tcp, ProbeId::AmsTcp),
                 _ => (ApplicationProtocol::Ams, Guard::Any, ProbeId::Ams),

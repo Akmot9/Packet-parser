@@ -162,8 +162,10 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
-    /// Les etiquettes de la 11.8.2, triees : la table de dispatch, les
-    /// tunnels, STP et `Unknown`. Aucune ne change de texte en 12.0.
+    /// Les etiquettes de la crate, triees : la table de dispatch, les
+    /// tunnels, STP et `Unknown`. Une etiquette publiee ne change jamais de
+    /// texte ; un protocole nouveau ajoute la sienne (`ModbusUDP` en 12.0.0,
+    /// `Java RMI` en 13.0.0).
     const FROZEN_LABELS: [&str; 55] = [
         "AMS",
         "ASTERIX",

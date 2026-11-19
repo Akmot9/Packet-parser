@@ -160,7 +160,11 @@ impl RtpsEncapsulation {
 pub struct RtpsSerializedPayload<'a> {
     pub encapsulation: RtpsEncapsulation,
     /// Options de representation. XTypes y range, dans les deux bits de
-    /// poids faible, le nombre d'octets de bourrage en fin de donnees.
+    /// poids faible, le nombre d'octets de bourrage en fin de donnees, mais
+    /// toutes les implementations ne le font pas : la trame 70 de
+    /// `talker-listener-rtps.pcapng` (Cyclone DDS) finit par un octet de
+    /// bourrage, avec des options nulles. Ne pas s'y fier pour retirer le
+    /// bourrage.
     pub options: u16,
     /// Les donnees apres l'en-tete, jusqu'a la fin du sous-message, bourrage
     /// compris ; pour un DATA_FRAG, la fin du premier fragment seulement.

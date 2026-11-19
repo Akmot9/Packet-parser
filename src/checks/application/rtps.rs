@@ -263,6 +263,8 @@ pub const PID_TOPIC_NAME: u16 = 0x0005;
 pub const PID_TYPE_NAME: u16 = 0x0007;
 pub const PID_DOMAIN_ID: u16 = 0x000f;
 pub const PID_PROTOCOL_VERSION: u16 = 0x0015;
+/// `PID_VENDORID` dans la specification, le nom que rend
+/// `RtpsParameter::name` ; `PID_VENDOR_ID` dans tshark, comme ici.
 pub const PID_VENDOR_ID: u16 = 0x0016;
 pub const PID_RELIABILITY: u16 = 0x001a;
 pub const PID_DURABILITY: u16 = 0x001d;
