@@ -1031,6 +1031,86 @@ fn port_rules_carry_a_transport_guard() {
     }
 }
 
+/// SIP (#342) : sonde aveugle sur TCP comme sur UDP, sur tout port, disjointe
+/// de HTTP et de SSDP. Decode As le rend sur un port qu'une autre regle garde.
+#[test]
+fn sip_is_blind_on_both_transports_and_disjoint_from_http_and_ssdp() {
+    let label = |protocol: TransportProtocol,
+                 source: u16,
+                 destination: u16,
+                 payload: &[u8],
+                 decode_as: &[(u16, DecodeAsProtocol)]| {
+        let transport = Transport {
+            protocol,
+            source_port: Some(source),
+            destination_port: Some(destination),
+            payload: Some(payload),
+            details: None,
+        };
+        classify(&transport, decode_as).map(|a| a.protocol.label())
+    };
+    use TransportProtocol::{Tcp, Udp};
+    // Synthetique : les formes de RFC 3261 §24.2, F1 et F2.
+    let invite = b"INVITE sip:bob@biloxi.com SIP/2.0\r\n\
+        Via: SIP/2.0/TCP pc33.atlanta.com;branch=z9hG4bKnashds8\r\n\
+        To: Bob <sip:bob@biloxi.com>\r\n\
+        From: Alice <sip:alice@atlanta.com>;tag=1928301774\r\n\
+        Call-ID: a84b4c76e66710\r\n\
+        CSeq: 314159 INVITE\r\n\
+        Content-Length: 0\r\n\
+        \r\n";
+    let ringing = b"SIP/2.0 180 Ringing\r\n\
+        v: SIP/2.0/UDP pc33.atlanta.com;branch=z9hG4bKnashds8\r\n\
+        t: Bob <sip:bob@biloxi.com>;tag=a6c85cf\r\n\
+        f: Alice <sip:alice@atlanta.com>;tag=1928301774\r\n\
+        i: a84b4c76e66710\r\n\
+        CSeq: 314159 INVITE\r\n\
+        \r\n";
+    for message in [&invite[..], &ringing[..]] {
+        for protocol in [Tcp, Udp] {
+            assert_eq!(label(protocol, 5060, 5060, message, &[]), Some("SIP"));
+            assert_eq!(label(protocol, 40000, 12345, message, &[]), Some("SIP"));
+        }
+    }
+
+    // HTTP et SSDP restent les leurs, sur le port de SIP compris.
+    let http = b"OPTIONS / HTTP/1.1\r\nHost: biloxi.com\r\n\r\n";
+    assert_eq!(label(Tcp, 40000, 5060, http, &[]), Some("HTTP"));
+    let ssdp = b"NOTIFY * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n\
+        NT: upnp:rootdevice\r\nNTS: ssdp:alive\r\n\r\n";
+    assert_eq!(label(Udp, 40000, 1900, ssdp, &[]), Some("SSDP"));
+    assert_eq!(label(Udp, 40000, 5060, ssdp, &[]), Some("Unknown"));
+
+    // Sans CSeq, la tete n'est pas SIP, ni HTTP.
+    let text = std::str::from_utf8(invite).unwrap();
+    let without_cseq = text.replace("CSeq: 314159 INVITE\r\n", "");
+    assert_eq!(
+        label(Tcp, 40000, 5060, without_cseq.as_bytes(), &[]),
+        Some("Unknown")
+    );
+
+    // mDNS garde 5353 (RFC 6762) : un echec n'y retombe sur aucune autre
+    // sonde, et Decode As ne contourne pas un port reserve.
+    assert_eq!(label(Udp, 40000, 5353, invite, &[]), None);
+    assert_eq!(
+        label(Udp, 40000, 5353, invite, &[(5353, DecodeAsProtocol::Sip)]),
+        None
+    );
+    // Decode As passe avant la table, sur les deux transports.
+    for protocol in [Tcp, Udp] {
+        assert_eq!(
+            label(
+                protocol,
+                40000,
+                2000,
+                invite,
+                &[(2000, DecodeAsProtocol::Sip)]
+            ),
+            Some("SIP")
+        );
+    }
+}
+
 /// La liste aveugle de la table, figee : un protocole ajoute ou deplace s'y
 /// voit.
 #[test]
@@ -1065,6 +1145,7 @@ fn blind_rules_order_is_frozen() {
             "SNMP",
             "TLS",
             "SSH",
+            "SIP",
             "HTTP",
             "SSH",
             "GIOP",

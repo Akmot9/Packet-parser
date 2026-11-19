@@ -17,7 +17,8 @@
 # sans etat, les voit comme les autres segments — le test les ecarte de la
 # comparaison. `http-on-port-5432.pcap` (negatif PostgreSQL de Zeek) est
 # dissequee avec « Decode As » HTTP sur 5432, ce que la sonde aveugle de la
-# crate fait d'elle-meme.
+# crate fait d'elle-meme ; de meme `ndpi_http_on_sip_port.pcap` (negatif SIP
+# de nDPI, #342) sur 5060, ou tshark essaie SIP.
 set -euo pipefail
 
 if [ "$#" -gt 0 ]; then
@@ -34,6 +35,7 @@ for capture in "${captures[@]}"; do
     decode_as=()
     case "$(basename "$capture")" in
         http-on-port-5432.pcap) decode_as=(-d tcp.port==5432,http) ;;
+        ndpi_http_on_sip_port.pcap) decode_as=(-d tcp.port==5060,http) ;;
     esac
     tshark -r "$capture" -o tcp.desegment_tcp_streams:FALSE \
         -Y 'tcp.analysis.retransmission && tcp.len > 0' -T fields -e frame.number 2>/dev/null |

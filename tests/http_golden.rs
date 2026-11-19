@@ -7,7 +7,7 @@
 //! telles qu'elles tiennent dans un segment TCP.
 //!
 //! Captures : tout `pcaps_exemple/protocols/` et `The-Ultimate-PCAP.pcapng`.
-//! L'oracle est tshark 4.6.6 sans reassemblage TCP (`tools/http_oracle.sh`),
+//! L'oracle est tshark 4.6.9 sans reassemblage TCP (`tools/http_oracle.sh`),
 //! hors retransmissions, que tshark ne dissèque pas, et hors HTTP dechiffre
 //! dans TLS (`tls12-dsb.pcapng`, cle dans le fichier : la crate voit du
 //! TLS). Pour chaque trame HTTP : genre, version, methode et URI, ou code et
@@ -16,7 +16,8 @@
 //! l'oracle, et reciproquement — sauf les retransmissions TCP, que l'oracle
 //! liste sans les dissequer : la crate, sans etat, les etiquette comme les
 //! segments d'origine, et elles sont ecartees de la comparaison. Sur
-//! `http-on-port-5432.pcap`, tshark a besoin d'un « Decode As » que la sonde
+//! `http-on-port-5432.pcap` et `ndpi_http_on_sip_port.pcap` (TCP 5060, ou
+//! tshark essaie SIP), tshark a besoin d'un « Decode As » que la sonde
 //! aveugle de la crate n'a pas.
 
 use std::{
@@ -175,8 +176,9 @@ fn every_frame_matches_the_tshark_oracle() {
         oracle_rows,
         "toutes les lignes de l'oracle verifiees"
     );
-    assert_eq!(by_kind.get("request"), Some(&144));
-    assert_eq!(by_kind.get("response"), Some(&152));
+    // Dont le GET et son 403 du negatif SIP de nDPI, sur TCP 5060 (#342).
+    assert_eq!(by_kind.get("request"), Some(&145));
+    assert_eq!(by_kind.get("response"), Some(&153));
     // Six retransmissions d'un segment HTTP, que tshark ne dissèque pas :
     // trois du GET vers le proxy 3128 de l'Ultimate PCAP et trois reponses
     // (Ultimate PCAP, dns_isp_hijack, tcp_ports).

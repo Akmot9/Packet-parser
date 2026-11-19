@@ -231,6 +231,18 @@ Application detection is intentionally best-effort. Parser modules include:
   (NTS, MS-SNTP)
 - DHCP / DHCPv6
 - HTTP/1.x (RFC 9112): requests and responses, head validated, body as bytes
+- SIP (RFC 3261) over UDP and TCP, on any port: a request (a method of the
+  IANA registry, a Request-URI with a scheme, `SIP/2.0`) or a response
+  (`SIP/2.0`, a code from 100 to 699), a complete head up to the empty line
+  with Via, From, To, Call-ID and CSeq, in long or compact form, and a CSeq
+  whose method is the request's. `SipMessage` exposes them as fields, the
+  other headers through `SipHeaders::get`, which finds a compact form from
+  its long name and the other way round, and the body cut at
+  Content-Length. Folded headers are accepted, their value returned as
+  carried. Stateless limits: a head cut between two TCP segments, the
+  continuation segments, IPv4 fragments and the keep-alives of port 5060
+  (blanks, `hello`, CRLF) are not SIP; SIP over TLS (5061) stays TLS.
+  `DecodeAsProtocol::Sip` takes it on a port another rule guards
 - MQTT
 - PostgreSQL
 - FTP

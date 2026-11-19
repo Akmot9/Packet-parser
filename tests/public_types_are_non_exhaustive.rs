@@ -27,7 +27,7 @@
 use std::{fs, path::Path};
 
 /// Types volontairement exhaustifs, avec la raison.
-const CONSTRUCTIBLE: [(&str, &str); 16] = [
+const CONSTRUCTIBLE: [(&str, &str); 17] = [
     ("PortIdentity", "type valeur fixe par IEEE 1588"),
     ("PtpTimestamp", "type valeur fixe par IEEE 1588"),
     ("ClockQuality", "type valeur fixe par IEEE 1588"),
@@ -40,6 +40,7 @@ const CONSTRUCTIBLE: [(&str, &str); 16] = [
     ("GiopMessages", "iterateur a champs prives"),
     ("VlanStack", "vue a champs prives"),
     ("HttpHeaders", "vue a champs prives"),
+    ("SipHeaders", "vue a champs prives"),
     ("EtherNetIpCpfItems", "vue a champs prives"),
     ("OpcuaChunks", "vue a champs prives"),
     ("Ecn", "deux bits : quatre valeurs, toutes nommees"),

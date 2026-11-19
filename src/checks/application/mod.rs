@@ -34,6 +34,7 @@ pub mod radius;
 pub mod rdp;
 pub mod rtps;
 pub mod s7comm;
+pub mod sip;
 pub mod smtp;
 pub mod snmp;
 pub mod srvloc;

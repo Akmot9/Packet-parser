@@ -119,6 +119,7 @@ application_protocols![
     (WireGuard, "WireGuard"),
     (ModbusUdp, "ModbusUDP"),
     (JavaRmi, "Java RMI"),
+    (Sip, "SIP"),
 ];
 
 impl fmt::Display for ApplicationProtocol {
@@ -165,8 +166,8 @@ mod tests {
     /// Les etiquettes de la crate, triees : la table de dispatch, les
     /// tunnels, STP et `Unknown`. Une etiquette publiee ne change jamais de
     /// texte ; un protocole nouveau ajoute la sienne (`ModbusUDP` en 12.0.0,
-    /// `Java RMI` en 13.0.0).
-    const FROZEN_LABELS: [&str; 55] = [
+    /// `Java RMI` en 13.0.0, `SIP` en 13.2.0).
+    const FROZEN_LABELS: [&str; 56] = [
         "AMS",
         "ASTERIX",
         "BACnet/IP",
@@ -208,6 +209,7 @@ mod tests {
         "RDP",
         "RTPS",
         "S7Comm",
+        "SIP",
         "SMTP",
         "SNMP",
         "SRVLOC",

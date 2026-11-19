@@ -119,6 +119,9 @@ decode_as_protocols![
     /// rule cannot prove: Ping, PingAck, ProtocolNotSupported, DgcAck and
     /// ProtocolAck.
     JavaRmi,
+    /// SIP over TCP or UDP: the same rule as off port, for a port where
+    /// another rule would take the message first.
+    Sip,
 ];
 
 impl DecodeAsProtocol {
@@ -216,6 +219,7 @@ impl DecodeAsProtocol {
                 ProbeId::ModbusTcp,
             ),
             Self::JavaRmi => (ApplicationProtocol::JavaRmi, Guard::Tcp, ProbeId::JavaRmi),
+            Self::Sip => (ApplicationProtocol::Sip, Guard::Any, ProbeId::Sip),
         }
     }
 }

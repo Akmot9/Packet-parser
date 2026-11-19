@@ -547,6 +547,12 @@ pub(super) static RULES: &[Rule] = &[
     // SSH avant HTTP : prefixe litteral `SSH-` + version exacte, aucun
     // recouvrement avec les methodes HTTP.
     rule(ApplicationProtocol::Ssh, Guard::Tcp, ProbeId::Ssh),
+    // SIP (RFC 3261, #342) : la version `SIP/2.0`, une methode du registre
+    // IANA, Via, From, To, Call-ID et CSeq, dont la methode est celle de la
+    // requete. Reellement bi-transport (UDP et TCP, §18) et sans port : 5060
+    // est une convention, et 5061 porte du TLS. Disjoint de HTTP, dont la
+    // sonde exige `HTTP/x.y`, et de SSDP (`* HTTP/1.1`).
+    rule(ApplicationProtocol::Sip, Guard::Any, ProbeId::Sip),
     rule(ApplicationProtocol::Http, Guard::Tcp, ProbeId::Http),
     // La banniere SSH apres les lignes qu'un serveur peut envoyer avant elle
     // (RFC 4253 §4.2, #307) : apres HTTP, dont un corps peut citer une
