@@ -298,6 +298,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "parse_sip"
+path = "fuzz_targets/parse_sip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "parse_rules"
 path = "fuzz_targets/parse_rules.rs"
 test = false

@@ -8,6 +8,7 @@
 
 use crate::checks::application::http::{may_start_request, may_start_response};
 use crate::checks::application::quic::is_plausible_short_header;
+use crate::checks::application::sip::may_start_sip;
 use crate::checks::application::ssh::SSH_PREFIX;
 use crate::parse::application::protocols::ams::AmsPacket;
 use crate::parse::application::protocols::asterix::AsterixPacket;
@@ -42,6 +43,7 @@ use crate::parse::application::protocols::radius::RadiusPacket;
 use crate::parse::application::protocols::rdp::RdpPacket;
 use crate::parse::application::protocols::rtps::RtpsPacket;
 use crate::parse::application::protocols::s7comm::S7CommPacket;
+use crate::parse::application::protocols::sip::SipMessage;
 use crate::parse::application::protocols::smtp::SmtpMessage;
 use crate::parse::application::protocols::snmp::SnmpPacket;
 use crate::parse::application::protocols::srvloc::SrvlocPacket;
@@ -169,11 +171,14 @@ pub(super) enum ProbeId {
     QuicLongHeaderPort,
     /// EtherNet/IP sur TCP : des messages complets pavent le segment (#288).
     EthernetIpTcp,
+    /// SIP sur TCP et UDP : une tete complete, Via, From, To, Call-ID et
+    /// CSeq (#342).
+    Sip,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::EthernetIpTcp;
+    pub(super) const LAST: Self = Self::Sip;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -248,6 +253,9 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::EthernetIp => EtherNetIpPacket::try_from(payload).is_ok(),
         // TCP : des messages complets doivent paver le segment (#288).
         ProbeId::EthernetIpTcp => EtherNetIpPacket::is_tcp_match(payload),
+        // Protocole texte : la tete doit tenir dans PROBE_CAP. La garde a cout
+        // constant rejette au premier octet presque tout ce qui n'est pas SIP.
+        ProbeId::Sip => may_start_sip(text) && SipMessage::try_from(text).is_ok(),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),

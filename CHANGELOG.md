@@ -6,6 +6,40 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **SIP** (RFC 3261, #342) : etiquette `SIP`, decodeur zero copie
+  `parse::application::protocols::sip::SipMessage` et
+  `DecodeAsProtocol::Sip`.
+  - **Ce qui est lu.** La ligne de depart, requete ou reponse
+    (`SipStartLine`). La methode est l'une des 14 du registre IANA, casse
+    comprise ; la version `SIP/2.0` est lue sans casse ; le code va de 100
+    a 699.
+  - **Les en-tetes.** Via, From, To, Call-ID et CSeq sont exiges, en forme
+    longue ou compacte, et exposes en champs. La methode du CSeq doit etre
+    celle de la requete. Les autres en-tetes passent par `SipHeaders` :
+    `get` trouve la forme compacte depuis le nom long, et l'inverse. Un
+    en-tete replie est accepte et rendu tel quel.
+  - **Le corps** est coupe a Content-Length.
+  - **Detection.** Une regle aveugle, sur UDP comme sur TCP et sur tout
+    port, placee avant HTTP. Elle est disjointe de HTTP et de SSDP.
+  - **Corpus et oracle.** Le corpus recoit quatre captures dans
+    `pcaps_exemple/protocols/sip/` : deux du wiki Wireshark, dont un appel
+    fax avec MEGACO et T.38, un REGISTER de nDPI et un negatif, du HTTP sur
+    TCP 5060.
+    - 201 trames SIP, dont 20 de `The-Ultimate-PCAP.pcapng` qui sortaient
+      `Unknown`, sont comparees a tshark trame par trame
+      (`tests/sip_golden.rs`, `tools/sip_oracle.sh`).
+    - Nouvelle cible de fuzz `parse_sip`.
+  - **Limites, sans etat.**
+    - Une tete coupee entre deux segments TCP n'est pas reconnue, ni les
+      segments de continuation. Il n'existe aucune capture SIP sur TCP
+      reelle.
+    - Un fragment IPv4 n'est pas lu : la trame 15114 de l'Ultimate PCAP
+      est le premier fragment d'un INVITE de 2 017 octets.
+    - Les keep-alive du port 5060 ne sont pas lus.
+    - SIP sur TLS (5061) reste TLS.
+
 ### Corrige
 
 - **Decode As EtherNet/IP sur TCP** (#288) : un port TCP declare

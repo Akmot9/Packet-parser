@@ -2,12 +2,16 @@
 
 Etat au 2026-11-19 : la **13.1.1 reste la derniere version publiee**. Le
 livre est passe en 13.1.1 (PR book #101). Sur `main`, la section « Non
-publie » du CHANGELOG porte #340 : Decode As EtherNet/IP sur TCP prend la
-sonde de la regle aveugle TCP, sans effet pratique sur l'etiquette, et de
-la doc remise d'accord avec le code. Elle partira avec la prochaine
-correction de bug ou le prochain protocole. Aucune issue n'est ouverte, et
-le fuzz nocturne du 2026-11-19 est vert. Piste suivante : SIP (§3,
-reliquat de #103), des qu'une capture reelle redistribuable est trouvee.
+publie » du CHANGELOG porte deux choses :
+- **SIP** (#342, reliquat de #103 au §3) : decodeur, regle aveugle sur UDP
+  et TCP, `DecodeAsProtocol::Sip`, quatre captures reelles et un oracle
+  tshark ;
+- **#340** : Decode As EtherNet/IP sur TCP prend la sonde de la regle
+  aveugle TCP, sans effet pratique sur l'etiquette, et de la doc remise
+  d'accord avec le code.
+
+Un protocole ajoute justifie une version : ce sera la 13.2.0, sur demande.
+Le fuzz nocturne du 2026-11-19 est vert.
 
 Etat anterieur (2026-11-18, 13.1.1) : la **13.1.1 est publiee** (tag `v13.1.1`,
 publication par le workflow). Correctif d'une seule correction, que le fuzz
@@ -424,8 +428,8 @@ analyse securite, force de la signature wire, disponibilite des captures,
 synergie avec le code existant.
 
 Au 2026-11-03, tous les protocoles de ces trois tableaux sont livres, sauf
-quatre : Sampled Values (Tier 2), SMB2/3, DTLS et SIP (Tier 3). Leur
-reliquat est decrit au §3.
+quatre : Sampled Values (Tier 2), SMB2/3, DTLS et SIP (Tier 3). SIP est
+livre le 2026-11-19 (#342). Le reliquat des trois autres est decrit au §3.
 
 ### Tier 1 — les evidences (captures deja dans le repo ou dossier prepare)
 
@@ -519,8 +523,10 @@ issue par protocole.
   - des regles de port pour CAPWAP (5246/5247), CoAP sur DTLS (5684) et
     EtherNet/IP securise (2221) ;
   - une place dans `RULES` apres BACnet/IP et avant DNS.
-- **SIP** (#103). La brique d'en-tete existe depuis #205 : `HttpHeaders`
-  et `split_start_line`.
+- **SIP** (#103) : livre le 2026-11-19 (#342), non publie. Les captures
+  existaient : 21 trames dans l'Ultimate PCAP, et le wiki Wireshark. Le
+  decodeur a sa propre vue `SipHeaders`, pour les formes compactes et le
+  repli, que `HttpHeaders` ne connait pas.
 - **S7CommPlus et MELSOFT** (#177). Ils attendent des captures reelles du
   banc ICS, car la regle du depot interdit tout golden sans trame reelle.
 - **Sampled Values** (#102), EtherType `0x88BA`. Aucune capture

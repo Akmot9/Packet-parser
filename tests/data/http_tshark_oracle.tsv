@@ -1,4 +1,4 @@
-# Genere par tools/http_oracle.sh avec TShark (Wireshark) 4.6.6. : une ligne par trame HTTP/1.x,
+# Genere par tools/http_oracle.sh avec TShark (Wireshark) 4.6.9. : une ligne par trame HTTP/1.x,
 # sans reassemblage TCP, hors retransmissions et hors HTTP dechiffre dans TLS. Colonnes :
 # capture, trame, genre (request | response), version, methode ou code, URI ou phrase
 # (premier message du segment ; `-` si vide).
@@ -111,6 +111,8 @@ s7comm_plus.pcap	69	retransmission	-	-	-
 s7comm_plus.pcap	72	retransmission	-	-	-
 s7comm_plus.pcap	75	retransmission	-	-	-
 s7comm_plus.pcap	78	retransmission	-	-	-
+ndpi_http_on_sip_port.pcap	3	request	HTTP/1.1	GET	/star-123456/index.m3u8?token=89b198b8844824ca15b8b379c26fc1b7dfcba368-5KUJTJ5Y73AGIAOV-1618753174-1618742374
+ndpi_http_on_sip_port.pcap	4	response	HTTP/1.1	403	Forbidden
 tcp_dupack.pcapng	8	retransmission	-	-	-
 tcp_ports.pcapng	79	retransmission	-	-	-
 tcp_ports.pcapng	503	retransmission	-	-	-

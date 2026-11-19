@@ -431,29 +431,52 @@ fn application_classification_histogram_is_frozen() {
     // version reservee 0x0a0a0a0a, sont lus selon les invariants de QUIC
     // (RFC 8999), comme tshark : "QUIC" 0 -> 74, "Unknown" 9 598 -> 9 524.
     // Les autres constats de #288 ne changent aucune etiquette du corpus.
+    //
+    // 2026-11-19 (#342, SIP) : le dossier `sip/` verse quatre captures.
+    // "SIP" 0 -> 181, exactement les trames SIP de tshark : 81 de
+    // wireshark_aaa.pcap, 92 de wireshark_FAX-Call-t38-CA-TDM-SIP-FB-1.pcap
+    // et 8 de ndpi_sip_hello.pcapng (tests/sip_golden.rs). Le reste vient du
+    // trafic qui les entoure :
+    // - wireshark_aaa.pcap (691 trames) : "DNS" 104 -> 461 (+357), "NBNS"
+    //   737 -> 848 (+111), "DHCP" 71 -> 73 et "FTP" 5 -> 18 (+13), autant
+    //   que tshark sauf pour FTP : les 16 autres trames FTP sont la banniere
+    //   multiligne `230-` d'un serveur ProFTPD, une ligne par segment, que
+    //   le parseur sans etat ne reconnait pas. Elles sortent "Unknown", avec
+    //   8 datagrammes NetBIOS Datagram (UDP 138), 21 keep-alive de cinq
+    //   espaces sur UDP 5060, que tshark ne dissèque pas non plus, et 10
+    //   RTP/RTCP :
+    //   +55 "Unknown" ; 72 trames sans charge (ARP, accuses TCP) ;
+    // - wireshark_FAX-Call-t38-CA-TDM-SIP-FB-1.pcap (7 217 trames) : MEGACO,
+    //   RTP et T.38, que la crate ne decode pas : +7 125 "Unknown" ;
+    // - ndpi_sip_hello.pcapng : 22 keep-alive `hello` sur UDP 5060, que
+    //   tshark ne dissèque pas, +22 "Unknown" ;
+    // - ndpi_http_on_sip_port.pcap, le negatif : "HTTP" 146 -> 148, la
+    //   requete et sa reponse sur TCP 5060, et 2 trames sans charge.
+    // "Unknown" 9 524 -> 16 726 (+7 202), "(sans application)" 6 735 ->
+    // 6 809 (+74).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 6735),
+        (NO_APPLICATION, 6809),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 33),
-        ("DHCP", 71),
+        ("DHCP", 73),
         ("DIS", 390),
         ("DNP3", 218),
         ("DHCPv6", 32),
-        ("DNS", 104),
+        ("DNS", 461),
         ("ESP", 315),
         ("EtherNet/IP", 4),
-        ("FTP", 5),
+        ("FTP", 18),
         ("GIOP", 123),
-        ("HTTP", 146),
+        ("HTTP", 148),
         ("IEC 104", 374),
         ("IKE", 535),
         ("Java RMI", 143),
         ("IP-in-IP", 5),
         ("LLMNR", 136),
         ("MQTT", 187),
-        ("NBNS", 737),
+        ("NBNS", 848),
         ("NBSS", 32),
         ("ModbusTCP", 382),
         ("ModbusUDP", 38),
@@ -467,6 +490,7 @@ fn application_classification_histogram_is_frozen() {
         ("QUIC", 74),
         ("RADIUS", 23),
         ("RDP", 89),
+        ("SIP", 181),
         ("SMTP", 6),
         ("SNMP", 14),
         ("SRVLOC", 1),
@@ -475,7 +499,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 9_524),
+        ("Unknown", 16_726),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),
