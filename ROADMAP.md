@@ -1,6 +1,18 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-19 : la **13.1.1 reste la derniere version publiee**. Le
+Etat au 2026-11-19, 13.2.0 : la **13.2.0 est publiee** (tag `v13.2.0`,
+publication par le workflow). Mineure, sans rupture :
+- **SIP** (RFC 3261, #342, PR #343) : decodeur `SipMessage`, regle aveugle
+  sur UDP et TCP avant HTTP, `DecodeAsProtocol::Sip`, quatre captures
+  reelles dans `pcaps_exemple/protocols/sip/` et un oracle tshark de 201
+  trames ;
+- **#340** : Decode As EtherNet/IP sur TCP prend la sonde de la regle
+  aveugle TCP.
+
+Aucune issue n'est ouverte. Reste a faire hors de ce depot : le livre,
+encore en 13.1.1, qui recevra une page SIP.
+
+Etat anterieur (2026-11-19, apres la 13.1.1) : la **13.1.1 reste la derniere version publiee**. Le
 livre est passe en 13.1.1 (PR book #101). Sur `main`, la section « Non
 publie » du CHANGELOG porte deux choses :
 - **SIP** (#342, reliquat de #103 au §3) : decodeur, regle aveugle sur UDP

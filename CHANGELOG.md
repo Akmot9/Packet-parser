@@ -6,6 +6,11 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [13.2.0] - 2026-11-19
+
+Mineure, sans rupture : un protocole ajoute, SIP, et une correction de
+Decode As pour EtherNet/IP sur TCP.
+
 ### Ajoute
 
 - **SIP** (RFC 3261, #342) : etiquette `SIP`, decodeur zero copie
