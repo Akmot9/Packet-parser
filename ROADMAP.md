@@ -1,6 +1,15 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-18, 13.1.1 : la **13.1.1 est publiee** (tag `v13.1.1`,
+Etat au 2026-11-19 : la **13.1.1 reste la derniere version publiee**. Le
+livre est passe en 13.1.1 (PR book #101). Sur `main`, la section « Non
+publie » du CHANGELOG porte #340 : Decode As EtherNet/IP sur TCP prend la
+sonde de la regle aveugle TCP, sans effet pratique sur l'etiquette, et de
+la doc remise d'accord avec le code. Elle partira avec la prochaine
+correction de bug ou le prochain protocole. Aucune issue n'est ouverte, et
+le fuzz nocturne du 2026-11-19 est vert. Piste suivante : SIP (§3,
+reliquat de #103), des qu'une capture reelle redistribuable est trouvee.
+
+Etat anterieur (2026-11-18, 13.1.1) : la **13.1.1 est publiee** (tag `v13.1.1`,
 publication par le workflow). Correctif d'une seule correction, que le fuzz
 nocturne a trouvee le jour meme (#333) : depuis #296, le decodeur OPC UA
 acceptait, sur le port et par Decode As, un chunk complet suivi d'un ou
