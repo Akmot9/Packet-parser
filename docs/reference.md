@@ -392,6 +392,13 @@ FTP, SMTP and NNTP detection in `PacketFlow` is both parser-validated and
 restricted to their plaintext control ports (TCP 21, 25/587 and 119
 respectively). Payloads on other ports are not labelled as these protocols:
 their line-oriented syntax can also occur inside another text protocol's body.
+An FTP or SMTP multi-line reply (`230-…` up to `230 …`) is recognised only
+when the whole reply, its final `code SP` line included, sits in one segment:
+a server that sends one line per segment leaves those segments `Unknown`,
+the last one excepted, since a free-form continuation line carries no code
+and nothing stateless tells it from other text. The ProFTPD banner of
+`pcaps_exemple/protocols/sip/wireshark_aaa.pcap` is such a case: frames 53
+to 75 stay `Unknown`, frame 77 is FTP.
 Complete TLS records on implicit-TLS ports such as 465, 563 and 990 are
 reported as TLS. To inspect externally decrypted application data, call the
 detailed protocol parser directly.

@@ -9,8 +9,10 @@ publication par le workflow). Mineure, sans rupture :
 - **#340** : Decode As EtherNet/IP sur TCP prend la sonde de la regle
   aveugle TCP.
 
-Aucune issue n'est ouverte. Reste a faire hors de ce depot : le livre,
-encore en 13.1.1, qui recevra une page SIP.
+Le livre est passe en 13.2.0 (PR book #103), avec une page SIP. Aucune
+issue n'est ouverte et rien n'attend de publication : la section « Non
+publie » du CHANGELOG ne porte que de la doc (limite des reponses FTP et
+SMTP multilignes coupees par segment, constatee sur `wireshark_aaa.pcap`).
 
 Etat anterieur (2026-11-19, apres la 13.1.1) : la **13.1.1 reste la derniere version publiee**. Le
 livre est passe en 13.1.1 (PR book #101). Sur `main`, la section « Non

@@ -6,6 +6,16 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Documentation
+
+- `docs/reference.md` : une reponse FTP ou SMTP multiligne n'est reconnue
+  que si elle tient entiere dans un segment, ligne finale `code SP` comprise.
+  Un serveur qui envoie une ligne par segment laisse ces segments `Unknown`,
+  sauf le dernier : c'est le cas de la banniere `230-` de ProFTPD dans
+  `pcaps_exemple/protocols/sip/wireshark_aaa.pcap` (trames 53 a 75, 16
+  segments `Unknown`, la trame 77 est FTP). Une ligne de continuation libre
+  ne porte aucun code : sans etat, rien ne la distingue d'un autre texte.
+
 ## [13.2.0] - 2026-11-19
 
 Mineure, sans rupture : un protocole ajoute, SIP, et une correction de
