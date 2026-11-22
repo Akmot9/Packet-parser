@@ -6,6 +6,12 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [13.3.0] - 2026-11-22
+
+Mineure, sans rupture : cinq protocoles ajoutes (.NET Message Framing,
+DCE/RPC, RTCP, RTP sur port declare) ou etendus (CAPWAP hors
+decapsulation), issus de l'epic #346.
+
 ### Ajoute
 
 - **RTP** (RFC 3550, #353, #364, epic #346) : etiquette `RTP`, decodeur

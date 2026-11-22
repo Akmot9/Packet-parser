@@ -1,9 +1,10 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-22, apres la 13.2.0 : l'epic **#346** visait le taux de
-parsing applicatif. Sur un corpus prive de 163 captures de terrain (28,66 M
-de trames), 63 % sortaient `Unknown`. La section « Non publie » du
-CHANGELOG porte cinq decodeurs :
+Etat au 2026-11-22, 13.3.0 : la **13.3.0 est publiee** (tag `v13.3.0`,
+publication par le workflow). Mineure, sans rupture, elle porte l'epic
+**#346**, qui visait le taux de parsing applicatif. Sur un corpus prive de
+163 captures de terrain (28,66 M de trames), 63 % sortaient `Unknown`.
+Cinq decodeurs :
 - **.NET Message Framing** ([MC-NMF], #351, #352) : decodeur `NmfSegment`,
   regle aveugle sur le preambule et l'enveloppe [MC-NBFSE],
   `DecodeAsProtocol::Nmf`. Aucune capture publique n'existe : le corpus est
@@ -59,7 +60,11 @@ Mesure sur le corpus prive, par decodeur :
 Un seul suivi de conversation, hors du parseur, traiterait les deux
 premiers postes : il resterait environ 1,4 M de trames sans nom, soit 5 %.
 
-Etat au 2026-11-19, 13.2.0 : la **13.2.0 est publiee** (tag `v13.2.0`,
+Reste ouvert : #364 (nommer les flux RTP sans faux positif). Hors de ce
+depot : le livre, encore en 13.2.0, qui recevra les pages NMF, DCE/RPC,
+RTCP et RTP.
+
+Etat anterieur (2026-11-19, 13.2.0) : la **13.2.0 est publiee** (tag `v13.2.0`,
 publication par le workflow). Mineure, sans rupture :
 - **SIP** (RFC 3261, #342, PR #343) : decodeur `SipMessage`, regle aveugle
   sur UDP et TCP avant HTTP, `DecodeAsProtocol::Sip`, quatre captures
