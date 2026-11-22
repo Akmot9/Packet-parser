@@ -43,6 +43,45 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     - RTCP n'est pas lu (#354), ni RTP sur TCP (RFC 4571).
     - tshark attribue a T.38 les paquets G.711 qui suivent un re-INVITE
       fax ; la crate les nomme RTP.
+- **.NET Message Framing** ([MC-NMF], #351, #352, epic #346) : etiquette
+  `NMF`, decodeur zero copie
+  `parse::application::protocols::nmf::NmfSegment` et
+  `DecodeAsProtocol::Nmf`. C'est le tramage des liaisons WCF `net.tcp`.
+  - **Ce qui est lu.** Les enregistrements d'un segment TCP
+    (`NmfSegment::records`, `NmfRecord`) : Version, Mode (`NmfMode`), Via,
+    encodage connu ou nomme, enveloppe a taille ou par morceaux, End,
+    Fault, Upgrade, accuse et fin de preambule. Le contenu d'une enveloppe
+    est emprunte, sans etre decode.
+  - **Ce qui est refuse.** Un type d'enregistrement inconnu, une autre
+    version que 1.0, un mode hors de 1 a 4, une taille de plus de cinq
+    octets ou de plus de 32 bits, une chaine coupee ou qui n'est pas de
+    l'UTF-8.
+  - **Detection.** NMF n'a pas de port. La regle aveugle, avant MQTT dans
+    la cascade TCP, prend un preambule (Version 1.0, Mode, Via et une URI)
+    ou une enveloppe a taille dont le contenu s'ouvre comme [MC-NBFSE] :
+    une table de chaines bien formee, puis `s:Envelope` du dictionnaire
+    statique. Les enregistrements d'un octet et les autres encodages se
+    declarent par Decode As.
+  - **Corpus et oracle.** Aucune capture NMF publique n'a ete trouvee.
+    `pcaps_exemple/protocols/nmf/terrain_nmf_censure.pcap` : 32 trames de
+    terrain, censurees par le nouvel outil `tools/censor_capture.py`
+    (adresses MAC et IPv4, ports, VLAN, horodatages, URI, chaines et corps
+    des messages reecrits ; types, tailles et amorces gardes). tshark voit
+    les memes enregistrements avant et apres censure. Parite avec tshark
+    4.6.9 segment par segment (`tests/nmf_golden.rs`,
+    `tools/nmf_oracle.sh`). Nouvelle cible de fuzz `parse_nmf`.
+  - **Mesure.** Sur le corpus de terrain de #346, 2,94 M de trames
+    `Unknown` sortent NMF. Avec RTP, `Unknown` y passe de 63 % a 38 % des
+    trames.
+  - **Limites, sans etat.**
+    - Une enveloppe plus longue qu'un segment est coupee
+      (`NmfRecord::is_truncated`) ; les segments de suite restent
+      `Unknown` (#357).
+    - Les enveloppes en SOAP texte ou en XML binaire sans dictionnaire de
+      session, et les enveloppes par morceaux, ne sont couvertes par
+      aucune trame reelle : elles ne se nomment que sur un port declare.
+    - Apres un Upgrade, le flux passe sous TLS ou Negotiate et n'est plus
+      du NMF lisible.
 
 ### Documentation
 

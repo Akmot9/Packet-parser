@@ -243,6 +243,17 @@ Application detection is intentionally best-effort. Parser modules include:
   `0xB0` can pass for RTP (RDP-UDP, some QUIC Version Negotiation packets);
   SRTP keeps its header in clear and is labelled `RTP`; RTCP and RTP over
   TCP (RFC 4571) are not read
+- .NET Message Framing ([MC-NMF], the framing of WCF `net.tcp`) over TCP, on
+  any port: the records of a segment (`NmfSegment::records`), from Version
+  and Via to the sized envelope, whose payload is borrowed, not decoded. NMF
+  has no port; the blind rule takes a preamble (Version 1.0, Mode, Via and
+  its URI) or a sized envelope that opens as binary XML with a session
+  dictionary ([MC-NBFSE]). `DecodeAsProtocol::Nmf` takes any segment made of
+  records on a declared port, the one-byte records (Preamble Ack, End)
+  included. Stateless limits: an envelope longer than its segment is cut
+  (`NmfRecord::is_truncated`) and the segments that carry the rest of it
+  stay `Unknown`; envelopes in SOAP text or in binary XML without a session
+  dictionary are named on a declared port only
 - SIP (RFC 3261) over UDP and TCP, on any port: a request (a method of the
   IANA registry, a Request-URI with a scheme, `SIP/2.0`) or a response
   (`SIP/2.0`, a code from 100 to 699), a complete head up to the empty line

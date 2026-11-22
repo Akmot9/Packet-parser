@@ -125,6 +125,10 @@ decode_as_protocols![
     /// RTP over UDP: any well-formed packet, contributing sources (CSRC)
     /// included, where the blind rule only takes a packet without them.
     Rtp,
+    /// .NET Message Framing over TCP: any segment made of framing records,
+    /// including the one-byte records and the envelopes that the blind
+    /// rule cannot prove.
+    Nmf,
 ];
 
 impl DecodeAsProtocol {
@@ -224,6 +228,7 @@ impl DecodeAsProtocol {
             Self::JavaRmi => (ApplicationProtocol::JavaRmi, Guard::Tcp, ProbeId::JavaRmi),
             Self::Sip => (ApplicationProtocol::Sip, Guard::Any, ProbeId::Sip),
             Self::Rtp => (ApplicationProtocol::Rtp, Guard::Udp, ProbeId::Rtp),
+            Self::Nmf => (ApplicationProtocol::Nmf, Guard::Tcp, ProbeId::Nmf),
         }
     }
 }

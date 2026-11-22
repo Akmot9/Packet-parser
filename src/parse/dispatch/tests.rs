@@ -941,6 +941,7 @@ fn decode_as_protocols_resolve_to_table_rules() {
     let lenient_twins = [
         (ProbeId::WireGuard, ProbeId::WireGuardPort),
         (ProbeId::Rtp, ProbeId::RtpBlind),
+        (ProbeId::Nmf, ProbeId::NmfBlind),
     ];
     for protocol in all {
         for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {
@@ -1116,6 +1117,42 @@ fn sip_is_blind_on_both_transports_and_disjoint_from_http_and_ssdp() {
     }
 }
 
+/// NMF (#352) : la sonde aveugle prend un preambule ou une enveloppe qui
+/// s'ouvre comme [MC-NBFSE] ; l'accuse de preambule, un octet, ne se nomme
+/// que sur un port declare. Octets synthetiques.
+#[test]
+fn nmf_is_blind_on_preamble_and_envelope_only() {
+    use TransportProtocol::{Tcp, Udp};
+    let label =
+        |protocol: TransportProtocol, payload: &[u8], decode_as: &[(u16, DecodeAsProtocol)]| {
+            let transport = Transport {
+                protocol,
+                source_port: Some(40000),
+                destination_port: Some(40002),
+                payload: Some(payload),
+                details: None,
+            };
+            classify(&transport, decode_as).map(|a| a.protocol.label())
+        };
+    let declared = [(40002, DecodeAsProtocol::Nmf)];
+
+    let preamble = b"\x00\x01\x00\x01\x02\x02\x0dnet.tcp://h/s\x03\x08\x0c";
+    assert_eq!(label(Tcp, preamble, &[]), Some("NMF"));
+    assert_eq!(label(Udp, preamble, &[]), Some("Unknown"));
+
+    // Enveloppe a taille, table de chaines vide, s:Envelope.
+    let envelope = [0x06, 0x07, 0x00, 0x56, 0x02, 0x0B, 0x01, 0x73, 0x04];
+    assert_eq!(label(Tcp, &envelope, &[]), Some("NMF"));
+
+    // Preamble Ack : un octet, hors de la sonde aveugle.
+    assert_eq!(label(Tcp, &[0x0B], &[]), Some("Unknown"));
+    assert_eq!(label(Tcp, &[0x0B], &declared), Some("NMF"));
+    assert_eq!(label(Udp, &[0x0B], &declared), Some("Unknown"));
+
+    // Un segment de suite ne se decoupe pas en enregistrements.
+    assert_eq!(label(Tcp, &[0x45, 0x17, 0x14], &declared), Some("Unknown"));
+}
+
 /// RTP (#353) : la sonde aveugle, derniere de la cascade UDP, refuse les
 /// CSRC et la plage RTCP ; un port declare par Decode As prend tout paquet
 /// bien forme. Octets synthetiques : un en-tete de douze octets et une
@@ -1218,6 +1255,7 @@ fn blind_rules_order_is_frozen() {
             "QUIC",
             "WireGuard",
             "RTP",
+            "NMF",
             "MQTT",
         ],
         "S7Comm est promu en tete (priorite sur COTP), et les verbes \

@@ -30,6 +30,7 @@ pub mod java_rmi;
 pub mod modbus_tcp;
 pub mod mqtt;
 pub mod netbios;
+pub mod nmf;
 pub mod nntp;
 pub mod ntp;
 pub mod opcua;

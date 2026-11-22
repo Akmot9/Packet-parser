@@ -317,3 +317,10 @@ path = "fuzz_targets/parse_rules.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_nmf"
+path = "fuzz_targets/parse_nmf.rs"
+test = false
+doc = false
+bench = false

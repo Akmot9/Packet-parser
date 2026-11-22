@@ -1,0 +1,25 @@
+# Genere par tools/nmf_oracle.sh avec TShark (Wireshark) 4.6.9. : un segment a charge par ligne.
+# Colonnes : capture, trame, longueur TCP, enregistrements, types, taille d'enveloppe, mode, encodage connu, longueur de Via.
+terrain_nmf_censure.pcap	4	51	5	0,1,2,3,12	-	2	8	41
+terrain_nmf_censure.pcap	5	1	1	11	-	-	-	-
+terrain_nmf_censure.pcap	6	1109	1	6	1106	-	-	-
+terrain_nmf_censure.pcap	7	926	1	6	923	-	-	-
+terrain_nmf_censure.pcap	8	929	1	6	926	-	-	-
+terrain_nmf_censure.pcap	9	782	1	6	779	-	-	-
+terrain_nmf_censure.pcap	10	1	1	7	-	-	-	-
+terrain_nmf_censure.pcap	14	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	15	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	16	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	17	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	19	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	20	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	21	37	13	-	-	-	-	-
+terrain_nmf_censure.pcap	23	1460	1	6	50253	-	-	-
+terrain_nmf_censure.pcap	24	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	25	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	26	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	27	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	28	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	29	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	30	1460	487	-	-	-	-	-
+terrain_nmf_censure.pcap	31	1460	487	-	-	-	-	-

@@ -609,6 +609,11 @@ pub(super) static RULES: &[Rule] = &[
     // laisse. RTP n'a pas de port : un paquet a CSRC se declare par Decode
     // As.
     rule(ApplicationProtocol::Rtp, Guard::Udp, ProbeId::RtpBlind),
+    // NMF ([MC-NMF], #352), sans port : un preambule (Version 1.0, Mode,
+    // Via et son URI) ou une enveloppe a taille qui s'ouvre comme
+    // [MC-NBFSE], soit au moins six octets fixes. Placee apres toutes les
+    // sondes TCP a signature, avant MQTT.
+    rule(ApplicationProtocol::Nmf, Guard::Tcp, ProbeId::NmfBlind),
     // MQTT (TCP) en dernier : en-tete fixe peu discriminant.
     rule(ApplicationProtocol::Mqtt, Guard::Tcp, ProbeId::Mqtt),
 ];
