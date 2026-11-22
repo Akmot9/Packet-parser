@@ -324,3 +324,10 @@ path = "fuzz_targets/parse_nmf.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_dcerpc"
+path = "fuzz_targets/parse_dcerpc.rs"
+test = false
+doc = false
+bench = false

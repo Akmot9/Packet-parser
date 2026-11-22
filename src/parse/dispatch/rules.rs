@@ -626,6 +626,11 @@ pub(super) static RULES: &[Rule] = &[
     // [MC-NBFSE], soit au moins six octets fixes. Placee apres toutes les
     // sondes TCP a signature, avant MQTT.
     rule(ApplicationProtocol::Nmf, Guard::Tcp, ProbeId::NmfBlind),
+    // DCE/RPC oriente connexion (C706 §12.6, #356), sans port fixe : version
+    // 5.0 ou 5.1, type de PDU connu, representation des donnees dont deux
+    // octets sont nuls, longueurs coherentes. Apres toutes les sondes TCP a
+    // signature, avant MQTT.
+    rule(ApplicationProtocol::DceRpc, Guard::Tcp, ProbeId::DceRpc),
     // MQTT (TCP) en dernier : en-tete fixe peu discriminant.
     rule(ApplicationProtocol::Mqtt, Guard::Tcp, ProbeId::Mqtt),
 ];
