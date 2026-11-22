@@ -6,6 +6,44 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **RTP** (RFC 3550, #353, epic #346) : etiquette `RTP`, decodeur zero
+  copie `parse::application::protocols::rtp::RtpPacket` et
+  `DecodeAsProtocol::Rtp`.
+  - **Ce qui est lu.** L'en-tete fixe (marqueur, type de charge, numero de
+    sequence, horodatage, SSRC), la liste CSRC (`CsrcList`), l'extension
+    d'en-tete (`RtpHeaderExtension`, profil et donnees) et le bourrage. La
+    charge est empruntee, sans etre decodee. `static_payload_name` nomme
+    les types statiques de la RFC 3551 (`PCMU`, `PCMA`, `MP2T`...).
+  - **Ce qui est refuse.** Une autre version que 2, les types de charge 72
+    a 76 (le deuxieme octet d'un SR, RR, SDES, BYE ou APP de RTCP), une
+    liste CSRC ou une extension qui depasse le datagramme, un bourrage nul
+    ou plus long que ce qui suit l'en-tete.
+  - **Detection.** RTP n'a ni port ni marqueur : deux bits de version. La
+    regle aveugle, derniere de la cascade UDP, ne nomme que ce que toutes
+    les autres sondes ont laisse, et exige en plus aucun CSRC, un type de
+    charge hors de 64 a 95 (plage RTCP, RFC 5761) et une charge non vide.
+    Un paquet a CSRC, ou hors de ces gardes, se declare par Decode As, qui
+    prend tout paquet bien forme.
+  - **Corpus et oracle.** Aucune capture ajoutee : 15 011 trames RTP de
+    quatre captures deja versionnees, dont `The-Ultimate-PCAP.pcapng`, sont
+    comparees a tshark trame par trame, heuristique `rtp_udp` activee
+    (`tests/rtp_golden.rs`, `tools/rtp_oracle.sh`). Nouvelle cible de fuzz
+    `parse_rtp`.
+  - **Mesure.** Sur le corpus de terrain de #346, 4,13 M de trames
+    `Unknown` sortent RTP ; jugees par la continuite des numeros de
+    sequence, 99,9 % appartiennent a un flux suivi.
+  - **Limites, sans etat.**
+    - Un format dont le premier octet vaut `0x80`, `0x90`, `0xA0` ou `0xB0`
+      peut passer pour du RTP. Huit faux positifs sont connus et figes
+      dans le corpus du depot : trois datagrammes RDP-UDP, trois lignes de
+      texte et deux Version Negotiation QUIC hors du port 443.
+    - SRTP garde l'en-tete en clair et sort `RTP`.
+    - RTCP n'est pas lu (#354), ni RTP sur TCP (RFC 4571).
+    - tshark attribue a T.38 les paquets G.711 qui suivent un re-INVITE
+      fax ; la crate les nomme RTP.
+
 ### Documentation
 
 - `docs/reference.md` : une reponse FTP ou SMTP multiligne n'est reconnue

@@ -305,6 +305,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "parse_rtp"
+path = "fuzz_targets/parse_rtp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "parse_rules"
 path = "fuzz_targets/parse_rules.rs"
 test = false

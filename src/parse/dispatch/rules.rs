@@ -602,6 +602,13 @@ pub(super) static RULES: &[Rule] = &[
         Guard::Udp,
         ProbeId::WireGuardBlind,
     ),
+    // RTP (RFC 3550, #353), derniere sonde UDP : deux bits de version pour
+    // toute signature. La sonde exige en plus un en-tete coherent, aucune
+    // source contributrice, un type de charge hors de la plage RTCP et une
+    // charge non vide ; elle ne nomme que ce que toutes les autres ont
+    // laisse. RTP n'a pas de port : un paquet a CSRC se declare par Decode
+    // As.
+    rule(ApplicationProtocol::Rtp, Guard::Udp, ProbeId::RtpBlind),
     // MQTT (TCP) en dernier : en-tete fixe peu discriminant.
     rule(ApplicationProtocol::Mqtt, Guard::Tcp, ProbeId::Mqtt),
 ];

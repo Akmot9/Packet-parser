@@ -122,6 +122,9 @@ decode_as_protocols![
     /// SIP over TCP or UDP: the same rule as off port, for a port where
     /// another rule would take the message first.
     Sip,
+    /// RTP over UDP: any well-formed packet, contributing sources (CSRC)
+    /// included, where the blind rule only takes a packet without them.
+    Rtp,
 ];
 
 impl DecodeAsProtocol {
@@ -220,6 +223,7 @@ impl DecodeAsProtocol {
             ),
             Self::JavaRmi => (ApplicationProtocol::JavaRmi, Guard::Tcp, ProbeId::JavaRmi),
             Self::Sip => (ApplicationProtocol::Sip, Guard::Any, ProbeId::Sip),
+            Self::Rtp => (ApplicationProtocol::Rtp, Guard::Udp, ProbeId::Rtp),
         }
     }
 }

@@ -41,6 +41,7 @@ use crate::parse::application::protocols::ptp::PtpPacket;
 use crate::parse::application::protocols::quic::QuicPacket;
 use crate::parse::application::protocols::radius::RadiusPacket;
 use crate::parse::application::protocols::rdp::RdpPacket;
+use crate::parse::application::protocols::rtp::RtpPacket;
 use crate::parse::application::protocols::rtps::RtpsPacket;
 use crate::parse::application::protocols::s7comm::S7CommPacket;
 use crate::parse::application::protocols::sip::SipMessage;
@@ -174,11 +175,16 @@ pub(super) enum ProbeId {
     /// SIP sur TCP et UDP : une tete complete, Via, From, To, Call-ID et
     /// CSeq (#342).
     Sip,
+    /// RTP sur un port declare par Decode As : tout paquet bien forme.
+    Rtp,
+    /// RTP a l'aveugle : sans CSRC, type de charge hors de la plage RTCP,
+    /// charge non vide (#353).
+    RtpBlind,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::Sip;
+    pub(super) const LAST: Self = Self::RtpBlind;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -256,6 +262,8 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         // Protocole texte : la tete doit tenir dans PROBE_CAP. La garde a cout
         // constant rejette au premier octet presque tout ce qui n'est pas SIP.
         ProbeId::Sip => may_start_sip(text) && SipMessage::try_from(text).is_ok(),
+        ProbeId::Rtp => RtpPacket::try_from(payload).is_ok(),
+        ProbeId::RtpBlind => RtpPacket::is_blind_match(payload),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),

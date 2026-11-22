@@ -231,6 +231,18 @@ Application detection is intentionally best-effort. Parser modules include:
   (NTS, MS-SNTP)
 - DHCP / DHCPv6
 - HTTP/1.x (RFC 9112): requests and responses, head validated, body as bytes
+- RTP (RFC 3550) over UDP, on any port: the fixed header (marker, payload
+  type, sequence number, timestamp, SSRC), the CSRC list, the header
+  extension and the padding; the payload is borrowed, not decoded.
+  `RtpPacket::static_payload_name` names the static types of RFC 3551. RTP
+  has no port and no magic, only two version bits: the blind rule is the
+  last of the UDP cascade, and also asks for no CSRC, a payload type outside
+  64 to 95 (the RTCP range, RFC 5761) and a non-empty payload.
+  `DecodeAsProtocol::Rtp` takes any well-formed packet on a declared port.
+  Stateless limits: a format whose first byte is `0x80`, `0x90`, `0xA0` or
+  `0xB0` can pass for RTP (RDP-UDP, some QUIC Version Negotiation packets);
+  SRTP keeps its header in clear and is labelled `RTP`; RTCP and RTP over
+  TCP (RFC 4571) are not read
 - SIP (RFC 3261) over UDP and TCP, on any port: a request (a method of the
   IANA registry, a Request-URI with a scheme, `SIP/2.0`) or a response
   (`SIP/2.0`, a code from 100 to 699), a complete head up to the empty line
