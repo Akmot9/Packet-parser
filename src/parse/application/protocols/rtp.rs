@@ -10,26 +10,21 @@
 //! types dynamiques.
 //!
 //! RTP n'a ni port ni marqueur : deux bits de version, et rien d'autre de
-//! fixe. Le decodeur accepte tout paquet bien forme, et il sert tel quel sur
-//! un port declare par Decode As. La sonde aveugle
-//! (`RtpPacket::is_blind_match`) demande davantage, pour ne pas nommer RTP
-//! le premier datagramme qui commence par `0x80` :
-//! - aucune source contributrice (CC = 0) : seul un melangeur en emet ;
-//! - un type de charge hors de 64 a 95, les valeurs que prend le deuxieme
-//!   octet d'un paquet RTCP (RFC 5761 §4) ;
-//! - une charge non vide.
+//! fixe. Aucune sonde sans etat ne peut donc affirmer qu'un datagramme qui
+//! commence par `0x80` est du RTP, et la crate ne nomme rien qu'elle ne
+//! peut affirmer : il n'y a pas de regle aveugle. RTP se nomme sur un port
+//! declare par Decode As (`DecodeAsProtocol::Rtp`), ou tout paquet bien
+//! forme est accepte.
 //!
-//! Mesure du 2026-11-22, la sonde placee en fin de cascade UDP, jugee par
-//! la continuite des numeros de sequence de chaque flux : sur le corpus de
-//! terrain de #346, 4 133 099 trames sur 4 137 685 retenues appartiennent a
-//! un flux suivi ; avec les paquets a CSRC, 28 686 trames de formats
-//! proprietaires passaient en plus, pour aucune trame RTP gagnee.
+//! Une regle aveugle a existe le temps d'une mesure (#353, retiree par
+//! #364) : sans CSRC, type de charge hors de 64 a 95, charge non vide, en
+//! fin de cascade UDP. Elle nommait a tort trois datagrammes RDP-UDP, trois
+//! lignes de texte et deux Version Negotiation QUIC du corpus du depot.
+//! Nommer un flux RTP sans declaration demande de l'etat : des numeros de
+//! sequence qui se suivent sous un meme SSRC (#364).
 //!
-//! Limites, sans etat : rien ne relie un paquet a sa session, et un format
-//! dont le premier octet vaut `0x80`, `0x90`, `0xA0` ou `0xB0` peut passer
-//! pour du RTP. SRTP garde l'en-tete en clair et sort donc RTP. Un paquet a
-//! CSRC, ou de type de charge 64 a 95, ne se reconnait que sur un port
-//! declare.
+//! Limites, sans etat : rien ne relie un paquet a sa session. SRTP garde
+//! l'en-tete en clair et se decode donc comme du RTP.
 
 use std::convert::TryFrom;
 
@@ -134,16 +129,6 @@ impl<'a> RtpPacket<'a> {
     pub fn static_payload_name(&self) -> Option<&'static str> {
         checks::static_payload_name(self.payload_type)
     }
-
-    /// Sonde aveugle : un paquet bien forme, sans CSRC, de type de charge
-    /// hors de la plage RTCP et de charge non vide (voir la doc du module).
-    pub(crate) fn is_blind_match(payload: &'a [u8]) -> bool {
-        RtpPacket::try_from(payload).is_ok_and(|packet| {
-            packet.csrc.is_empty()
-                && !checks::is_rtcp_range(packet.payload_type)
-                && !packet.payload.is_empty()
-        })
-    }
 }
 
 impl<'a> TryFrom<&'a [u8]> for RtpPacket<'a> {
@@ -187,12 +172,6 @@ mod checks {
 
     /// Longueur de l'en-tete d'une extension : profil et longueur en mots.
     const EXTENSION_HEADER_LENGTH: usize = 4;
-
-    /// Types de charge 64 a 95 : avec le bit M, le deuxieme octet vaut 192 a
-    /// 223, la plage des types de paquet RTCP (RFC 5761 §4).
-    pub(super) const fn is_rtcp_range(payload_type: u8) -> bool {
-        matches!(payload_type, 64..=95)
-    }
 
     pub(super) fn validate_fixed_header_length(packet: &[u8]) -> Result<(), RtpError> {
         if packet.len() < RTP_FIXED_HEADER_LENGTH {
@@ -348,7 +327,6 @@ mod tests {
         assert_eq!(packet.extension, None);
         assert_eq!(packet.payload.len(), 160);
         assert_eq!(packet.padding_length, 0);
-        assert!(RtpPacket::is_blind_match(&data));
     }
 
     #[test]
@@ -429,8 +407,6 @@ mod tests {
             [0xd5d5_d5d5, 0xd5d5_d5d5]
         );
         assert_eq!(packet.payload.len(), 152);
-        // Bien forme, mais la sonde aveugle refuse les CSRC.
-        assert!(!RtpPacket::is_blind_match(&data));
 
         data[0] = 0x8F;
         assert_eq!(
@@ -488,18 +464,5 @@ mod tests {
                 available: 160
             })
         );
-    }
-
-    #[test]
-    fn the_blind_probe_refuses_the_rtcp_range_and_an_empty_payload() {
-        let mut data = bytes(PCMA_HEX);
-        // Type de charge 77 : le deuxieme octet d'un RTPFB de RTCP (205).
-        data[1] = 0x80 | 77;
-        assert!(RtpPacket::try_from(&data[..]).is_ok());
-        assert!(!RtpPacket::is_blind_match(&data));
-
-        let data = bytes(PCMA_HEX);
-        assert!(RtpPacket::try_from(&data[..12]).is_ok());
-        assert!(!RtpPacket::is_blind_match(&data[..12]));
     }
 }

@@ -180,9 +180,6 @@ pub(super) enum ProbeId {
     Sip,
     /// RTP sur un port declare par Decode As : tout paquet bien forme.
     Rtp,
-    /// RTP a l'aveugle : sans CSRC, type de charge hors de la plage RTCP,
-    /// charge non vide (#353).
-    RtpBlind,
     /// NMF sur un port declare par Decode As : tout segment qui se decoupe
     /// en enregistrements.
     Nmf,
@@ -284,7 +281,6 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         // constant rejette au premier octet presque tout ce qui n'est pas SIP.
         ProbeId::Sip => may_start_sip(text) && SipMessage::try_from(text).is_ok(),
         ProbeId::Rtp => RtpPacket::try_from(payload).is_ok(),
-        ProbeId::RtpBlind => RtpPacket::is_blind_match(payload),
         ProbeId::Nmf => NmfSegment::try_from(payload).is_ok(),
         ProbeId::NmfBlind => NmfSegment::is_blind_match(payload),
         ProbeId::Capwap => crate::parse::tunnel::is_capwap_packet(payload),
