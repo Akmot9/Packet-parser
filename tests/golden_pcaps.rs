@@ -454,6 +454,17 @@ fn application_classification_histogram_is_frozen() {
     //   requete et sa reponse sur TCP 5060, et 2 trames sans charge.
     // "Unknown" 9 524 -> 16 726 (+7 202), "(sans application)" 6 735 ->
     // 6 809 (+74).
+    //
+    // 2026-11-22 (#353, RTP) : aucune capture ajoutee, la regle aveugle RTP
+    // ferme la cascade UDP. "RTP" 0 -> 7 109, "Unknown" 16 726 -> 9 617,
+    // rien d'autre ne bouge. 7 104 sont des paquets RTP pour tshark 4.6.9,
+    // heuristique `rtp_udp` activee et dissecteur T.38 coupe
+    // (tests/rtp_golden.rs) : 6 995 de
+    // wireshark_FAX-Call-t38-CA-TDM-SIP-FB-1.pcap, 9 de wireshark_aaa.pcap
+    // et 100 de ndpi_line.pcap. Les 5 autres sont des faux positifs connus
+    // et figes par le meme test : trois lignes de texte sur UDP 7001 de
+    // wireshark_8579_radardata.pcap (`80 3C`...) et deux Version
+    // Negotiation QUIC hors du port 443 de ndpi_quic_interop_V.pcapng.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 6809),
@@ -490,6 +501,7 @@ fn application_classification_histogram_is_frozen() {
         ("QUIC", 74),
         ("RADIUS", 23),
         ("RDP", 89),
+        ("RTP", 7109),
         ("SIP", 181),
         ("SMTP", 6),
         ("SNMP", 14),
@@ -499,7 +511,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 16_726),
+        ("Unknown", 9617),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),
