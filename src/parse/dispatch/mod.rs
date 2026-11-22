@@ -129,6 +129,9 @@ decode_as_protocols![
     /// including the one-byte records and the envelopes that the blind
     /// rule cannot prove.
     Nmf,
+    /// RTCP over UDP: any well-formed datagram, where the blind rule asks
+    /// for a Sender or Receiver Report first, or a lone feedback message.
+    Rtcp,
 ];
 
 impl DecodeAsProtocol {
@@ -229,6 +232,7 @@ impl DecodeAsProtocol {
             Self::Sip => (ApplicationProtocol::Sip, Guard::Any, ProbeId::Sip),
             Self::Rtp => (ApplicationProtocol::Rtp, Guard::Udp, ProbeId::Rtp),
             Self::Nmf => (ApplicationProtocol::Nmf, Guard::Tcp, ProbeId::Nmf),
+            Self::Rtcp => (ApplicationProtocol::Rtcp, Guard::Udp, ProbeId::Rtcp),
         }
     }
 }

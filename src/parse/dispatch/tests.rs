@@ -942,6 +942,7 @@ fn decode_as_protocols_resolve_to_table_rules() {
         (ProbeId::WireGuard, ProbeId::WireGuardPort),
         (ProbeId::Rtp, ProbeId::RtpBlind),
         (ProbeId::Nmf, ProbeId::NmfBlind),
+        (ProbeId::Rtcp, ProbeId::RtcpBlind),
     ];
     for protocol in all {
         for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {
@@ -1115,6 +1116,41 @@ fn sip_is_blind_on_both_transports_and_disjoint_from_http_and_ssdp() {
             Some("SIP")
         );
     }
+}
+
+/// RTCP (#354) : la sonde aveugle, juste avant RTP, veut un SR ou un RR en
+/// tete, ou un message de retour seul ; un port declare prend tout
+/// datagramme bien forme. Octets synthetiques.
+#[test]
+fn rtcp_is_blind_on_reports_and_declared_otherwise() {
+    use TransportProtocol::{Tcp, Udp};
+    let label =
+        |protocol: TransportProtocol, payload: &[u8], decode_as: &[(u16, DecodeAsProtocol)]| {
+            let transport = Transport {
+                protocol,
+                source_port: Some(40001),
+                destination_port: Some(40003),
+                payload: Some(payload),
+                details: None,
+            };
+            classify(&transport, decode_as).map(|a| a.protocol.label())
+        };
+    let declared = [(40003, DecodeAsProtocol::Rtcp)];
+    // Receiver Report sans bloc : en-tete et SSRC.
+    let report = [0x80, 201, 0, 1, 0x12, 0x34, 0x56, 0x78];
+    assert_eq!(label(Udp, &report, &[]), Some("RTCP"));
+    assert_eq!(label(Tcp, &report, &[]), Some("Unknown"));
+
+    // BYE seul : bien forme, hors de la sonde aveugle.
+    let bye = [0x81, 203, 0, 1, 0x12, 0x34, 0x56, 0x78];
+    assert_eq!(label(Udp, &bye, &[]), Some("Unknown"));
+    assert_eq!(label(Udp, &bye, &declared), Some("RTCP"));
+    assert_eq!(label(Tcp, &bye, &declared), Some("Unknown"));
+
+    // Un octet de trop : les longueurs ne pavent plus le datagramme.
+    let mut long = report.to_vec();
+    long.push(0);
+    assert_eq!(label(Udp, &long, &declared), Some("Unknown"));
 }
 
 /// DCE/RPC (#356) : l'en-tete commun sur TCP, sur n'importe quel port.
@@ -1340,6 +1376,7 @@ fn blind_rules_order_is_frozen() {
             "ModbusTCP",
             "QUIC",
             "WireGuard",
+            "RTCP",
             "RTP",
             "NMF",
             "DCE/RPC",

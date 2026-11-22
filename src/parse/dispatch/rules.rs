@@ -614,6 +614,10 @@ pub(super) static RULES: &[Rule] = &[
         is_capwap_udp_port,
         ProbeId::Capwap,
     ),
+    // RTCP (RFC 3550 §6, #354), juste avant RTP : des paquets de type 200 a
+    // 207 dont les longueurs pavent exactement le datagramme, ouverts par
+    // un SR ou un RR, ou un message de retour seul (RFC 5506).
+    rule(ApplicationProtocol::Rtcp, Guard::Udp, ProbeId::RtcpBlind),
     // RTP (RFC 3550, #353), derniere sonde UDP : deux bits de version pour
     // toute signature. La sonde exige en plus un en-tete coherent, aucune
     // source contributrice, un type de charge hors de la plage RTCP et une

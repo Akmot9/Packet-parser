@@ -241,8 +241,19 @@ Application detection is intentionally best-effort. Parser modules include:
   `DecodeAsProtocol::Rtp` takes any well-formed packet on a declared port.
   Stateless limits: a format whose first byte is `0x80`, `0x90`, `0xA0` or
   `0xB0` can pass for RTP (RDP-UDP, some QUIC Version Negotiation packets);
-  SRTP keeps its header in clear and is labelled `RTP`; RTCP and RTP over
-  TCP (RFC 4571) are not read
+  SRTP keeps its header in clear and is labelled `RTP`; RTP over TCP
+  (RFC 4571) is not read
+- RTCP (RFC 3550 §6) over UDP, on any port: the packets of a datagram
+  (`RtcpCompound::packets`), each with its type (200 to 207), count and
+  body, the sender SSRC and the sender information of a Sender Report;
+  report blocks, SDES items and feedback messages are borrowed, not decoded.
+  The blind rule sits just before RTP and asks for packet lengths that tile
+  the datagram exactly, a minimum size per type and count, and a Sender or
+  Receiver Report first, or a lone feedback message (reduced-size RTCP,
+  RFC 5506). `DecodeAsProtocol::Rtcp` takes any well-formed datagram on a
+  declared port. Stateless limits: SRTCP appends an index and an
+  authentication tag, so its lengths no longer tile the datagram and it
+  stays `Unknown`
 - .NET Message Framing ([MC-NMF], the framing of WCF `net.tcp`) over TCP, on
   any port: the records of a segment (`NmfSegment::records`), from Version
   and Via to the sized envelope, whose payload is borrowed, not decoded. NMF

@@ -43,6 +43,7 @@ use crate::parse::application::protocols::ptp::PtpPacket;
 use crate::parse::application::protocols::quic::QuicPacket;
 use crate::parse::application::protocols::radius::RadiusPacket;
 use crate::parse::application::protocols::rdp::RdpPacket;
+use crate::parse::application::protocols::rtcp::RtcpCompound;
 use crate::parse::application::protocols::rtp::RtpPacket;
 use crate::parse::application::protocols::rtps::RtpsPacket;
 use crate::parse::application::protocols::s7comm::S7CommPacket;
@@ -194,11 +195,17 @@ pub(super) enum ProbeId {
     /// DCE/RPC oriente connexion sur TCP : un en-tete commun coherent, et
     /// un second PDU bien forme quand le segment continue (#356).
     DceRpc,
+    /// RTCP sur un port declare par Decode As : tout datagramme dont les
+    /// paquets se suivent exactement.
+    Rtcp,
+    /// RTCP a l'aveugle : le meme, ouvert par un SR ou un RR, ou un message
+    /// de retour seul (#354).
+    RtcpBlind,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::DceRpc;
+    pub(super) const LAST: Self = Self::RtcpBlind;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -282,6 +289,8 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::NmfBlind => NmfSegment::is_blind_match(payload),
         ProbeId::Capwap => crate::parse::tunnel::is_capwap_packet(payload),
         ProbeId::DceRpc => DceRpcPdu::is_blind_match(payload),
+        ProbeId::Rtcp => RtcpCompound::try_from(payload).is_ok(),
+        ProbeId::RtcpBlind => RtcpCompound::is_blind_match(payload),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),

@@ -331,3 +331,10 @@ path = "fuzz_targets/parse_dcerpc.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_rtcp"
+path = "fuzz_targets/parse_rtcp.rs"
+test = false
+doc = false
+bench = false

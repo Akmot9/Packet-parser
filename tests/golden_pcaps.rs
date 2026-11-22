@@ -473,6 +473,15 @@ fn application_classification_histogram_is_frozen() {
     // preambule et la fin de session, un octet chacun, et 15 segments de
     // suite ; "(sans application)" 6 809 -> 6 818 (+9 segments sans charge).
     // Parite trame par trame dans `tests/nmf_golden.rs`.
+    //
+    // 2026-11-22 (#354, RTCP) : +1 capture
+    // protocols/rtcp/terrain_rtcp_censure.pcap, 40 datagrammes de terrain
+    // censures (voir son SOURCE.md), tous RTCP. La regle aveugle RTCP,
+    // placee avant RTP, nomme aussi 12 datagrammes deja presents :
+    // "RTCP" 0 -> 52, "Unknown" 9 634 -> 9 622 (-12 : les 11 messages de
+    // retour de ndpi_line.pcap et le SR + SDES + BYE de wireshark_aaa.pcap).
+    // Ce sont les 52 datagrammes que tshark dissèque comme RTCP dans ces
+    // captures (`tests/rtcp_golden.rs`).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 6818),
@@ -510,6 +519,7 @@ fn application_classification_histogram_is_frozen() {
         ("QUIC", 74),
         ("RADIUS", 23),
         ("RDP", 89),
+        ("RTCP", 52),
         ("RTP", 7109),
         ("SIP", 181),
         ("SMTP", 6),
@@ -520,7 +530,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 9634),
+        ("Unknown", 9622),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

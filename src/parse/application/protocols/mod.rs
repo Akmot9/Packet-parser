@@ -34,6 +34,7 @@ pub mod ptp;
 pub mod quic;
 pub mod radius;
 pub mod rdp;
+pub mod rtcp;
 pub mod rtp;
 pub mod rtps;
 pub mod s7comm;
