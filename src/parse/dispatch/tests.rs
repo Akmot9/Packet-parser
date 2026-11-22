@@ -936,17 +936,28 @@ fn decode_as_protocols_resolve_to_table_rules() {
     // (le recours que l'heuristique de Wireshark indique), la ou 51820
     // n'est qu'un port ephemere (#169). La table doit connaitre la sonde
     // jumelle.
-    // RTP de meme (#353) : un port declare prend tout paquet bien forme,
-    // la regle aveugle refuse les CSRC et la plage RTCP.
     let lenient_twins = [
         (ProbeId::WireGuard, ProbeId::WireGuardPort),
-        (ProbeId::Rtp, ProbeId::RtpBlind),
         (ProbeId::Nmf, ProbeId::NmfBlind),
         (ProbeId::Rtcp, ProbeId::RtcpBlind),
     ];
+    // RTP n'a pas de regle dans la table, a dessein (#364) : deux bits
+    // fixes ne font pas une sonde aveugle sans faux positif. Decode As est
+    // la seule facon de le nommer.
+    let decode_as_only = [ProbeId::Rtp];
     for protocol in all {
         for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {
             let (label, _, probe) = protocol.rule(transport);
+            if decode_as_only
+                .iter()
+                .any(|only| *only as u32 == probe as u32)
+            {
+                assert!(
+                    !RULES.iter().any(|rule| rule.label == label),
+                    "{label} : Decode As seulement, mais la table le nomme"
+                );
+                continue;
+            }
             let table_probe = lenient_twins
                 .iter()
                 .find(|(lenient, _)| *lenient as u32 == probe as u32)
@@ -1118,7 +1129,7 @@ fn sip_is_blind_on_both_transports_and_disjoint_from_http_and_ssdp() {
     }
 }
 
-/// RTCP (#354) : la sonde aveugle, juste avant RTP, veut un SR ou un RR en
+/// RTCP (#354) : la sonde aveugle, derniere de la cascade UDP, veut un SR ou un RR en
 /// tete, ou un message de retour seul ; un port declare prend tout
 /// datagramme bien forme. Octets synthetiques.
 #[test]
@@ -1274,13 +1285,12 @@ fn nmf_is_blind_on_preamble_and_envelope_only() {
     // Un segment de suite ne se decoupe pas en enregistrements.
     assert_eq!(label(Tcp, &[0x45, 0x17, 0x14], &declared), Some("Unknown"));
 }
-
-/// RTP (#353) : la sonde aveugle, derniere de la cascade UDP, refuse les
-/// CSRC et la plage RTCP ; un port declare par Decode As prend tout paquet
-/// bien forme. Octets synthetiques : un en-tete de douze octets et une
+/// RTP (#353, #364) : jamais a l'aveugle, deux bits fixes ne suffisent pas ;
+/// un port declare par Decode As prend tout paquet bien forme, sur UDP
+/// seulement. Octets synthetiques : un en-tete de douze octets et une
 /// charge de quatre.
 #[test]
-fn rtp_is_blind_without_csrc_and_declared_with() {
+fn rtp_is_named_on_a_declared_udp_port_only() {
     use TransportProtocol::{Tcp, Udp};
     let label =
         |protocol: TransportProtocol, payload: &[u8], decode_as: &[(u16, DecodeAsProtocol)]| {
@@ -1293,42 +1303,29 @@ fn rtp_is_blind_without_csrc_and_declared_with() {
             };
             classify(&transport, decode_as).map(|a| a.protocol.label())
         };
+    let declared = [(40002, DecodeAsProtocol::Rtp)];
     let plain = [
         0x80, 0x60, 0x00, 0x01, 0x00, 0x00, 0x00, 0xA0, 0x12, 0x34, 0x56, 0x78, 1, 2, 3, 4,
     ];
-    assert_eq!(label(Udp, &plain, &[]), Some("RTP"));
-    assert_eq!(label(Tcp, &plain, &[]), Some("Unknown"));
+    assert_eq!(label(Udp, &plain, &[]), Some("Unknown"));
+    assert_eq!(label(Udp, &plain, &declared), Some("RTP"));
+    assert_eq!(label(Tcp, &plain, &declared), Some("Unknown"));
 
-    // Un CSRC : bien forme, mais hors de la sonde aveugle.
+    // Un CSRC : bien forme, donc nomme sur le port declare.
     let mut mixed = plain.to_vec();
     mixed[0] = 0x81;
     assert_eq!(label(Udp, &mixed, &[]), Some("Unknown"));
-    assert_eq!(
-        label(Udp, &mixed, &[(40002, DecodeAsProtocol::Rtp)]),
-        Some("RTP")
-    );
-    assert_eq!(
-        label(Tcp, &mixed, &[(40002, DecodeAsProtocol::Rtp)]),
-        Some("Unknown")
-    );
+    assert_eq!(label(Udp, &mixed, &declared), Some("RTP"));
 
     // `0xC8` en deuxieme octet : un Sender Report de RTCP, jamais du RTP.
     let mut rtcp = plain.to_vec();
     rtcp[1] = 0xC8;
-    assert_eq!(label(Udp, &rtcp, &[]), Some("Unknown"));
-    assert_eq!(
-        label(Udp, &rtcp, &[(40002, DecodeAsProtocol::Rtp)]),
-        Some("Unknown")
-    );
-    // Type de charge 77 (RTPFB de RTCP, 205) : refuse a l'aveugle seulement.
-    rtcp[1] = 0x80 | 77;
-    assert_eq!(label(Udp, &rtcp, &[]), Some("Unknown"));
+    assert_eq!(label(Udp, &rtcp, &declared), Some("Unknown"));
 
-    // Version 1, ou en-tete seul : rien.
+    // Version 1 : refusee meme sur un port declare.
     let mut old = plain.to_vec();
     old[0] = 0x40;
-    assert_eq!(label(Udp, &old, &[]), Some("Unknown"));
-    assert_eq!(label(Udp, &plain[..12], &[]), Some("Unknown"));
+    assert_eq!(label(Udp, &old, &declared), Some("Unknown"));
 }
 
 /// La liste aveugle de la table, figee : un protocole ajoute ou deplace s'y
@@ -1377,7 +1374,6 @@ fn blind_rules_order_is_frozen() {
             "QUIC",
             "WireGuard",
             "RTCP",
-            "RTP",
             "NMF",
             "DCE/RPC",
             "MQTT",

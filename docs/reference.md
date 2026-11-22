@@ -231,23 +231,21 @@ Application detection is intentionally best-effort. Parser modules include:
   (NTS, MS-SNTP)
 - DHCP / DHCPv6
 - HTTP/1.x (RFC 9112): requests and responses, head validated, body as bytes
-- RTP (RFC 3550) over UDP, on any port: the fixed header (marker, payload
+- RTP (RFC 3550) over UDP, on a declared port: the fixed header (marker, payload
   type, sequence number, timestamp, SSRC), the CSRC list, the header
   extension and the padding; the payload is borrowed, not decoded.
   `RtpPacket::static_payload_name` names the static types of RFC 3551. RTP
-  has no port and no magic, only two version bits: the blind rule is the
-  last of the UDP cascade, and also asks for no CSRC, a payload type outside
-  64 to 95 (the RTCP range, RFC 5761) and a non-empty payload.
-  `DecodeAsProtocol::Rtp` takes any well-formed packet on a declared port.
-  Stateless limits: a format whose first byte is `0x80`, `0x90`, `0xA0` or
-  `0xB0` can pass for RTP (RDP-UDP, some QUIC Version Negotiation packets);
-  SRTP keeps its header in clear and is labelled `RTP`; RTP over TCP
-  (RFC 4571) is not read
+  has no port and no magic, only two version bits, so no stateless probe
+  can tell it from another format that starts with `0x80`: there is no
+  blind rule, and RTP is labelled on a port declared with
+  `DecodeAsProtocol::Rtp` only, where any well-formed packet is taken.
+  Stateless limits: nothing ties a packet to its session; SRTP keeps its
+  header in clear and decodes as RTP; RTP over TCP (RFC 4571) is not read
 - RTCP (RFC 3550 §6) over UDP, on any port: the packets of a datagram
   (`RtcpCompound::packets`), each with its type (200 to 207), count and
   body, the sender SSRC and the sender information of a Sender Report;
   report blocks, SDES items and feedback messages are borrowed, not decoded.
-  The blind rule sits just before RTP and asks for packet lengths that tile
+  The blind rule is the last of the UDP cascade and asks for packet lengths that tile
   the datagram exactly, a minimum size per type and count, and a Sender or
   Receiver Report first, or a lone feedback message (reduced-size RTCP,
   RFC 5506). `DecodeAsProtocol::Rtcp` takes any well-formed datagram on a

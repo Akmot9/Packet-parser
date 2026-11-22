@@ -122,8 +122,8 @@ decode_as_protocols![
     /// SIP over TCP or UDP: the same rule as off port, for a port where
     /// another rule would take the message first.
     Sip,
-    /// RTP over UDP: any well-formed packet, contributing sources (CSRC)
-    /// included, where the blind rule only takes a packet without them.
+    /// RTP over UDP: any well-formed packet. RTP has two fixed bits and no
+    /// blind rule: a declared port is the only way the crate names it.
     Rtp,
     /// .NET Message Framing over TCP: any segment made of framing records,
     /// including the one-byte records and the envelopes that the blind

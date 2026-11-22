@@ -1,43 +1,41 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-22, apres la 13.2.0 : l'epic **#346** vise le taux de
-parsing applicatif. Sur un corpus prive de 163 captures de terrain (28,7 M
-de trames), 63 % sortent `Unknown` ; quatre protocoles publics en
-expliquent 7,4 M : RTP (#348), .NET Message Framing (#347), CAPWAP hors
-decapsulation (#349) et DCE/RPC sur TCP (#350). La section « Non publie »
-du CHANGELOG porte les deux premiers :
-- **RTP** (RFC 3550, #353) : decodeur `RtpPacket`, regle aveugle en fin de
-  cascade UDP, `DecodeAsProtocol::Rtp`, oracle tshark de 15 011 trames sur
-  des captures deja versionnees.
+Etat au 2026-11-22, apres la 13.2.0 : l'epic **#346** visait le taux de
+parsing applicatif. Sur un corpus prive de 163 captures de terrain (28,66 M
+de trames), 63 % sortaient `Unknown`. La section « Non publie » du
+CHANGELOG porte cinq decodeurs :
 - **.NET Message Framing** ([MC-NMF], #351, #352) : decodeur `NmfSegment`,
   regle aveugle sur le preambule et l'enveloppe [MC-NBFSE],
   `DecodeAsProtocol::Nmf`. Aucune capture publique n'existe : le corpus est
-  un extrait de terrain censure par `tools/censor_capture.py`, qui servira
-  aux prochains protocoles sans capture publique.
+  un extrait de terrain censure par `tools/censor_capture.py`.
+- **CAPWAP hors decapsulation** (RFC 5415, #355) : regle a port sur UDP
+  5246 et 5247 pour le controle, DTLS, les keep-alive et les trames 802.11
+  de gestion.
+- **DCE/RPC oriente connexion** (C706, #356) : decodeur `DceRpcPdu`, regle
+  aveugle TCP, oracle tshark de 385 segments de The-Ultimate-PCAP.
+- **RTCP** (RFC 3550 §6, #354) : decodeur `RtcpCompound`, regle aveugle,
+  derniere de la cascade UDP, `DecodeAsProtocol::Rtcp`, 52 datagrammes
+  compares a tshark dont 40 de terrain censures.
+- **RTP** (RFC 3550, #353) : decodeur `RtpPacket` et `DecodeAsProtocol::Rtp`,
+  oracle tshark de 15 011 trames. **Pas de regle aveugle** : RTP n'a que
+  deux bits fixes, et la regle essayee nommait a tort huit trames du corpus
+  du depot. La crate ne se permet pas de faux positif ; la regle est
+  retiree (#364).
 
-Mesure sur le meme corpus prive apres ces deux decodeurs : `Unknown` passe
-de 18,07 M a 10,99 M de trames, soit de 63 % a 38 %.
+Mesure sur le corpus prive, par decodeur :
 
-S'y ajoute **CAPWAP hors decapsulation** (RFC 5415, #355) : regle a port
-sur UDP 5246 et 5247 pour le controle, DTLS, les keep-alive et les trames
-802.11 de gestion ; 190 985 trames de plus quittent `Unknown` sur le meme
-corpus (10,80 M restantes, 37,7 %).
+| Decodeur | Trames qui quittent `Unknown` | `Unknown` restant |
+|---|---|---|
+| (depart) | | 18,07 M, 63,0 % |
+| NMF | 2 938 140 | 15,13 M |
+| CAPWAP | 190 985 | 14,94 M |
+| DCE/RPC | 154 702 | 14,78 M |
+| RTCP | 4 780 | 14,78 M, 51,6 % |
+| RTP, sur port declare seulement | 0 par defaut | |
 
-Puis **DCE/RPC oriente connexion** (C706, #356) : decodeur `DceRpcPdu`,
-regle aveugle TCP, oracle tshark de 385 segments de The-Ultimate-PCAP ;
-154 702 trames de plus quittent `Unknown` (10,65 M restantes, 37,1 %).
-
-Enfin **RTCP** (RFC 3550 §6, #354) : decodeur `RtcpCompound`, regle
-aveugle UDP avant RTP, `DecodeAsProtocol::Rtcp`, 52 datagrammes compares a
-tshark dont 40 de terrain censures ; 4 780 trames de plus quittent
-`Unknown`.
-
-Les cinq decodeurs de l'epic #346 sont ecrits : sur le corpus prive,
-`Unknown` est passe de 18,07 M a 10,64 M de trames, soit de 63 % a 37,1 %.
-
-**Ce qui reste `Unknown`, et ou cela se traite (#357).** Sur les 10,64 M de
-trames restantes du meme corpus :
-- **9,27 M (87 %) sont des segments TCP de suite** : la fin d'un message
+**Ce qui reste `Unknown`, et ou cela se traite (#357, #364).** Sur les
+14,78 M de trames restantes du meme corpus :
+- **9,27 M (63 %) sont des segments TCP de suite** : la fin d'un message
   commence dans un segment precedent, et le segment n'a donc ni en-tete ni
   signature. 8,88 M prolongent une enveloppe NMF, 0,39 M un message Java
   RMI, SSH, TLS, MQTT ou PostgreSQL. Un parseur sans etat ne peut pas les
@@ -46,13 +44,20 @@ trames restantes du meme corpus :
   premiere etiquette qui n'est pas `Unknown` et de l'appliquer aux segments
   qui suivent. La page « Limits » du livre le dit deja (« No TCP
   reassembly », « One label per packet, no memory of the flow ») : elle n'a
-  pas a changer. Avec cette propagation, le corpus tomberait a environ
-  1,4 M de trames sans nom, soit 5 %.
+  pas a changer.
+- **4,14 M (28 %) ont un en-tete RTP bien forme**, dont 4,13 M dans un flux
+  a numeros de sequence continus. Les nommer sans faux positif demande de
+  l'etat : quelques paquets de meme SSRC qui se suivent. L'issue #364
+  porte la reflexion et ce qu'il reste a trancher (application, ou module
+  optionnel de la crate).
 - **0,65 M viennent d'un protocole proprietaire sur UDP**, a signature
   fixe : il se nomme par une regle TOML (feature `rules`), pas par un
   decodeur de la crate.
 - **0,7 M sont divers** : aucune famille n'y pese assez pour justifier un
   decodeur aujourd'hui.
+
+Un seul suivi de conversation, hors du parseur, traiterait les deux
+premiers postes : il resterait environ 1,4 M de trames sans nom, soit 5 %.
 
 Etat au 2026-11-19, 13.2.0 : la **13.2.0 est publiee** (tag `v13.2.0`,
 publication par le workflow). Mineure, sans rupture :

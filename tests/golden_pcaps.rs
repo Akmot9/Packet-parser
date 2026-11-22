@@ -482,6 +482,14 @@ fn application_classification_histogram_is_frozen() {
     // retour de ndpi_line.pcap et le SR + SDES + BYE de wireshark_aaa.pcap).
     // Ce sont les 52 datagrammes que tshark dissèque comme RTCP dans ces
     // captures (`tests/rtcp_golden.rs`).
+    //
+    // 2026-11-22 (#364, RTP sans regle aveugle) : la regle aveugle RTP de
+    // #353 est retiree, deux bits fixes ne permettant pas une sonde sans
+    // faux positif. "RTP" 7 109 -> 0 (l'entree disparait), "Unknown"
+    // 9 622 -> 16 731 (+7 109) : les 7 104 paquets RTP selon tshark et les
+    // cinq faux positifs de wireshark_8579_radardata.pcap et de
+    // ndpi_quic_interop_V.pcapng. RTP ne sort plus que sur un port declare
+    // (`tests/rtp_golden.rs`).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
         (NO_APPLICATION, 6818),
@@ -520,7 +528,6 @@ fn application_classification_histogram_is_frozen() {
         ("RADIUS", 23),
         ("RDP", 89),
         ("RTCP", 52),
-        ("RTP", 7109),
         ("SIP", 181),
         ("SMTP", 6),
         ("SNMP", 14),
@@ -530,7 +537,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 9622),
+        ("Unknown", 16731),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

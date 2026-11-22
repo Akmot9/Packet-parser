@@ -3,7 +3,7 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-//! Golden tests RTP (#353) sur des captures reelles.
+//! Golden tests RTP (#353, #364) sur des captures reelles.
 //!
 //! Captures, toutes deja versionnees : `The-Ultimate-PCAP.pcapng` (appels
 //! SIP, video, SRTP), `protocols/ntp/ndpi_line.pcap` (un appel LINE, avec
@@ -16,16 +16,18 @@
 //! SSRC, le nombre de CSRC, l'extension et le bourrage, figes dans
 //! `tests/data/rtp_tshark_oracle.tsv`.
 //!
-//! La crate et tshark nomment RTP les memes trames, a trois pres
-//! ([`KNOWN_FALSE_POSITIVES`]). SRTP garde l'en-tete RTP en clair : ses 457
-//! trames de The-Ultimate-PCAP sortent RTP, pour la crate comme dans
-//! l'oracle.
+//! RTP n'a pas de regle aveugle (#364) : sans Decode As, aucune trame de
+//! ces captures ne sort `RTP`. Le port de destination de chaque trame de
+//! l'oracle declare, les 15 011 sortent `RTP` et se decodent comme tshark
+//! les lit. SRTP garde l'en-tete RTP en clair : ses 457 trames de
+//! The-Ultimate-PCAP en font partie.
 
 use std::{collections::BTreeMap, fs, path::Path};
 
 use packet_parser::{
-    PacketFlow, parse,
+    DecodeAsProtocol, PacketFlow, ParseConfig, parse,
     parse::application::protocols::rtp::{RTP_FIXED_HEADER_LENGTH, RtpPacket},
+    parse_with,
 };
 
 mod common;
@@ -39,27 +41,13 @@ const CAPTURES: [&str; 4] = [
     "pcaps_exemple/protocols/sip/wireshark_aaa.pcap",
 ];
 
-/// Trames que la sonde aveugle nomme RTP a tort : deux bits de version ne
-/// font pas une signature. Trois datagrammes RDP-UDP (MS-RDPEUDP, UDP 3389)
-/// de The-Ultimate-PCAP, dont le premier octet vaut `0x80` ou `0xA0`.
-const KNOWN_FALSE_POSITIVES: [(&str, usize); 3] = [
-    ("The-Ultimate-PCAP.pcapng", 44454),
-    ("The-Ultimate-PCAP.pcapng", 44608),
-    ("The-Ultimate-PCAP.pcapng", 45308),
-];
-
-/// Les memes, hors des captures de l'oracle : trois lignes de texte d'un
-/// journal sur UDP 7001 (`80 3C` puis « built-in function ») et deux
-/// Version Negotiation QUIC hors du port 443.
-const KNOWN_FALSE_POSITIVES_ELSEWHERE: [(&str, &[usize]); 2] = [
-    (
-        "pcaps_exemple/protocols/asterix/wireshark_8579_radardata.pcap",
-        &[10914, 27819, 44641],
-    ),
-    (
-        "pcaps_exemple/protocols/ntp/ndpi_quic_interop_V.pcapng",
-        &[57, 73],
-    ),
+/// Captures ou la regle aveugle retiree nommait RTP huit trames a tort :
+/// trois datagrammes RDP-UDP de The-Ultimate-PCAP, trois lignes de texte
+/// sur UDP 7001 et deux Version Negotiation QUIC hors du port 443.
+const FORMER_FALSE_POSITIVE_CAPTURES: [&str; 3] = [
+    "pcaps_exemple/The-Ultimate-PCAP.pcapng",
+    "pcaps_exemple/protocols/asterix/wireshark_8579_radardata.pcap",
+    "pcaps_exemple/protocols/ntp/ndpi_quic_interop_V.pcapng",
 ];
 
 /// Une ligne de l'oracle.
@@ -148,7 +136,6 @@ fn every_rtp_frame_matches_the_tshark_oracle() {
     assert_eq!(rows.len(), 15_011);
 
     let mut per_capture: BTreeMap<String, usize> = BTreeMap::new();
-    let mut false_positives = Vec::new();
     for capture in CAPTURES {
         let name = file_name(capture);
         for (index, (link_type, data)) in frames(capture).iter().enumerate() {
@@ -157,14 +144,24 @@ fn every_rtp_frame_matches_the_tshark_oracle() {
                 assert!(!rows.contains_key(&(name.clone(), number)));
                 continue;
             };
-            let (label, payload) = innermost(&flow);
+            // Sans Decode As, rien ne sort RTP.
+            let (label, _) = innermost(&flow);
+            assert_ne!(label, Some("RTP"), "{name} trame {number}");
             let Some(row) = rows.get(&(name.clone(), number)) else {
-                if label == Some("RTP") {
-                    false_positives.push((name.as_str().to_string(), number));
-                }
                 continue;
             };
             *per_capture.entry(name.clone()).or_default() += 1;
+
+            // Le port de destination declare : la trame sort RTP.
+            let port = flow
+                .flatten()
+                .last()
+                .and_then(|inner| inner.transport.as_ref())
+                .and_then(|transport| transport.destination_port)
+                .expect("port UDP");
+            let config = ParseConfig::new().decode_as(port, DecodeAsProtocol::Rtp);
+            let declared = parse_with(*link_type, data, &config).expect("trame lisible");
+            let (label, payload) = innermost(&declared);
             assert_eq!(label, Some("RTP"), "{name} trame {number}");
 
             let payload = payload.expect("charge UDP");
@@ -222,35 +219,28 @@ fn every_rtp_frame_matches_the_tshark_oracle() {
             ("wireshark_aaa.pcap".to_string(), 9),
         ])
     );
-    let known: Vec<(String, usize)> = KNOWN_FALSE_POSITIVES
-        .iter()
-        .map(|(name, number)| (name.to_string(), *number))
-        .collect();
-    assert_eq!(false_positives, known);
 }
 
-/// Hors des captures de l'oracle, la sonde ne nomme RTP que cinq trames
-/// connues : la liste est figee, pour qu'un faux positif de plus se voie.
+/// Les captures ou la regle aveugle se trompait : sans Decode As, plus une
+/// seule trame n'y sort RTP.
 #[test]
-fn known_false_positives_elsewhere_are_frozen() {
-    for (capture, expected) in KNOWN_FALSE_POSITIVES_ELSEWHERE {
-        let labelled: Vec<usize> = frames(capture)
+fn nothing_is_named_rtp_without_decode_as() {
+    for capture in FORMER_FALSE_POSITIVE_CAPTURES {
+        let labelled = frames(capture)
             .iter()
-            .enumerate()
-            .filter(|(_, (link_type, data))| {
+            .filter(|(link_type, data)| {
                 parse(*link_type, data).is_ok_and(|flow| innermost(&flow).0 == Some("RTP"))
             })
-            .map(|(index, _)| index + 1)
-            .collect();
-        assert_eq!(labelled, expected, "{capture}");
+            .count();
+        assert_eq!(labelled, 0, "{capture}");
     }
 }
 
-/// La meme charge sur TCP n'est pas du RTP : la regle est gardee par UDP
-/// (RFC 4571 prefixe chaque paquet de sa longueur, ce que la crate ne lit
-/// pas).
+/// Un paquet reel hors de tout port declare ne sort pas RTP, ni sur UDP ni
+/// sur TCP (RFC 4571 prefixe chaque paquet de sa longueur, ce que la crate
+/// ne lit pas).
 #[test]
-fn rtp_bytes_over_tcp_are_not_rtp() {
+fn rtp_bytes_on_an_undeclared_port_are_not_rtp() {
     use packet_parser::{TransportProtocol, parse::classify_payload};
 
     // Trame 624 de wireshark_aaa.pcap : un paquet G.711 PCMA.
@@ -258,16 +248,14 @@ fn rtp_bytes_over_tcp_are_not_rtp() {
     let (link_type, data) = &frames[624 - 1];
     let flow = parse(*link_type, data).expect("trame lisible");
     let (label, payload) = innermost(&flow);
-    assert_eq!(label, Some("RTP"));
+    assert_eq!(label, Some("Unknown"));
     let payload = payload.expect("charge UDP");
-    assert_eq!(
-        classify_payload(TransportProtocol::Udp, None, None, payload)
-            .map(|application| application.protocol.label()),
-        Some("RTP")
-    );
-    assert_ne!(
-        classify_payload(TransportProtocol::Tcp, None, None, payload)
-            .map(|application| application.protocol.label()),
-        Some("RTP")
-    );
+    assert!(RtpPacket::try_from(payload).is_ok());
+    for transport in [TransportProtocol::Udp, TransportProtocol::Tcp] {
+        assert_ne!(
+            classify_payload(transport, None, None, payload)
+                .map(|application| application.protocol.label()),
+            Some("RTP")
+        );
+    }
 }

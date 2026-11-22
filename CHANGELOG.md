@@ -8,9 +8,10 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
-- **RTP** (RFC 3550, #353, epic #346) : etiquette `RTP`, decodeur zero
-  copie `parse::application::protocols::rtp::RtpPacket` et
-  `DecodeAsProtocol::Rtp`.
+- **RTP** (RFC 3550, #353, #364, epic #346) : etiquette `RTP`, decodeur
+  zero copie `parse::application::protocols::rtp::RtpPacket` et
+  `DecodeAsProtocol::Rtp`. Sur un port declare seulement : il n'y a pas de
+  regle aveugle.
   - **Ce qui est lu.** L'en-tete fixe (marqueur, type de charge, numero de
     sequence, horodatage, SSRC), la liste CSRC (`CsrcList`), l'extension
     d'en-tete (`RtpHeaderExtension`, profil et donnees) et le bourrage. La
@@ -20,29 +21,27 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     a 76 (le deuxieme octet d'un SR, RR, SDES, BYE ou APP de RTCP), une
     liste CSRC ou une extension qui depasse le datagramme, un bourrage nul
     ou plus long que ce qui suit l'en-tete.
-  - **Detection.** RTP n'a ni port ni marqueur : deux bits de version. La
-    regle aveugle, derniere de la cascade UDP, ne nomme que ce que toutes
-    les autres sondes ont laisse, et exige en plus aucun CSRC, un type de
-    charge hors de 64 a 95 (plage RTCP, RFC 5761) et une charge non vide.
-    Un paquet a CSRC, ou hors de ces gardes, se declare par Decode As, qui
-    prend tout paquet bien forme.
+  - **Detection.** RTP n'a ni port ni marqueur : deux bits de version,
+    rien d'autre de fixe. Aucune sonde sans etat ne peut affirmer qu'un
+    datagramme est du RTP, et la crate ne nomme rien a tort : RTP ne sort
+    que sur un port declare par Decode As, qui prend tout paquet bien
+    forme. Une regle aveugle a ete essayee puis retiree avant toute
+    publication (#364) : elle nommait a tort huit trames du corpus du
+    depot (trois datagrammes RDP-UDP, trois lignes de texte, deux Version
+    Negotiation QUIC hors du port 443).
   - **Corpus et oracle.** Aucune capture ajoutee : 15 011 trames RTP de
     quatre captures deja versionnees, dont `The-Ultimate-PCAP.pcapng`, sont
     comparees a tshark trame par trame, heuristique `rtp_udp` activee
-    (`tests/rtp_golden.rs`, `tools/rtp_oracle.sh`). Nouvelle cible de fuzz
-    `parse_rtp`.
-  - **Mesure.** Sur le corpus de terrain de #346, 4,13 M de trames
-    `Unknown` sortent RTP ; jugees par la continuite des numeros de
-    sequence, 99,9 % appartiennent a un flux suivi.
+    (`tests/rtp_golden.rs`, `tools/rtp_oracle.sh`). Leur port declare,
+    toutes sortent `RTP` ; sans Decode As, aucune trame de ces captures ne
+    sort `RTP`. Nouvelle cible de fuzz `parse_rtp`.
   - **Limites, sans etat.**
-    - Un format dont le premier octet vaut `0x80`, `0x90`, `0xA0` ou `0xB0`
-      peut passer pour du RTP. Huit faux positifs sont connus et figes
-      dans le corpus du depot : trois datagrammes RDP-UDP, trois lignes de
-      texte et deux Version Negotiation QUIC hors du port 443.
-    - SRTP garde l'en-tete en clair et sort `RTP`.
+    - Rien ne relie un paquet a sa session : nommer un flux RTP sans
+      declaration demande de suivre les numeros de sequence (#364).
+    - SRTP garde l'en-tete en clair et se decode comme du RTP.
     - RTP sur TCP (RFC 4571) n'est pas lu.
     - tshark attribue a T.38 les paquets G.711 qui suivent un re-INVITE
-      fax ; la crate les nomme RTP.
+      fax ; sur un port declare, la crate les nomme RTP.
 - **.NET Message Framing** ([MC-NMF], #351, #352, epic #346) : etiquette
   `NMF`, decodeur zero copie
   `parse::application::protocols::nmf::NmfSegment` et
@@ -71,8 +70,7 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     4.6.9 segment par segment (`tests/nmf_golden.rs`,
     `tools/nmf_oracle.sh`). Nouvelle cible de fuzz `parse_nmf`.
   - **Mesure.** Sur le corpus de terrain de #346, 2,94 M de trames
-    `Unknown` sortent NMF. Avec RTP, `Unknown` y passe de 63 % a 38 % des
-    trames.
+    `Unknown` sortent NMF.
   - **Limites, sans etat.**
     - Une enveloppe plus longue qu'un segment est coupee
       (`NmfRecord::is_truncated`) ; les segments de suite restent
@@ -132,7 +130,7 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     apres le dernier paquet, un paquet plus court que son type et son
     compteur ne l'exigent, du bourrage ailleurs que sur le dernier paquet
     ou de compteur incoherent.
-  - **Detection.** Regle aveugle UDP, juste avant RTP : un datagramme bien
+  - **Detection.** Regle aveugle, derniere de la cascade UDP : un datagramme bien
     forme ouvert par un SR ou un RR (RFC 3550 §6.1), ou un message de
     retour seul (RTCP de taille reduite, RFC 5506). Tout autre datagramme
     bien forme se declare par Decode As.
