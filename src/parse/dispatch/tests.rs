@@ -1117,6 +1117,59 @@ fn sip_is_blind_on_both_transports_and_disjoint_from_http_and_ssdp() {
     }
 }
 
+/// CAPWAP (#355) : un en-tete RFC 5415 ou un preambule DTLS, sur UDP 5246
+/// et 5247 seulement. Octets synthetiques.
+#[test]
+fn capwap_is_named_on_its_two_udp_ports_only() {
+    use TransportProtocol::{Tcp, Udp};
+    let label = |protocol: TransportProtocol, port: u16, payload: &[u8]| {
+        let transport = Transport {
+            protocol,
+            source_port: Some(40000),
+            destination_port: Some(port),
+            payload: Some(payload),
+            details: None,
+        };
+        classify(&transport, &[]).map(|a| a.protocol.label())
+    };
+    // En-tete de deux mots, WBID 1, puis un message de controle.
+    let control = [0x00, 0x10, 0x02, 0x00, 0, 0, 0, 0, 0, 0, 0, 1];
+    assert_eq!(label(Udp, 5246, &control), Some("CAPWAP"));
+    assert_eq!(label(Udp, 5247, &control), Some("CAPWAP"));
+    assert_eq!(label(Udp, 5248, &control), Some("Unknown"));
+    assert_eq!(label(Tcp, 5246, &control), Some("Unknown"));
+
+    // Preambule DTLS : un enregistrement handshake DTLS 1.0 de deux octets.
+    let dtls = [
+        0x01, 0, 0, 0, 22, 0xfe, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0xaa, 0xbb,
+    ];
+    assert_eq!(label(Udp, 5246, &dtls), Some("CAPWAP"));
+    let mut cut = dtls;
+    cut[16] = 3; // longueur au-dela du datagramme
+    assert_eq!(label(Udp, 5246, &cut), Some("Unknown"));
+
+    // Refus : version 1, HLEN d'un mot, WBID nul, bits reserves, bit L ou
+    // decalage sans bit F.
+    for (index, value) in [
+        (0, 0x10),
+        (1, 0x08),
+        (2, 0x00),
+        (3, 0x01),
+        (3, 0x40),
+        (7, 0x08),
+        (7, 0x01),
+    ] {
+        let mut bad = control;
+        bad[index] = value;
+        assert_eq!(label(Udp, 5246, &bad), Some("Unknown"), "octet {index}");
+    }
+    // Avec le bit F, un fragment a decalage non nul est admis.
+    let mut fragment = control;
+    fragment[3] = 0x80;
+    fragment[7] = 0x08;
+    assert_eq!(label(Udp, 5247, &fragment), Some("CAPWAP"));
+}
+
 /// NMF (#352) : la sonde aveugle prend un preambule ou une enveloppe qui
 /// s'ouvre comme [MC-NBFSE] ; l'accuse de preambule, un octet, ne se nomme
 /// que sur un port declare. Octets synthetiques.

@@ -83,6 +83,30 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     - Apres un Upgrade, le flux passe sous TLS ou Negotiate et n'est plus
       du NMF lisible.
 
+### Modifie
+
+- **CAPWAP hors decapsulation** (RFC 5415, #355, epic #346) : un
+  datagramme CAPWAP bien forme sur UDP 5246 (controle) ou 5247 (donnees)
+  sort desormais `CAPWAP` meme quand le tunnel ne le decapsule pas. Avant,
+  seules les trames 802.11 de donnees pelees portaient l'etiquette ; le
+  reste sortait `Unknown`.
+  - **Ce qui est reconnu.** L'en-tete CAPWAP (version 0, HLEN d'au moins
+    deux mots et dans le datagramme, WBID non nul, bits reserves a zero,
+    ni bit L ni decalage de fragment sans bit F) : messages de controle,
+    keep-alive, fragments, trames 802.11 de gestion. Et le preambule DTLS
+    suivi d'un enregistrement DTLS 1.0 ou 1.2, dont le contenu chiffre
+    n'est pas lu. Aucun flux interne n'est cree dans ces cas.
+  - **Detection.** Regle a port, placee apres toutes les sondes UDP a
+    signature : un autre protocole qui prend 5246 ou 5247 comme port
+    ephemere garde son etiquette. Le meme datagramme hors de ces deux
+    ports reste sans etiquette. Le tunnel decapsule ne change pas.
+  - **Corpus et oracle.** Aucune capture ajoutee : 341 datagrammes de
+    quatre captures deja versionnees (34 de controle en clair, 284 sous
+    DTLS, 12 keep-alive et 11 trames 802.11 de gestion) sont compares a
+    tshark 4.6.9 (`tests/capwap_golden.rs`, `tools/capwap_oracle.sh`).
+  - **Mesure.** Sur le corpus de terrain de #346, 190 985 trames `Unknown`
+    sortent CAPWAP ; il n'en reste aucune sur ces deux ports.
+
 ### Documentation
 
 - `docs/reference.md` : une reponse FTP ou SMTP multiligne n'est reconnue

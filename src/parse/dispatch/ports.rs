@@ -107,6 +107,11 @@ pub(super) fn is_bacnet_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(47808..=47823))
 }
 
+/// CAPWAP : UDP 5246 (controle) et 5247 (donnees), RFC 5415 §3.1.
+pub(super) fn is_capwap_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(5246 | 5247))
+}
+
 /// RADIUS : UDP 1812/1813 (IANA), 1645/1646 (historiques), 3799 (RFC 5176).
 pub(super) fn is_radius_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(1812 | 1813 | 1645 | 1646 | 3799))

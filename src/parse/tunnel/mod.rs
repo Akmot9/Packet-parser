@@ -362,6 +362,58 @@ fn peel_gtp_u(payload: &[u8]) -> Option<DecodedLink<'_>> {
     }
 }
 
+/// Un datagramme CAPWAP bien forme (RFC 5415 §4.1 a §4.3), sur le canal de
+/// controle (UDP 5246) comme sur le canal de donnees (UDP 5247) : la sonde
+/// de la regle a port, pour ce que `peel_capwap_ieee80211` ne decapsule
+/// pas (#355).
+///
+/// - Preambule de type 0 : l'en-tete CAPWAP. Version 0, HLEN d'au moins
+///   deux mots et dans le datagramme, WBID non nul, bits reserves a zero ;
+///   sans le bit F, ni bit L ni decalage de fragment.
+/// - Preambule de type 1 : l'en-tete DTLS, trois octets reserves a zero,
+///   puis un enregistrement DTLS 1.0 ou 1.2 (type 20 a 23, longueur dans
+///   le datagramme). Son contenu est chiffre : il n'est pas lu.
+pub(crate) fn is_capwap_packet(payload: &[u8]) -> bool {
+    match payload {
+        [0x00, b1, b2, b3, _, _, b6, b7, ..] => {
+            let header_length = usize::from(b1 >> 3) * 4;
+            let wbid = (b2 >> 1) & 0x1f;
+            let fragment = b3 & 0x80 != 0;
+            let last = b3 & 0x40 != 0;
+            let offset = u16::from_be_bytes([*b6, *b7]) >> 3;
+            (8..=payload.len()).contains(&header_length)
+                && wbid != 0
+                && b3 & 0x07 == 0
+                && b7 & 0x07 == 0
+                && (fragment || (!last && offset == 0))
+        }
+        [
+            0x01,
+            0,
+            0,
+            0,
+            20..=23,
+            0xfe,
+            0xff | 0xfd,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            high,
+            low,
+            rest @ ..,
+        ] => {
+            let length = usize::from(u16::from_be_bytes([*high, *low]));
+            length != 0 && length <= rest.len()
+        }
+        _ => false,
+    }
+}
+
 /// Peels CAPWAP-Data → IEEE 802.11 → LLC/SNAP and returns the inner data-link
 /// layer (802.11 MAC addresses + SNAP EtherType + L3 payload).
 fn peel_capwap_ieee80211(payload: &[u8]) -> Option<LinkLayer<'_>> {
