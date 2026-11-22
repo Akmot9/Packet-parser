@@ -198,7 +198,49 @@ def scrub_rtp(payload):
     return bytes(out)
 
 
-SCRUBBERS = {"nmf": scrub_nmf, "rtp": scrub_rtp}
+def scrub_rtcp(payload):
+    """Garde les en-tetes, les SSRC, les compteurs et les blocs de rapport ;
+    efface l'horodatage NTP d'un SR, les LSR, le texte des items SDES, la
+    raison d'un BYE et le contenu d'un APP ou d'un XR."""
+    out = bytearray(len(payload))
+    offset = 0
+    while offset + 4 <= len(payload):
+        first, kind = payload[offset], payload[offset + 1]
+        length = (struct.unpack("!H", payload[offset + 2 : offset + 4])[0] + 1) * 4
+        end = offset + length
+        if first >> 6 != 2 or not 200 <= kind <= 207 or end > len(payload):
+            return bytes(len(payload))
+        count = first & 0x1F
+        packet = bytearray(payload[offset:end])
+        if kind in (200, 201):
+            blocks = 28 if kind == 200 else 8
+            if kind == 200:
+                packet[8:16] = bytes(8)  # horodatage NTP
+            for index in range(count):
+                lsr = blocks + 24 * index + 16
+                packet[lsr : lsr + 4] = bytes(4)
+            packet[blocks + 24 * count :] = bytes(max(0, length - blocks - 24 * count))
+        elif kind == 202:
+            cursor = 4
+            for _ in range(count):
+                cursor += 4  # SSRC du morceau
+                while cursor < length and packet[cursor] != 0:
+                    size = packet[cursor + 1]
+                    packet[cursor + 2 : cursor + 2 + size] = b"x" * size
+                    cursor += 2 + size
+                cursor = (cursor // 4 + 1) * 4  # item nul, puis alignement
+        elif kind == 203:
+            packet[4 + 4 * count :] = bytes(max(0, length - 4 - 4 * count))
+        elif kind in (204, 207):
+            packet[8:] = bytes(max(0, length - 8))
+        out[offset:end] = packet[:length]
+        offset = end
+    if offset != len(payload):
+        return bytes(len(payload))
+    return bytes(out)
+
+
+SCRUBBERS = {"nmf": scrub_nmf, "rtcp": scrub_rtcp, "rtp": scrub_rtp}
 
 
 class Censor:

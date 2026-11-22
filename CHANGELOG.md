@@ -40,7 +40,7 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
       dans le corpus du depot : trois datagrammes RDP-UDP, trois lignes de
       texte et deux Version Negotiation QUIC hors du port 443.
     - SRTP garde l'en-tete en clair et sort `RTP`.
-    - RTCP n'est pas lu (#354), ni RTP sur TCP (RFC 4571).
+    - RTP sur TCP (RFC 4571) n'est pas lu.
     - tshark attribue a T.38 les paquets G.711 qui suivent un re-INVITE
       fax ; la crate les nomme RTP.
 - **.NET Message Framing** ([MC-NMF], #351, #352, epic #346) : etiquette
@@ -116,6 +116,39 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     - Seul le premier PDU d'un segment est lu ; `rest()` rend la suite.
     - DCE/RPC sans connexion (version 4, sur UDP) et DCE/RPC dans un tube
       nomme SMB ne sont pas lus.
+
+- **RTCP** (RFC 3550 §6, #354, epic #346) : etiquette `RTCP`, decodeur
+  zero copie `parse::application::protocols::rtcp::RtcpCompound` et
+  `DecodeAsProtocol::Rtcp`.
+  - **Ce qui est lu.** Les paquets d'un datagramme
+    (`RtcpCompound::packets`, `RtcpPacket`) : type (`RtcpPacketType`, 200 a
+    207), compteur, bit de bourrage et corps ; le SSRC de l'emetteur
+    (`sender_ssrc`) et, pour un Sender Report, l'horodatage NTP,
+    l'horodatage RTP et les compteurs de paquets et d'octets
+    (`sender_info`). Blocs de rapport, items SDES et messages de retour
+    sont empruntes, sans etre decodes.
+  - **Ce qui est refuse.** Une autre version que 2, un type hors de 200 a
+    207, une longueur qui depasse le datagramme ou qui laisse des octets
+    apres le dernier paquet, un paquet plus court que son type et son
+    compteur ne l'exigent, du bourrage ailleurs que sur le dernier paquet
+    ou de compteur incoherent.
+  - **Detection.** Regle aveugle UDP, juste avant RTP : un datagramme bien
+    forme ouvert par un SR ou un RR (RFC 3550 §6.1), ou un message de
+    retour seul (RTCP de taille reduite, RFC 5506). Tout autre datagramme
+    bien forme se declare par Decode As.
+  - **Corpus et oracle.** 52 datagrammes compares a tshark 4.6.9
+    (`tests/rtcp_golden.rs`, `tools/rtcp_oracle.sh`) : un SR + SDES + BYE
+    de `wireshark_aaa.pcap`, onze messages de retour de `ndpi_line.pcap`,
+    et `pcaps_exemple/protocols/rtcp/terrain_rtcp_censure.pcap`, quarante
+    datagrammes de terrain censures (SR + SDES et RR + SDES ; adresses,
+    ports, horodatages NTP et texte des items SDES reecrits). Ce sont les
+    seuls datagrammes que la crate nomme RTCP dans le corpus du depot.
+    Nouvelle cible de fuzz `parse_rtcp`.
+  - **Mesure.** Sur le corpus de terrain de #346, 4 780 trames `Unknown`
+    sortent RTCP, sans qu'aucune autre etiquette ne bouge.
+  - **Limites, sans etat.** SRTCP ajoute un index et une etiquette
+    d'authentification : ses longueurs ne pavent plus le datagramme, qui
+    reste `Unknown`. RTCP sur TCP n'est pas lu.
 
 ### Modifie
 

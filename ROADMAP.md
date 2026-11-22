@@ -27,8 +27,15 @@ Puis **DCE/RPC oriente connexion** (C706, #356) : decodeur `DceRpcPdu`,
 regle aveugle TCP, oracle tshark de 385 segments de The-Ultimate-PCAP ;
 154 702 trames de plus quittent `Unknown` (10,65 M restantes, 37,1 %).
 
-Reste RTCP (#354). Les segments TCP de suite, 9,3 M de trames du meme
-corpus, ne se nomment pas sans etat (#357).
+Enfin **RTCP** (RFC 3550 §6, #354) : decodeur `RtcpCompound`, regle
+aveugle UDP avant RTP, `DecodeAsProtocol::Rtcp`, 52 datagrammes compares a
+tshark dont 40 de terrain censures ; 4 780 trames de plus quittent
+`Unknown`.
+
+Les cinq decodeurs de l'epic #346 sont ecrits : sur le corpus prive,
+`Unknown` est passe de 18,07 M a 10,64 M de trames, soit de 63 % a 37,1 %.
+Ce qui reste est surtout fait de segments TCP de suite (9,3 M de trames),
+qui ne se nomment pas sans etat (#357).
 
 Etat au 2026-11-19, 13.2.0 : la **13.2.0 est publiee** (tag `v13.2.0`,
 publication par le workflow). Mineure, sans rupture :
