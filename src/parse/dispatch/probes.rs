@@ -30,6 +30,7 @@ use crate::parse::application::protocols::java_rmi::JavaRmiPacket;
 use crate::parse::application::protocols::modbus_tcp::ModbusTcpPacket;
 use crate::parse::application::protocols::mqtt::MqttPacket;
 use crate::parse::application::protocols::netbios::{NbnsPacket, NbssPacket};
+use crate::parse::application::protocols::nmf::NmfSegment;
 use crate::parse::application::protocols::nntp::NntpMessage;
 use crate::parse::application::protocols::ntp::NtpPacket;
 use crate::parse::application::protocols::opcua::OpcuaPacket;
@@ -180,11 +181,17 @@ pub(super) enum ProbeId {
     /// RTP a l'aveugle : sans CSRC, type de charge hors de la plage RTCP,
     /// charge non vide (#353).
     RtpBlind,
+    /// NMF sur un port declare par Decode As : tout segment qui se decoupe
+    /// en enregistrements.
+    Nmf,
+    /// NMF a l'aveugle : un preambule, ou une enveloppe a taille qui
+    /// s'ouvre comme [MC-NBFSE] (#352).
+    NmfBlind,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::RtpBlind;
+    pub(super) const LAST: Self = Self::NmfBlind;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -264,6 +271,8 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Sip => may_start_sip(text) && SipMessage::try_from(text).is_ok(),
         ProbeId::Rtp => RtpPacket::try_from(payload).is_ok(),
         ProbeId::RtpBlind => RtpPacket::is_blind_match(payload),
+        ProbeId::Nmf => NmfSegment::try_from(payload).is_ok(),
+        ProbeId::NmfBlind => NmfSegment::is_blind_match(payload),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),

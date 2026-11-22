@@ -465,9 +465,17 @@ fn application_classification_histogram_is_frozen() {
     // et figes par le meme test : trois lignes de texte sur UDP 7001 de
     // wireshark_8579_radardata.pcap (`80 3C`...) et deux Version
     // Negotiation QUIC hors du port 443 de ndpi_quic_interop_V.pcapng.
+    //
+    // 2026-11-22 (#352, NMF) : +1 capture
+    // protocols/nmf/terrain_nmf_censure.pcap, 32 trames de terrain
+    // censurees (voir son SOURCE.md). "NMF" 0 -> 6 : un preambule et cinq
+    // enveloppes a taille. "Unknown" 9 617 -> 9 634 (+17) : l'accuse de
+    // preambule et la fin de session, un octet chacun, et 15 segments de
+    // suite ; "(sans application)" 6 809 -> 6 818 (+9 segments sans charge).
+    // Parite trame par trame dans `tests/nmf_golden.rs`.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 6809),
+        (NO_APPLICATION, 6818),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 33),
@@ -492,6 +500,7 @@ fn application_classification_histogram_is_frozen() {
         ("ModbusTCP", 382),
         ("ModbusUDP", 38),
         ("UMAS", 181),
+        ("NMF", 6),
         ("NNTP", 6),
         ("NTP", 77),
         ("OPC UA", 187),
@@ -511,7 +520,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 9617),
+        ("Unknown", 9634),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

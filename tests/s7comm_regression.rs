@@ -755,14 +755,19 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // sans erreur L2 : 193 -> 197 captures, 192 -> 196 fichiers lus,
     // 72 331 -> 80 273 trames, 72 289 -> 80 231 flux. Aucune n'est etiquetee
     // S7Comm ni COTP.
-    assert_eq!(captures.len(), 197);
-    assert_eq!(opened_files, 196);
-    assert_eq!(frame_count, 80_273);
+    // 2026-11-22 (#352) : +1 capture NMF dans protocols/nmf/ (voir
+    // SOURCE.md : trames de terrain censurees), 32 trames
+    // Ethernet/IPv4/TCP decodees sans erreur L2 : 197 -> 198 captures,
+    // 196 -> 197 fichiers lus, 80 273 -> 80 305 trames, 80 231 -> 80 263
+    // flux. Aucune n'est etiquetee S7Comm ni COTP.
+    assert_eq!(captures.len(), 198);
+    assert_eq!(opened_files, 197);
+    assert_eq!(frame_count, 80_305);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 80_231);
+    assert_eq!(parsed_flows, 80_263);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

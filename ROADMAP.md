@@ -5,14 +5,21 @@ parsing applicatif. Sur un corpus prive de 163 captures de terrain (28,7 M
 de trames), 63 % sortent `Unknown` ; quatre protocoles publics en
 expliquent 7,4 M : RTP (#348), .NET Message Framing (#347), CAPWAP hors
 decapsulation (#349) et DCE/RPC sur TCP (#350). La section « Non publie »
-du CHANGELOG porte le premier :
+du CHANGELOG porte les deux premiers :
 - **RTP** (RFC 3550, #353) : decodeur `RtpPacket`, regle aveugle en fin de
   cascade UDP, `DecodeAsProtocol::Rtp`, oracle tshark de 15 011 trames sur
   des captures deja versionnees.
+- **.NET Message Framing** ([MC-NMF], #351, #352) : decodeur `NmfSegment`,
+  regle aveugle sur le preambule et l'enveloppe [MC-NBFSE],
+  `DecodeAsProtocol::Nmf`. Aucune capture publique n'existe : le corpus est
+  un extrait de terrain censure par `tools/censor_capture.py`, qui servira
+  aux prochains protocoles sans capture publique.
 
-Restent RTCP (#354), NMF (#351, #352 : aucune capture publique trouvee a
-ce jour), CAPWAP (#355) et DCE/RPC (#356). Les segments TCP de suite, 9,3 M
-de trames du meme corpus, ne se nomment pas sans etat (#357).
+Mesure sur le meme corpus prive apres ces deux decodeurs : `Unknown` passe
+de 18,07 M a 10,99 M de trames, soit de 63 % a 38 %.
+
+Restent RTCP (#354), CAPWAP (#355) et DCE/RPC (#356). Les segments TCP de
+suite, 9,3 M de trames du meme corpus, ne se nomment pas sans etat (#357).
 
 Etat au 2026-11-19, 13.2.0 : la **13.2.0 est publiee** (tag `v13.2.0`,
 publication par le workflow). Mineure, sans rupture :
