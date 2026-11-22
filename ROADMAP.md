@@ -34,8 +34,25 @@ tshark dont 40 de terrain censures ; 4 780 trames de plus quittent
 
 Les cinq decodeurs de l'epic #346 sont ecrits : sur le corpus prive,
 `Unknown` est passe de 18,07 M a 10,64 M de trames, soit de 63 % a 37,1 %.
-Ce qui reste est surtout fait de segments TCP de suite (9,3 M de trames),
-qui ne se nomment pas sans etat (#357).
+
+**Ce qui reste `Unknown`, et ou cela se traite (#357).** Sur les 10,64 M de
+trames restantes du meme corpus :
+- **9,27 M (87 %) sont des segments TCP de suite** : la fin d'un message
+  commence dans un segment precedent, et le segment n'a donc ni en-tete ni
+  signature. 8,88 M prolongent une enveloppe NMF, 0,39 M un message Java
+  RMI, SSH, TLS, MQTT ou PostgreSQL. Un parseur sans etat ne peut pas les
+  nommer, et ne doit pas essayer : c'est a l'application de garder, par
+  conversation (les deux adresses, les deux ports, le protocole), la
+  premiere etiquette qui n'est pas `Unknown` et de l'appliquer aux segments
+  qui suivent. La page « Limits » du livre le dit deja (« No TCP
+  reassembly », « One label per packet, no memory of the flow ») : elle n'a
+  pas a changer. Avec cette propagation, le corpus tomberait a environ
+  1,4 M de trames sans nom, soit 5 %.
+- **0,65 M viennent d'un protocole proprietaire sur UDP**, a signature
+  fixe : il se nomme par une regle TOML (feature `rules`), pas par un
+  decodeur de la crate.
+- **0,7 M sont divers** : aucune famille n'y pese assez pour justifier un
+  decodeur aujourd'hui.
 
 Etat au 2026-11-19, 13.2.0 : la **13.2.0 est publiee** (tag `v13.2.0`,
 publication par le workflow). Mineure, sans rupture :
