@@ -602,6 +602,18 @@ pub(super) static RULES: &[Rule] = &[
         Guard::Udp,
         ProbeId::WireGuardBlind,
     ),
+    // CAPWAP (RFC 5415, #355) sur UDP 5246 et 5247 : ce que le tunnel n'a
+    // pas decapsule (controle, DTLS, keep-alive, fragments, trames 802.11
+    // de gestion). Regle a port placee apres toutes les sondes UDP a
+    // signature : un port CAPWAP pris comme port ephemere par un autre
+    // protocole garde son etiquette, et CAPWAP ne nomme que ce qui restait
+    // `Unknown`.
+    port_rule(
+        ApplicationProtocol::Capwap,
+        Guard::Udp,
+        is_capwap_udp_port,
+        ProbeId::Capwap,
+    ),
     // RTP (RFC 3550, #353), derniere sonde UDP : deux bits de version pour
     // toute signature. La sonde exige en plus un en-tete coherent, aucune
     // source contributrice, un type de charge hors de la plage RTCP et une

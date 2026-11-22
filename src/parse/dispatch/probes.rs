@@ -187,11 +187,14 @@ pub(super) enum ProbeId {
     /// NMF a l'aveugle : un preambule, ou une enveloppe a taille qui
     /// s'ouvre comme [MC-NBFSE] (#352).
     NmfBlind,
+    /// CAPWAP sur UDP 5246 et 5247 : un en-tete RFC 5415 ou un preambule
+    /// DTLS bien forme (#355).
+    Capwap,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::NmfBlind;
+    pub(super) const LAST: Self = Self::Capwap;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -273,6 +276,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::RtpBlind => RtpPacket::is_blind_match(payload),
         ProbeId::Nmf => NmfSegment::try_from(payload).is_ok(),
         ProbeId::NmfBlind => NmfSegment::is_blind_match(payload),
+        ProbeId::Capwap => crate::parse::tunnel::is_capwap_packet(payload),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),

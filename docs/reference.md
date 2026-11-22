@@ -447,6 +447,13 @@ The currently supported tunnels are:
 | Geneve | UDP/6081 | Ethernet (0x6558) or bare IP |
 | GTP-U | UDP/2152 | bare IP, no L2 |
 
+CAPWAP outside the peeled case: a well-formed datagram on UDP 5246 (control)
+or 5247 (data) is labelled `CAPWAP` without an inner flow. That covers the
+RFC 5415 header (control messages, keep-alives, fragments, 802.11 management
+frames) and the DTLS preamble followed by a DTLS 1.0 or 1.2 record, whose
+encrypted content is not read. The same bytes on another port are not
+labelled.
+
 Variants we cannot attest are refused rather than guessed: ERSPAN and GRE
 version 1, the VXLAN GBP/GPE flag extensions, Geneve OAM control messages,
 and — for GTP-U — GTPv0, GTP' and every message type other than G-PDU.

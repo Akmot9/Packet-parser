@@ -18,8 +18,13 @@ du CHANGELOG porte les deux premiers :
 Mesure sur le meme corpus prive apres ces deux decodeurs : `Unknown` passe
 de 18,07 M a 10,99 M de trames, soit de 63 % a 38 %.
 
-Restent RTCP (#354), CAPWAP (#355) et DCE/RPC (#356). Les segments TCP de
-suite, 9,3 M de trames du meme corpus, ne se nomment pas sans etat (#357).
+S'y ajoute **CAPWAP hors decapsulation** (RFC 5415, #355) : regle a port
+sur UDP 5246 et 5247 pour le controle, DTLS, les keep-alive et les trames
+802.11 de gestion ; 190 985 trames de plus quittent `Unknown` sur le meme
+corpus (10,80 M restantes, 37,7 %).
+
+Restent RTCP (#354) et DCE/RPC (#356). Les segments TCP de suite, 9,3 M de
+trames du meme corpus, ne se nomment pas sans etat (#357).
 
 Etat au 2026-11-19, 13.2.0 : la **13.2.0 est publiee** (tag `v13.2.0`,
 publication par le workflow). Mineure, sans rupture :

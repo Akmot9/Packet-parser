@@ -1,0 +1,343 @@
+# Genere par tools/capwap_oracle.sh avec TShark (Wireshark) 4.6.9. : un datagramme CAPWAP par ligne.
+# Colonnes : capture, trame, port, type de preambule, HLEN, WBID, drapeaux, protocole interne.
+capwap-only.pcap	1	5247	0	2	1	0x000100	802.11
+capwap-only.pcap	2	5247	0	2	1	0x000100	802.11
+capwap-association-valid.pcapng	1	5247	0	2	1	0x000100	802.11
+capwap-association-valid.pcapng	2	5247	0	2	1	0x000100	802.11
+The-Ultimate-PCAP.pcapng	1544	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1545	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1546	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1547	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1548	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1549	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1550	5247	0	2	1	0x000008	CAPWAP-Data
+The-Ultimate-PCAP.pcapng	1551	5247	0	2	1	0x000008	CAPWAP-Data
+The-Ultimate-PCAP.pcapng	1552	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1553	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1554	5247	0	2	1	0x000100	802.11
+The-Ultimate-PCAP.pcapng	1555	5247	0	2	1	0x000100	802.11
+The-Ultimate-PCAP.pcapng	1556	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1557	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1558	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1559	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1560	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1561	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1562	5247	0	2	1	0x000008	CAPWAP-Data
+The-Ultimate-PCAP.pcapng	1563	5247	0	2	1	0x000008	CAPWAP-Data
+The-Ultimate-PCAP.pcapng	1564	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1565	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1566	5247	0	2	1	0x000100	802.11
+The-Ultimate-PCAP.pcapng	1567	5247	0	2	1	0x000100	802.11
+The-Ultimate-PCAP.pcapng	1568	5247	0	2	1	0x000100	802.11
+The-Ultimate-PCAP.pcapng	1569	5247	0	2	1	0x000100	802.11
+The-Ultimate-PCAP.pcapng	1570	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1571	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1572	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1573	5247	0	2	1	0x000008	CAPWAP-Data
+The-Ultimate-PCAP.pcapng	1574	5247	0	2	1	0x000008	CAPWAP-Data
+The-Ultimate-PCAP.pcapng	1575	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1576	5247	0	2	1	0x000100	802.11
+The-Ultimate-PCAP.pcapng	1577	5247	0	2	1	0x000008	CAPWAP-Data
+The-Ultimate-PCAP.pcapng	1578	5247	0	2	1	0x000008	CAPWAP-Data
+The-Ultimate-PCAP.pcapng	1579	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1580	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1581	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1582	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1583	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1584	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1585	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1586	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1587	5247	0	2	1	0x000008	CAPWAP-Data
+The-Ultimate-PCAP.pcapng	1588	5247	0	2	1	0x000008	CAPWAP-Data
+The-Ultimate-PCAP.pcapng	1589	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1590	5247	0	2	1	0x000008	CAPWAP-Data
+The-Ultimate-PCAP.pcapng	1591	5246	0	2	1	0x000000	CAPWAP-Control
+The-Ultimate-PCAP.pcapng	1592	5247	0	2	1	0x000008	CAPWAP-Data
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	520	5246	0	2	1	0x000000	CAPWAP-Control
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	521	5246	0	2	1	0x000000	CAPWAP-Control
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	527	5246	1	-	-	-	DTLS
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	528	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	529	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	530	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	531	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	532	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	533	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	534	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	535	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	536	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	537	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	538	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	539	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	540	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	541	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	542	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	543	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	544	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	546	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	547	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	548	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	549	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	550	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	551	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	563	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	564	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	568	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	569	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	571	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	572	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	573	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	574	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	575	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	576	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	591	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	592	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	620	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	621	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	645	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	646	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	656	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	657	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	765	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	766	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	774	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	775	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	783	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	784	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	785	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	786	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	798	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	799	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	826	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	827	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	833	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	834	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	898	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	899	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	906	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	907	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	912	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	913	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	925	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	926	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	927	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	928	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	931	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	932	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	963	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	964	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	992	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	993	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1053	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1054	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1085	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1086	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1088	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1089	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1112	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1113	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1121	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1122	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1131	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1132	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1133	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1134	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1159	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1160	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1161	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1162	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1166	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1167	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1180	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1181	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1205	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1206	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1242	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1243	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1267	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1268	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1290	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1291	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1299	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1300	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1338	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1339	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1353	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1354	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1355	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1356	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1369	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1370	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1383	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1384	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1393	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1394	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1402	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1403	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1405	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1406	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1414	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1415	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1416	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1417	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1418	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1419	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1479	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1480	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1483	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1484	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1496	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1497	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1647	5246	0	2	1	0x000000	CAPWAP-Control
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1650	5246	0	2	1	0x000000	CAPWAP-Control
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1677	5246	1	-	-	-	DTLS
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1678	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1679	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1680	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1681	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1682	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1683	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1684	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1685	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1686	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1687	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1688	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1689	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1690	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1691	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1692	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1693	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1694	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1695	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1696	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1698	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1699	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1725	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1726	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1727	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1728	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1734	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1735	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1767	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1768	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1810	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1811	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1812	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1813	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1814	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1815	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1822	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1823	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1835	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1836	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1911	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1912	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1919	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1920	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1962	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1963	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1970	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	1971	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2054	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2055	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2066	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2067	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2112	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2113	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2149	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2150	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2151	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2152	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2163	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2164	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2273	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2274	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2395	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2396	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2397	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2398	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2429	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2430	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2553	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2554	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2555	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2556	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2562	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2563	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2587	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2588	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2604	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2605	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2613	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2614	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2628	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2629	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2630	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2631	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2686	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2687	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2772	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2773	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2782	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2783	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2785	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2786	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2794	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2795	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2842	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2843	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2902	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2903	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2911	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2912	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2913	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2914	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2948	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2949	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2964	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2965	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2980	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2981	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2989	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2990	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2997	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	2998	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3005	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3006	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3014	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3015	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3026	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3027	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3051	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3052	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3060	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3061	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3062	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3063	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3074	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3075	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3086	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3087	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3170	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3171	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3213	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3214	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3215	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3216	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3296	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3297	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3298	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3299	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3306	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3307	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3377	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3378	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3463	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3464	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3473	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3474	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3475	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3476	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3540	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3541	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3579	5246	1	-	-	-	DTLSv1.0
+vlan0--packet-capture CAPWAP a partir de ligne 520  (Ap = 192_168.0.104 ) + radius _ partir de la ligne 33003 .cap	3580	5246	1	-	-	-	DTLSv1.0
