@@ -82,6 +82,40 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
       aucune trame reelle : elles ne se nomment que sur un port declare.
     - Apres un Upgrade, le flux passe sous TLS ou Negotiate et n'est plus
       du NMF lisible.
+- **DCE/RPC oriente connexion** (DCE 1.1: RPC, C706 §12.6, #356, epic
+  #346) : etiquette `DCE/RPC` et decodeur zero copie
+  `parse::application::protocols::dcerpc::DceRpcPdu`. C'est le transport de
+  MSRPC et de DCOM sur TCP.
+  - **Ce qui est lu.** L'en-tete commun : version mineure, type de PDU
+    (`DceRpcPduType`), drapeaux, representation des donnees, longueurs de
+    fragment et d'authentification, identifiant d'appel, dans le boutisme
+    que l'en-tete annonce. Pour une requete, `request()` rend l'indice
+    d'allocation, le contexte de presentation et le numero d'operation. Le
+    corps est emprunte, sans etre decode.
+  - **Ce qui est refuse.** Une autre version que 5.0 ou 5.1, un type de PDU
+    qui n'est pas oriente connexion, une representation des donnees sans
+    format connu ou aux octets reserves non nuls, un fragment plus court
+    que l'en-tete de son type, une longueur d'authentification qui n'y
+    tient pas.
+  - **Detection.** DCE/RPC n'a pas de port fixe. Regle aveugle TCP, avant
+    MQTT : un PDU bien forme, et un second PDU bien forme quand le segment
+    continue apres le fragment.
+  - **Corpus et oracle.** Aucune capture ajoutee : 385 segments de
+    `The-Ultimate-PCAP.pcapng` (Bind, Alter Context, Request, Response,
+    avec et sans authentification) sont compares a tshark 4.6.9 champ par
+    champ (`tests/dcerpc_golden.rs`, `tools/dcerpc_oracle.sh`). La crate
+    nomme en plus quatorze retransmissions TCP, que tshark ne dissèque pas.
+    Aucune autre trame de la capture ne sort `DCE/RPC`. Nouvelle cible de
+    fuzz `parse_dcerpc`.
+  - **Mesure.** Sur le corpus de terrain de #346, 154 702 trames `Unknown`
+    sortent DCE/RPC, sans qu'aucune autre etiquette ne bouge.
+  - **Limites, sans etat.**
+    - Un fragment plus long que son segment est coupe
+      (`DceRpcPdu::is_truncated`) ; les segments de suite restent `Unknown`
+      (#357).
+    - Seul le premier PDU d'un segment est lu ; `rest()` rend la suite.
+    - DCE/RPC sans connexion (version 4, sur UDP) et DCE/RPC dans un tube
+      nomme SMB ne sont pas lus.
 
 ### Modifie
 

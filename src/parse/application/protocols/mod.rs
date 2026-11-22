@@ -8,6 +8,7 @@ pub mod asterix;
 pub mod bacnet;
 pub mod bitcoin;
 pub mod cotp;
+pub mod dcerpc;
 pub mod dhcp;
 pub mod dhcpv6;
 pub mod dis;

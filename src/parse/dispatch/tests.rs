@@ -1117,6 +1117,39 @@ fn sip_is_blind_on_both_transports_and_disjoint_from_http_and_ssdp() {
     }
 }
 
+/// DCE/RPC (#356) : l'en-tete commun sur TCP, sur n'importe quel port.
+/// Octets synthetiques : un Shutdown de seize octets.
+#[test]
+fn dcerpc_is_blind_on_tcp_only() {
+    use TransportProtocol::{Tcp, Udp};
+    let label = |protocol: TransportProtocol, payload: &[u8]| {
+        let transport = Transport {
+            protocol,
+            source_port: Some(49152),
+            destination_port: Some(49667),
+            payload: Some(payload),
+            details: None,
+        };
+        classify(&transport, &[]).map(|a| a.protocol.label())
+    };
+    let shutdown = [5, 0, 17, 3, 0x10, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0];
+    assert_eq!(label(Tcp, &shutdown), Some("DCE/RPC"));
+    assert_eq!(label(Udp, &shutdown), Some("Unknown"));
+
+    // Version 4 (sans connexion) et octets reserves de drep non nuls.
+    let mut v4 = shutdown;
+    v4[0] = 4;
+    assert_eq!(label(Tcp, &v4), Some("Unknown"));
+    let mut drep = shutdown;
+    drep[6] = 1;
+    assert_eq!(label(Tcp, &drep), Some("Unknown"));
+
+    // Des octets apres le fragment qui ne sont pas un second PDU.
+    let mut trailing = shutdown.to_vec();
+    trailing.extend([0xde, 0xad]);
+    assert_eq!(label(Tcp, &trailing), Some("Unknown"));
+}
+
 /// CAPWAP (#355) : un en-tete RFC 5415 ou un preambule DTLS, sur UDP 5246
 /// et 5247 seulement. Octets synthetiques.
 #[test]
@@ -1309,6 +1342,7 @@ fn blind_rules_order_is_frozen() {
             "WireGuard",
             "RTP",
             "NMF",
+            "DCE/RPC",
             "MQTT",
         ],
         "S7Comm est promu en tete (priorite sur COTP), et les verbes \

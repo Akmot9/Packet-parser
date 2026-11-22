@@ -254,6 +254,17 @@ Application detection is intentionally best-effort. Parser modules include:
   (`NmfRecord::is_truncated`) and the segments that carry the rest of it
   stay `Unknown`; envelopes in SOAP text or in binary XML without a session
   dictionary are named on a declared port only
+- Connection-oriented DCE/RPC (DCE 1.1: RPC, the transport of MSRPC and
+  DCOM) over TCP, on any port: the common header (minor version, PDU type,
+  flags, data representation, fragment and authentication lengths, call
+  identifier, read in the byte order the header states) and, for a Request,
+  the allocation hint, presentation context and operation number
+  (`DceRpcPdu::request`). The body is borrowed, not decoded. Stateless
+  limits: a fragment longer than its segment is cut
+  (`DceRpcPdu::is_truncated`) and the segments that carry the rest stay
+  `Unknown`; only the first PDU of a segment is read (`DceRpcPdu::rest`
+  gives the next); connectionless DCE/RPC (version 4, over UDP) and DCE/RPC
+  inside an SMB named pipe are not read
 - SIP (RFC 3261) over UDP and TCP, on any port: a request (a method of the
   IANA registry, a Request-URI with a scheme, `SIP/2.0`) or a response
   (`SIP/2.0`, a code from 100 to 699), a complete head up to the empty line

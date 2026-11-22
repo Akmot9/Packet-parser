@@ -15,6 +15,7 @@ use crate::parse::application::protocols::asterix::AsterixPacket;
 use crate::parse::application::protocols::bacnet::BacnetPacket;
 use crate::parse::application::protocols::bitcoin::BitcoinPacket;
 use crate::parse::application::protocols::cotp::cotp_from_tpkt;
+use crate::parse::application::protocols::dcerpc::DceRpcPdu;
 use crate::parse::application::protocols::dhcp::DhcpPacket;
 use crate::parse::application::protocols::dhcpv6::Dhcpv6Packet;
 use crate::parse::application::protocols::dis::DisPacket;
@@ -190,11 +191,14 @@ pub(super) enum ProbeId {
     /// CAPWAP sur UDP 5246 et 5247 : un en-tete RFC 5415 ou un preambule
     /// DTLS bien forme (#355).
     Capwap,
+    /// DCE/RPC oriente connexion sur TCP : un en-tete commun coherent, et
+    /// un second PDU bien forme quand le segment continue (#356).
+    DceRpc,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::Capwap;
+    pub(super) const LAST: Self = Self::DceRpc;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -277,6 +281,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Nmf => NmfSegment::try_from(payload).is_ok(),
         ProbeId::NmfBlind => NmfSegment::is_blind_match(payload),
         ProbeId::Capwap => crate::parse::tunnel::is_capwap_packet(payload),
+        ProbeId::DceRpc => DceRpcPdu::is_blind_match(payload),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),
