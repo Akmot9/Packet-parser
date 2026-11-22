@@ -60,9 +60,9 @@ Mesure sur le corpus prive, par decodeur :
 Un seul suivi de conversation, hors du parseur, traiterait les deux
 premiers postes : il resterait environ 1,4 M de trames sans nom, soit 5 %.
 
-Reste ouvert : #364 (nommer les flux RTP sans faux positif). Hors de ce
-depot : le livre, encore en 13.2.0, qui recevra les pages NMF, DCE/RPC,
-RTCP et RTP.
+Reste ouvert : #364 (nommer les flux RTP sans faux positif). Le livre
+decrit la 13.3.0 depuis le 2026-11-22 (Akmot9/packet-parser-book#110) :
+pages NMF, DCE/RPC, RTCP et RTP, CAPWAP hors decapsulation dans Tunnels.
 
 Etat anterieur (2026-11-19, 13.2.0) : la **13.2.0 est publiee** (tag `v13.2.0`,
 publication par le workflow). Mineure, sans rupture :
