@@ -144,6 +144,9 @@ and [the book](https://akmot9.github.io/packet-parser-book/).
 
 ![Time to parse one reference packet, by published version](images/perf_by_version.svg)
 
+Next to `etherparse` and `pnet_packet`, on the same frames from Ethernet to
+TCP, UDP and ICMP: [docs/benchmark-l2-l4.md](docs/benchmark-l2-l4.md).
+
 ## Known Limitations
 
 - No TCP reassembly, no IP reassembly.

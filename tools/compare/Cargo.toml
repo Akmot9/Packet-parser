@@ -1,0 +1,41 @@
+# Comparaison L2-L4 avec etherparse et pnet_packet (#375). Hors du workspace
+# de la crate, comme `benches/` et `fuzz/` : les crates comparees ne sont
+# jamais des dependances de `packet_parser`, et leur Cargo.lock ne passe ni
+# par `cargo audit` ni par le controle MSRV de la crate publiee.
+#
+#   cargo bench --manifest-path tools/compare/Cargo.toml
+#   python3 tools/compare/report.py
+#
+# Ici `criterion` est le vrai criterion, pas `codspeed-criterion-compat` :
+# CodSpeed suit `benches/`, pas cette comparaison.
+[package]
+name = "packet_parser-compare"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[dependencies]
+etherparse = "=0.21.0"
+packet_parser = { path = "../.." }
+pcap-file = "2.0.0"
+pnet_packet = "=0.35.0"
+
+[dev-dependencies]
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "l2l4"
+harness = false
+
+# Le profil de la crate publiee (Cargo.toml racine), pour les trois crates.
+[profile.bench]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
+[workspace]

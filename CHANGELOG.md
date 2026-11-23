@@ -6,6 +6,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Documentation
+
+- Comparaison mesuree avec `etherparse` et `pnet_packet`, de la couche 2 a la
+  couche 4, sur les memes trames : `docs/benchmark-l2-l4.md`, et le bench
+  qui la refait dans `tools/compare` (#375). Sur les trames sans charge
+  utile, `parse` prend 94 a 115 ns, contre 65 a 79 ns pour la lecture par
+  vues d'`etherparse` et 39 a 57 ns pour `pnet_packet`. Rien ne change dans
+  la crate.
+
 ### Outillage
 
 - **`tools/verbench` : releve refait jusqu'a la 13.4.0**, et avec lui

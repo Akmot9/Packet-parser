@@ -188,6 +188,11 @@ jobs:
       - name: Check the lab workspace
         run: cargo check --manifest-path tools/lab/Cargo.toml --workspace --all-targets --all-features --locked
 
+      # La comparaison avec etherparse et pnet_packet (#375) a aussi son
+      # workspace : on verifie qu'elle compile encore, on ne la mesure pas.
+      - name: Check the comparison bench
+        run: cargo check --manifest-path tools/compare/Cargo.toml --all-targets --locked
+
   # Le kit des parseurs charges a l'execution (#319) a son propre workspace,
   # comme fuzz/ et tools/lab/ : rien d'autre ne le compile. Son test
   # d'integration construit le plugin de demonstration en .so, le charge et
