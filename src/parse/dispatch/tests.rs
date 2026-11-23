@@ -1049,6 +1049,44 @@ fn port_rules_carry_a_transport_guard() {
     }
 }
 
+/// Les listes par transport de l'index sont la table filtree par la garde
+/// de transport, dans l'ordre de la table, pour chaque numero de protocole
+/// IP : la boucle de `classify` visite les memes regles qu'en parcourant
+/// `RULES`.
+#[test]
+fn transport_lists_are_the_table_filtered_by_its_guards() {
+    for number in 0..=u8::MAX {
+        let protocol = TransportProtocol::from_u8(number);
+        let expected: Vec<&Rule> = RULES
+            .iter()
+            .filter(|rule| rule.guard.admits(protocol))
+            .collect();
+        let listed = index::rules_for(protocol);
+        assert_eq!(listed.len(), expected.len(), "{protocol:?}");
+        for (listed, expected) in listed.iter().zip(expected) {
+            assert!(
+                listed.label == expected.label
+                    && listed.probe as u32 == expected.probe as u32
+                    && listed.ports.is_some() == expected.ports.is_some()
+                    && listed.ports_veto.is_some() == expected.ports_veto.is_some()
+                    && listed.terminal_on_port == expected.terminal_on_port,
+                "{protocol:?} : {} au rang de {}",
+                listed.label,
+                expected.label
+            );
+        }
+    }
+    // Les trois listes existent : TCP et UDP ont leurs regles, les autres
+    // protocoles seulement les regles `Guard::Any`.
+    assert!(index::rules_for(TransportProtocol::Tcp).len() > 4);
+    assert!(index::rules_for(TransportProtocol::Udp).len() > 4);
+    assert!(
+        index::rules_for(TransportProtocol::Sctp)
+            .iter()
+            .all(|rule| matches!(rule.guard, Guard::Any))
+    );
+}
+
 /// SIP (#342) : sonde aveugle sur TCP comme sur UDP, sur tout port, disjointe
 /// de HTTP et de SSDP. Decode As le rend sur un port qu'une autre regle garde.
 #[test]

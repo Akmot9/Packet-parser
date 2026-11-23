@@ -7,6 +7,7 @@
 //! de transport ([`Guard`]). L'ordre de la table est la priorite (voir
 //! [`super`]).
 
+use super::index::rules_for;
 use super::ports::*;
 use super::probes::ProbeId;
 use crate::parse::application::protocol::ApplicationProtocol;
@@ -725,9 +726,8 @@ pub(super) static RULES: &[Rule] = &[
 /// Un des deux ports touche-t-il une regle terminale de la table (port
 /// reserve par RFC) ? Source unique : la table elle-meme.
 pub(super) fn matches_terminal_reserved_port(transport: &Transport<'_>) -> bool {
-    RULES.iter().any(|rule| {
+    rules_for(transport.protocol).iter().any(|rule| {
         rule.terminal_on_port
-            && rule.guard.admits(transport.protocol)
             && rule.ports.is_some_and(|ports| {
                 ports(transport.source_port) || ports(transport.destination_port)
             })

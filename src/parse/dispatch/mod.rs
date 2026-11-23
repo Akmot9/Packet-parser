@@ -31,6 +31,7 @@ use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
 use crate::parse::application::protocol::ApplicationProtocol;
 
+mod index;
 mod ports;
 mod probes;
 mod rules;
@@ -38,7 +39,7 @@ mod rules;
 mod tests;
 
 use probes::{ProbeId, ProbeMask, run_probe};
-use rules::{Guard, RULES, matches_terminal_reserved_port};
+use rules::{Guard, matches_terminal_reserved_port};
 
 /// Declare l'enum et `ALL` depuis une seule liste, comme
 /// `application_protocols!` : une variante ne peut pas manquer a `ALL`
@@ -329,10 +330,9 @@ fn classify_payload(
             failed_probes |= bit;
         }
     }
-    for rule in RULES {
-        if !rule.guard.admits(transport.protocol) {
-            continue;
-        }
+    // La garde de transport est deja appliquee : la liste ne porte que les
+    // regles qui admettent ce transport.
+    for rule in index::rules_for(transport.protocol) {
         if let Some(ports) = rule.ports
             && !(ports(transport.source_port) || ports(transport.destination_port))
         {
