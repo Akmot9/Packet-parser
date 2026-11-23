@@ -1,55 +1,65 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-23, sur `main` et non publie : **Skinny** (SCCP, la
-signalisation des telephones IP Cisco, #370). Decodeur `SkinnyMessage`,
-regle a port sur TCP 2000, `DecodeAsProtocol::Skinny`, six captures reelles
-(nDPI, tracker Wireshark) et un oracle tshark de 656 segments et 933
-messages. Sur le corpus prive, 3 287 trames quittent `Unknown`, tout ce que
-TCP 2000 y porte. C'etait le plus gros des protocoles standard encore sans
-nom dans ce corpus ; le reste des flux jamais reconnus est surtout
-proprietaire, a nommer par des regles TOML. La couche a etat reste au
-backlog (§3).
+Etat au 2026-11-23, 13.4.0 : la **13.4.0 est publiee** (tag `v13.4.0`,
+publication par le workflow). Mineure, sans rupture, elle nomme les
+standards qui restaient sans nom sur le corpus prive de 163 captures de
+terrain (28,66 M de trames) : six decodeurs, decrits ci-dessous dans
+l'ordre de leur livraison, tous du 2026-11-23. Elle porte aussi les
+corrections que la relecture des revues automatiques a demandees (#382,
+#383), dont aucune ne deplace une etiquette sur ce corpus.
 
-Meme jour, sur `main` et non publie aussi : **LDAP** (RFC 4511, #372), le
-standard suivant par la taille. Decodeur `LdapPdu` (messages en clair,
-tampons de la couche SASL sous jeton Kerberos des RFC 4121 et 1964 ou sous
-signature NTLMSSP), regles a port sur TCP 389 et 3268 et sur UDP 389,
-`DecodeAsProtocol::Ldap`, huit captures du wiki Wireshark en plus de
-`The-Ultimate-PCAP.pcapng`, et un oracle tshark de 519 payloads. Sur le
-corpus prive, 895 trames quittent `Unknown`. Les standards qui y restent
-sans nom sont petits : Corosync (1 700 trames), syslog, NetBIOS Datagram,
-ONC RPC et Kerberos (quelques centaines chacun).
+**Skinny** (SCCP, la signalisation des telephones IP Cisco, #370). Decodeur
+`SkinnyMessage`, regle a port sur TCP 2000, `DecodeAsProtocol::Skinny`, six
+captures reelles (nDPI, tracker Wireshark) et un oracle tshark de 656
+segments et 933 messages. Sur le corpus prive, 3 287 trames quittent
+`Unknown`, tout ce que TCP 2000 y porte. C'etait le plus gros des protocoles
+standard encore sans nom dans ce corpus ; le reste des flux jamais reconnus
+est surtout proprietaire, a nommer par des regles TOML. La couche a etat
+reste au backlog (§3).
 
-Meme jour, sur `main` et non publie aussi : **Syslog** (RFC 3164, 5424 et
-6587, #374). Decodeur `SyslogMessage` et trames TCP `SyslogFrame`, regles a
-port sur UDP 514 et sur TCP 514 et 601, `DecodeAsProtocol::Syslog`, deux
-captures de nDPI en plus de `The-Ultimate-PCAP.pcapng`, et un oracle tshark
-de 341 charges. Sur le corpus prive, 482 trames quittent `Unknown`. Le
-trafic d'UDP 5405 de ce corpus, pris pour du Corosync, est chiffre : aucun
-decodeur ne le nommera.
+**LDAP** (RFC 4511, #372), le standard suivant par la taille. Decodeur
+`LdapPdu` (messages en clair, tampons de la couche SASL sous jeton Kerberos
+des RFC 4121 et 1964 ou sous signature NTLMSSP), regles a port sur TCP 389
+et 3268 et sur UDP 389, `DecodeAsProtocol::Ldap`, huit captures du wiki
+Wireshark en plus de `The-Ultimate-PCAP.pcapng`, et un oracle tshark de 519
+payloads. Sur le corpus prive, 895 trames quittent `Unknown`. Les standards
+qui y restaient alors sans nom etaient petits : Corosync (1 700 trames),
+syslog, NetBIOS Datagram, ONC RPC et Kerberos (quelques centaines chacun).
 
-Meme jour, sur `main` et non publie aussi : **NBDS**, le service de
-datagrammes NetBIOS (RFC 1002, UDP 138, #377), troisieme service du module
-`netbios`. Decodeur `NbdsPacket`, regle a port, `DecodeAsProtocol::Nbds`,
-une capture du wiki Wireshark et un oracle tshark de 179 datagrammes. Sur
-le corpus prive, les 196 datagrammes d'UDP 138 sont nommes, dans 18
-captures.
+**Syslog** (RFC 3164, 5424 et 6587, #374). Decodeur `SyslogMessage` et
+trames TCP `SyslogFrame`, regles a port sur UDP 514 et sur TCP 514 et 601,
+`DecodeAsProtocol::Syslog`, deux captures de nDPI en plus de
+`The-Ultimate-PCAP.pcapng`, et un oracle tshark de 341 charges. Sur le
+corpus prive, 482 trames quittent `Unknown`. Le trafic d'UDP 5405 de ce
+corpus, pris pour du Corosync, est chiffre : aucun decodeur ne le nommera.
 
-Meme jour, sur `main` et non publie aussi : **Kerberos V5** (RFC 4120,
-#379). Decodeur `KerberosMessage` et enregistrements TCP `KerberosRecord`,
-regles a port sur UDP 88 et TCP 88, `DecodeAsProtocol::Kerberos`, dix
-captures de nDPI en plus de `The-Ultimate-PCAP.pcapng`, et un oracle tshark
-de 453 messages. Sur le corpus prive, 30 trames quittent `Unknown` ; 15
-segments de suite y restent, faute d'etat.
+**NBDS**, le service de datagrammes NetBIOS (RFC 1002, UDP 138, #377),
+troisieme service du module `netbios`. Decodeur `NbdsPacket`, regle a port,
+`DecodeAsProtocol::Nbds`, une capture du wiki Wireshark et un oracle tshark
+de 179 datagrammes. Sur le corpus prive, les 196 datagrammes d'UDP 138 sont
+nommes, dans 18 captures.
 
-Meme jour, sur `main` et non publie aussi : **ONC RPC** (RFC 5531, #381),
-le transport de NFS et du portmapper. Decodeur `OncRpcMessage` et
-enregistrements TCP `OncRpcRecord`, regles a port sur 111 et 2049 en UDP et
-en TCP, `DecodeAsProtocol::OncRpc`, quatre captures (nDPI et wiki
-Wireshark) et un oracle tshark de 409 messages. Sur le corpus prive, 194
-trames quittent `Unknown` ; 12 segments de suite y restent, faute d'etat.
+**Kerberos V5** (RFC 4120, #379). Decodeur `KerberosMessage` et
+enregistrements TCP `KerberosRecord`, regles a port sur UDP 88 et TCP 88,
+`DecodeAsProtocol::Kerberos`, dix captures de nDPI en plus de
+`The-Ultimate-PCAP.pcapng`, et un oracle tshark de 453 messages. Sur le
+corpus prive, 30 trames quittent `Unknown` ; 15 segments de suite y restent,
+faute d'etat.
 
-Etat au 2026-11-22, 13.3.0 : la **13.3.0 est publiee** (tag `v13.3.0`,
+**ONC RPC** (RFC 5531, #381), le transport de NFS et du portmapper. Decodeur
+`OncRpcMessage` et enregistrements TCP `OncRpcRecord`, regles a port sur 111
+et 2049 en UDP et en TCP, `DecodeAsProtocol::OncRpc`, quatre captures (nDPI
+et wiki Wireshark) et un oracle tshark de 409 messages. Sur le corpus prive,
+194 trames quittent `Unknown` ; 12 segments de suite y restent, faute
+d'etat.
+
+Reste sans nom sur ce corpus, parmi les standards : le trafic d'UDP 5405,
+chiffre, puis EAPOL et DEC MOP, moins de 0,1 % des trames. Reste ouvert :
+#364 (nommer les flux RTP sans faux positif) et #375 (benchmark public
+contre etherparse et pnet). Hors de ce depot : le livre, encore en 13.3.0,
+qui recevra les pages Skinny, LDAP, Syslog, NBDS, Kerberos et ONC RPC.
+
+Etat anterieur (2026-11-22, 13.3.0) : la **13.3.0 est publiee** (tag `v13.3.0`,
 publication par le workflow). Mineure, sans rupture, elle porte l'epic
 **#346**, qui visait le taux de parsing applicatif. Sur un corpus prive de
 163 captures de terrain (28,66 M de trames), 63 % sortaient `Unknown`.
@@ -653,8 +663,9 @@ issue par protocole.
   - des regles de port pour CAPWAP (5246/5247), CoAP sur DTLS (5684) et
     EtherNet/IP securise (2221) ;
   - une place dans `RULES` apres BACnet/IP et avant DNS.
-- **SIP** (#103) : livre le 2026-11-19 (#342), non publie. Les captures
-  existaient : 21 trames dans l'Ultimate PCAP, et le wiki Wireshark. Le
+- **SIP** (#103) : livre le 2026-11-19 (#342), publie dans la 13.2.0. Les
+  captures existaient : 21 trames dans l'Ultimate PCAP, et le wiki
+  Wireshark. Le
   decodeur a sa propre vue `SipHeaders`, pour les formes compactes et le
   repli, que `HttpHeaders` ne connait pas.
 - **S7CommPlus et MELSOFT** (#177). Ils attendent des captures reelles du
