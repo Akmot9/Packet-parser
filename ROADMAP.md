@@ -42,6 +42,13 @@ captures de nDPI en plus de `The-Ultimate-PCAP.pcapng`, et un oracle tshark
 de 453 messages. Sur le corpus prive, 30 trames quittent `Unknown` ; 15
 segments de suite y restent, faute d'etat.
 
+Meme jour, sur `main` et non publie aussi : **ONC RPC** (RFC 5531, #381),
+le transport de NFS et du portmapper. Decodeur `OncRpcMessage` et
+enregistrements TCP `OncRpcRecord`, regles a port sur 111 et 2049 en UDP et
+en TCP, `DecodeAsProtocol::OncRpc`, quatre captures (nDPI et wiki
+Wireshark) et un oracle tshark de 409 messages. Le corpus prive n'a pas
+ete remesure, faute de disque monte.
+
 Etat au 2026-11-22, 13.3.0 : la **13.3.0 est publiee** (tag `v13.3.0`,
 publication par le workflow). Mineure, sans rupture, elle porte l'epic
 **#346**, qui visait le taux de parsing applicatif. Sur un corpus prive de

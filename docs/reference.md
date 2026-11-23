@@ -362,6 +362,26 @@ Application detection is intentionally best-effort. Parser modules include:
   (`KerberosMessage::is_truncated`) and the segments that carry the rest
   stay `Unknown`; Kerberos carried by another protocol (GSS-API in LDAP or
   SMB, kpasswd on port 464) is not looked for
+- ONC RPC (RFC 5531, the remote procedure call of NFS, the portmapper,
+  `mountd`, NLM and NIS) on ports 111 and 2049, over UDP and TCP, or on a
+  Decode As port (`DecodeAsProtocol::OncRpc`). `OncRpcMessage` reads the
+  transaction identifier and the call (`OncRpcCall`: program, version,
+  procedure, credentials and verifier as `OncRpcAuth`, arguments) or the
+  reply (`OncRpcReply`: accepted, with its verifier, its status
+  `OncRpcAcceptStatus` and its results, or denied, with the versions of an
+  `RPC_MISMATCH` or the cause of an `AUTH_ERROR`). Arguments and results
+  are borrowed, not decoded. Over TCP, `OncRpcRecord` reads the record mark
+  and the message of the first fragment, `OncRpcRecord::continuation` gives
+  the following fragments that the segment carries, and
+  `OncRpcRecord::records` iterates over the records of a segment. An
+  authentication flavor must be an assigned number of the IANA registry,
+  and its body at most 400 bytes; a reply without results ends with its
+  status. The port rules ask for one whole message per datagram, and for
+  records that tile the segment. Stateless limits: a reply names neither
+  its program nor its procedure, which only the call carries; a record
+  longer than its segment is cut (`OncRpcRecord::is_truncated`) and the
+  segments that carry the rest stay `Unknown`; the programs without a fixed
+  port (`mountd`, `statd`, `lockd`) are named on a declared port only
 - NetBIOS (RFC 1001 and 1002), one label per service: `NBNS`, the name
   service on UDP 137; `NBSS`, the session service on TCP 139 and 445; `NBDS`,
   the datagram service on UDP 138 or a Decode As port

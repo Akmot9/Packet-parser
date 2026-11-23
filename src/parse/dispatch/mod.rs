@@ -146,6 +146,10 @@ decode_as_protocols![
     /// Kerberos V5: one message per UDP datagram, length-prefixed records
     /// over TCP, for a KDC that listens on another port than 88.
     Kerberos,
+    /// ONC RPC: one message per UDP datagram, record fragments over TCP,
+    /// for a program on a port that the portmapper hands out (`mountd`,
+    /// `statd`, `lockd`).
+    OncRpc,
 ];
 
 impl DecodeAsProtocol {
@@ -157,7 +161,8 @@ impl DecodeAsProtocol {
     /// (#288) ; ailleurs, un seul message. Syslog de meme : des trames de
     /// la RFC 6587 sur TCP, un message par datagramme ailleurs (#374).
     /// Kerberos aussi : des enregistrements prefixes de leur longueur sur
-    /// TCP, un message par datagramme ailleurs (#379).
+    /// TCP, un message par datagramme ailleurs (#379). ONC RPC de meme,
+    /// avec sa marque de fragment sur TCP (#381).
     fn rule(self, protocol: TransportProtocol) -> (ApplicationProtocol, Guard, ProbeId) {
         match self {
             Self::Ftp => (ApplicationProtocol::Ftp, Guard::Tcp, ProbeId::Ftp),
@@ -266,6 +271,12 @@ impl DecodeAsProtocol {
                     ProbeId::KerberosTcp,
                 ),
                 _ => (ApplicationProtocol::Kerberos, Guard::Udp, ProbeId::Kerberos),
+            },
+            Self::OncRpc => match protocol {
+                TransportProtocol::Tcp => {
+                    (ApplicationProtocol::OncRpc, Guard::Tcp, ProbeId::OncRpcTcp)
+                }
+                _ => (ApplicationProtocol::OncRpc, Guard::Udp, ProbeId::OncRpc),
             },
         }
     }

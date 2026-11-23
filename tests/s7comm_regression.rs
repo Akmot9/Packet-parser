@@ -788,14 +788,19 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // (voir SOURCE.md : nDPI), 689 trames Ethernet decodees sans erreur L2 :
     // 216 -> 226 captures, 215 -> 225 fichiers lus, 82 309 -> 82 998 trames,
     // 82 267 -> 82 956 flux. Aucune n'est etiquetee S7Comm ni COTP.
-    assert_eq!(captures.len(), 226);
-    assert_eq!(opened_files, 225);
-    assert_eq!(frame_count, 82_998);
+    // 2026-11-23 (#381) : +4 captures ONC RPC dans protocols/oncrpc/ (voir
+    // SOURCE.md : nDPI et wiki Wireshark), 453 trames Ethernet decodees sans
+    // erreur L2 : 226 -> 230 captures, 225 -> 229 fichiers lus, 82 998 ->
+    // 83 451 trames, 82 956 -> 83 409 flux. Aucune n'est etiquetee S7Comm ni
+    // COTP.
+    assert_eq!(captures.len(), 230);
+    assert_eq!(opened_files, 229);
+    assert_eq!(frame_count, 83_451);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 82_956);
+    assert_eq!(parsed_flows, 83_409);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

@@ -571,9 +571,21 @@ fn application_classification_histogram_is_frozen() {
     //   ndpi_kerberos2.pcap), 67 "LDAP" (79 -> 146), 33 "DCE/RPC" (0 -> 33)
     //   et 24 "NBSS" (32 -> 56) ; 34 segments TCP sans charge,
     //   "(sans application)" 7 498 -> 7 532.
+    //
+    // 2026-11-23 (#381, ONC RPC) : ONC RPC sur les ports 111 et 2049, en
+    // UDP et en TCP. "ONC RPC" 0 -> 399, les messages que tshark dissèque
+    // sans reassemblage sur ces ports (`tests/oncrpc_golden.rs`) :
+    // - 3 appels au portmapper quittent "Unknown" dans
+    //   goose/iti_Sample_File_MMS_and_GOOSE.pcap, deja la ;
+    // - +4 captures dans protocols/oncrpc/ (corpus de nDPI et wiki
+    //   Wireshark, voir SOURCE.md), 453 trames : 396 "ONC RPC" ; 18
+    //   "Unknown", dix messages de mountd sur un port que le portmapper
+    //   annonce et huit segments de suite ("Unknown" 17 140 - 3 + 18 =
+    //   17 155) ; 39 segments TCP sans charge, "(sans application)"
+    //   7 532 -> 7 571.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 7532),
+        (NO_APPLICATION, 7571),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 33),
@@ -605,6 +617,7 @@ fn application_classification_histogram_is_frozen() {
         ("NMF", 6),
         ("NNTP", 6),
         ("NTP", 77),
+        ("ONC RPC", 399),
         ("OPC UA", 187),
         ("OpenVPN", 766),
         ("PTP", 3221),
@@ -624,7 +637,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 17140),
+        ("Unknown", 17155),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

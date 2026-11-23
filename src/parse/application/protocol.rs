@@ -129,6 +129,7 @@ application_protocols![
     (Syslog, "Syslog"),
     (Nbds, "NBDS"),
     (Kerberos, "Kerberos"),
+    (OncRpc, "ONC RPC"),
 ];
 
 impl fmt::Display for ApplicationProtocol {
@@ -176,7 +177,7 @@ mod tests {
     /// tunnels, STP et `Unknown`. Une etiquette publiee ne change jamais de
     /// texte ; un protocole nouveau ajoute la sienne (`ModbusUDP` en 12.0.0,
     /// `Java RMI` en 13.0.0, `SIP` en 13.2.0).
-    const FROZEN_LABELS: [&str; 65] = [
+    const FROZEN_LABELS: [&str; 66] = [
         "AMS",
         "ASTERIX",
         "BACnet/IP",
@@ -214,6 +215,7 @@ mod tests {
         "NMF",
         "NNTP",
         "NTP",
+        "ONC RPC",
         "OPC UA",
         "OpenVPN",
         "PTP",

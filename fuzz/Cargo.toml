@@ -366,3 +366,10 @@ path = "fuzz_targets/parse_kerberos.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_oncrpc"
+path = "fuzz_targets/parse_oncrpc.rs"
+test = false
+doc = false
+bench = false

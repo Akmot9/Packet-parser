@@ -230,6 +230,12 @@ pub(super) fn is_kerberos_port(port: Option<u16>) -> bool {
     matches!(port, Some(88))
 }
 
+/// ONC RPC : 111 (IANA `sunrpc`, le portmapper) et 2049 (IANA `nfs`), en
+/// UDP et en TCP (#381).
+pub(super) fn is_oncrpc_port(port: Option<u16>) -> bool {
+    matches!(port, Some(111 | 2049))
+}
+
 /// Syslog : UDP 514 (IANA `syslog`, RFC 5426) (#374).
 pub(super) fn is_syslog_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(514))
