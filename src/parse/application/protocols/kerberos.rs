@@ -375,9 +375,21 @@ impl<'a> KerberosRecord<'a> {
     }
 
     /// Sonde de la regle a port de TCP : des enregistrements bien formes
-    /// qui pavent le segment. Seul le dernier peut etre coupe.
+    /// qui pavent le segment. Seul le dernier peut etre coupe. TCP coupe ou
+    /// il veut : derriere un enregistrement entier, le suivant peut
+    /// s'arreter dans sa marque ou dans l'en-tete de son message, trop tot
+    /// pour etre lu. Ce reste ne retire rien a l'enregistrement qui le
+    /// precede (#382) ; seul, il ne nomme rien.
     pub(crate) fn is_port_match(payload: &'a [u8]) -> bool {
-        !payload.is_empty() && Self::records(payload).all(|record| record.is_ok())
+        let mut has_whole_record = false;
+        for record in Self::records(payload) {
+            match record {
+                Ok(record) => has_whole_record |= !record.is_truncated(),
+                Err(KerberosError::TooShort { .. }) => return has_whole_record,
+                Err(_) => return false,
+            }
+        }
+        !payload.is_empty()
     }
 }
 
@@ -584,6 +596,45 @@ mod tests {
         );
         assert!(!KerberosRecord::is_port_match(&bytes));
         assert!(!KerberosRecord::is_port_match(&[]));
+    }
+
+    /// Synthetique : l'enregistrement reel, puis le debut de l'autre, que
+    /// TCP coupe dans sa marque ou dans l'en-tete de son message (#382).
+    #[test]
+    fn record_start_behind_a_whole_record_keeps_the_probe() {
+        let whole = hex(TCP_AS_REQUEST);
+        let next = hex(TCP_ERROR);
+        // La marque (4 octets), les deux etiquettes et leurs longueurs (8),
+        // pvno (5) et msg-type (5) : l'en-tete se lit a 22 octets.
+        for cut in 1..22 {
+            let mut bytes = whole.clone();
+            bytes.extend(&next[..cut]);
+            let records: Vec<_> = KerberosRecord::records(&bytes).collect();
+            assert_eq!(records.len(), 2, "{cut}");
+            assert!(
+                matches!(records[1], Err(KerberosError::TooShort { .. })),
+                "{cut} : {:?}",
+                records[1]
+            );
+            assert!(KerberosRecord::is_port_match(&bytes), "{cut}");
+            // Seul, ce debut ne nomme rien.
+            assert!(!KerberosRecord::is_port_match(&next[..cut]), "{cut}");
+        }
+        let mut bytes = whole.clone();
+        bytes.extend(&next[..22]);
+        let records: Vec<_> = KerberosRecord::records(&bytes)
+            .collect::<Result<_, _>>()
+            .expect("deux enregistrements");
+        assert!(!records[0].is_truncated() && records[1].is_truncated());
+        assert!(KerberosRecord::is_port_match(&bytes));
+
+        // Un debut faux fait toujours refuser le segment : une etiquette
+        // qui n'est pas celle d'un message, une longueur DER indefinie.
+        for tail in [&[0, 0, 0, 1, 0xff][..], &[0, 0, 1, 0x12, 0x7e, 0x80]] {
+            let mut bytes = whole.clone();
+            bytes.extend(tail);
+            assert!(!KerberosRecord::is_port_match(&bytes), "{tail:02x?}");
+        }
     }
 
     /// L'enregistrement reel, coupe comme un segment le couperait.

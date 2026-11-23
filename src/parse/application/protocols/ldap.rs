@@ -84,9 +84,20 @@ impl<'a> LdapPdu<'a> {
     }
 
     /// Sonde des regles a port : des PDU bien formes qui pavent le payload.
-    /// Seul le dernier peut etre coupe par le segment.
+    /// Seul le dernier peut etre coupe par le segment. TCP coupe ou il
+    /// veut : derriere un PDU entier, le suivant peut s'arreter avant la fin
+    /// de son en-tete, trop tot pour etre lu. Ce reste ne retire rien au
+    /// PDU qui le precede (#382) ; seul, il ne nomme rien.
     pub(crate) fn is_port_match(payload: &'a [u8]) -> bool {
-        !payload.is_empty() && Self::pdus(payload).all(|pdu| pdu.is_ok())
+        let mut has_whole_pdu = false;
+        for pdu in Self::pdus(payload) {
+            match pdu {
+                Ok(pdu) => has_whole_pdu |= !pdu.is_truncated(),
+                Err(LdapError::TooShort { .. }) => return has_whole_pdu,
+                Err(_) => return false,
+            }
+        }
+        !payload.is_empty()
     }
 }
 
@@ -909,8 +920,8 @@ mod tests {
                 actual: 0x31,
             }
         );
-        // Longueur indefinie, sur cinq octets, puis de 2^24 octets.
-        for length in [&[0x80][..], &[0x85, 0, 0, 0, 0, 7], &[0x84, 1, 0, 0, 0]] {
+        // Longueur indefinie, sur cinq octets, puis de 2^31 octets.
+        for length in [&[0x80][..], &[0x85, 0, 0, 0, 0, 7], &[0x84, 0x80, 0, 0, 0]] {
             let mut bytes = vec![0x30];
             bytes.extend(length);
             bytes.extend([0x02, 0x01, 0x01, 0x42, 0x00]);
@@ -1125,5 +1136,69 @@ mod tests {
         let items: Vec<_> = LdapPdu::pdus(&trailing).collect();
         assert_eq!(items.len(), 3);
         assert!(items[2].is_err());
+
+        // TCP coupe ou il veut : derriere un PDU entier, le debut du
+        // suivant, trop court pour etre lu, ne retire rien (#382). Une
+        // enveloppe coupee dans son etiquette, dans sa longueur, dans son
+        // identifiant ; un tampon SASL coupe dans sa longueur, dans
+        // l'en-tete de son jeton.
+        let sealed = hex(SEALED);
+        for start in [
+            &[0x30][..],
+            &[0x30, 0x84, 0x00],
+            &[0x30, 0x0c, 0x02],
+            &[0x00, 0x00],
+            &sealed[..10],
+        ] {
+            let mut cut = hex(SIGNED_UNBIND);
+            cut.extend(start);
+            let items: Vec<_> = LdapPdu::pdus(&cut).collect();
+            assert_eq!(items.len(), 2, "{start:02x?}");
+            assert!(
+                matches!(items[1], Err(LdapError::TooShort { .. })),
+                "{start:02x?} : {:?}",
+                items[1]
+            );
+            assert!(LdapPdu::is_port_match(&cut), "{start:02x?}");
+            // Seul, ce debut ne nomme rien.
+            assert!(!LdapPdu::is_port_match(start), "{start:02x?}");
+        }
+    }
+
+    /// Synthetique : la reponse de bind reelle, dont l'enveloppe et
+    /// l'operation annoncent 2^24 octets de plus, ce qu'un tampon SASL ne
+    /// peut pas porter mais qu'un message en clair peut (#382).
+    #[test]
+    fn ber_lengths_are_not_bound_by_the_sasl_limit() {
+        let mut bytes = hex(BIND_RESPONSE);
+        assert_eq!(bytes[..6], [0x30, 0x84, 0x00, 0x00, 0x00, 0x68]);
+        assert_eq!(bytes[9..15], [0x61, 0x84, 0x00, 0x00, 0x00, 0x5f]);
+        (bytes[2], bytes[11]) = (0x01, 0x01);
+        let message = LdapMessage::try_from(bytes.as_slice()).expect("message coupe");
+        assert_eq!(message.message_id, 9);
+        assert_eq!(message.operation, LdapOperation::BindResponse);
+        assert!(message.is_truncated());
+        assert_eq!(message.wire_length(), 6 + 0x0100_0068);
+        assert!(LdapPdu::is_port_match(&bytes));
+
+        // La borne du decodeur : 2^31 - 1 octets.
+        (bytes[2], bytes[11]) = (0x7f, 0x7f);
+        (bytes[3], bytes[4], bytes[5]) = (0xff, 0xff, 0xff);
+        (bytes[12], bytes[13], bytes[14]) = (0xff, 0xff, 0xf6);
+        let message = LdapMessage::try_from(bytes.as_slice()).expect("message coupe");
+        assert_eq!(message.wire_length(), 6 + 0x7fff_ffff);
+        bytes[2] = 0x80;
+        assert_eq!(
+            LdapMessage::try_from(bytes.as_slice()).map(|_| ()),
+            Err(LdapError::InvalidLength { field: "message" })
+        );
+
+        // Un tampon SASL garde la sienne, 2^24 - 1 octets.
+        let mut buffer = hex(SEALED);
+        buffer[0] = 0x01;
+        assert_eq!(
+            LdapSaslBuffer::try_from(buffer.as_slice()).map(|_| ()),
+            Err(LdapError::InvalidSaslLength(0x0100_0047))
+        );
     }
 }

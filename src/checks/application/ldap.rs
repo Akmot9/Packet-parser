@@ -34,10 +34,13 @@ pub const LDAP_AUTH_SIMPLE_TAG: u8 = 0x80;
 /// `sasl [3] SaslCredentials` de `AuthenticationChoice`.
 pub const LDAP_AUTH_SASL_TAG: u8 = 0xa3;
 
-/// Plus grande longueur lue, pour un element BER comme pour un tampon
-/// SASL : 2^24 - 1, la plus grande taille de tampon que la negociation de
-/// la RFC 4752 §3.1 sait annoncer.
-pub const LDAP_MAX_LENGTH: usize = 0x00ff_ffff;
+/// Plus grande longueur d'un element BER : 2^31 - 1. La RFC 4511 §5.1 n'en
+/// fixe aucune ; celle-ci est du decodeur, pour que l'en-tete et le contenu
+/// tiennent ensemble dans un `usize` de 32 bits (#382).
+pub const BER_MAX_LENGTH: usize = 0x7fff_ffff;
+/// Plus grande longueur d'un tampon SASL : 2^24 - 1, la plus grande taille
+/// que la negociation de la RFC 4752 §3.1 sait annoncer.
+pub const SASL_MAX_LENGTH: usize = 0x00ff_ffff;
 /// Octets de longueur d'un tampon SASL.
 pub const SASL_LENGTH_FIELD: usize = 4;
 /// Plus court en-tete de jeton lu : seize octets, pour le Wrap de la RFC
@@ -149,7 +152,7 @@ pub fn extract_element<'a>(
             .fold(0usize, |length, octet| (length << 8) | usize::from(*octet));
         (length, 2 + count)
     };
-    if length > LDAP_MAX_LENGTH {
+    if length > BER_MAX_LENGTH {
         return Err(LdapError::InvalidLength { field });
     }
     let after_header = &bytes[header_length..];
@@ -335,7 +338,7 @@ pub struct SaslBuffer<'a> {
 pub fn validate_sasl_length(length: u32) -> Result<usize, LdapError> {
     usize::try_from(length)
         .ok()
-        .filter(|length| (SASL_MIN_LENGTH..=LDAP_MAX_LENGTH).contains(length))
+        .filter(|length| (SASL_MIN_LENGTH..=SASL_MAX_LENGTH).contains(length))
         .ok_or(LdapError::InvalidSaslLength(length))
 }
 

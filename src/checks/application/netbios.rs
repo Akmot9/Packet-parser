@@ -495,16 +495,32 @@ pub fn extract_nbds_flags(raw: u8) -> Result<NbdsFlags, NbdsError> {
     })
 }
 
-/// La longueur annoncee d'un datagramme compte ce qui suit le decalage du
-/// fragment : les deux noms et les donnees. Elle doit etre celle du
-/// datagramme UDP.
-pub fn validate_nbds_datagram_length(packet: &[u8], announced: u16) -> Result<(), NbdsError> {
+/// La longueur annoncee compte ce qui suit le decalage du fragment : les
+/// deux noms et les donnees du datagramme NetBIOS entier. L'emetteur la
+/// calcule avant de couper le datagramme en deux paquets UDP (RFC 1002
+/// §5.3.1).
+///
+/// - Datagramme entier (`FIRST` sans `MORE`) : elle est celle du paquet.
+/// - Premier fragment (`FIRST` et `MORE`) : le paquet porte les noms et le
+///   debut des donnees, la longueur annoncee le depasse donc (#382).
+/// - Fragment de suite (`FIRST` a zero) : l'egalite reste exigee, ce qui le
+///   refuse. La RFC ne dit pas s'il repete les noms, et aucune capture
+///   n'en montre.
+pub fn validate_nbds_datagram_length(
+    packet: &[u8],
+    flags: NbdsFlags,
+    announced: u16,
+) -> Result<(), NbdsError> {
+    let announced = usize::from(announced);
     let actual = packet.len().saturating_sub(NBDS_DATAGRAM_HEADER_LENGTH);
-    if usize::from(announced) != actual {
-        return Err(NbdsError::LengthMismatch {
-            announced: usize::from(announced),
-            actual,
-        });
+    let is_first_fragment = flags.first && flags.more;
+    let is_consistent = if is_first_fragment {
+        announced > actual
+    } else {
+        announced == actual
+    };
+    if !is_consistent {
+        return Err(NbdsError::LengthMismatch { announced, actual });
     }
     Ok(())
 }

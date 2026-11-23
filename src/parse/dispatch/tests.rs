@@ -1287,11 +1287,15 @@ fn skinny_is_named_on_tcp_2000_only() {
         Some("Unknown")
     );
 
-    // Deux messages qui pavent le segment ; deux octets de trop le refusent.
+    // Deux messages qui pavent le segment. Deux octets derriere eux sont le
+    // debut d'un en-tete que TCP a coupe (#382) ; quatre octets qui
+    // annoncent une longueur impossible refusent le segment.
     let mut two = keep_alive.to_vec();
     two.extend([8, 0, 0, 0, 0x11, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0]);
     assert_eq!(label(Tcp, 49152, 2000, &two, &[]), Some("Skinny"));
     two.extend([0xde, 0xad]);
+    assert_eq!(label(Tcp, 49152, 2000, &two, &[]), Some("Skinny"));
+    two.extend([0xbe, 0xef]);
     assert_eq!(label(Tcp, 49152, 2000, &two, &[]), Some("Unknown"));
 
     // Refus sur le port : longueur sous l'identifiant, version d'en-tete
@@ -1359,6 +1363,15 @@ fn kerberos_is_named_on_its_port_only() {
     assert_eq!(label(Udp, 49152, 88, &message[..60], &[]), Some("Unknown"));
     // Un segment de suite ne s'ouvre pas par une marque et un message.
     assert_eq!(label(Tcp, 49152, 88, &record[60..], &[]), Some("Unknown"));
+    // Derriere un enregistrement entier, le debut du suivant, que TCP coupe
+    // dans sa marque, ne retire rien (#382) ; seul, il ne nomme rien, et un
+    // debut faux refuse le segment.
+    let mut two = record.clone();
+    two.extend(&record[..3]);
+    assert_eq!(label(Tcp, 49152, 88, &two, &[]), Some("Kerberos"));
+    assert_eq!(label(Tcp, 49152, 88, &record[..3], &[]), Some("Unknown"));
+    two.extend([0, 0xff]);
+    assert_eq!(label(Tcp, 49152, 88, &two, &[]), Some("Unknown"));
 
     // Un autre port se declare, sur TCP comme sur UDP, chacun sous sa forme.
     let declared = [(8088, DecodeAsProtocol::Kerberos)];
@@ -1420,6 +1433,24 @@ fn nbds_is_named_on_its_port_only() {
     let mut long = error.to_vec();
     long.push(0);
     assert_eq!(label(Udp, 138, 138, &long, &[]), Some("Unknown"));
+
+    // Un datagramme de groupe : deux noms, quatre octets de donnees. Entier,
+    // il annonce ce qu'il porte ; premier de deux fragments (`MORE`), il
+    // annonce le datagramme entier, donc plus (#382).
+    let mut datagram = vec![0x11, 0x02, 0x12, 0x36, 10, 0, 0, 1, 0, 138, 0, 72, 0, 0];
+    for _ in 0..2 {
+        datagram.push(0x20);
+        datagram.extend([b'A'; 32]);
+        datagram.push(0);
+    }
+    datagram.extend([1, 2, 3, 4]);
+    assert_eq!(label(Udp, 138, 138, &datagram, &[]), Some("NBDS"));
+    datagram[11] = 73;
+    assert_eq!(label(Udp, 138, 138, &datagram, &[]), Some("Unknown"));
+    datagram[1] = 0x03;
+    assert_eq!(label(Udp, 138, 138, &datagram, &[]), Some("NBDS"));
+    datagram[11] = 72;
+    assert_eq!(label(Udp, 138, 138, &datagram, &[]), Some("Unknown"));
 }
 
 /// Syslog (#374) : un message par datagramme sur UDP 514, des trames de la
@@ -1530,6 +1561,12 @@ fn ldap_is_named_on_its_ports_only() {
     assert_eq!(label(Tcp, 49152, 389, &two, &[]), Some("LDAP"));
     two.extend([0xde, 0xad]);
     assert_eq!(label(Tcp, 49152, 389, &two, &[]), Some("Unknown"));
+    // Le debut d'une enveloppe, que TCP coupe dans sa longueur, ne retire
+    // rien aux PDU entiers qui le precedent (#382) ; seul, il ne nomme rien.
+    two.truncate(two.len() - 2);
+    two.extend([0x30, 0x84]);
+    assert_eq!(label(Tcp, 49152, 389, &two, &[]), Some("LDAP"));
+    assert_eq!(label(Tcp, 49152, 389, &[0x30, 0x84], &[]), Some("Unknown"));
 
     // Refus sur le port : pas une SEQUENCE, longueur indefinie, identifiant
     // qui n'est pas un INTEGER, operation inconnue, UnbindRequest non vide.

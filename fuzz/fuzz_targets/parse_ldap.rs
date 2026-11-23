@@ -97,8 +97,10 @@ const OPERATIONS: [u8; 21] = [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 19, 23, 24, 25,
 ];
 
-/// Plus grande longueur lue : 2^24 - 1.
-const MAX_LENGTH: usize = 0x00ff_ffff;
+/// Plus grande longueur d'un element BER : 2^31 - 1, la borne du decodeur.
+const BER_MAX_LENGTH: usize = 0x7fff_ffff;
+/// Plus grande longueur d'un tampon SASL : 2^24 - 1 (RFC 4752 §3.1).
+const SASL_MAX_LENGTH: usize = 0x00ff_ffff;
 
 /// Oracle : la longueur BER qui suit une etiquette, et le nombre d'octets
 /// d'en-tete. Recopie la regle (forme courte, ou longue d'un a quatre
@@ -122,7 +124,7 @@ fn ber_length(data: &[u8]) -> Option<(usize, usize)> {
 fn check_message(data: &[u8], message: &LdapMessage<'_>) {
     assert_eq!(data[0], 0x30);
     let (length, header) = ber_length(data).expect("longueur d'enveloppe lisible");
-    assert!(length <= MAX_LENGTH);
+    assert!(length <= BER_MAX_LENGTH);
     assert_eq!(message.wire_length(), header + length);
     assert!(message.message_id <= 0x7fff_ffff);
     assert!(OPERATIONS.contains(&message.operation.as_u8()));
@@ -174,7 +176,7 @@ fn check_message(data: &[u8], message: &LdapMessage<'_>) {
 fn check_buffer(data: &[u8], buffer: &LdapSaslBuffer<'_>) {
     assert_eq!(buffer.length.to_be_bytes(), data[..4]);
     let length = buffer.length as usize;
-    assert!((16..=MAX_LENGTH).contains(&length));
+    assert!((16..=SASL_MAX_LENGTH).contains(&length));
     assert!(inside(data, buffer.data));
     assert!(inside(data, buffer.rest()));
     if buffer.is_truncated() {

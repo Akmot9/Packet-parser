@@ -27,7 +27,7 @@ pub enum LdapError {
     },
 
     /// RFC 4511 §5.1 keeps the definite form of length only; this decoder
-    /// reads at most four length octets, and at most 2^24 - 1 bytes.
+    /// reads at most four length octets, and at most 2^31 - 1 bytes.
     #[error("LDAP {field}: unsupported BER length")]
     InvalidLength { field: &'static str },
 

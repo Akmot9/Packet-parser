@@ -93,8 +93,10 @@ pub enum NbdsError {
     #[error("reserved NBDS flag bits are set: {0:#04x}")]
     NonZeroReservedFlags(u8),
 
-    /// The datagram length counts the two names and the user data: what
-    /// follows the packet offset, to the end of the UDP datagram.
+    /// The datagram length counts the two names and the user data of the
+    /// whole NetBIOS datagram. It is what follows the packet offset in a
+    /// packet that carries the whole datagram, and more than that in a
+    /// first fragment (flags `FIRST` and `MORE`).
     #[error("NBDS datagram length mismatch: header announces {announced} bytes, {actual} follow")]
     LengthMismatch { announced: usize, actual: usize },
 

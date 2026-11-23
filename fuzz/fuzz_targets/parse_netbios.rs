@@ -115,10 +115,17 @@ fn exercise(data: &[u8]) {
                 assert!((0x10..=0x12).contains(&data[0]));
                 assert_eq!(datagram.length.to_be_bytes(), data[10..12]);
                 assert_eq!(datagram.packet_offset.to_be_bytes(), data[12..14]);
-                // La longueur annoncee est celle de l'entree, et les deux
-                // noms (label de 33 octets, scope, octet nul) et les donnees
-                // la pavent.
-                assert_eq!(usize::from(datagram.length) + 14, data.len());
+                // Les deux noms (label de 33 octets, scope, octet nul) et
+                // les donnees pavent l'entree. La longueur annoncee est la
+                // leur, sauf pour un premier fragment (drapeaux FIRST et
+                // MORE, relus sur l'octet brut) : elle est alors celle du
+                // datagramme entier, que l'entree ne porte pas (#382).
+                let carried = data.len() - 14;
+                if data[1] & 0x03 == 0x03 {
+                    assert!(usize::from(datagram.length) > carried);
+                } else {
+                    assert_eq!(usize::from(datagram.length), carried);
+                }
                 for field in [
                     datagram.source_scope,
                     datagram.destination_scope,
@@ -130,7 +137,7 @@ fn exercise(data: &[u8]) {
                     68 + datagram.source_scope.len()
                         + datagram.destination_scope.len()
                         + datagram.user_data.len(),
-                    usize::from(datagram.length)
+                    carried
                 );
                 check_name(&datagram.source_name);
                 check_name(&datagram.destination_name);

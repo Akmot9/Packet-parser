@@ -294,7 +294,8 @@ Application detection is intentionally best-effort. Parser modules include:
   body, which is not decoded; `SkinnyMessage::messages` iterates over the
   messages of a segment. The port rule asks for messages that tile the
   segment, a header version among 0, 10, 11 and 15 to 22, and a plausible
-  message identifier. The protocol has no public specification: the
+  message identifier; behind a whole message, the start of a header that
+  TCP cut before its twelfth byte is accepted. The protocol has no public specification: the
   reference is the Wireshark dissector, and messages are not named.
   Stateless limits: a message longer than its segment is cut
   (`SkinnyMessage::is_truncated`), the segments that carry the rest stay
@@ -314,7 +315,9 @@ Application detection is intentionally best-effort. Parser modules include:
   its token (`LdapSaslToken`): the Kerberos V5 Wrap token of RFC 4121 or of
   RFC 1964, or an NTLMSSP signature; `messages()` yields the messages of a
   Kerberos token that is signed without being sealed. The port rule asks
-  for PDUs that tile the payload. Stateless limits: a PDU longer than its
+  for PDUs that tile the payload; behind a whole PDU, the start of a PDU
+  that TCP cut before the end of its header is accepted. A BER length goes
+  up to 2^31 - 1, a SASL buffer up to 2^24 - 1 bytes. Stateless limits: a PDU longer than its
   segment is cut (`LdapPdu::is_truncated`) and the segments that carry the
   rest stay `Unknown`; a sealed buffer shows its header only, and nothing
   is read behind an NTLMSSP signature, which does not say whether the
@@ -346,7 +349,9 @@ Application detection is intentionally best-effort. Parser modules include:
   (`KerberosPrincipalName`). Over TCP, `KerberosRecord` reads the four
   bytes of length before each message, and `KerberosRecord::records`
   iterates over the records of a segment. The port rules ask for one
-  whole message per datagram, and for records that tile the segment.
+  whole message per datagram, and for records that tile the segment;
+  behind a whole record, the start of a record that TCP cut in its mark or
+  in the header of its message is accepted.
   Tickets, authenticators and pre-authentication data are encrypted and not
   read. Stateless limits: a message longer than its segment is cut
   (`KerberosMessage::is_truncated`) and the segments that carry the rest
@@ -361,9 +366,11 @@ Application detection is intentionally best-effort. Parser modules include:
   offset, the source and destination names (`NetbiosName`) and the user
   data of a datagram; the code of an error; the name of a query to a
   datagram distribution server. The announced length must be that of the
-  UDP datagram. The user data, most often SMB on a mailslot (Browser
-  announcements and elections, NETLOGON), is borrowed, not decoded; a
-  fragmented datagram is not reassembled
+  UDP datagram, except in the first of two fragments (flags `FIRST` and
+  `MORE`), which announces the whole datagram and so more than it carries.
+  The user data, most often SMB on a mailslot (Browser announcements and
+  elections, NETLOGON), is borrowed, not decoded; a fragmented datagram is
+  not reassembled, and its second fragment is not read
 - MQTT
 - PostgreSQL
 - FTP

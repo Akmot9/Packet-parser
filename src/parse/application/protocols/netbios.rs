@@ -358,8 +358,10 @@ pub struct NbdsFlags {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct NbdsDatagram<'a> {
-    /// Number of bytes that follow the packet offset: the two names and
-    /// the user data.
+    /// Length of the two names and of the user data of the whole NetBIOS
+    /// datagram. It is the number of bytes that follow the packet offset,
+    /// except in a first fragment ([`NbdsFlags::more`]), which announces
+    /// more bytes than it carries: the rest travels in a second packet.
     pub length: u16,
     /// Offset of this fragment in the user data of the whole datagram.
     pub packet_offset: u16,
@@ -370,7 +372,7 @@ pub struct NbdsDatagram<'a> {
     /// Raw scope labels of the destination name, empty in practice.
     pub destination_scope: &'a [u8],
     /// What the datagram carries, most often SMB on a mailslot; not
-    /// decoded.
+    /// decoded. In a first fragment, the first bytes of it only.
     pub user_data: &'a [u8],
 }
 
@@ -451,7 +453,7 @@ impl<'a> TryFrom<&'a [u8]> for NbdsPacket<'a> {
                 validate_nbds_length(packet, NBDS_DATAGRAM_HEADER_LENGTH)?;
                 let length = u16::from_be_bytes([packet[10], packet[11]]);
                 let packet_offset = u16::from_be_bytes([packet[12], packet[13]]);
-                validate_nbds_datagram_length(packet, length)?;
+                validate_nbds_datagram_length(packet, flags, length)?;
                 let (source_name, source_scope, next) =
                     extract_nbds_name(packet, NBDS_DATAGRAM_HEADER_LENGTH)?;
                 let (destination_name, destination_scope, next) = extract_nbds_name(packet, next)?;
@@ -912,6 +914,62 @@ mod tests {
         assert_eq!(packet.flags.node_type, 3);
         assert!(packet.flags.first && !packet.flags.more);
         assert_eq!(packet.source_ip, Ipv4Addr::new(192, 168, 1, 2));
+    }
+
+    /// Synthetique : l'election reelle, presentee comme le premier de deux
+    /// fragments (drapeau `MORE`, longueur du datagramme entier). Le corpus
+    /// n'a aucun datagramme fragmente (#382).
+    #[test]
+    fn nbds_first_fragment_announces_the_whole_datagram() {
+        let whole = payload(NBDS_ELECTION_HEX);
+        let fragment = |flags: u8, length: u16| {
+            let mut bytes = whole.clone();
+            bytes[1] = flags;
+            bytes[10..12].copy_from_slice(&length.to_be_bytes());
+            bytes
+        };
+
+        let bytes = fragment(0x03, 1000);
+        let packet = NbdsPacket::try_from(bytes.as_slice()).expect("premier fragment");
+        assert!(packet.flags.first && packet.flags.more);
+        let NbdsBody::Datagram(datagram) = packet.body else {
+            panic!("pas un datagramme");
+        };
+        // La longueur est celle du datagramme entier ; le paquet porte les
+        // deux noms et le debut des donnees.
+        assert_eq!(datagram.length, 1000);
+        assert_eq!(datagram.packet_offset, 0);
+        assert_eq!(datagram.source_name.as_str(), Some("OBSIDIAN"));
+        assert_eq!(datagram.destination_name.as_str(), Some("SYNERITY"));
+        assert_eq!(datagram.user_data.len(), 165 - 68);
+
+        let length_error = |flags: u8, length: u16| {
+            let bytes = fragment(flags, length);
+            NbdsPacket::try_from(bytes.as_slice()).map(|_| ())
+        };
+        // Un premier fragment annonce plus qu'il ne porte.
+        for announced in [165, 164] {
+            assert_eq!(
+                length_error(0x03, announced),
+                Err(NbdsError::LengthMismatch {
+                    announced: usize::from(announced),
+                    actual: 165
+                })
+            );
+        }
+        assert_eq!(length_error(0x03, 166), Ok(()));
+        // Sans `MORE`, le paquet porte tout le datagramme ; sans `FIRST`,
+        // c'est un fragment de suite, qui n'est pas lu.
+        for flags in [0x02, 0x00, 0x01] {
+            assert_eq!(
+                length_error(flags, 1000),
+                Err(NbdsError::LengthMismatch {
+                    announced: 1000,
+                    actual: 165
+                }),
+                "{flags:#04x}"
+            );
+        }
     }
 
     /// La trame reelle, modifiee octet par octet.
