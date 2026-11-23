@@ -46,8 +46,8 @@ Meme jour, sur `main` et non publie aussi : **ONC RPC** (RFC 5531, #381),
 le transport de NFS et du portmapper. Decodeur `OncRpcMessage` et
 enregistrements TCP `OncRpcRecord`, regles a port sur 111 et 2049 en UDP et
 en TCP, `DecodeAsProtocol::OncRpc`, quatre captures (nDPI et wiki
-Wireshark) et un oracle tshark de 409 messages. Le corpus prive n'a pas
-ete remesure, faute de disque monte.
+Wireshark) et un oracle tshark de 409 messages. Sur le corpus prive, 194
+trames quittent `Unknown` ; 12 segments de suite y restent, faute d'etat.
 
 Etat au 2026-11-22, 13.3.0 : la **13.3.0 est publiee** (tag `v13.3.0`,
 publication par le workflow). Mineure, sans rupture, elle porte l'epic
