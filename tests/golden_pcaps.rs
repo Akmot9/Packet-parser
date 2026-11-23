@@ -546,9 +546,21 @@ fn application_classification_histogram_is_frozen() {
     //   capture a coupees (6 et 7), arretees a la couche reseau.
     // "Unknown" 16 940 -> 16 942 (+2), "(sans application)" 7 470 -> 7 482
     // (+12).
+    //
+    // 2026-11-23 (#377, NBDS) : le service de datagrammes NetBIOS, sur UDP
+    // 138. "NBDS" 0 -> 179, les 179 datagrammes que tshark dissèque
+    // (`tests/nbds_golden.rs`) :
+    // - 14 quittent "Unknown" (16 942 -> 16 928) dans quatre captures deja
+    //   la : sip/wireshark_aaa.pcap (8),
+    //   skinny/wireshark_10262_7911_CUCM_registration_RFC2833.pcapng (3),
+    //   profinet/cisagov_profinet_io_cm_mixed_1.pcap (2) et
+    //   iec104/iti_090813_diverse.pcap (1) ;
+    // - +1 capture, netbios/smb-browser-elections.pcapng (wiki Wireshark,
+    //   voir SOURCE.md), 223 trames : 165 "NBDS", 42 "NBNS" (857 -> 899) et
+    //   16 ARP, "(sans application)" 7 482 -> 7 498.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 7482),
+        (NO_APPLICATION, 7498),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 33),
@@ -569,7 +581,8 @@ fn application_classification_histogram_is_frozen() {
         ("LDAP", 79),
         ("LLMNR", 138),
         ("MQTT", 187),
-        ("NBNS", 857),
+        ("NBDS", 179),
+        ("NBNS", 899),
         ("NBSS", 32),
         ("ModbusTCP", 382),
         ("ModbusUDP", 38),
@@ -596,7 +609,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 16942),
+        ("Unknown", 16928),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

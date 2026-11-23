@@ -208,13 +208,20 @@ pub(super) static RULES: &[Rule] = &[
         is_ssdp_udp_port,
         ProbeId::Ssdp,
     ),
-    // NetBIOS : name service sur UDP 137, session service sur TCP 139 et
-    // TCP 445 (SMB direct hosting, meme framing a 4 octets).
+    // NetBIOS : name service sur UDP 137, datagram service sur UDP 138
+    // (#377), session service sur TCP 139 et TCP 445 (SMB direct hosting,
+    // meme framing a 4 octets).
     port_rule(
         ApplicationProtocol::Nbns,
         Guard::Udp,
         is_nbns_udp_port,
         ProbeId::Nbns,
+    ),
+    port_rule(
+        ApplicationProtocol::Nbds,
+        Guard::Udp,
+        is_nbds_udp_port,
+        ProbeId::Nbds,
     ),
     port_rule(
         ApplicationProtocol::Nbss,

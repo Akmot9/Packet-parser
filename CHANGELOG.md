@@ -8,6 +8,40 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **NetBIOS Datagram Service** (RFC 1002 §4.4, #377) : etiquette `NBDS`,
+  decodeur zero copie `parse::application::protocols::netbios::NbdsPacket`
+  et `DecodeAsProtocol::Nbds`. C'est le troisieme service NetBIOS, apres
+  `NBNS` et `NBSS` : les messages sans connexion d'un nom a un autre, sur
+  UDP 138, surtout les annonces et les elections du service Browser de
+  Windows.
+  - **Ce qui est lu.** Le type de message (`NbdsMessageType`, les sept de
+    la RFC), les drapeaux (type de noeud, premier fragment, fragments a
+    suivre), l'identifiant, l'adresse et le port source, puis selon le
+    type (`NbdsBody`) : pour un datagramme, la longueur, le decalage du
+    fragment, les noms source et destination (`NetbiosName`) et les donnees
+    utilisateur, empruntees sans etre decodees ; pour une erreur, son
+    code ; pour une requete au serveur de datagrammes, le nom recherche.
+  - **Ce qui est refuse.** Un type hors de 0x10 a 0x16 ; un quartet haut
+    de drapeaux non nul ; une longueur annoncee qui n'est pas celle du
+    datagramme UDP ; un nom qui n'est pas un label de 32 octets de `A` a
+    `P` suivi de son scope, ou qui porte un pointeur de compression ; des
+    octets derriere une erreur ou une requete.
+  - **Detection.** Regle a port sur UDP 138. Un autre port se declare par
+    Decode As.
+  - **Corpus et oracle.** Une capture du wiki Wireshark dans
+    `pcaps_exemple/protocols/netbios/` (165 datagrammes, des elections du
+    service Browser) et 14 datagrammes deja dans le depot, epars dans
+    quatre captures, qui sortaient `Unknown`. Les 179 sont compares a
+    tshark 4.6.9 champ par champ, noms compris (`tests/nbds_golden.rs`,
+    `tools/nbds_oracle.sh`). La cible de fuzz `parse_netbios` lit aussi
+    NBDS.
+  - **Mesure.** Sur le corpus de terrain de #346, les 196 datagrammes
+    d'UDP 138, dans 18 captures, sortent `NBDS` ; aucune autre etiquette ne
+    bouge.
+  - **Limites.** Tout le corpus est fait de datagrammes de groupe (0x11) :
+    les six autres types ne sont testes que sur des octets synthetiques. Un
+    datagramme fragmente n'est pas reassemble. Les donnees utilisateur (SMB
+    sur mailslot) ne sont pas decodees.
 - **Syslog** (RFC 3164, 5424 et 6587, #374) : etiquette `Syslog`, decodeur
   zero copie `parse::application::protocols::syslog::SyslogMessage`, trames
   TCP `SyslogFrame` et `DecodeAsProtocol::Syslog`. C'est le journal qu'un

@@ -3,10 +3,9 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-//! Erreurs des deux services NetBIOS couverts (RFC 1001/1002) :
-//! le Name Service (NBNS, UDP 137) et le Session Service (NBSS, TCP 139).
-//! Le Datagram Service (UDP 138) n'est pas implemente : le corpus du depot
-//! n'en contient aucune trame.
+//! Erreurs des trois services NetBIOS (RFC 1001/1002) : le Name Service
+//! (NBNS, UDP 137), le Session Service (NBSS, TCP 139) et le Datagram
+//! Service (NBDS, UDP 138).
 
 use thiserror::Error;
 
@@ -78,4 +77,32 @@ pub enum NbssError {
 
     #[error("invalid NBSS payload length {length} for message type {message_type:#04x}")]
     InvalidPayloadLength { message_type: u8, length: u32 },
+}
+
+/// Errors raised while parsing a NetBIOS Datagram Service packet (RFC 1002
+/// §4.4).
+#[non_exhaustive]
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum NbdsError {
+    #[error("NBDS packet too short: expected at least {expected} bytes, got {actual}")]
+    InvalidLength { expected: usize, actual: usize },
+
+    #[error("unknown NBDS message type: {0:#04x}")]
+    UnknownMessageType(u8),
+
+    #[error("reserved NBDS flag bits are set: {0:#04x}")]
+    NonZeroReservedFlags(u8),
+
+    /// The datagram length counts the two names and the user data: what
+    /// follows the packet offset, to the end of the UDP datagram.
+    #[error("NBDS datagram length mismatch: header announces {announced} bytes, {actual} follow")]
+    LengthMismatch { announced: usize, actual: usize },
+
+    /// A name is 32 half-ASCII bytes, optional scope labels and a null
+    /// byte, without compression pointer.
+    #[error("invalid NBDS name: {0}")]
+    InvalidName(#[source] NbnsError),
+
+    #[error("{0} trailing bytes after the NBDS message")]
+    TrailingBytes(usize),
 }

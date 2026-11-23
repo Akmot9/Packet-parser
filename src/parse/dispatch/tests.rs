@@ -1312,6 +1312,51 @@ fn skinny_is_named_on_tcp_2000_only() {
     assert_eq!(label(Tcp, 2000, 80, http, &[]), Some("HTTP"));
 }
 
+/// NetBIOS Datagram Service (#377) : sur UDP 138 ou sur un port declare,
+/// jamais ailleurs ni sur TCP. Octets synthetiques : un message d'erreur de
+/// onze octets et une requete de 44 octets, au nom fait de `A`.
+#[test]
+fn nbds_is_named_on_its_port_only() {
+    use TransportProtocol::{Tcp, Udp};
+    let label = |protocol: TransportProtocol,
+                 source: u16,
+                 destination: u16,
+                 payload: &[u8],
+                 decode_as: &[(u16, DecodeAsProtocol)]| {
+        let transport = Transport {
+            protocol,
+            source_port: Some(source),
+            destination_port: Some(destination),
+            payload: Some(payload),
+            details: None,
+        };
+        classify(&transport, decode_as).map(|a| a.protocol.label())
+    };
+    let error = [0x13, 0x02, 0x12, 0x34, 10, 0, 0, 1, 0, 138, 0x82];
+    let mut query = vec![0x14, 0x02, 0x12, 0x35, 10, 0, 0, 1, 0, 138, 0x20];
+    query.extend([b'A'; 32]);
+    query.push(0);
+    for payload in [&error[..], &query[..]] {
+        assert_eq!(label(Udp, 138, 138, payload, &[]), Some("NBDS"));
+        assert_eq!(label(Udp, 49152, 138, payload, &[]), Some("NBDS"));
+        assert_eq!(label(Udp, 49152, 139, payload, &[]), Some("Unknown"));
+        assert_eq!(label(Tcp, 49152, 138, payload, &[]), Some("Unknown"));
+        let declared = [(1138, DecodeAsProtocol::Nbds)];
+        assert_eq!(label(Udp, 49152, 1138, payload, &declared), Some("NBDS"));
+        assert_eq!(label(Tcp, 49152, 1138, payload, &declared), Some("Unknown"));
+    }
+
+    // Refus sur le port : type inconnu, drapeaux reserves, octet de trop.
+    for (index, value) in [(0, 0x17), (1, 0x82)] {
+        let mut bad = error;
+        bad[index] = value;
+        assert_eq!(label(Udp, 138, 138, &bad, &[]), Some("Unknown"), "{index}");
+    }
+    let mut long = error.to_vec();
+    long.push(0);
+    assert_eq!(label(Udp, 138, 138, &long, &[]), Some("Unknown"));
+}
+
 /// Syslog (#374) : un message par datagramme sur UDP 514, des trames de la
 /// RFC 6587 sur TCP 514 et 601, ou sur un port declare, jamais ailleurs.
 /// Octets synthetiques.

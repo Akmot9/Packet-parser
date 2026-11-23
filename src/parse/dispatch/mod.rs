@@ -141,6 +141,8 @@ decode_as_protocols![
     /// Syslog: one message per UDP datagram, RFC 6587 frames over TCP, for
     /// a collector that listens on another port than 514.
     Syslog,
+    /// NetBIOS Datagram Service over UDP: the same rule as on UDP 138.
+    Nbds,
 ];
 
 impl DecodeAsProtocol {
@@ -251,6 +253,7 @@ impl DecodeAsProtocol {
                 }
                 _ => (ApplicationProtocol::Syslog, Guard::Udp, ProbeId::Syslog),
             },
+            Self::Nbds => (ApplicationProtocol::Nbds, Guard::Udp, ProbeId::Nbds),
         }
     }
 }

@@ -3,8 +3,8 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-//! Controles NetBIOS (RFC 1001/1002) : Name Service (NBNS, UDP 137) et
-//! Session Service (NBSS, TCP 139).
+//! Controles NetBIOS (RFC 1001/1002) : Name Service (NBNS, UDP 137),
+//! Session Service (NBSS, TCP 139) et Datagram Service (NBDS, UDP 138).
 //!
 //! NBNS reutilise le format d'en-tete DNS (12 octets) mais encode les noms
 //! avec le "first-level encoding" (RFC 1001 §14.1) : chaque demi-octet du nom
@@ -16,9 +16,10 @@
 //! indexation sans verification prealable, aucune allocation.
 
 use crate::{
-    errors::application::netbios::{NbnsError, NbssError},
+    errors::application::netbios::{NbdsError, NbnsError, NbssError},
     parse::application::protocols::netbios::{
-        NbnsFlags, NbnsQuestion, NbnsRecordType, NbnsResourceRecord, NbssMessageType, NetbiosName,
+        NbdsFlags, NbdsMessageType, NbnsFlags, NbnsQuestion, NbnsRecordType, NbnsResourceRecord,
+        NbssMessageType, NetbiosName,
     },
 };
 
@@ -439,6 +440,95 @@ pub fn validate_nbss_length_for_type(
         });
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// NBDS
+// ---------------------------------------------------------------------------
+
+/// En-tete commun a tous les messages NBDS : type, drapeaux, identifiant,
+/// adresse et port source.
+pub const NBDS_HEADER_LENGTH: usize = 10;
+
+/// En-tete d'un datagramme (types 0x10 a 0x12) : l'en-tete commun, puis la
+/// longueur et le decalage du fragment.
+pub const NBDS_DATAGRAM_HEADER_LENGTH: usize = 14;
+
+/// Quartet haut des drapeaux, reserve : doit rester a zero.
+const NBDS_RESERVED_FLAGS_MASK: u8 = 0xf0;
+
+/// Verifie qu'au moins `expected` octets sont presents.
+pub fn validate_nbds_length(packet: &[u8], expected: usize) -> Result<(), NbdsError> {
+    if packet.len() < expected {
+        return Err(NbdsError::InvalidLength {
+            expected,
+            actual: packet.len(),
+        });
+    }
+    Ok(())
+}
+
+/// Type de message : les sept de la RFC 1002 §4.4.1.
+pub fn extract_nbds_message_type(raw: u8) -> Result<NbdsMessageType, NbdsError> {
+    match raw {
+        0x10 => Ok(NbdsMessageType::DirectUnique),
+        0x11 => Ok(NbdsMessageType::DirectGroup),
+        0x12 => Ok(NbdsMessageType::Broadcast),
+        0x13 => Ok(NbdsMessageType::Error),
+        0x14 => Ok(NbdsMessageType::QueryRequest),
+        0x15 => Ok(NbdsMessageType::PositiveQueryResponse),
+        0x16 => Ok(NbdsMessageType::NegativeQueryResponse),
+        other => Err(NbdsError::UnknownMessageType(other)),
+    }
+}
+
+/// Drapeaux : quartet haut reserve, puis le type de noeud sur deux bits, F
+/// (premier fragment) et M (d'autres fragments suivent).
+pub fn extract_nbds_flags(raw: u8) -> Result<NbdsFlags, NbdsError> {
+    if raw & NBDS_RESERVED_FLAGS_MASK != 0 {
+        return Err(NbdsError::NonZeroReservedFlags(raw));
+    }
+    Ok(NbdsFlags {
+        node_type: (raw >> 2) & 0x03,
+        first: raw & 0x02 != 0,
+        more: raw & 0x01 != 0,
+    })
+}
+
+/// La longueur annoncee d'un datagramme compte ce qui suit le decalage du
+/// fragment : les deux noms et les donnees. Elle doit etre celle du
+/// datagramme UDP.
+pub fn validate_nbds_datagram_length(packet: &[u8], announced: u16) -> Result<(), NbdsError> {
+    let actual = packet.len().saturating_sub(NBDS_DATAGRAM_HEADER_LENGTH);
+    if usize::from(announced) != actual {
+        return Err(NbdsError::LengthMismatch {
+            announced: usize::from(announced),
+            actual,
+        });
+    }
+    Ok(())
+}
+
+/// Un nom NBDS a `offset` : label de premier niveau, labels de scope et
+/// octet nul, sans pointeur de compression. Rend le nom, son scope brut et
+/// l'offset qui le suit.
+pub fn extract_nbds_name(
+    packet: &[u8],
+    offset: usize,
+) -> Result<(NetbiosName, &[u8], usize), NbdsError> {
+    let (name, after_label) =
+        extract_netbios_encoded_name(packet, offset).map_err(NbdsError::InvalidName)?;
+    let (scope, next) =
+        extract_netbios_scope(packet, after_label).map_err(NbdsError::InvalidName)?;
+    Ok((name, scope, next))
+}
+
+/// Rien ne suit un message d'erreur ou de requete.
+pub fn validate_nbds_end(packet: &[u8], end: usize) -> Result<(), NbdsError> {
+    match packet.len().saturating_sub(end) {
+        0 => Ok(()),
+        trailing => Err(NbdsError::TrailingBytes(trailing)),
+    }
 }
 
 #[cfg(test)]
