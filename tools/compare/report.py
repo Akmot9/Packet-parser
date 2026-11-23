@@ -118,8 +118,17 @@ def environment():
             cpu = line.split(":", 1)[1].strip()
             break
     rustc = subprocess.run(["rustc", "-V"], capture_output=True, text=True).stdout.strip()
-    governor = pathlib.Path("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
-    return versions, cpu, rustc, governor.read_text().strip() if governor.exists() else "?"
+    # Le bench est epingle a un coeur que ce script ne connait pas : on rend
+    # le gouverneur de tous les coeurs, et on le dit s'ils different.
+    governors = sorted(
+        {
+            path.read_text().strip()
+            for path in pathlib.Path("/sys/devices/system/cpu").glob(
+                "cpu[0-9]*/cpufreq/scaling_governor"
+            )
+        }
+    )
+    return versions, cpu, rustc, " / ".join(governors) or "?"
 
 
 def main():
