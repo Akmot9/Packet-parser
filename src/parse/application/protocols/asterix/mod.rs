@@ -213,57 +213,114 @@ impl<'a> TryFrom<&'a [u8]> for AsterixPacket<'a> {
     type Error = AsterixError;
 
     fn try_from(payload: &'a [u8]) -> Result<Self, Self::Error> {
-        let mut blocks = Vec::new();
-        let mut rest = payload;
-        // Un buffer vide n'est pas un datagramme : au moins un bloc.
-        loop {
-            let (category, length) = read_block_header(rest)?;
-            let uap = uap_for(category).ok_or(AsterixError::UnsupportedCategory(category))?;
-            let body = &rest[ASTERIX_BLOCK_HEADER_LEN..length];
-            let records = parse_records(uap, body)?;
-            blocks.push(AsterixDataBlock {
-                category,
-                // `read_block_header` borne `length` par un u16.
-                length: u16::try_from(length).unwrap_or(u16::MAX),
-                records,
-            });
-            rest = &rest[length..];
-            if rest.is_empty() {
-                break;
-            }
-        }
-        Ok(AsterixPacket { blocks })
+        let mut decoded = Decoded::default();
+        walk_datagram(payload, &mut decoded)?;
+        Ok(AsterixPacket {
+            blocks: decoded.blocks,
+        })
     }
 }
 
-/// Decoupe les records d'un data block jusqu'a son dernier octet.
-fn parse_records<'a>(
-    uap: &'static Uap,
-    body: &'a [u8],
-) -> Result<Vec<AsterixRecord<'a>>, AsterixError> {
-    let mut records = Vec::new();
-    let mut rest = body;
-    while !rest.is_empty() {
-        let (record, consumed) = parse_record(uap, rest)?;
-        records.push(record);
-        rest = &rest[consumed..];
+impl AsterixPacket<'_> {
+    /// Sonde a l'aveugle sur UDP : le datagramme se decoupe-t-il en entier
+    /// selon les UAP connus ? Meme parcours que le decodeur, donc meme
+    /// decision que `try_from(payload).is_ok()`, sans rien construire ni
+    /// allouer.
+    pub(crate) fn is_blind_udp_match(payload: &[u8]) -> bool {
+        walk_datagram(payload, &mut Discard).is_ok()
     }
-    if records.is_empty() {
-        // Inatteignable : `read_block_header` exige un corps non vide. Garde
-        // le sens du type d'erreur si cette borne bouge.
-        return Err(AsterixError::BlockNotConsumed {
-            category: uap.category,
+}
+
+/// Destinataire du decoupage d'un datagramme. Le decodeur et la sonde
+/// partagent le meme parcours ([`walk_datagram`]) et ne different que par
+/// ce qu'ils en retiennent : l'un et l'autre acceptent donc exactement les
+/// memes octets.
+trait Sink<'a> {
+    fn item(&mut self, item: AsterixItem<'a>);
+    /// Fin d'un record : les items remis depuis le precedent sont les siens.
+    fn record(&mut self, category: u8, fspec: &'a [u8]);
+    /// Fin d'un data block : les records remis depuis le precedent sont
+    /// les siens.
+    fn block(&mut self, category: u8, length: u16);
+}
+
+/// Le decodeur : chaque record emporte ses items, chaque bloc ses records.
+#[derive(Default)]
+struct Decoded<'a> {
+    blocks: Vec<AsterixDataBlock<'a>>,
+    records: Vec<AsterixRecord<'a>>,
+    items: Vec<AsterixItem<'a>>,
+}
+
+impl<'a> Sink<'a> for Decoded<'a> {
+    fn item(&mut self, item: AsterixItem<'a>) {
+        self.items.push(item);
+    }
+
+    fn record(&mut self, category: u8, fspec: &'a [u8]) {
+        self.records.push(AsterixRecord {
+            category,
+            fspec,
+            items: std::mem::take(&mut self.items),
         });
     }
-    Ok(records)
+
+    fn block(&mut self, category: u8, length: u16) {
+        self.blocks.push(AsterixDataBlock {
+            category,
+            length,
+            records: std::mem::take(&mut self.records),
+        });
+    }
+}
+
+/// La sonde : seule la decision compte.
+struct Discard;
+
+impl<'a> Sink<'a> for Discard {
+    fn item(&mut self, _item: AsterixItem<'a>) {}
+
+    fn record(&mut self, _category: u8, _fspec: &'a [u8]) {}
+
+    fn block(&mut self, _category: u8, _length: u16) {}
+}
+
+/// Decoupe un datagramme en data blocks jusqu'a son dernier octet, et
+/// chaque bloc en records.
+fn walk_datagram<'a, S: Sink<'a>>(payload: &'a [u8], sink: &mut S) -> Result<(), AsterixError> {
+    let mut rest = payload;
+    // Un buffer vide n'est pas un datagramme : au moins un bloc.
+    loop {
+        let (category, length) = read_block_header(rest)?;
+        let uap = uap_for(category).ok_or(AsterixError::UnsupportedCategory(category))?;
+        let mut body = &rest[ASTERIX_BLOCK_HEADER_LEN..length];
+        if body.is_empty() {
+            // Inatteignable : `read_block_header` exige un corps non vide.
+            // Garde le sens du type d'erreur si cette borne bouge.
+            return Err(AsterixError::BlockNotConsumed { category });
+        }
+        // Les records, jusqu'au dernier octet du bloc.
+        while !body.is_empty() {
+            let consumed = walk_record(uap, body, sink)?;
+            body = &body[consumed..];
+        }
+        // `read_block_header` borne `length` par un u16.
+        sink.block(category, u16::try_from(length).unwrap_or(u16::MAX));
+        rest = &rest[length..];
+        if rest.is_empty() {
+            return Ok(());
+        }
+    }
 }
 
 /// Decoupe un record : son FSPEC, puis chaque item annonce, dans l'ordre
-/// des FRN. Rend le record et le nombre d'octets consommes.
-fn parse_record<'a>(
+/// des FRN. Remet les items et le record a `sink`, rend le nombre d'octets
+/// consommes.
+fn walk_record<'a, S: Sink<'a>>(
     uap: &'static Uap,
     buf: &'a [u8],
-) -> Result<(AsterixRecord<'a>, usize), AsterixError> {
+    sink: &mut S,
+) -> Result<usize, AsterixError> {
     let category = uap.category;
     let fspec_len = fx_extent(buf).ok_or(AsterixError::FspecOverflow { category })?;
     let fspec = &buf[..fspec_len];
@@ -271,7 +328,7 @@ fn parse_record<'a>(
     if fspec_len > uap.max_fspec_octets() {
         return Err(AsterixError::FspecOverflow { category });
     }
-    let mut items = Vec::new();
+    let mut empty = true;
     let mut pos = fspec_len;
     for (octet_index, octet) in fspec.iter().enumerate() {
         for bit in 0..7u8 {
@@ -292,25 +349,20 @@ fn parse_record<'a>(
                 ItemFormat::Rfs => rfs_len(uap, spec, fspec, &buf[pos..])?,
                 _ => item_len(uap, spec, &buf[pos..])?,
             };
-            items.push(AsterixItem {
+            sink.item(AsterixItem {
                 frn,
                 id: spec.id,
                 data: &buf[pos..pos + len],
             });
+            empty = false;
             pos += len;
         }
     }
-    if items.is_empty() {
+    if empty {
         return Err(AsterixError::EmptyRecord { category });
     }
-    Ok((
-        AsterixRecord {
-            category,
-            fspec,
-            items,
-        },
-        pos,
-    ))
+    sink.record(category, fspec);
+    Ok(pos)
 }
 
 /// L'UAP du record quand la categorie en a plusieurs : CAT 001 lit le bit
@@ -917,6 +969,176 @@ mod tests {
                 "{bytes:02x?}"
             );
         }
+    }
+
+    /// Datagrammes synthetiques des tests ci-dessus, pour les formes que le
+    /// corpus ne porte pas (RFS, UAP des pistes de CAT 001) ou peu.
+    const SYNTHETIC: [&[u8]; 9] = [
+        &MINIMAL_048,
+        // Deux blocs : 034 (deux records) puis 048.
+        &[
+            0x22, 0x00, 0x0a, 0x80, 0x00, 0x01, 0xc0, 0x00, 0x01, 0x01, 0x30, 0x00, 0x06, 0x80,
+            0x19, 0xc9,
+        ],
+        // Compose : I048/130, SRL et APD.
+        &[0x30, 0x00, 0x07, 0x02, 0x82, 0xaa, 0xbb],
+        // Repetitif (I048/250, REP 1) puis explicite (I048/SP).
+        &[
+            0x30, 0x00, 0x13, 0x01, 0x21, 0x01, 0x04, 0x01, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+            0x11, 0x11, 0x03, 0xde, 0xad,
+        ],
+        // Extensible borne : I048/020, six extents.
+        &[0x30, 0x00, 0x0a, 0x20, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00],
+        // Repetitif FX : I062/510, trois unites de trois octets.
+        &[
+            0x3e, 0x00, 0x10, 0x01, 0x01, 0x01, 0x08, 0x0b, 0x03, 0x81, 0x0c, 0x00, 0x01, 0x0d,
+            0x00, 0x02,
+        ],
+        // RFS : CAT 002, I002/020 puis I002/000.
+        &[
+            0x02, 0x00, 0x0c, 0x81, 0x02, 0x00, 0x01, 0x02, 0x03, 0x07, 0x02, 0x01,
+        ],
+        // CAT 001 : un plot, puis une piste.
+        &[
+            0x01, 0x00, 0x0b, 0xe0, 0x00, 0x01, 0x00, 0x11, 0x22, 0x33, 0x44,
+        ],
+        &[0x01, 0x00, 0x09, 0xe0, 0x00, 0x01, 0x80, 0x0f, 0xff],
+    ];
+
+    /// Les payloads de transport des captures de
+    /// `pcaps_exemple/protocols/asterix/`, par capture, et son flux brut
+    /// `cat21_re.ast`. Vide hors du depot : l'archive publiee n'embarque
+    /// pas le corpus.
+    fn corpus_payloads() -> Vec<Vec<Vec<u8>>> {
+        use pcap_file::pcap::PcapReader;
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("pcaps_exemple/protocols/asterix");
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            return Vec::new();
+        };
+        let mut paths: Vec<_> = entries.map(|entry| entry.unwrap().path()).collect();
+        paths.sort();
+        let mut captures = Vec::new();
+        for path in paths {
+            match path.extension().and_then(|extension| extension.to_str()) {
+                Some("ast") => captures.push(vec![std::fs::read(&path).unwrap()]),
+                Some("pcap") => {
+                    let mut reader = PcapReader::new(std::fs::File::open(&path).unwrap()).unwrap();
+                    let link_type = crate::LinkType::from(u32::from(reader.header().datalink));
+                    let mut payloads = Vec::new();
+                    while let Some(packet) = reader.next_raw_packet() {
+                        let packet = packet.unwrap();
+                        let payload = crate::parse(link_type, &packet.data)
+                            .ok()
+                            .and_then(|flow| flow.transport)
+                            .and_then(|transport| transport.payload);
+                        if let Some(payload) = payload {
+                            payloads.push(payload.to_vec());
+                        }
+                    }
+                    captures.push(payloads);
+                }
+                _ => {}
+            }
+        }
+        captures
+    }
+
+    /// La sonde et le decodeur rendent la meme decision ; rend celle-ci.
+    fn assert_probe_agrees(bytes: &[u8]) -> bool {
+        let decoded = AsterixPacket::try_from(bytes).is_ok();
+        assert_eq!(
+            AsterixPacket::is_blind_udp_match(bytes),
+            decoded,
+            "{bytes:02x?}"
+        );
+        decoded
+    }
+
+    /// Troncatures et alterations d'un octet (bit FX, bit de poids fort,
+    /// valeurs extremes, increment), aux positions espacees de `step`.
+    /// Rend le nombre de variantes acceptees et refusees.
+    fn assert_probe_agrees_on_mutations(bytes: &[u8], step: usize) -> (usize, usize) {
+        let (mut accepted, mut rejected) = (0, 0);
+        let mut check = |candidate: &[u8]| {
+            if assert_probe_agrees(candidate) {
+                accepted += 1;
+            } else {
+                rejected += 1;
+            }
+        };
+        let mut mutated = bytes.to_vec();
+        for position in (0..bytes.len()).step_by(step) {
+            check(&bytes[..position]);
+            let original = bytes[position];
+            for value in [
+                original ^ 0x01,
+                original ^ 0x80,
+                0x00,
+                0xff,
+                original.wrapping_add(1),
+            ] {
+                mutated[position] = value;
+                check(&mutated);
+            }
+            mutated[position] = original;
+        }
+        // Un octet de plus, puis le datagramme deux fois de suite.
+        mutated.push(0x00);
+        check(&mutated);
+        mutated.pop();
+        mutated.extend_from_slice(bytes);
+        check(&mutated);
+        (accepted, rejected)
+    }
+
+    /// La sonde du dispatch (`is_blind_udp_match`) ne construit rien : elle
+    /// doit rendre, pour tout buffer, la decision de `try_from`. Verifie
+    /// sur les datagrammes synthetiques (chaque octet a chacune de ses 256
+    /// valeurs) et sur les trames reelles du corpus et leurs mutations.
+    #[test]
+    fn test_probe_agrees_with_the_decoder() {
+        assert_probe_agrees(&[]);
+        for datagram in SYNTHETIC {
+            assert!(assert_probe_agrees(datagram), "{datagram:02x?}");
+            let mut mutated = datagram.to_vec();
+            for position in 0..datagram.len() {
+                assert_probe_agrees(&datagram[..position]);
+                for value in 0..=u8::MAX {
+                    mutated[position] = value;
+                    assert_probe_agrees(&mutated);
+                }
+                mutated[position] = datagram[position];
+            }
+        }
+
+        let captures = corpus_payloads();
+        if captures.is_empty() {
+            return;
+        }
+        let (mut frames, mut decoded) = (0, 0);
+        let (mut accepted, mut rejected) = (0, 0);
+        for payloads in &captures {
+            for (index, payload) in payloads.iter().enumerate() {
+                frames += 1;
+                decoded += usize::from(assert_probe_agrees(payload));
+                // Mutations : les premieres trames de chaque capture, puis
+                // une sur 97 ; au plus 64 positions par trame.
+                if index < 24 || index % 97 == 0 {
+                    let step = payload.len().div_ceil(64).max(1);
+                    let (ok, ko) = assert_probe_agrees_on_mutations(payload, step);
+                    accepted += ok;
+                    rejected += ko;
+                }
+            }
+        }
+        // Le corpus est bien celui du depot, et les mutations exercent les
+        // deux decisions.
+        assert!(frames > 50_000, "{frames} trames");
+        assert!(decoded > 44_000, "{decoded} datagrammes decodes");
+        assert!(accepted > 10_000, "{accepted} mutations acceptees");
+        assert!(rejected > 10_000, "{rejected} mutations refusees");
     }
 
     /// Octets synthetiques : CAT 001, le bit TYP de I001/020 choisit l'UAP.

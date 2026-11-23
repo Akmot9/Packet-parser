@@ -342,7 +342,7 @@ pub(super) fn probe_body(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::NtpBlind => NtpPacket::is_blind_udp_match(payload),
         // Tous les data blocks doivent paver le datagramme jusqu'a son
         // dernier octet.
-        ProbeId::Asterix => AsterixPacket::try_from(payload).is_ok(),
+        ProbeId::Asterix => AsterixPacket::is_blind_udp_match(payload),
         // Des messages complets doivent paver le segment, sur un seul reseau
         // (#288).
         ProbeId::Bitcoin => BitcoinPacket::is_tcp_match(payload),
