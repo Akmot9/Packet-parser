@@ -525,6 +525,18 @@ pub fn validate_nbds_datagram_length(
     Ok(())
 }
 
+/// Le decalage d'un paquet `FIRST` est nul : l'emetteur ecrit « OFFSET =
+/// 0 » dans un datagramme entier comme dans le premier de ses deux
+/// fragments (RFC 1002 §5.3.1). Pour un premier fragment, dont la longueur
+/// annoncee ne se compare a rien, c'est le seul champ qui se verifie
+/// encore (#382).
+pub fn validate_nbds_packet_offset(flags: NbdsFlags, offset: u16) -> Result<(), NbdsError> {
+    if flags.first && offset != 0 {
+        return Err(NbdsError::NonZeroFirstOffset(offset));
+    }
+    Ok(())
+}
+
 /// Un nom NBDS a `offset` : label de premier niveau, labels de scope et
 /// octet nul, sans pointeur de compression. Rend le nom, son scope brut et
 /// l'offset qui le suit.

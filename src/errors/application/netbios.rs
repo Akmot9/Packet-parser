@@ -105,6 +105,12 @@ pub enum NbdsError {
     #[error("invalid NBDS name: {0}")]
     InvalidName(#[source] NbnsError),
 
+    /// A packet with the `FIRST` flag, a whole datagram or its first
+    /// fragment, starts the user data: its `PACKET_OFFSET` is zero
+    /// (RFC 1002 §5.3.1).
+    #[error("NBDS first packet has a non-zero offset: {0}")]
+    NonZeroFirstOffset(u16),
+
     #[error("{0} trailing bytes after the NBDS message")]
     TrailingBytes(usize),
 }

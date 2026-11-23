@@ -351,7 +351,9 @@ Application detection is intentionally best-effort. Parser modules include:
   iterates over the records of a segment. The port rules ask for one
   whole message per datagram, and for records that tile the segment;
   behind a whole record, the start of a record that TCP cut in its mark or
-  in the header of its message is accepted.
+  in the header of its message is accepted, unless its mark is whole and
+  wrong (reserved high bit, fewer than 14 bytes, or another length than
+  the one the message announces).
   Tickets, authenticators and pre-authentication data are encrypted and not
   read. Stateless limits: a message longer than its segment is cut
   (`KerberosMessage::is_truncated`) and the segments that carry the rest
@@ -368,6 +370,7 @@ Application detection is intentionally best-effort. Parser modules include:
   datagram distribution server. The announced length must be that of the
   UDP datagram, except in the first of two fragments (flags `FIRST` and
   `MORE`), which announces the whole datagram and so more than it carries.
+  A `FIRST` packet, whole datagram or first fragment, has a zero offset.
   The user data, most often SMB on a mailslot (Browser announcements and
   elections, NETLOGON), is borrowed, not decoded; a fragmented datagram is
   not reassembled, and its second fragment is not read

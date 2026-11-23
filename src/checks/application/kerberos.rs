@@ -37,6 +37,10 @@ const DER_MAX_LENGTH: u64 = 0x7fff_ffff;
 pub const KERBEROS_RECORD_MARK_LENGTH: usize = 4;
 /// Bit reserve de la marque d'enregistrement.
 const KERBEROS_RECORD_RESERVED_BIT: u32 = 0x8000_0000;
+/// Le plus court message que le decodeur accepte : l'etiquette du message
+/// et sa longueur (2), celles de la SEQUENCE (2), `pvno` (5) et `msg-type`
+/// (5).
+const KERBEROS_MESSAGE_MIN_LENGTH: u32 = 14;
 
 /// Un element DER : son etiquette, sa longueur annoncee, et ce que l'entree
 /// en porte.
@@ -233,7 +237,11 @@ pub fn validate_header(
 }
 
 /// La marque d'enregistrement de TCP : la longueur du message qui suit. Le
-/// bit de poids fort est reserve et nul.
+/// bit de poids fort est reserve et nul (RFC 4120 §7.2.2).
+///
+/// Une marque entiere se juge seule, avant que le message soit lu : son
+/// bit reserve, ou une longueur sous celle du plus court message, la
+/// refuse. Seule une marque coupee est « trop courte » (#382).
 pub fn extract_record_length(bytes: &[u8]) -> Result<u32, KerberosError> {
     let Some(mark) = bytes.first_chunk::<KERBEROS_RECORD_MARK_LENGTH>() else {
         return Err(KerberosError::TooShort {
@@ -242,13 +250,17 @@ pub fn extract_record_length(bytes: &[u8]) -> Result<u32, KerberosError> {
             actual: bytes.len(),
         });
     };
-    Ok(u32::from_be_bytes(*mark))
+    let record = u32::from_be_bytes(*mark);
+    if record & KERBEROS_RECORD_RESERVED_BIT != 0 || record < KERBEROS_MESSAGE_MIN_LENGTH {
+        return Err(KerberosError::InvalidRecordMark(record));
+    }
+    Ok(record)
 }
 
-/// La marque annonce exactement le message qu'elle precede, et son bit de
-/// poids fort est nul.
+/// La marque annonce exactement le message qu'elle precede : la longueur
+/// que donne son etiquette DER, en-tete compris.
 pub fn validate_record_length(record: u32, message: usize) -> Result<(), KerberosError> {
-    if record & KERBEROS_RECORD_RESERVED_BIT != 0 || usize::try_from(record) != Ok(message) {
+    if usize::try_from(record) != Ok(message) {
         return Err(KerberosError::RecordLengthMismatch { record, message });
     }
     Ok(())

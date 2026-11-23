@@ -27,14 +27,17 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     messages ; une longueur DER indefinie ou de plus de quatre octets ; une
     SEQUENCE qui ne remplit pas le message ; un `pvno` autre que 5 ; un
     `msg-type` qui n'est pas le numero de l'etiquette ; sur TCP, une
-    longueur d'enregistrement qui n'est pas celle du message, ou dont le
-    bit de poids fort n'est pas nul.
+    longueur d'enregistrement qui n'est pas celle du message, dont le bit
+    de poids fort n'est pas nul, ou sous les 14 octets du plus court
+    message. Une marque entiere se juge sans son message, et elle est
+    comparee a la longueur du message avant que son en-tete soit lu.
   - **Detection.** Regles a port sur UDP 88 (un message entier, seul dans
     son datagramme) et sur TCP 88 (des enregistrements qui pavent le
     segment, le dernier pouvant etre coupe). Derriere un enregistrement
     entier, le debut du suivant, que TCP coupe dans sa marque ou dans
     l'en-tete de son message, ne retire rien : le segment reste `Kerberos`
-    (#382). Un autre port se declare par Decode As.
+    (#382). Une marque entiere et fausse le refuse. Un autre port se
+    declare par Decode As.
   - **Corpus et oracle.** Dix captures de nDPI dans
     `pcaps_exemple/protocols/kerberos/` (319 messages avec les deux
     datagrammes deja dans `ldap/`), en plus de `The-Ultimate-PCAP.pcapng`
@@ -70,7 +73,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     de drapeaux non nul ; une longueur annoncee qui n'est pas celle du
     datagramme UDP, sauf pour le premier de deux fragments (drapeaux
     `FIRST` et `MORE`), qui annonce le datagramme entier et doit donc en
-    annoncer plus qu'il n'en porte (RFC 1002 §5.3.1, #382) ; un nom qui
+    annoncer plus qu'il n'en porte (RFC 1002 §5.3.1, #382) ; un decalage
+    non nul dans un paquet `FIRST`, datagramme entier ou premier
+    fragment ; un nom qui
     n'est pas un label de 32 octets de `A` a
     `P` suivi de son scope, ou qui porte un pointeur de compression ; des
     octets derriere une erreur ou une requete.

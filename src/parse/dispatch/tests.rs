@@ -1372,6 +1372,13 @@ fn kerberos_is_named_on_its_port_only() {
     assert_eq!(label(Tcp, 49152, 88, &record[..3], &[]), Some("Unknown"));
     two.extend([0, 0xff]);
     assert_eq!(label(Tcp, 49152, 88, &two, &[]), Some("Unknown"));
+    // Une marque entiere se juge sans son message : nulle ou a bit reserve,
+    // elle n'ouvre aucun enregistrement.
+    for mark in [[0, 0, 0, 0], [0x80, 0, 0, 0x40]] {
+        let mut two = record.clone();
+        two.extend(mark);
+        assert_eq!(label(Tcp, 49152, 88, &two, &[]), Some("Unknown"));
+    }
 
     // Un autre port se declare, sur TCP comme sur UDP, chacun sous sa forme.
     let declared = [(8088, DecodeAsProtocol::Kerberos)];
@@ -1449,7 +1456,15 @@ fn nbds_is_named_on_its_port_only() {
     assert_eq!(label(Udp, 138, 138, &datagram, &[]), Some("Unknown"));
     datagram[1] = 0x03;
     assert_eq!(label(Udp, 138, 138, &datagram, &[]), Some("NBDS"));
+    // Un paquet `FIRST` ouvre les donnees : son decalage est nul.
+    datagram[13] = 4;
+    assert_eq!(label(Udp, 138, 138, &datagram, &[]), Some("Unknown"));
+    datagram[13] = 0;
     datagram[11] = 72;
+    assert_eq!(label(Udp, 138, 138, &datagram, &[]), Some("Unknown"));
+    datagram[1] = 0x02;
+    assert_eq!(label(Udp, 138, 138, &datagram, &[]), Some("NBDS"));
+    datagram[12] = 1;
     assert_eq!(label(Udp, 138, 138, &datagram, &[]), Some("Unknown"));
 }
 
