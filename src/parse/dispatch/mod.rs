@@ -285,6 +285,7 @@ impl DecodeAsProtocol {
 /// Classifie le payload d'une couche transport. `None` signifie « rien a
 /// sonder » (pas de payload, payload vide, ou port mDNS sans contenu mDNS) ;
 /// un payload sonde sans succes reste etiquete `"Unknown"`.
+#[inline]
 pub(super) fn classify(
     transport: &Transport<'_>,
     decode_as: &[(u16, DecodeAsProtocol)],
@@ -293,6 +294,18 @@ pub(super) fn classify(
     if payload.is_empty() {
         return None;
     }
+    classify_payload(transport, payload, decode_as)
+}
+
+/// La table, sur un payload non vide. Hors de [`classify`] : un segment sans
+/// payload (un ACK nu, un quart des trames du corpus) ne paie pas l'entree
+/// d'une fonction qui porte toute la cascade.
+#[inline(never)]
+fn classify_payload(
+    transport: &Transport<'_>,
+    payload: &[u8],
+    decode_as: &[(u16, DecodeAsProtocol)],
+) -> Option<Application> {
     let mut failed_probes: ProbeMask = 0;
 
     // Ports declares par l'appelant (« Decode As ») : evalues avant la
