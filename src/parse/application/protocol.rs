@@ -125,6 +125,7 @@ application_protocols![
     (DceRpc, "DCE/RPC"),
     (Rtcp, "RTCP"),
     (Skinny, "Skinny"),
+    (Ldap, "LDAP"),
 ];
 
 impl fmt::Display for ApplicationProtocol {
@@ -172,7 +173,7 @@ mod tests {
     /// tunnels, STP et `Unknown`. Une etiquette publiee ne change jamais de
     /// texte ; un protocole nouveau ajoute la sienne (`ModbusUDP` en 12.0.0,
     /// `Java RMI` en 13.0.0, `SIP` en 13.2.0).
-    const FROZEN_LABELS: [&str; 61] = [
+    const FROZEN_LABELS: [&str; 62] = [
         "AMS",
         "ASTERIX",
         "BACnet/IP",
@@ -197,6 +198,7 @@ mod tests {
         "IKE",
         "IP-in-IP",
         "Java RMI",
+        "LDAP",
         "LLMNR",
         "MQTT",
         "ModbusTCP",

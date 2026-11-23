@@ -345,3 +345,10 @@ path = "fuzz_targets/parse_skinny.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_ldap"
+path = "fuzz_targets/parse_ldap.rs"
+test = false
+doc = false
+bench = false

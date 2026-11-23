@@ -10,6 +10,16 @@ nom dans ce corpus ; le reste des flux jamais reconnus est surtout
 proprietaire, a nommer par des regles TOML. La couche a etat reste au
 backlog (§3).
 
+Meme jour, sur `main` et non publie aussi : **LDAP** (RFC 4511, #372), le
+standard suivant par la taille. Decodeur `LdapPdu` (messages en clair,
+tampons de la couche SASL sous jeton Kerberos des RFC 4121 et 1964 ou sous
+signature NTLMSSP), regles a port sur TCP 389 et 3268 et sur UDP 389,
+`DecodeAsProtocol::Ldap`, huit captures du wiki Wireshark en plus de
+`The-Ultimate-PCAP.pcapng`, et un oracle tshark de 519 payloads. Sur le
+corpus prive, 895 trames quittent `Unknown`. Les standards qui y restent
+sans nom sont petits : Corosync (1 700 trames), syslog, NetBIOS Datagram,
+ONC RPC et Kerberos (quelques centaines chacun).
+
 Etat au 2026-11-22, 13.3.0 : la **13.3.0 est publiee** (tag `v13.3.0`,
 publication par le workflow). Mineure, sans rupture, elle porte l'epic
 **#346**, qui visait le taux de parsing applicatif. Sur un corpus prive de

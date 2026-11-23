@@ -21,6 +21,7 @@ pub mod http;
 pub mod iec104;
 pub mod ike;
 pub mod java_rmi;
+pub mod ldap;
 pub mod modbus_tcp;
 pub mod mqtt;
 pub mod netbios;

@@ -208,3 +208,14 @@ pub(super) fn is_dns_port(port: Option<u16>) -> bool {
 pub(super) fn is_skinny_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(2000))
 }
+
+/// LDAP : TCP 389 (IANA `ldap`) et TCP 3268 (IANA `msft-gc`), le catalogue
+/// global d'un domaine Active Directory (#372).
+pub(super) fn is_ldap_tcp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(389 | 3268))
+}
+
+/// CLDAP : UDP 389, la recherche LDAP sans connexion (#372).
+pub(super) fn is_ldap_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(389))
+}

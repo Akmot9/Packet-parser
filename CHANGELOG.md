@@ -8,6 +8,59 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **LDAP** (RFC 4511, #372) : etiquette `LDAP`, decodeur zero copie
+  `parse::application::protocols::ldap::LdapPdu` et
+  `DecodeAsProtocol::Ldap`. C'est l'acces a un annuaire, sur TCP 389, sur
+  TCP 3268 pour le catalogue global d'un domaine Active Directory, et sur
+  UDP 389 (CLDAP, que tshark nomme a part : ici la meme etiquette).
+  - **Ce qui est lu.** Un PDU est un message ou un tampon de la couche de
+    securite SASL (`LdapPdu`) ; `LdapPdu::pdus` rend ceux d'un segment ou
+    d'un datagramme dans l'ordre. D'un message (`LdapMessage`) :
+    l'identifiant, l'operation (`LdapOperation`, les 21 de la RFC), le
+    corps et les controles, empruntes sans etre decodes. Trois lectures
+    vont plus loin : `result()` (code, DN et diagnostic d'une reponse),
+    `bind_request()` (version, nom, authentification simple ou mecanisme
+    SASL) et `search_request()` (base et portee). D'un tampon SASL
+    (`LdapSaslBuffer`) : sa longueur et l'en-tete de son jeton
+    (`LdapSaslToken`), Wrap de Kerberos V5 de la RFC 4121 (cles AES) ou de
+    la RFC 1964 (cles DES et RC4), ou signature NTLMSSP. `messages()` rend
+    les messages d'un jeton Kerberos signe sans etre chiffre.
+  - **Ce qui est refuse.** Une longueur BER indefinie, sur plus de quatre
+    octets ou au-dela de 2^24 - 1 ; un identifiant de message hors de 0 a
+    2^31 - 1 ; une etiquette qui n'est pas une operation de la RFC 4511 ;
+    un UnbindRequest non vide ; autre chose que des controles derriere
+    l'operation, ou des octets derriere eux ; un tampon SASL plus court que
+    l'en-tete de son jeton, ou qui ne s'ouvre sur aucun des trois jetons.
+  - **Detection.** Regles a port sur TCP 389 et 3268 et sur UDP 389 : un
+    octet `30` et une longueur ne font pas une sonde aveugle. La sonde
+    exige des PDU qui pavent le payload ; seul le dernier peut etre coupe
+    par le segment. Un autre port se declare par Decode As.
+  - **Corpus et oracle.** `The-Ultimate-PCAP.pcapng` (440 segments et
+    datagrammes d'un domaine Active Directory de 2024) et huit captures du
+    wiki Wireshark dans `pcaps_exemple/protocols/ldap/` (79 segments : un
+    client OpenLDAP de 2005, un domaine Windows Server 2003, un domaine en
+    NTLM de 2022). 519 payloads, 510 messages et 260 tampons SASL sont
+    compares a tshark 4.6.9 (`tests/ldap_golden.rs`,
+    `tools/ldap_oracle.sh`) : longueur de chaque tampon, identifiant,
+    operation et code de resultat de chaque message. Aucune autre trame de
+    ces captures ne sort `LDAP`. Nouvelle cible de fuzz `parse_ldap`.
+  - **Ecart avec tshark, voulu.** D'un tampon signe que son segment coupe,
+    tshark ne lit aucun message ; la crate lit le debut du premier (six
+    trames du corpus).
+  - **Mesure.** Sur le corpus de terrain de #346, 895 trames `Unknown`
+    sortent LDAP, sans qu'aucune autre etiquette ne bouge ; les 333 autres
+    charges de ces ports sont, pour l'essentiel, des segments de suite.
+  - **Limites, sans etat.**
+    - Un PDU plus long que son segment est coupe (`LdapPdu::is_truncated`) ;
+      les segments de suite restent `Unknown`, comme un PDU qui commence au
+      milieu d'un segment.
+    - Un tampon chiffre ne rend que son en-tete. La signature NTLMSSP ne
+      dit pas si le message est chiffre, la liaison l'a negocie : rien
+      n'est lu derriere elle.
+    - La couche de securite de DIGEST-MD5 (RFC 2831) n'est pas lue. LDAPS
+      (TCP 636 et 3269) est du TLS.
+    - Le corps des operations n'est pas decode au-dela des trois lectures :
+      ni filtres, ni attributs, ni controles.
 - **Skinny** (SCCP, *Skinny Client Control Protocol*, #370) : etiquette
   `Skinny`, decodeur zero copie
   `parse::application::protocols::skinny::SkinnyMessage` et

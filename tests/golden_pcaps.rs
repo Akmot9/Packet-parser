@@ -511,9 +511,28 @@ fn application_classification_histogram_is_frozen() {
     //   73 -> 79, "HTTP" 148 -> 154, "DNS" 461 -> 463, "LLMNR" 136 -> 138.
     // "Unknown" 16 731 -> 16 929 (+198), "(sans application)" 6 818 ->
     // 7 399 (+581).
+    //
+    // 2026-11-23 (#372, LDAP) : +8 captures dans protocols/ldap/ (voir
+    // SOURCE.md), 161 trames. "LDAP" 0 -> 79 : les 79 segments que tshark
+    // dissèque, reassemblage et analyse des sequences coupes
+    // (`tests/ldap_golden.rs`), et aucune trame des autres captures : les
+    // regles a port de TCP 389 et 3268 et d'UDP 389 ne prennent rien
+    // ailleurs dans ce dossier.
+    // - les cinq captures d'un client OpenLDAP (ldap-and-search,
+    //   ldap-attribute-value-list, ldap-extensible-match,
+    //   ldap-extensible-match-with-dn : 13 trames chacune ; ldap-substring :
+    //   26) : 30 "LDAP", 48 sans charge ;
+    // - ldap-controls-dirsync-01.cap (12) : 5 "LDAP", 7 sans charge ;
+    // - ldap-krb5-sign-seal-01.cap (40) : 24 "LDAP", 8 "Unknown" (6
+    //   segments de suite LDAP, 2 datagrammes Kerberos sur UDP 88, que la
+    //   crate ne decode pas), 8 sans charge ;
+    // - ntlm_ldap.pcapng (31) : 20 "LDAP", 3 "Unknown" (segments de suite),
+    //   8 sans charge.
+    // "Unknown" 16 929 -> 16 940 (+11), "(sans application)" 7 399 ->
+    // 7 470 (+71).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 7399),
+        (NO_APPLICATION, 7470),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 33),
@@ -531,6 +550,7 @@ fn application_classification_histogram_is_frozen() {
         ("IKE", 535),
         ("Java RMI", 143),
         ("IP-in-IP", 5),
+        ("LDAP", 79),
         ("LLMNR", 138),
         ("MQTT", 187),
         ("NBNS", 857),
@@ -559,7 +579,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 16929),
+        ("Unknown", 16940),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

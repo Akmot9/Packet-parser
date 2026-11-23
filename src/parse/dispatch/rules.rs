@@ -456,6 +456,23 @@ pub(super) static RULES: &[Rule] = &[
         is_skinny_tcp_port,
         ProbeId::Skinny,
     ),
+    // LDAP (#372) : TCP 389 et 3268 (catalogue global d'Active Directory),
+    // UDP 389 (CLDAP). Garde par port : un octet `30` et une longueur BER
+    // ne font pas une sonde aveugle. La sonde exige des PDU qui pavent le
+    // payload, un message en clair ou un tampon de la couche SASL Kerberos.
+    // Un autre port se declare par Decode As ; LDAPS (636, 3269) est du TLS.
+    port_rule(
+        ApplicationProtocol::Ldap,
+        Guard::Tcp,
+        is_ldap_tcp_port,
+        ProbeId::Ldap,
+    ),
+    port_rule(
+        ApplicationProtocol::Ldap,
+        Guard::Udp,
+        is_ldap_udp_port,
+        ProbeId::Ldap,
+    ),
     // WireGuard : UDP 51820, le port des exemples de `wg(8)` — aucun port
     // IANA. Comme pour l'heuristique de tshark, la forme du message suffit
     // a une initiation ou une reponse, octets reserves compris (Cloudflare
