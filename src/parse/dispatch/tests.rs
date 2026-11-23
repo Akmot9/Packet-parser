@@ -3,6 +3,8 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
+use super::index::RuleSet;
+use super::ports::Ports;
 use super::probes::*;
 use super::rules::*;
 use super::*;
@@ -1061,7 +1063,7 @@ fn transport_lists_are_the_table_filtered_by_its_guards() {
             .iter()
             .filter(|rule| rule.guard.admits(protocol))
             .collect();
-        let listed = index::rules_for(protocol);
+        let listed = index::list_for(protocol).rules;
         assert_eq!(listed.len(), expected.len(), "{protocol:?}");
         for (listed, expected) in listed.iter().zip(expected) {
             assert!(
@@ -1078,13 +1080,330 @@ fn transport_lists_are_the_table_filtered_by_its_guards() {
     }
     // Les trois listes existent : TCP et UDP ont leurs regles, les autres
     // protocoles seulement les regles `Guard::Any`.
-    assert!(index::rules_for(TransportProtocol::Tcp).len() > 4);
-    assert!(index::rules_for(TransportProtocol::Udp).len() > 4);
+    assert!(index::list_for(TransportProtocol::Tcp).rules.len() > 4);
+    assert!(index::list_for(TransportProtocol::Udp).rules.len() > 4);
     assert!(
-        index::rules_for(TransportProtocol::Sctp)
+        index::list_for(TransportProtocol::Sctp)
+            .rules
             .iter()
             .all(|rule| matches!(rule.guard, Guard::Any))
     );
+}
+
+/// Les regles de `list` que retient `keep`, en ensemble.
+fn rule_set(list: &index::RuleList, keep: impl Fn(&Rule) -> bool) -> RuleSet {
+    list.rules
+        .iter()
+        .enumerate()
+        .filter(|(_, rule)| keep(rule))
+        .fold(0, |set, (rank, _)| set | 1 << rank)
+}
+
+/// L'index des ports dit de chaque port ce qu'en disent la garde et le veto
+/// de chaque regle : les 65 536 ports et le port inconnu, pour les trois
+/// listes. Avec `transport_lists_are_the_table_filtered_by_its_guards`, les
+/// regles que `classify` visite sont celles que retient un parcours de
+/// `RULES`.
+#[test]
+fn port_effects_are_the_port_guards_and_vetoes_of_each_rule() {
+    for protocol in [
+        TransportProtocol::Tcp,
+        TransportProtocol::Udp,
+        TransportProtocol::Sctp,
+    ] {
+        let list = index::list_for(protocol);
+        assert_eq!(
+            list.portless,
+            rule_set(list, |rule| rule.ports.is_none()),
+            "{protocol:?}"
+        );
+        assert_eq!(
+            list.terminal,
+            rule_set(list, |rule| rule.terminal_on_port && rule.ports.is_some()),
+            "{protocol:?}"
+        );
+        let unknown = list.port_effect(None);
+        assert_eq!((unknown.opens, unknown.vetoes), (0, 0), "{protocol:?}");
+
+        // Par regle, les ports de sa garde et de son veto : une passe sur
+        // les ports par regle, plutot qu'une passe sur les regles par port.
+        let mut opens: Vec<RuleSet> = vec![0; usize::from(u16::MAX) + 1];
+        let mut vetoes: Vec<RuleSet> = vec![0; usize::from(u16::MAX) + 1];
+        for (rank, rule) in list.rules.iter().enumerate() {
+            for port in 0..=u16::MAX {
+                if rule.ports.is_some_and(|ports| ports.contains(port)) {
+                    opens[usize::from(port)] |= 1 << rank;
+                }
+                if rule.ports_veto.is_some_and(|ports| ports.contains(port)) {
+                    vetoes[usize::from(port)] |= 1 << rank;
+                }
+            }
+        }
+        for port in 0..=u16::MAX {
+            let effect = list.port_effect(Some(port));
+            assert_eq!(
+                (effect.opens, effect.vetoes),
+                (opens[usize::from(port)], vetoes[usize::from(port)]),
+                "{protocol:?}, port {port}"
+            );
+        }
+    }
+    // Les listes ne sont pas vides de ports : 53 ouvre une regle sur chaque
+    // transport, 21 en ouvre une et en interdit trois sur TCP.
+    let dns = |protocol| index::list_for(protocol).port_effect(Some(53)).opens;
+    assert_eq!(dns(TransportProtocol::Tcp).count_ones(), 1);
+    assert_eq!(dns(TransportProtocol::Udp).count_ones(), 1);
+    let ftp = index::list_for(TransportProtocol::Tcp).port_effect(Some(21));
+    assert_eq!((ftp.opens.count_ones(), ftp.vetoes.count_ones()), (1, 3));
+}
+
+/// `Ports::first_from`, dont l'index tire la liste des ports cites, rend le
+/// plus petit port de la famille a partir du plancher : pour chaque famille
+/// de la table et quelques familles limites, a chaque plancher.
+#[test]
+fn ports_first_from_is_the_smallest_port_from_the_floor() {
+    let mut families: Vec<Ports> = RULES
+        .iter()
+        .flat_map(|rule| [rule.ports, rule.ports_veto])
+        .flatten()
+        .collect();
+    assert!(families.len() > 40);
+    families.extend([
+        Ports::Among(&[]),
+        Ports::Among(&[0]),
+        Ports::Among(&[u16::MAX, 7, 0, 7]),
+        Ports::Range(0, 0),
+        Ports::Range(0, u16::MAX),
+        Ports::Range(65_000, u16::MAX),
+        Ports::Range(9, 3),
+    ]);
+    for (index, family) in families.into_iter().enumerate() {
+        let mut expected = None;
+        for floor in (0..=u16::MAX).rev() {
+            if family.contains(floor) {
+                expected = Some(floor);
+            }
+            assert_eq!(
+                family.first_from(floor),
+                expected,
+                "famille {index}, plancher {floor}"
+            );
+        }
+    }
+}
+
+/// `classify` telle qu'elle s'ecrivait avant l'index : un parcours de
+/// `RULES`, la garde de transport, la garde et le veto de port de chaque
+/// regle evalues sur les deux ports, les echecs memoises par sonde.
+fn classify_by_scanning_the_table(
+    transport: &Transport<'_>,
+    decode_as: &[(u16, DecodeAsProtocol)],
+) -> Option<Application> {
+    let payload = transport.payload?;
+    if payload.is_empty() {
+        return None;
+    }
+    let on = |ports: Ports| {
+        [transport.source_port, transport.destination_port]
+            .into_iter()
+            .flatten()
+            .any(|port| ports.contains(port))
+    };
+    let mut failed: Vec<u32> = Vec::new();
+    let on_terminal_port = RULES.iter().any(|rule| {
+        rule.terminal_on_port && rule.guard.admits(transport.protocol) && rule.ports.is_some_and(on)
+    });
+    if !decode_as.is_empty() && !on_terminal_port {
+        for (port, protocol) in decode_as {
+            if transport.source_port != Some(*port) && transport.destination_port != Some(*port) {
+                continue;
+            }
+            let (label, guard, probe) = protocol.rule(transport.protocol);
+            if !guard.admits(transport.protocol) {
+                continue;
+            }
+            if !failed.contains(&(probe as u32)) && run_probe(probe, payload) {
+                return Some(Application { protocol: label });
+            }
+            failed.push(probe as u32);
+        }
+    }
+    for rule in RULES {
+        if !rule.guard.admits(transport.protocol) {
+            continue;
+        }
+        if rule.ports.is_some_and(|ports| !on(ports)) {
+            continue;
+        }
+        if rule.ports_veto.is_some_and(on) {
+            continue;
+        }
+        if !failed.contains(&(rule.probe as u32)) && run_probe(rule.probe, payload) {
+            return Some(Application {
+                protocol: rule.label,
+            });
+        }
+        failed.push(rule.probe as u32);
+        if rule.terminal_on_port {
+            return None;
+        }
+    }
+    Some(Application {
+        protocol: ApplicationProtocol::Unknown,
+    })
+}
+
+/// Des payloads que des regles differentes reconnaissent, par leur port ou
+/// a l'aveugle, et d'autres que rien ne reconnait.
+fn differential_payloads() -> Vec<Vec<u8>> {
+    let mut payloads: Vec<Vec<u8>> = [
+        // Requete mDNS : mDNS sur 5353, DNS sur 53, terminale sur 5355.
+        "000000000001000000000000045f687474045f746370056c6f63616c00000c0001",
+        // La meme, prefixee de sa longueur : DNS sur TCP 53.
+        "0021000000000001000000000000045f687474045f746370056c6f63616c00000c0001",
+        // NTP, reconnu sur 123 et a l'aveugle.
+        concat!(
+            "d9000afa00000000000102900000000000000000000000000000000000000000",
+            "0000000000000000c50204ecec42ee92"
+        ),
+        // Modbus : une lecture, puis UMAS.
+        "00d100000006010300010001",
+        "000100000004005a0002",
+        // IKE_SA_INIT, ESP dans UDP, NAT-keepalive.
+        "62f94c9887715a34000000000000000000202208000000000000001c",
+        "cbb7a0c6000000012b0f39c7",
+        "ff",
+        // Java RMI : en-tete de flux, DgcAck.
+        "4a524d4900024b",
+        "54bfcb98ab000001a1e8ed9c5b8007",
+        // WireGuard, donnees de transport.
+        "0400000006f47dab03000000000000001956e2b6651dd4f59cb23092a0d09671",
+        // SNMPv1 GetRequest, communaute `public`.
+        "302602010004067075626c6963a019020101020100020100300e300c06082b060102010101000500",
+        // Record TLS : une alerte.
+        "15030300020100",
+    ]
+    .into_iter()
+    .map(|fixture| hex::decode(fixture).expect("fixture"))
+    .collect();
+    payloads.extend(
+        [
+            &b"PASV\r\n"[..],
+            b"EHLO client.example\r\n",
+            b"ARTICLE 12345\r\n",
+            b"220 Service ready\r\n",
+            b"QUIT\r\n",
+            b"GET / HTTP/1.1\r\nHost: a\r\n\r\n",
+            b"SSH-2.0-OpenSSH_9.6\r\n",
+            b"M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\n\r\n",
+            b"<34>Oct 11 22:14:15 mymachine su: 'su root' failed\n",
+            b"\x00",
+        ]
+        .map(<[u8]>::to_vec),
+    );
+    // Du bruit deterministe, de plusieurs tailles.
+    let mut state = 0x9e37_79b9_u32;
+    for length in [1, 8, 48, 300] {
+        payloads.push(
+            (0..length)
+                .map(|_| {
+                    state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                    state.to_be_bytes()[0]
+                })
+                .collect(),
+        );
+    }
+    payloads
+}
+
+/// `classify` rend ce que rend un parcours de `RULES`, pour chaque couple
+/// de ports que cite la table (plus un port ephemere et le port inconnu),
+/// sur TCP, UDP et un protocole que seules les regles `Guard::Any`
+/// admettent, avec et sans Decode As.
+#[test]
+fn classify_agrees_with_a_scan_of_the_table() {
+    let payloads = differential_payloads();
+    let mut labels = std::collections::BTreeSet::new();
+    let mut compared = 0_u32;
+    let mut check = |protocol, source_port, destination_port, decode_as: &[_]| {
+        for payload in &payloads {
+            let transport = Transport {
+                protocol,
+                source_port,
+                destination_port,
+                payload: Some(payload),
+                details: None,
+            };
+            let expected = classify_by_scanning_the_table(&transport, decode_as);
+            assert_eq!(
+                classify(&transport, decode_as),
+                expected,
+                "{protocol:?} {source_port:?} -> {destination_port:?}, {} Decode As, payload {}",
+                decode_as.len(),
+                hex::encode(payload)
+            );
+            labels.insert(expected.map(|application| application.protocol.label()));
+            compared += 1;
+        }
+    };
+
+    for protocol in [
+        TransportProtocol::Tcp,
+        TransportProtocol::Udp,
+        TransportProtocol::Sctp,
+    ] {
+        // Les ports que cite une regle de ce transport, le port inconnu et
+        // un port ephemere.
+        let mut ports = vec![None, Some(40_000)];
+        for rule in RULES.iter().filter(|rule| rule.guard.admits(protocol)) {
+            for family in [rule.ports, rule.ports_veto].into_iter().flatten() {
+                let mut floor = 0;
+                while let Some(port) = family.first_from(floor) {
+                    ports.push(Some(port));
+                    let Some(next) = port.checked_add(1) else {
+                        break;
+                    };
+                    floor = next;
+                }
+            }
+        }
+        ports.sort_unstable();
+        ports.dedup();
+        for source_port in &ports {
+            for destination_port in &ports {
+                check(protocol, *source_port, *destination_port, &[]);
+            }
+        }
+    }
+
+    // Decode As : chaque protocole declare sur un port ephemere, sur un port
+    // que la table garde et sur un port terminal ; une declaration en
+    // double ; et tous les protocoles sur le meme port, dont les echecs se
+    // memoisent d'une declaration a l'autre puis dans la table.
+    let everything: Vec<(u16, DecodeAsProtocol)> = DecodeAsProtocol::ALL
+        .iter()
+        .map(|protocol| (40_000, *protocol))
+        .collect();
+    let ports = [None, Some(40_000), Some(53), Some(502), Some(5353)];
+    for protocol in [TransportProtocol::Tcp, TransportProtocol::Udp] {
+        for source_port in ports {
+            for destination_port in ports {
+                check(protocol, source_port, destination_port, &everything);
+                for declared in DecodeAsProtocol::ALL {
+                    for port in [40_000, 53, 5353] {
+                        let twice = [(port, *declared), (port, *declared)];
+                        check(protocol, source_port, destination_port, &twice[..1]);
+                        check(protocol, source_port, destination_port, &twice);
+                    }
+                }
+            }
+        }
+    }
+
+    // Le test compare des verdicts varies, pas seulement `Unknown`.
+    assert!(compared > 100_000, "{compared} comparaisons");
+    assert!(labels.contains(&None), "aucun verdict terminal");
+    assert!(labels.len() > 15, "{labels:?}");
 }
 
 /// SIP (#342) : sonde aveugle sur TCP comme sur UDP, sur tout port, disjointe

@@ -39,7 +39,7 @@ mod rules;
 mod tests;
 
 use probes::{ProbeId, ProbeMask, run_probe};
-use rules::{Guard, matches_terminal_reserved_port};
+use rules::Guard;
 
 /// Declare l'enum et `ALL` depuis une seule liste, comme
 /// `application_protocols!` : une variante ne peut pas manquer a `ALL`
@@ -309,12 +309,20 @@ fn classify_payload(
 ) -> Option<Application> {
     let mut failed_probes: ProbeMask = 0;
 
+    // Les ports sont lus une fois : l'index donne, pour chacun, les regles
+    // de ce transport qu'il ouvre et celles qu'il interdit.
+    let list = index::list_for(transport.protocol);
+    let source = list.port_effect(transport.source_port);
+    let destination = list.port_effect(transport.destination_port);
+    let opened = source.opens | destination.opens;
+    let vetoed = source.vetoes | destination.vetoes;
+
     // Ports declares par l'appelant (« Decode As ») : evalues avant la
     // table, port ET contenu, garde de transport conservee. Un echec est
     // memoise comme ceux de la table. Les ports que la table declare
     // terminaux (mDNS 5353, LLMNR 5355 — reserves par leurs RFC) ne sont
     // jamais contournables : « etendre les gardes sans les remplacer ».
-    if !decode_as.is_empty() && !matches_terminal_reserved_port(transport) {
+    if !decode_as.is_empty() && opened & list.terminal == 0 {
         for (port, protocol) in decode_as {
             if transport.source_port != Some(*port) && transport.destination_port != Some(*port) {
                 continue;
@@ -330,19 +338,18 @@ fn classify_payload(
             failed_probes |= bit;
         }
     }
-    // La garde de transport est deja appliquee : la liste ne porte que les
-    // regles qui admettent ce transport.
-    for rule in index::rules_for(transport.protocol) {
-        if let Some(ports) = rule.ports
-            && !(ports(transport.source_port) || ports(transport.destination_port))
-        {
-            continue;
-        }
-        if let Some(veto) = rule.ports_veto
-            && (veto(transport.source_port) || veto(transport.destination_port))
-        {
-            continue;
-        }
+    // Les regles a visiter : celles sans garde de port et celles qu'un des
+    // deux ports ouvre, moins celles qu'un des deux ports interdit. La garde
+    // de transport est deja appliquee, la liste ne porte que les regles de
+    // ce transport. Du bit le plus faible au plus fort : l'ordre de la
+    // table.
+    let mut pending = (list.portless | opened) & !vetoed;
+    while pending != 0 {
+        let rank = pending.trailing_zeros() as usize;
+        pending &= pending - 1;
+        let Some(rule) = list.rules.get(rank) else {
+            break;
+        };
 
         let bit = rule.probe.bit();
         let matched = failed_probes & bit == 0 && run_probe(rule.probe, payload);
