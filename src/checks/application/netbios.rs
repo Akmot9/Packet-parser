@@ -61,6 +61,8 @@ const NBNS_CLASS_IN: u16 = 0x0001;
 /// « 8 = refresh », le schema de NAME REFRESH REQUEST (§4.2.4) porte 0x9.
 /// Wireshark lit 8 « Refresh » et 9 « Refresh (alternate opcode) » (#292).
 const NBNS_VALID_OPCODES: [u8; 7] = [0x0, 0x5, 0x6, 0x7, 0x8, 0x9, 0xf];
+/// Opcode d'une requete de nom et de sa reponse.
+const NBNS_OPCODE_QUERY: u8 = 0x0;
 
 /// Rcodes NBNS valides (RFC 1002 §4.2.6 a §4.2.14) : FMT_ERR (0x1),
 /// SRV_ERR (0x2), NAM_ERR (0x3, nom inconnu : la reponse negative d'un
@@ -124,11 +126,13 @@ pub fn extract_nbns_flags(raw: u16) -> Result<NbnsFlags, NbnsError> {
 /// aucune question (registration response : QD=0, AN=1) : seul le message
 /// sans aucune entree est rejete.
 ///
-/// Le schema de NEGATIVE NAME QUERY RESPONSE (RFC 1002 §4.2.14) montre
-/// quatre compteurs nuls suivis d'un enregistrement. Le decodeur suit les
-/// compteurs, pas le schema : cette forme litterale est refusee, la forme
-/// a ANCOUNT = 1 est lue (#292).
-pub fn extract_nbns_counts(packet: &[u8]) -> Result<[u16; 4], NbnsError> {
+/// Une exception : le schema de NEGATIVE NAME QUERY RESPONSE (RFC 1002
+/// §4.2.14) montre quatre compteurs nuls suivis d'un enregistrement NULL.
+/// Une reponse negative a une requete de nom garde donc ses compteurs
+/// nuls ; son enregistrement est verifie par
+/// [`validate_nbns_literal_negative_response`] (#383). La forme a
+/// ANCOUNT = 1, celle de Samba, suit les compteurs (#292).
+pub fn extract_nbns_counts(packet: &[u8], flags: &NbnsFlags) -> Result<[u16; 4], NbnsError> {
     validate_nbns_min_length(packet)?;
 
     let counts = [
@@ -138,11 +142,31 @@ pub fn extract_nbns_counts(packet: &[u8]) -> Result<[u16; 4], NbnsError> {
         u16::from_be_bytes([packet[10], packet[11]]),
     ];
 
-    if counts.iter().all(|count| *count == 0) {
+    // L'en-tete seul reste un message vide, quel que soit son code.
+    let is_negative_query_response = flags.response
+        && flags.opcode == NBNS_OPCODE_QUERY
+        && flags.rcode != 0
+        && packet.len() > NBNS_HEADER_LENGTH;
+    if counts.iter().all(|count| *count == 0) && !is_negative_query_response {
         return Err(NbnsError::EmptyMessage);
     }
 
     Ok(counts)
+}
+
+/// L'enregistrement d'une reponse negative a compteurs nuls (RFC 1002
+/// §4.2.14) : de type NULL, sans RDATA, et le dernier octet du datagramme.
+/// Rien d'autre ne suit un en-tete sans compteur.
+pub fn validate_nbns_literal_negative_response(
+    packet: &[u8],
+    record: &NbnsResourceRecord<'_>,
+    end: usize,
+) -> Result<(), NbnsError> {
+    if record.record_type != NbnsRecordType::Null || !record.rdata.is_empty() || end != packet.len()
+    {
+        return Err(NbnsError::EmptyMessage);
+    }
+    Ok(())
 }
 
 /// Lit un `u16` reseau avec verification de bornes.

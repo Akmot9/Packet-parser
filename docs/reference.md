@@ -254,8 +254,9 @@ Application detection is intentionally best-effort. Parser modules include:
   stays `Unknown`
 - .NET Message Framing ([MC-NMF], the framing of WCF `net.tcp`) over TCP, on
   any port: the records of a segment (`NmfSegment::records`), from Version
-  and Via to the sized envelope, whose payload is borrowed, not decoded. NMF
-  has no port; the blind rule takes a preamble (Version 1.0, Mode, Via and
+  and Via to the sized envelope, whose payload is borrowed, not decoded. A
+  Via or a sized envelope of length zero is refused ([MC-NMF] §2.2.3.3 and
+  §2.2.4.1). NMF has no port; the blind rule takes a preamble (Version 1.0, Mode, Via and
   its URI) or a sized envelope that opens as binary XML with a session
   dictionary ([MC-NBFSE]). `DecodeAsProtocol::Nmf` takes any segment made of
   records on a declared port, the one-byte records (Preamble Ack, End)
@@ -268,7 +269,8 @@ Application detection is intentionally best-effort. Parser modules include:
   flags, data representation, fragment and authentication lengths, call
   identifier, read in the byte order the header states) and, for a Request,
   the allocation hint, presentation context and operation number
-  (`DceRpcPdu::request`). The body is borrowed, not decoded. Stateless
+  (`DceRpcPdu::request`). The body is borrowed, not decoded; a `bind_nak`
+  carries at least its reject reason. Stateless
   limits: a fragment longer than its segment is cut
   (`DceRpcPdu::is_truncated`) and the segments that carry the rest stay
   `Unknown`; only the first PDU of a segment is read (`DceRpcPdu::rest`
@@ -282,7 +284,8 @@ Application detection is intentionally best-effort. Parser modules include:
   other headers through `SipHeaders::get`, which finds a compact form from
   its long name and the other way round, and the body cut at
   Content-Length. Folded headers are accepted, their value returned as
-  carried. Stateless limits: a head cut between two TCP segments, the
+  carried; a message with two Content-Length headers is refused
+  (`SipError::DuplicateHeader`). Stateless limits: a head cut between two TCP segments, the
   continuation segments, IPv4 fragments and the keep-alives of port 5060
   (blanks, `hello`, CRLF) are not SIP; SIP over TLS (5061) stays TLS.
   `DecodeAsProtocol::Sip` takes it on a port another rule guards
@@ -373,7 +376,10 @@ Application detection is intentionally best-effort. Parser modules include:
   A `FIRST` packet, whole datagram or first fragment, has a zero offset.
   The user data, most often SMB on a mailslot (Browser announcements and
   elections, NETLOGON), is borrowed, not decoded; a fragmented datagram is
-  not reassembled, and its second fragment is not read
+  not reassembled, and its second fragment is not read. `NbnsPacket` reads
+  the records its four counts announce, and one more form: the negative
+  name query response as the figure of RFC 1002 §4.2.14 draws it, four
+  zero counts followed by a NULL record
 - MQTT
 - PostgreSQL
 - FTP
@@ -403,8 +409,10 @@ Application detection is intentionally best-effort. Parser modules include:
   Call and Return are recognised on any TCP port; the one-byte messages,
   DgcAck and ProtocolAck only on TCP 1099 or a Decode As port
   (`DecodeAsProtocol::JavaRmi`), where exported objects and JMX connectors
-  usually listen. The client's EndpointIdentifier, which has no type byte,
-  and continuation segments stay `Unknown`
+  usually listen; there, a segment may hold several messages, a
+  fixed-size one followed by another (`JavaRmiPacket::messages`). The
+  client's EndpointIdentifier, which has no type byte, and continuation
+  segments stay `Unknown`
 - SRVLOC
 - ASTERIX (EUROCONTROL surveillance data, eleven categories: CAT 048 and
   034 monoradar reports and service messages, CAT 001 and 002 their
@@ -432,7 +440,9 @@ Application detection is intentionally best-effort. Parser modules include:
   type), DATA_FRAG reassembly and the HEADER_EXTENSION parameter list stay
   opaque. Recognised by its magic (`RTPS`, or RTI's `RTPX`) and the
   exact tiling of its submessages, on any UDP port; RTI's sixteen-byte
-  `NDDSPING` pings are reported too
+  `NDDSPING` pings are reported too. A datagram may carry several
+  messages: the `messageLength` of a HEADER_EXTENSION ends its message
+  before the next one (`RtpsMessage::rest`, `RtpsPacket::messages`)
 - BACnet/IP (ASHRAE 135 annex J) on UDP 47808: BVLC (function named,
   length equal to the datagram, origin of a Forwarded-NPDU), NPDU (version,
   control, destination and source network addresses, hop count, network
@@ -557,8 +567,9 @@ The currently supported tunnels are:
 
 CAPWAP outside the peeled case: a well-formed datagram on UDP 5246 (control)
 or 5247 (data) is labelled `CAPWAP` without an inner flow. That covers the
-RFC 5415 header (control messages, keep-alives, fragments, 802.11 management
-frames) and the DTLS preamble followed by a DTLS 1.0 or 1.2 record, whose
+RFC 5415 header (control messages, fragments, 802.11 management frames,
+and the data channel keep-alive, whose header is all zero but HLEN and the
+K bit) and the DTLS preamble followed by a DTLS 1.0 or 1.2 record, whose
 encrypted content is not read. The same bytes on another port are not
 labelled.
 

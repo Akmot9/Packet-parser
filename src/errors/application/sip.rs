@@ -44,4 +44,10 @@ pub enum SipError {
 
     #[error("invalid SIP Content-Length: expected decimal digits")]
     InvalidContentLength,
+
+    /// Only a field whose value is a comma-separated list may span several
+    /// header rows (RFC 3261 §7.3.1); `Content-Length` is not one, and two
+    /// rows would leave the end of the body undecided.
+    #[error("SIP message carries the {0} header more than once")]
+    DuplicateHeader(&'static str),
 }

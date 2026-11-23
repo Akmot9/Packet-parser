@@ -67,21 +67,32 @@ pub fn read_capture(path: &Path) -> FileRead {
                 Block::InterfaceDescription(idb) => {
                     linktypes.push(LinkType::from(u32::from(idb.linktype)));
                 }
-                Block::EnhancedPacket(epb) => {
-                    if let Some(&link_type) = linktypes.get(epb.interface_id as usize) {
-                        frames.push((link_type, epb.data.into_owned()));
+                // Un paquet dont l'interface n'est pas decrite ne peut pas
+                // etre lu : la lecture s'arrete et le dit, comme sur une
+                // erreur, au lieu de compter une trame de moins (#383).
+                Block::EnhancedPacket(epb) => match linktypes.get(epb.interface_id as usize) {
+                    Some(&link_type) => frames.push((link_type, epb.data.into_owned())),
+                    None => {
+                        read_error = true;
+                        break;
                     }
-                }
-                Block::Packet(pb) => {
-                    if let Some(&link_type) = linktypes.get(pb.interface_id as usize) {
-                        frames.push((link_type, pb.data.into_owned()));
+                },
+                Block::Packet(pb) => match linktypes.get(pb.interface_id as usize) {
+                    Some(&link_type) => frames.push((link_type, pb.data.into_owned())),
+                    None => {
+                        read_error = true;
+                        break;
                     }
-                }
-                Block::SimplePacket(spb) => {
-                    if let [link_type] = linktypes[..] {
-                        frames.push((link_type, spb.data.into_owned()));
+                },
+                // Sans `interface_id`, le Simple Packet Block vient de la
+                // premiere interface de la section (pcapng §4.4).
+                Block::SimplePacket(spb) => match linktypes.first() {
+                    Some(&link_type) => frames.push((link_type, spb.data.into_owned())),
+                    None => {
+                        read_error = true;
+                        break;
                     }
-                }
+                },
                 _ => {}
             }
         }

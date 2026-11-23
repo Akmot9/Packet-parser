@@ -53,8 +53,13 @@ fn main() {
 
     // 4️⃣ Test: Tester le support des Agents de Relais
     println!("\n--- 4. Test d'un Agent de Relais (Type 12) ---");
-    // Type 12 (0x0C) Relay-forward
-    let relay_payload_hex = "0c000000000000000000000000000000";
+    // Type 12 (0x0C) Relay-forward : l'en-tete d'un relais fait 34 octets
+    // (RFC 8415 §9) : type, hop-count, link-address, peer-address.
+    let relay_payload_hex = concat!(
+        "0c00",
+        "20010db8000000000000000000000001",
+        "fe800000000000000000000000000002"
+    );
     let relay_payload = decode(relay_payload_hex).unwrap();
     match Dhcpv6Packet::try_from(relay_payload.as_slice()) {
         Ok(packet) => {

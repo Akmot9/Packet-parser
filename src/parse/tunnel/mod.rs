@@ -370,22 +370,28 @@ fn peel_gtp_u(payload: &[u8]) -> Option<DecodedLink<'_>> {
 /// - Preambule de type 0 : l'en-tete CAPWAP. Version 0, HLEN d'au moins
 ///   deux mots et dans le datagramme, WBID non nul, bits reserves a zero ;
 ///   sans le bit F, ni bit L ni decalage de fragment.
+/// - Keep-alive du canal de donnees (§4.4.1) : tous les champs de l'en-tete
+///   sont nuls, sauf HLEN et le bit K. Son WBID est donc nul (#383).
 /// - Preambule de type 1 : l'en-tete DTLS, trois octets reserves a zero,
 ///   puis un enregistrement DTLS 1.0 ou 1.2 (type 20 a 23, longueur dans
 ///   le datagramme). Son contenu est chiffre : il n'est pas lu.
 pub(crate) fn is_capwap_packet(payload: &[u8]) -> bool {
     match payload {
-        [0x00, b1, b2, b3, _, _, b6, b7, ..] => {
+        [0x00, b1, b2, b3, b4, b5, b6, b7, ..] => {
             let header_length = usize::from(b1 >> 3) * 4;
             let wbid = (b2 >> 1) & 0x1f;
             let fragment = b3 & 0x80 != 0;
             let last = b3 & 0x40 != 0;
             let offset = u16::from_be_bytes([*b6, *b7]) >> 3;
-            (8..=payload.len()).contains(&header_length)
-                && wbid != 0
+            // Apres HLEN : RID, WBID et T nuls, K seul parmi les drapeaux,
+            // ni identifiant ni decalage de fragment.
+            let is_keep_alive =
+                b1 & 0x07 == 0 && [*b2, *b4, *b5, *b6, *b7] == [0; 5] && *b3 == 0x08;
+            let is_data = wbid != 0
                 && b3 & 0x07 == 0
                 && b7 & 0x07 == 0
-                && (fragment || (!last && offset == 0))
+                && (fragment || (!last && offset == 0));
+            (8..=payload.len()).contains(&header_length) && (is_keep_alive || is_data)
         }
         [
             0x01,

@@ -127,6 +127,8 @@ pub const MIN_SIGNATURE_BITS: u32 = 16;
 pub const MAX_OFFSET: usize = 65_535;
 /// The longest `bytes` of a pattern.
 pub const MAX_PATTERN_LENGTH: usize = 64;
+/// The most patterns of a rule.
+pub const MAX_PATTERNS: usize = 64;
 /// The most rules in a file.
 pub const MAX_RULES: usize = 256;
 /// The most ports of a rule.

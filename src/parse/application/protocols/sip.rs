@@ -246,6 +246,11 @@ impl<'a> TryFrom<&'a [u8]> for SipMessage<'a> {
             // dernier saut.
             if slot.is_none() {
                 *slot = Some(value);
+            } else if is_sip_header(name, "Content-Length") {
+                // Seul un champ a liste se repete (§7.3.1) ; deux
+                // Content-Length laisseraient la fin du corps au hasard
+                // (#383).
+                return Err(SipError::DuplicateHeader("Content-Length"));
             }
         }
 
@@ -474,7 +479,7 @@ mod tests {
 
     #[test]
     fn rejects_what_is_not_sip() {
-        let cases: [(Vec<u8>, SipError); 14] = [
+        let cases: [(Vec<u8>, SipError); 16] = [
             (
                 RFC_INVITE[..200].to_vec(),
                 SipError::MissingHeaderTerminator,
@@ -537,6 +542,24 @@ mod tests {
             (
                 replace(RFC_INVITE, "Content-Length: 128", "Content-Length: many"),
                 SipError::InvalidContentLength,
+            ),
+            // Deux Content-Length, de valeurs differentes ou egales, en
+            // forme longue ou compacte (§7.3.1, #383).
+            (
+                replace(
+                    RFC_INVITE,
+                    "Content-Length: 128",
+                    "Content-Length: 0\r\nContent-Length: 128",
+                ),
+                SipError::DuplicateHeader("Content-Length"),
+            ),
+            (
+                replace(
+                    RFC_INVITE,
+                    "Content-Length: 128",
+                    "Content-Length: 128\r\nl: 128",
+                ),
+                SipError::DuplicateHeader("Content-Length"),
             ),
         ];
         for (payload, error) in cases {

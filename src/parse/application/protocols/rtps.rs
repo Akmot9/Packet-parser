@@ -8,7 +8,9 @@
 //! GVA, systemes navals) et de ROS 2. Successeur de GIOP/MIOP dans ce
 //! role.
 //!
-//! Un message tient dans un datagramme UDP : un en-tete de 20 octets (magic
+//! Un message tient dans un datagramme UDP, qui en porte un le plus
+//! souvent, parfois plusieurs ([`RtpsPacket::messages`]). Il est fait d'un
+//! en-tete de 20 octets (magic
 //! `RTPS`, ou `RTPX` chez RTI, version, vendorId, guidPrefix) puis des
 //! sous-messages qui le pavent exactement, chacun introduit par son
 //! identifiant, ses flags (dont l'ordre d'octets de ses champs) et
@@ -46,9 +48,10 @@ use crate::{
         SUBMESSAGE_INFO_DST, SUBMESSAGE_INFO_REPLY, SUBMESSAGE_INFO_REPLY_IP4, SUBMESSAGE_INFO_SRC,
         SUBMESSAGE_INFO_TS, SUBMESSAGE_NACK_FRAG, SUBMESSAGE_PAD, SUBMESSAGE_SEC_BODY,
         SUBMESSAGE_SEC_POSTFIX, SUBMESSAGE_SEC_PREFIX, SUBMESSAGE_SRTPS_POSTFIX,
-        SUBMESSAGE_SRTPS_PREFIX, bitmap_length, ensure_len, extract_magic, extract_version,
-        header_extension_checksum_length, header_extension_fixed_length, read_sequence_number,
-        read_u16, read_u32, submessage_body_length, validate_body_length, validate_submessage_id,
+        SUBMESSAGE_SRTPS_PREFIX, bitmap_length, ensure_len, extract_magic, extract_message_end,
+        extract_version, header_extension_checksum_length, header_extension_fixed_length,
+        read_sequence_number, read_u16, read_u32, submessage_body_length, validate_body_length,
+        validate_submessage_id,
     },
     errors::application::rtps::RtpsParseError,
     parse::application::protocols::bounded_capacity,
@@ -302,6 +305,16 @@ impl<'a> RtpsSubmessage<'a> {
 pub struct RtpsMessage<'a> {
     pub header: RtpsHeader,
     pub submessages: Vec<RtpsSubmessage<'a>>,
+    rest: &'a [u8],
+}
+
+impl<'a> RtpsMessage<'a> {
+    /// Les octets du datagramme qui suivent ce message : un autre message,
+    /// ou rien. Seul un message dont le HEADER_EXTENSION annonce la longueur
+    /// peut etre suivi d'un autre.
+    pub fn rest(&self) -> &'a [u8] {
+        self.rest
+    }
 }
 
 /// « Ping » RTI Connext : seize octets, magic, version, vendorId et le
@@ -349,6 +362,43 @@ impl<'a> RtpsPacket<'a> {
             Self::Ping(_) => None,
         }
     }
+
+    /// Les messages d'un datagramme, dans l'ordre. Un datagramme en porte
+    /// un, sauf quand le HEADER_EXTENSION d'un message annonce sa longueur :
+    /// un autre peut alors le suivre ([`RtpsMessage::rest`]). L'iterateur
+    /// s'arrete apres la premiere erreur.
+    pub fn messages(payload: &'a [u8]) -> RtpsMessages<'a> {
+        RtpsMessages { rest: payload }
+    }
+
+    /// Sonde : des messages bien formes qui pavent le datagramme.
+    pub(crate) fn is_datagram_match(payload: &'a [u8]) -> bool {
+        !payload.is_empty() && Self::messages(payload).all(|message| message.is_ok())
+    }
+}
+
+/// Iterateur sur les messages d'un datagramme ([`RtpsPacket::messages`]).
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct RtpsMessages<'a> {
+    rest: &'a [u8],
+}
+
+impl<'a> Iterator for RtpsMessages<'a> {
+    type Item = Result<RtpsPacket<'a>, RtpsParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.rest.is_empty() {
+            return None;
+        }
+        let packet = RtpsPacket::try_from(self.rest);
+        // Apres une erreur ou un ping, rien ne suit.
+        self.rest = match &packet {
+            Ok(RtpsPacket::Message(message)) => message.rest,
+            _ => &[],
+        };
+        Some(packet)
+    }
 }
 
 impl<'a> TryFrom<&'a [u8]> for RtpsPacket<'a> {
@@ -382,23 +432,21 @@ impl<'a> TryFrom<&'a [u8]> for RtpsPacket<'a> {
             payload.len() - RTPS_HEADER_LENGTH,
             RTPS_SUBMESSAGE_HEADER_LENGTH,
         ));
+        // La fin du message : celle du datagramme, tant qu'un
+        // HEADER_EXTENSION n'en annonce pas une autre.
+        let mut end = payload.len();
         let mut offset = RTPS_HEADER_LENGTH;
-        while offset < payload.len() {
-            let (submessage, consumed) = parse_submessage(payload, offset)?;
-            // Le HEADER_EXTENSION suit immediatement l'en-tete (§8.3.3.2), et
-            // son messageLength, s'il est la, est la longueur du datagramme
-            // (§9.5 : un message par datagramme).
+        while offset < end {
+            let (submessage, consumed) = parse_submessage(&payload[..end], offset)?;
+            // Le HEADER_EXTENSION suit immediatement l'en-tete (§8.3.3.2).
+            // Son messageLength, s'il est la, finit le message : a la fin du
+            // datagramme, ou devant le message suivant (#383).
             if let SubmessageDetails::HeaderExtension(extension) = submessage.details {
                 if offset != RTPS_HEADER_LENGTH {
                     return Err(RtpsParseError::MisplacedHeaderExtension { offset });
                 }
-                if let Some(declared) = extension.message_length
-                    && usize::try_from(declared) != Ok(payload.len())
-                {
-                    return Err(RtpsParseError::HeaderExtensionLengthMismatch {
-                        declared,
-                        actual: payload.len(),
-                    });
+                if let Some(declared) = extension.message_length {
+                    end = extract_message_end(declared, offset + consumed, payload)?;
                 }
             }
             submessages.push(submessage);
@@ -410,6 +458,7 @@ impl<'a> TryFrom<&'a [u8]> for RtpsPacket<'a> {
         Ok(RtpsPacket::Message(RtpsMessage {
             header,
             submessages,
+            rest: &payload[end..],
         }))
     }
 }
@@ -841,6 +890,63 @@ mod tests {
             crate::parse::dispatch::classify(&transport, &[]).map(|a| a.protocol.label()),
             Some("RTPS")
         );
+    }
+
+    /// Synthetique : le message reel a HEADER_EXTENSION, deux fois dans le
+    /// meme datagramme, ce que RTI Connext 7.5 emet et que le corpus ne
+    /// montre pas (#383). Le `messageLength` du premier dit ou il finit.
+    #[test]
+    fn test_messages_packed_in_one_datagram() {
+        let one = hex::decode(HEADER_EXTENSION_L_T_CRC32C).unwrap();
+        assert_eq!(one.len(), 72);
+        let mut two = one.clone();
+        two.extend(&one);
+
+        let RtpsPacket::Message(first) = RtpsPacket::try_from(two.as_slice()).unwrap() else {
+            panic!("pas un message");
+        };
+        assert_eq!(first.rest(), one.as_slice());
+        let alone = RtpsPacket::try_from(one.as_slice()).unwrap();
+        assert_eq!(
+            alone.message().map(|m| &m.submessages),
+            Some(&first.submessages)
+        );
+        assert_eq!(alone.message().map(RtpsMessage::rest), Some(&[][..]));
+
+        let messages: Vec<_> = RtpsPacket::messages(&two)
+            .collect::<Result<_, _>>()
+            .expect("deux messages");
+        assert_eq!(messages.len(), 2);
+        assert!(RtpsPacket::is_datagram_match(&two));
+        assert_eq!(RtpsPacket::messages(&one).count(), 1);
+
+        // Ce qui suit le premier message doit etre un message : un en-tete
+        // entier, ouvert par le magic.
+        let mismatch = |bytes: &[u8]| RtpsParseError::HeaderExtensionLengthMismatch {
+            declared: 72,
+            actual: bytes.len(),
+        };
+        let mut trailing = one.clone();
+        trailing.extend(&one[..19]);
+        assert_eq!(
+            RtpsPacket::try_from(trailing.as_slice()),
+            Err(mismatch(&trailing))
+        );
+        let mut garbage = two.clone();
+        garbage[72] = b'X';
+        assert_eq!(
+            RtpsPacket::try_from(garbage.as_slice()),
+            Err(mismatch(&garbage))
+        );
+        // Un second message faux : le premier se lit, la sonde refuse.
+        let mut broken = two.clone();
+        broken[72 + 20] = 0x7f;
+        assert!(RtpsPacket::try_from(broken.as_slice()).is_ok());
+        let results: Vec<_> = RtpsPacket::messages(&broken).collect();
+        assert_eq!(results.len(), 2);
+        assert!(results[0].is_ok() && results[1].is_err());
+        assert!(!RtpsPacket::is_datagram_match(&broken));
+        assert!(!RtpsPacket::is_datagram_match(&[]));
     }
 
     #[test]

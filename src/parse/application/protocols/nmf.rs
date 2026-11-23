@@ -291,7 +291,12 @@ mod checks {
                 };
                 Ok((NmfRecord::KnownEncoding(encoding), 2))
             }
-            0x02 => string(bytes).map(|(text, used)| (NmfRecord::Via(text), used)),
+            // Une longueur nulle est interdite au Via comme a l'enveloppe
+            // ([MC-NMF] §2.2.3.3 et §2.2.4.1, #383).
+            0x02 => match string(bytes)? {
+                ("", _) => Err(NmfError::ZeroLength { record_type }),
+                (text, used) => Ok((NmfRecord::Via(text), used)),
+            },
             0x04 => string(bytes).map(|(text, used)| (NmfRecord::ExtensibleEncoding(text), used)),
             0x08 => string(bytes).map(|(text, used)| (NmfRecord::Fault(text), used)),
             0x09 => string(bytes).map(|(text, used)| (NmfRecord::UpgradeRequest(text), used)),
@@ -303,6 +308,9 @@ mod checks {
             )),
             0x06 => {
                 let (declared_length, payload, consumed) = sized(bytes)?;
+                if declared_length == 0 {
+                    return Err(NmfError::ZeroLength { record_type });
+                }
                 Ok((
                     NmfRecord::SizedEnvelope {
                         declared_length,
@@ -495,6 +503,13 @@ mod tests {
             })
         );
         assert_eq!(parse("06"), Err(NmfError::MalformedSize));
+        // Une longueur nulle : interdite au Via et a l'enveloppe (#383).
+        assert_eq!(parse("06 00"), Err(NmfError::ZeroLength { record_type: 6 }));
+        assert_eq!(parse("02 00"), Err(NmfError::ZeroLength { record_type: 2 }));
+        assert_eq!(
+            parse("0b 06 00"),
+            Err(NmfError::ZeroLength { record_type: 6 })
+        );
         assert_eq!(parse("06 8080808080"), Err(NmfError::MalformedSize));
         assert_eq!(parse("06 ffffffff1f 00"), Err(NmfError::MalformedSize));
         assert_eq!(

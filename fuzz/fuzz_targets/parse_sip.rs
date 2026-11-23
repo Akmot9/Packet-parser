@@ -81,6 +81,15 @@ fn exercise(data: &[u8]) {
         count += 1;
     }
     assert_eq!(count, message.headers.len());
+    // Content-Length ne se repete pas, sous sa forme longue ou compacte.
+    let lengths = message
+        .headers
+        .iter()
+        .filter(|(name, _)| {
+            name.eq_ignore_ascii_case("Content-Length") || name.eq_ignore_ascii_case("l")
+        })
+        .count();
+    assert_eq!(lengths, usize::from(message.content_length.is_some()));
     assert_eq!(message.headers.get("Via"), Some(message.via));
     assert_eq!(message.headers.get("Call-ID"), Some(message.call_id));
 }

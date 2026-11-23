@@ -170,7 +170,8 @@ pub(super) enum ProbeId {
     ValmetDnaBlind,
     /// AMS sur TCP : l'en-tete AMS/TCP de 6 octets precede l'en-tete AMS.
     AmsTcp,
-    /// Java RMI sur 1099 et par Decode As : tout message JRMP.
+    /// Java RMI sur 1099 et par Decode As : des messages JRMP qui pavent le
+    /// segment.
     JavaRmi,
     /// Java RMI a l'aveugle : en-tete de flux, Call et Return seulement.
     JavaRmiBlind,
@@ -276,7 +277,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         // `cb_data` doit egaler ce qui suit l'en-tete.
         ProbeId::Ams => AmsPacket::try_from(payload).is_ok(),
         ProbeId::AmsTcp => AmsPacket::try_from_tcp(payload).is_ok(),
-        ProbeId::JavaRmi => JavaRmiPacket::try_from(payload).is_ok(),
+        ProbeId::JavaRmi => JavaRmiPacket::is_port_match(payload),
         ProbeId::JavaRmiBlind => {
             JavaRmiPacket::try_from(payload).is_ok_and(|packet| packet.is_self_identifying())
         }
@@ -405,10 +406,11 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::ValmetDnaBlind => ValmetDnaPacket::is_blind_udp_match(payload),
         // Garde a cout constant sur le magic, comme GIOP ; puis les
         // sous-messages doivent paver tout le datagramme, et un DATA_FRAG de
-        // 60 Ko depasse PROBE_CAP sans cesser d'etre du RTPS.
+        // 60 Ko depasse PROBE_CAP sans cesser d'etre du RTPS. Un datagramme
+        // qui porte plusieurs messages est pave par eux tous (#383).
         ProbeId::Rtps => {
             (payload.starts_with(b"RTPS") || payload.starts_with(b"RTPX"))
-                && RtpsPacket::try_from(payload).is_ok()
+                && RtpsPacket::is_datagram_match(payload)
         }
     }
 }

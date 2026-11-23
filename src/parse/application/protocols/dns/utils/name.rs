@@ -37,6 +37,33 @@ pub fn parse_dns_name(message: &[u8], start: usize) -> Result<(String, usize), D
     // découpé en labels potentiellement non contigus (compression) — il doit
     // être reconstruit, pas emprunté.
     let mut labels: Vec<String> = Vec::new();
+    let next = walk_dns_name(message, start, |label| labels.push(label_text(label)))?;
+    Ok((labels.join("."), next))
+}
+
+/// `true` quand chaque label du nom à `start` est de l'UTF-8, donc rendu tel
+/// quel par [`parse_dns_name`] ; avec l'offset qui suit le nom. Le texte du
+/// nom ne le dit pas : un `\` y vient d'un label échappé comme d'un label
+/// UTF-8 qui porte ce caractère (#383).
+pub(crate) fn is_dns_name_utf8(
+    message: &[u8],
+    start: usize,
+) -> Result<(bool, usize), DnsQueryParseError> {
+    let mut is_utf8 = true;
+    let next = walk_dns_name(message, start, |label| {
+        is_utf8 &= core::str::from_utf8(label).is_ok();
+    })?;
+    Ok((is_utf8, next))
+}
+
+/// Parcourt les labels du nom à `start`, pointeurs de compression suivis,
+/// et retourne l'offset du premier octet suivant le nom dans le flux
+/// d'origine.
+fn walk_dns_name<'m>(
+    message: &'m [u8],
+    start: usize,
+    mut on_label: impl FnMut(&'m [u8]),
+) -> Result<usize, DnsQueryParseError> {
     let mut offset = start;
     // Offset de reprise dans le flux : figé au premier pointeur rencontré.
     let mut resume_offset: Option<usize> = None;
@@ -81,11 +108,11 @@ pub fn parse_dns_name(message: &[u8], start: usize) -> Result<(String, usize), D
         wire_length += 1 + len;
         check_dns_name_length(wire_length)?;
         check_dns_label_bounds(message, offset, len)?;
-        labels.push(label_text(&message[offset..offset + len]));
+        on_label(&message[offset..offset + len]);
         offset += len;
     }
 
-    Ok((labels.join("."), resume_offset.unwrap_or(offset)))
+    Ok(resume_offset.unwrap_or(offset))
 }
 
 /// Le texte d'un label. RFC 2181 §11 : « any binary string whatever can be

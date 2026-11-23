@@ -95,15 +95,21 @@ pub fn validate_unused_chaddr(hlen: u8, chaddr: &[u8; 16]) -> Result<(), DhcpPar
 /// Magic cookie DHCP (RFC 2131) : premiers octets de la zone options.
 pub const DHCP_MAGIC_COOKIE: [u8; 4] = [0x63, 0x82, 0x53, 0x63];
 
+/// Longueur de la zone `vend` d'un message BOOTP (RFC 951 §3).
+const BOOTP_VEND_LENGTH: usize = 64;
+
 /// Validates the DHCP magic cookie when an options area is present.
 ///
 /// An empty options area is accepted (plain BOOTP, RFC 951), and so is an
-/// all-zero one: the `vend` area of a BOOTP client that has no vendor data
-/// (RFC 951: « vend 64 optional vendor-specific area », #303). Any other
-/// area must start with the RFC 2131 magic cookie: this keeps arbitrary
-/// 236+-byte payloads from being misdetected as DHCP.
+/// all-zero one of at least 64 bytes: the whole `vend` area of a BOOTP
+/// client that has no vendor data (RFC 951: « vend 64 optional
+/// vendor-specific area », #303), and the padding that may follow it. A
+/// shorter all-zero area is not a `vend` area (#383). Any other area must
+/// start with the RFC 2131 magic cookie: this keeps arbitrary 236+-byte
+/// payloads from being misdetected as DHCP.
 pub fn validate_magic_cookie(options: &[u8]) -> Result<(), DhcpParseError> {
-    if options.iter().all(|byte| *byte == 0) || options.starts_with(&DHCP_MAGIC_COOKIE) {
+    let is_empty_vend = options.len() >= BOOTP_VEND_LENGTH && options.iter().all(|byte| *byte == 0);
+    if options.is_empty() || is_empty_vend || options.starts_with(&DHCP_MAGIC_COOKIE) {
         return Ok(());
     }
     Err(DhcpParseError::InvalidMagicCookie)
@@ -385,6 +391,16 @@ mod tests {
     fn a_bootp_vend_area_without_cookie_must_be_zero() {
         assert_eq!(extract_options(&[]), Ok(&[][..]));
         assert_eq!(extract_options(&[0; 64]), Ok(&[][..]));
+        // Suivie de bourrage, la zone reste nulle. Plus courte que ses 64
+        // octets, ce n'est pas une zone `vend` (#383).
+        assert_eq!(extract_options(&[0; 312]), Ok(&[][..]));
+        for length in [1, 4, 63] {
+            assert_eq!(
+                extract_options(&vec![0; length]),
+                Err(DhcpParseError::InvalidMagicCookie),
+                "{length}"
+            );
+        }
         let dhcp = [0x63, 0x82, 0x53, 0x63, 0x35, 0x01, 0x01, 0xff];
         assert_eq!(extract_options(&dhcp), Ok(&dhcp[..]));
         let mut vendor = [0u8; 64];

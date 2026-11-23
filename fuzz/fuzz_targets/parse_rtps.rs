@@ -2,7 +2,8 @@
 // (dont les bitmaps d'ACKNACK, GAP et NACK_FRAG), octetsToNextHeader nul,
 // flags d'ordre d'octets. Ni panic ni boucle infinie ; quand le decodage
 // reussit, les sous-messages pavent exactement le message, chaque corps
-// emprunte a l'entree, et le type suit l'identifiant.
+// emprunte a l'entree, et le type suit l'identifiant. Un message dont le
+// HEADER_EXTENSION annonce la longueur peut etre suivi d'un autre (#383).
 //
 // Couche DDS (#317) : QoS en ligne, donnees serialisees et decouverte de
 // chaque DATA et DATA_FRAG. Quand elles se decodent, chaque ParameterList,
@@ -222,7 +223,31 @@ fn exercise(data: &[u8]) {
             }
         }
     }
-    assert_eq!(covered, data.len(), "les sous-messages pavent le message");
+    // Les sous-messages pavent le message. Il finit avec l'entree, ou
+    // devant un autre message : son HEADER_EXTENSION, premier sous-message,
+    // annonce alors cette fin, et la suite s'ouvre par un en-tete (#383).
+    let rest = message.rest();
+    assert!(inside(data, rest));
+    assert_eq!(covered + rest.len(), data.len(), "sous-messages et suite");
+    if !rest.is_empty() {
+        let SubmessageDetails::HeaderExtension(extension) = &message.submessages[0].details else {
+            panic!("une suite sans HEADER_EXTENSION");
+        };
+        assert_eq!(
+            extension.message_length.map(u64::from),
+            Some(covered as u64)
+        );
+        assert!(rest.len() >= 20);
+        assert!(rest.starts_with(b"RTPS") || rest.starts_with(b"RTPX"));
+    }
+    // L'iterateur rend ce message d'abord, puis lit la suite sans panic.
+    let mut messages = RtpsPacket::messages(data);
+    assert_eq!(
+        messages.next(),
+        Some(Ok(RtpsPacket::Message(message.clone())))
+    );
+    let following = messages.count();
+    assert!(rest.is_empty() == (following == 0));
 }
 
 fuzz_target!(|data: &[u8]| {

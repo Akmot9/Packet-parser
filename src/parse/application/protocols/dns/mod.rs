@@ -20,7 +20,7 @@ use dns_authoritative::AuthoritativeNameServer;
 use dns_header::DnsHeader;
 use dns_queries::DnsQueries;
 use std::fmt;
-use utils::name::{RawRecord, parse_mdns_resource_record, parse_resource_record};
+use utils::name::{RawRecord, is_dns_name_utf8, parse_mdns_resource_record, parse_resource_record};
 
 /// DNS Packet
 ///
@@ -102,42 +102,16 @@ impl<'a> DnsPacket<'a> {
     /// deux gardes, tout datagramme dont les douze premiers octets forment un
     /// en-tete vide plausible passait pour du DNS.
     ///
-    /// Un nom echappe n'y est pas une preuve non plus : hors UTF-8, un label
-    /// prend la forme `\DDD` (#297), et un `\` dans un nom ecarte le
-    /// datagramme. Le port 53 lit ces noms ; la sonde aveugle garde
-    /// l'exigence d'UTF-8 qu'elle avait.
+    /// Un label hors UTF-8 n'y est pas une preuve non plus (#297) : le port
+    /// 53 le lit, echappe en `\DDD` ; la sonde aveugle garde l'exigence
+    /// d'UTF-8 qu'elle avait. Elle la juge sur les octets du fil, pas sur le
+    /// texte du nom : un label UTF-8 peut porter un `\` (#383).
     pub(crate) fn is_blind_udp_match(bytes: &[u8]) -> bool {
         DnsPacket::parse_datagram(bytes).is_ok_and(|(packet, end)| {
             end == bytes.len()
                 && packet.header.counts.iter().any(|&count| count != 0)
-                && packet.names().all(|name| !name.contains('\\'))
+                && has_only_utf8_names(bytes, &packet.header.counts)
         })
-    }
-
-    /// Les noms de toutes les sections, dans l'ordre du message.
-    fn names(&self) -> impl Iterator<Item = &str> {
-        self.queries
-            .queries
-            .iter()
-            .map(|query| query.name.as_str())
-            .chain(
-                self.answers
-                    .iter()
-                    .flatten()
-                    .map(|record| record.name.as_str()),
-            )
-            .chain(
-                self.authorities
-                    .iter()
-                    .flatten()
-                    .map(|record| record.name.as_str()),
-            )
-            .chain(
-                self.additionals
-                    .iter()
-                    .flatten()
-                    .map(|record| record.name.as_str()),
-            )
     }
 
     /// Decode un message DNS transporte sur TCP (RFC 1035 §4.2.2) : le flux
@@ -239,6 +213,30 @@ impl<'a> DnsPacket<'a> {
     }
 }
 
+/// Les noms des questions et des enregistrements sont-ils tous de l'UTF-8 ?
+/// Relit le fil d'un message déjà décodé : une question est un nom et quatre
+/// octets, un enregistrement un nom, dix octets et sa rdata (RFC 1035
+/// §4.1.2 et §4.1.3).
+fn has_only_utf8_names(message: &[u8], counts: &[u16; 4]) -> bool {
+    let mut offset = 12;
+    let questions = usize::from(counts[0]);
+    let records: usize = counts[1..].iter().map(|count| usize::from(*count)).sum();
+    for index in 0..questions + records {
+        let Ok((true, after_name)) = is_dns_name_utf8(message, offset) else {
+            return false;
+        };
+        offset = if index < questions {
+            after_name + 4
+        } else {
+            let Some(length) = message.get(after_name + 8..after_name + 10) else {
+                return false;
+            };
+            after_name + 10 + usize::from(u16::from_be_bytes([length[0], length[1]]))
+        };
+    }
+    true
+}
+
 /// Parse `count` resource records à `*offset` dans `message`. Retourne `None`
 /// quand la section est vide.
 fn parse_record_section<'a, T: From<RawRecord<'a>>>(
@@ -309,6 +307,52 @@ mod tests {
         data.push(0);
         assert!(DnsPacket::try_from(data.as_slice()).is_ok());
         assert!(!DnsPacket::is_blind_udp_match(&data));
+    }
+
+    /// Synthetique (#383) : une question dont un label UTF-8 porte un `\\`
+    /// litteral. Le nom se rend avec ce caractere, comme celui d'un label
+    /// echappe : la sonde aveugle les distingue sur les octets du fil.
+    #[test]
+    fn blind_probe_reads_utf8_on_the_wire_not_in_the_text() {
+        let message = |label: &[u8], answer: Option<&[u8]>| {
+            let mut message = vec![0x12, 0x34, 0x01, 0x00, 0, 1, 0, u8::from(answer.is_some())];
+            message.extend([0, 0, 0, 0]);
+            message.push(u8::try_from(label.len()).expect("label court"));
+            message.extend(label);
+            message.extend([7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 0, 0, 1, 0, 1]);
+            if let Some(owner) = answer {
+                message.push(u8::try_from(owner.len()).expect("label court"));
+                message.extend(owner);
+                message.extend([0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 192, 0, 2, 1]);
+            }
+            message
+        };
+        let name = |bytes: &[u8]| {
+            let packet = DnsPacket::try_from(bytes).expect("message lisible");
+            packet.queries.queries[0].name.clone()
+        };
+
+        let literal = message(b"back\\slash", None);
+        assert_eq!(name(&literal), "back\\slash.example");
+        assert!(DnsPacket::is_blind_udp_match(&literal));
+        // Meme texte de trois chiffres apres un `\`, mais en UTF-8 sur le fil.
+        let digits = message(b"j\\228germeister", None);
+        assert_eq!(name(&digits), "j\\228germeister.example");
+        assert!(DnsPacket::is_blind_udp_match(&digits));
+
+        // Un label en Latin-1 est echappe, et la sonde aveugle l'ecarte : dans
+        // la question comme dans le nom d'un enregistrement.
+        let latin1 = message(b"j\xe4germeister", None);
+        assert_eq!(name(&latin1), "j\\228germeister.example");
+        assert!(DnsPacket::try_from(latin1.as_slice()).is_ok());
+        assert!(!DnsPacket::is_blind_udp_match(&latin1));
+        let answer = message(b"plain", Some(b"h\xf4te"));
+        assert!(DnsPacket::try_from(answer.as_slice()).is_ok());
+        assert!(!DnsPacket::is_blind_udp_match(&answer));
+        assert!(DnsPacket::is_blind_udp_match(&message(
+            b"plain",
+            Some(b"host")
+        )));
     }
 
     /// #184 : chaque RR dont le nom est le pointeur `c0 0c` relisait le

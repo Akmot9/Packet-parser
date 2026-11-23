@@ -139,6 +139,14 @@
 //! - **layer `None`, `corrupted` `Some`** — the layer *was* recognized but
 //!   carried invalid bytes. [`CorruptedLayer`] names which one.
 //!
+//! These three outcomes are those of the internet and transport layers. The
+//! application layer has no corrupted outcome: a TCP or UDP payload that no
+//! rule recognizes is labelled [`ApplicationProtocol::Unknown`], whether it
+//! belongs to a protocol the crate does not know or is a malformed message
+//! of one it does ([`classify_payload`] lists the few cases where
+//! `application` is `None`). To tell the two apart, run the decoder of the
+//! protocol on the payload and read its error.
+//!
 //! ## Owned flows
 //!
 //! [`PacketFlow`] borrows the input buffer. To store a flow, send it across

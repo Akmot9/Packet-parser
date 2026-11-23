@@ -299,7 +299,10 @@ mod checks {
 
     /// Octets que le type impose apres l'en-tete commun (C706 §12.6.4) :
     /// huit pour une requete, une reponse ou une faute (seize pour celle-ci),
-    /// huit pour une liaison ou sa modification.
+    /// huit pour une liaison ou sa modification, deux pour un refus de
+    /// liaison : son `provider_reject_reason` (§12.6.4.5, #383). La liste
+    /// de versions qui le suit n'a de sens que pour un seul motif, elle
+    /// n'est pas exigee.
     fn minimum_length(pdu_type: DceRpcPduType) -> usize {
         DCERPC_COMMON_HEADER_LENGTH
             + match pdu_type {
@@ -310,8 +313,8 @@ mod checks {
                 | DceRpcPduType::AlterContext
                 | DceRpcPduType::AlterContextResponse => 8,
                 DceRpcPduType::Fault => 16,
-                DceRpcPduType::BindNak
-                | DceRpcPduType::Auth3
+                DceRpcPduType::BindNak => 2,
+                DceRpcPduType::Auth3
                 | DceRpcPduType::Shutdown
                 | DceRpcPduType::CoCancel
                 | DceRpcPduType::Orphaned => 0,
@@ -510,6 +513,22 @@ mod tests {
                 minimum: 24
             })
         );
+        // Synthetique : un refus de liaison (type 13) sans son motif de
+        // rejet, puis avec (#383).
+        let bind_nak = |frag_length: u8| {
+            let mut bytes = hex(REQUEST)[..usize::from(frag_length)].to_vec();
+            (bytes[2], bytes[8], bytes[9]) = (13, frag_length, 0);
+            (bytes[10], bytes[11]) = (0, 0);
+            DceRpcPdu::try_from(bytes.as_slice()).map(|pdu| pdu.pdu_type)
+        };
+        assert_eq!(
+            bind_nak(16),
+            Err(DceRpcError::FragmentTooShort {
+                frag_length: 16,
+                minimum: 18
+            })
+        );
+        assert_eq!(bind_nak(18), Ok(DceRpcPduType::BindNak));
         // auth_length 200 dans un fragment de 168 octets.
         assert_eq!(
             alter(10, 200),

@@ -138,7 +138,8 @@ The file is refused, with the line and the column of the mistake, when:
   spaces around it, is the label of a built-in protocol, or differs from
   another label of the file only by case;
 - a rule has no pattern;
-- **the patterns of a rule check fewer than 16 bits in all**. A random
+- **the patterns of a rule check fewer than 16 bits in all**. A bit of
+  the payload counts once, however many patterns check it. A random
   payload would then match more than once in 65 536, and a busy network
   would show the label on traffic that is not the protocol. A rule on a
   port alone is therefore impossible: a port is a convention, not proof;
@@ -157,6 +158,7 @@ The file is refused, with the line and the column of the mistake, when:
 | --- | --- |
 | `offset` of a pattern or a field | 65 535 |
 | `bytes` of a pattern | 64 bytes |
+| Patterns of a rule | 64 |
 | `length` of a `hex` or `text` field | 256 bytes |
 | Rules in a file | 256 |
 | `ports` of a rule | 256 |
