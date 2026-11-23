@@ -1250,6 +1250,68 @@ fn capwap_is_named_on_its_two_udp_ports_only() {
     assert_eq!(label(Udp, 5247, &fragment), Some("CAPWAP"));
 }
 
+/// Skinny (#368) : des messages qui pavent le segment, sur TCP 2000 ou sur
+/// un port declare, jamais ailleurs. Octets synthetiques : un KeepAlive de
+/// douze octets, version d'en-tete 0x11.
+#[test]
+fn skinny_is_named_on_tcp_2000_only() {
+    use TransportProtocol::{Tcp, Udp};
+    let label = |protocol: TransportProtocol,
+                 source: u16,
+                 destination: u16,
+                 payload: &[u8],
+                 decode_as: &[(u16, DecodeAsProtocol)]| {
+        let transport = Transport {
+            protocol,
+            source_port: Some(source),
+            destination_port: Some(destination),
+            payload: Some(payload),
+            details: None,
+        };
+        classify(&transport, decode_as).map(|a| a.protocol.label())
+    };
+    let keep_alive = [4, 0, 0, 0, 0x11, 0, 0, 0, 0, 0, 0, 0];
+    assert_eq!(label(Tcp, 49152, 2000, &keep_alive, &[]), Some("Skinny"));
+    assert_eq!(label(Tcp, 2000, 49152, &keep_alive, &[]), Some("Skinny"));
+    assert_eq!(label(Tcp, 49152, 2001, &keep_alive, &[]), Some("Unknown"));
+    assert_eq!(label(Udp, 49152, 2000, &keep_alive, &[]), Some("Unknown"));
+
+    // Un autre port se declare, sous la meme garde de transport.
+    let declared = [(2001, DecodeAsProtocol::Skinny)];
+    assert_eq!(
+        label(Tcp, 49152, 2001, &keep_alive, &declared),
+        Some("Skinny")
+    );
+    assert_eq!(
+        label(Udp, 49152, 2001, &keep_alive, &declared),
+        Some("Unknown")
+    );
+
+    // Deux messages qui pavent le segment ; deux octets de trop le refusent.
+    let mut two = keep_alive.to_vec();
+    two.extend([8, 0, 0, 0, 0x11, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0]);
+    assert_eq!(label(Tcp, 49152, 2000, &two, &[]), Some("Skinny"));
+    two.extend([0xde, 0xad]);
+    assert_eq!(label(Tcp, 49152, 2000, &two, &[]), Some("Unknown"));
+
+    // Refus sur le port : longueur sous l'identifiant, version d'en-tete
+    // inconnue, identifiant hors plage, message coupe de plus de 64 Kio.
+    for (index, value) in [(0, 3), (4, 1), (5, 1), (9, 2), (11, 1), (2, 1)] {
+        let mut bad = keep_alive;
+        bad[index] = value;
+        assert_eq!(
+            label(Tcp, 49152, 2000, &bad, &[]),
+            Some("Unknown"),
+            "octet {index}"
+        );
+    }
+
+    // 2000 est aussi un port ephemere : une requete HTTP qui en part garde
+    // son etiquette.
+    let http = b"GET / HTTP/1.1\r\nHost: example.org\r\n\r\n";
+    assert_eq!(label(Tcp, 2000, 80, http, &[]), Some("HTTP"));
+}
+
 /// NMF (#352) : la sonde aveugle prend un preambule ou une enveloppe qui
 /// s'ouvre comme [MC-NBFSE] ; l'accuse de preambule, un octet, ne se nomme
 /// que sur un port declare. Octets synthetiques.

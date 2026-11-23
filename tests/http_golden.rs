@@ -176,9 +176,11 @@ fn every_frame_matches_the_tshark_oracle() {
         oracle_rows,
         "toutes les lignes de l'oracle verifiees"
     );
-    // Dont le GET et son 403 du negatif SIP de nDPI, sur TCP 5060 (#342).
-    assert_eq!(by_kind.get("request"), Some(&145));
-    assert_eq!(by_kind.get("response"), Some(&153));
+    // Dont le GET et son 403 du negatif SIP de nDPI, sur TCP 5060 (#342),
+    // et les trois GET et leurs reponses d'un poste Cisco qui telecharge sa
+    // configuration sur TCP 6970, dans une capture Skinny (#368).
+    assert_eq!(by_kind.get("request"), Some(&148));
+    assert_eq!(by_kind.get("response"), Some(&156));
     // Six retransmissions d'un segment HTTP, que tshark ne dissèque pas :
     // trois du GET vers le proxy 3128 de l'Ultimate PCAP et trois reponses
     // (Ultimate PCAP, dns_isp_hijack, tcp_ports).

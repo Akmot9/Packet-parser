@@ -48,6 +48,7 @@ use crate::parse::application::protocols::rtp::RtpPacket;
 use crate::parse::application::protocols::rtps::RtpsPacket;
 use crate::parse::application::protocols::s7comm::S7CommPacket;
 use crate::parse::application::protocols::sip::SipMessage;
+use crate::parse::application::protocols::skinny::SkinnyMessage;
 use crate::parse::application::protocols::smtp::SmtpMessage;
 use crate::parse::application::protocols::snmp::SnmpPacket;
 use crate::parse::application::protocols::srvloc::SrvlocPacket;
@@ -198,11 +199,14 @@ pub(super) enum ProbeId {
     /// RTCP a l'aveugle : le meme, ouvert par un SR ou un RR, ou un message
     /// de retour seul (#354).
     RtcpBlind,
+    /// Skinny sur TCP 2000 : des messages d'identifiant plausible qui
+    /// pavent le segment, le dernier pouvant etre coupe (#368).
+    Skinny,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::RtcpBlind;
+    pub(super) const LAST: Self = Self::Skinny;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -287,6 +291,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::DceRpc => DceRpcPdu::is_blind_match(payload),
         ProbeId::Rtcp => RtcpCompound::try_from(payload).is_ok(),
         ProbeId::RtcpBlind => RtcpCompound::is_blind_match(payload),
+        ProbeId::Skinny => SkinnyMessage::is_port_match(payload),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),

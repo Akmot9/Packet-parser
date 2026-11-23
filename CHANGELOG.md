@@ -6,6 +6,54 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Ajoute
+
+- **Skinny** (SCCP, *Skinny Client Control Protocol*, #368) : etiquette
+  `Skinny`, decodeur zero copie
+  `parse::application::protocols::skinny::SkinnyMessage` et
+  `DecodeAsProtocol::Skinny`. C'est la signalisation des telephones IP
+  Cisco vers leur serveur d'appel ; a ne pas confondre avec le SCCP de SS7.
+  - **Ce qui est lu.** L'en-tete de douze octets petit-boutistes : longueur,
+    version d'en-tete, identifiant de message. Le corps est emprunte, sans
+    etre decode. Un segment TCP porte souvent plusieurs messages :
+    `SkinnyMessage::messages` les rend dans l'ordre, `rest()` rend ce qui
+    suit un message.
+  - **Ce qui est refuse.** Une longueur sous les quatre octets de
+    l'identifiant, une version d'en-tete hors de 0, 10, 11 et 15 a 22.
+  - **Detection.** Regle a port sur TCP 2000, apres les autres regles de
+    port TCP : 2000 est aussi un port ephemere, et douze octets surtout nuls
+    ne font pas une sonde aveugle. La sonde exige des messages qui pavent
+    le segment, d'identifiant plausible (sous 0x0200, ou l'un des trois
+    messages SPCP) ; seul le dernier peut etre coupe par le segment. Un
+    autre port se declare par Decode As.
+  - **Reference.** Le protocole est proprietaire, sans specification
+    publique : la reference de fait est le dissecteur de Wireshark, d'ou
+    viennent les versions d'en-tete admises et la plage des identifiants.
+    Les messages ne sont pas nommes : `message_id` rend le nombre.
+  - **Corpus et oracle.** Six captures reelles dans
+    `pcaps_exemple/protocols/skinny/` (nDPI, tracker Wireshark, 2010 a
+    2019, versions d'en-tete 0x00 et 0x11 a 0x16) : 656 segments et 933
+    messages de 70 types sont compares a tshark 4.6.9 message par message
+    (`tests/skinny_golden.rs`, `tools/skinny_oracle.sh`). Aucune autre
+    trame du corpus du depot ne sort `Skinny`. Nouvelle cible de fuzz
+    `parse_skinny`.
+  - **Mesure.** Sur le corpus de terrain de #346, 3 287 trames `Unknown`
+    sortent Skinny, tout ce que TCP 2000 y porte, sans qu'aucune autre
+    etiquette ne bouge.
+  - **Limites, sans etat.**
+    - Un message plus long que son segment est coupe
+      (`SkinnyMessage::is_truncated`) ; les segments de suite restent
+      `Unknown`, comme un message qui commence au milieu d'un segment.
+    - La signalisation chiffree (TLS sur TCP 2443) est du TLS.
+
+### Modifie
+
+- `tools/http_oracle.sh` tolere la capture
+  `skinny/wireshark_8805_packets.cap`, qui finit au milieu d'un
+  enregistrement : tshark lit ses 759 trames puis sort en erreur. L'oracle
+  HTTP gagne six lignes, les trois `GET` d'un poste Cisco sur TCP 6970 et
+  leurs reponses.
+
 ## [13.3.0] - 2026-11-22
 
 Mineure, sans rupture : cinq protocoles ajoutes (.NET Message Framing,

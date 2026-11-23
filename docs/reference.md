@@ -286,6 +286,20 @@ Application detection is intentionally best-effort. Parser modules include:
   continuation segments, IPv4 fragments and the keep-alives of port 5060
   (blanks, `hello`, CRLF) are not SIP; SIP over TLS (5061) stays TLS.
   `DecodeAsProtocol::Sip` takes it on a port another rule guards
+- Skinny (SCCP, the Skinny Client Control Protocol of Cisco IP phones; not
+  the SCCP of SS7) on TCP 2000 or a Decode As port
+  (`DecodeAsProtocol::Skinny`), never on another port: twelve mostly-zero
+  bytes make no blind probe. `SkinnyMessage` exposes the little-endian
+  header (data length, header version, message identifier) and borrows the
+  body, which is not decoded; `SkinnyMessage::messages` iterates over the
+  messages of a segment. The port rule asks for messages that tile the
+  segment, a header version among 0, 10, 11 and 15 to 22, and a plausible
+  message identifier. The protocol has no public specification: the
+  reference is the Wireshark dissector, and messages are not named.
+  Stateless limits: a message longer than its segment is cut
+  (`SkinnyMessage::is_truncated`), the segments that carry the rest stay
+  `Unknown`, and so does a message that starts in the middle of a segment;
+  encrypted signalling (TLS on TCP 2443) is TLS
 - MQTT
 - PostgreSQL
 - FTP

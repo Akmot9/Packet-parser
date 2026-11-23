@@ -490,29 +490,50 @@ fn application_classification_histogram_is_frozen() {
     // cinq faux positifs de wireshark_8579_radardata.pcap et de
     // ndpi_quic_interop_V.pcapng. RTP ne sort plus que sur un port declare
     // (`tests/rtp_golden.rs`).
+    //
+    // 2026-11-23 (#368, Skinny) : +6 captures dans protocols/skinny/ (voir
+    // SOURCE.md), 1 478 trames. "Skinny" 0 -> 656 : les 656 segments que
+    // tshark dissèque, reassemblage et analyse des sequences coupes
+    // (`tests/skinny_golden.rs`), et aucune trame des autres captures :
+    // la regle a port de TCP 2000 ne prend rien ailleurs dans le corpus.
+    // - ndpi_skinny.pcap (200 trames) : 40 "Skinny", 135 RTP sans port
+    //   declare, "Unknown", 25 sans charge ;
+    // - ndpi_sccp_hw_conf_register.pcapng (17) : 8 "Skinny", 9 sans charge ;
+    // - wireshark_6041_cm7_type_b_more.pcap (85) : 85 "Skinny" ;
+    // - wireshark_8616_100030.pcap (178) : 67 "Skinny", 48 "Unknown" (40
+    //   datagrammes TFTP, que la crate ne decode pas, et 8 segments de
+    //   suite Skinny), 63 sans charge ;
+    // - wireshark_8805_packets.cap (759) : 415 "Skinny", 344 sans charge ;
+    // - wireshark_10262_7911_CUCM_registration_RFC2833.pcapng (239) : 41
+    //   "Skinny", 15 "Unknown" (9 segments de suite HTTP, 3 de Skinny, 3
+    //   datagrammes NetBIOS sur UDP 138), 140 sans charge, et le trafic
+    //   d'un poste Windows : "SSDP" 24 -> 42, "NBNS" 848 -> 857, "DHCP"
+    //   73 -> 79, "HTTP" 148 -> 154, "DNS" 461 -> 463, "LLMNR" 136 -> 138.
+    // "Unknown" 16 731 -> 16 929 (+198), "(sans application)" 6 818 ->
+    // 7 399 (+581).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 6818),
+        (NO_APPLICATION, 7399),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 33),
-        ("DHCP", 73),
+        ("DHCP", 79),
         ("DIS", 390),
         ("DNP3", 218),
         ("DHCPv6", 32),
-        ("DNS", 461),
+        ("DNS", 463),
         ("ESP", 315),
         ("EtherNet/IP", 4),
         ("FTP", 18),
         ("GIOP", 123),
-        ("HTTP", 148),
+        ("HTTP", 154),
         ("IEC 104", 374),
         ("IKE", 535),
         ("Java RMI", 143),
         ("IP-in-IP", 5),
-        ("LLMNR", 136),
+        ("LLMNR", 138),
         ("MQTT", 187),
-        ("NBNS", 848),
+        ("NBNS", 857),
         ("NBSS", 32),
         ("ModbusTCP", 382),
         ("ModbusUDP", 38),
@@ -528,16 +549,17 @@ fn application_classification_histogram_is_frozen() {
         ("RADIUS", 23),
         ("RDP", 89),
         ("RTCP", 52),
+        ("Skinny", 656),
         ("SIP", 181),
         ("SMTP", 6),
         ("SNMP", 14),
         ("SRVLOC", 1),
-        ("SSDP", 24),
+        ("SSDP", 42),
         ("STP", 107),
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 16731),
+        ("Unknown", 16929),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

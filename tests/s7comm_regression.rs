@@ -765,14 +765,20 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // Ethernet/IPv4/UDP decodees sans erreur L2 : 198 -> 199 captures,
     // 197 -> 198 fichiers lus, 80 305 -> 80 345 trames, 80 263 -> 80 303
     // flux. Aucune n'est etiquetee S7Comm ni COTP.
-    assert_eq!(captures.len(), 199);
-    assert_eq!(opened_files, 198);
-    assert_eq!(frame_count, 80_345);
+    // 2026-11-23 (#368) : +6 captures Skinny dans protocols/skinny/ (voir
+    // SOURCE.md : nDPI, tracker Wireshark), 1 478 trames Ethernet ou Linux
+    // cooked decodees sans erreur L2 : 199 -> 205 captures, 198 -> 204
+    // fichiers lus, 80 345 -> 81 823 trames, 80 303 -> 81 781 flux. Aucune
+    // n'est etiquetee S7Comm ni COTP. wireshark_8805_packets.cap finit au
+    // milieu d'un enregistrement, apres ses 759 trames.
+    assert_eq!(captures.len(), 205);
+    assert_eq!(opened_files, 204);
+    assert_eq!(frame_count, 81_823);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 80_303);
+    assert_eq!(parsed_flows, 81_781);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,
@@ -781,8 +787,13 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     );
     assert_eq!(
         read_errors,
-        [("mqtt/mqtt_packets_RedHat61_tcpdump.pcap".to_string(), 1)],
-        "the legacy RedHat capture has a malformed second pcap record"
+        [
+            ("mqtt/mqtt_packets_RedHat61_tcpdump.pcap".to_string(), 1),
+            ("skinny/wireshark_8805_packets.cap".to_string(), 759),
+        ],
+        "the legacy RedHat capture has a malformed second pcap record, and \
+         the Skinny capture of Wireshark issue 8805 stops six bytes into a \
+         record header after its 759 frames"
     );
     assert!(
         s7comm_frames.is_empty(),

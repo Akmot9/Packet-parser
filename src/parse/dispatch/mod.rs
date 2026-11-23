@@ -132,6 +132,9 @@ decode_as_protocols![
     /// RTCP over UDP: any well-formed datagram, where the blind rule asks
     /// for a Sender or Receiver Report first, or a lone feedback message.
     Rtcp,
+    /// Skinny (Cisco SCCP) over TCP: the same rule as on TCP 2000, for a
+    /// call manager that listens on another port.
+    Skinny,
 ];
 
 impl DecodeAsProtocol {
@@ -233,6 +236,7 @@ impl DecodeAsProtocol {
             Self::Rtp => (ApplicationProtocol::Rtp, Guard::Udp, ProbeId::Rtp),
             Self::Nmf => (ApplicationProtocol::Nmf, Guard::Tcp, ProbeId::Nmf),
             Self::Rtcp => (ApplicationProtocol::Rtcp, Guard::Udp, ProbeId::Rtcp),
+            Self::Skinny => (ApplicationProtocol::Skinny, Guard::Tcp, ProbeId::Skinny),
         }
     }
 }

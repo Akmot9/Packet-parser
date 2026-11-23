@@ -445,6 +445,17 @@ pub(super) static RULES: &[Rule] = &[
         is_modbus_udp_port,
         ProbeId::ModbusTcp,
     ),
+    // Skinny (SCCP Cisco, #368) : TCP 2000 (IANA `cisco-sccp`). Garde par
+    // port : douze octets surtout nuls, une longueur et une version, ne
+    // font pas une sonde aveugle. 2000 est aussi un port ephemere : apres
+    // les autres regles de port TCP, et la sonde exige des messages qui
+    // pavent le segment. Un autre port se declare par Decode As.
+    port_rule(
+        ApplicationProtocol::Skinny,
+        Guard::Tcp,
+        is_skinny_tcp_port,
+        ProbeId::Skinny,
+    ),
     // WireGuard : UDP 51820, le port des exemples de `wg(8)` — aucun port
     // IANA. Comme pour l'heuristique de tshark, la forme du message suffit
     // a une initiation ou une reponse, octets reserves compris (Cloudflare

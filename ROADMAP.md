@@ -1,5 +1,15 @@
 # Roadmap packet_parser
 
+Etat au 2026-11-23, sur `main` et non publie : **Skinny** (SCCP, la
+signalisation des telephones IP Cisco, #368). Decodeur `SkinnyMessage`,
+regle a port sur TCP 2000, `DecodeAsProtocol::Skinny`, six captures reelles
+(nDPI, tracker Wireshark) et un oracle tshark de 656 segments et 933
+messages. Sur le corpus prive, 3 287 trames quittent `Unknown`, tout ce que
+TCP 2000 y porte. C'etait le plus gros des protocoles standard encore sans
+nom dans ce corpus ; le reste des flux jamais reconnus est surtout
+proprietaire, a nommer par des regles TOML. La couche a etat reste au
+backlog (§3).
+
 Etat au 2026-11-22, 13.3.0 : la **13.3.0 est publiee** (tag `v13.3.0`,
 publication par le workflow). Mineure, sans rupture, elle porte l'epic
 **#346**, qui visait le taux de parsing applicatif. Sur un corpus prive de
@@ -622,6 +632,12 @@ issue par protocole.
   - IPv4 fragmente : pas de `payload_protocol` ;
   - QUIC : Short Header indecidable hors contexte ;
   - PostgreSQL : reponses d'un seul octet.
+
+  Le corpus prive chiffre l'enjeu (voir l'etat en tete de ce fichier) :
+  9,29 M de trames `Unknown`, soit 32 % du corpus, sont des segments de
+  suite d'un flux deja nomme, dont 8,88 M pour NMF. Decision du
+  2026-11-23 : la rupture est trop grosse, la couche a etat reste au
+  backlog ; on continue d'ajouter des protocoles d'abord.
 
   A la reouverture, on mesure d'abord le gain sur `The-Ultimate-PCAP` :
   trames gagnees, et flux simultanes a tenir en memoire. Ensuite seulement,

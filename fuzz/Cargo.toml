@@ -338,3 +338,10 @@ path = "fuzz_targets/parse_rtcp.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_skinny"
+path = "fuzz_targets/parse_skinny.rs"
+test = false
+doc = false
+bench = false

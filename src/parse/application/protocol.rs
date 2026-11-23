@@ -124,6 +124,7 @@ application_protocols![
     (Nmf, "NMF"),
     (DceRpc, "DCE/RPC"),
     (Rtcp, "RTCP"),
+    (Skinny, "Skinny"),
 ];
 
 impl fmt::Display for ApplicationProtocol {
@@ -171,7 +172,7 @@ mod tests {
     /// tunnels, STP et `Unknown`. Une etiquette publiee ne change jamais de
     /// texte ; un protocole nouveau ajoute la sienne (`ModbusUDP` en 12.0.0,
     /// `Java RMI` en 13.0.0, `SIP` en 13.2.0).
-    const FROZEN_LABELS: [&str; 60] = [
+    const FROZEN_LABELS: [&str; 61] = [
         "AMS",
         "ASTERIX",
         "BACnet/IP",
@@ -225,6 +226,7 @@ mod tests {
         "SSH",
         "STANAG 5066",
         "STP",
+        "Skinny",
         "TLS",
         "UMAS",
         "Unknown",
