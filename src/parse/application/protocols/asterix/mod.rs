@@ -323,46 +323,68 @@ fn walk_record<'a, S: Sink<'a>>(
 ) -> Result<usize, AsterixError> {
     let category = uap.category;
     let fspec_len = fx_extent(buf).ok_or(AsterixError::FspecOverflow { category })?;
-    let fspec = &buf[..fspec_len];
-    let uap = select_uap(uap, fspec, &buf[fspec_len..]);
+    let (fspec, mut rest) = buf.split_at(fspec_len);
+    let uap = select_uap(uap, fspec, rest);
     if fspec_len > uap.max_fspec_octets() {
         return Err(AsterixError::FspecOverflow { category });
     }
     let mut empty = true;
-    let mut pos = fspec_len;
     for (octet_index, octet) in fspec.iter().enumerate() {
-        for bit in 0..7u8 {
-            if octet & (0x80 >> bit) == 0 {
-                continue;
-            }
-            // Sept FRN par octet ; `octet_index` < 7 et `bit` < 7, donc
-            // le FRN tient dans un u8.
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "`octet_index` < 7 : le FRN tient dans un u8"
-            )]
-            let frn = (octet_index * 7) as u8 + bit + 1;
-            let spec = uap
-                .item(frn)
-                .ok_or(AsterixError::UnknownFrn { category, frn })?;
-            let len = match spec.format {
-                ItemFormat::Rfs => rfs_len(uap, spec, fspec, &buf[pos..])?,
-                _ => item_len(uap, spec, &buf[pos..])?,
+        for rank in presence_bits(*octet) {
+            // Sept FRN par octet, numerotes a partir de 1.
+            let index = octet_index * 7 + usize::from(rank);
+            let Some(Some(spec)) = uap.items.get(index) else {
+                return Err(AsterixError::UnknownFrn {
+                    category,
+                    frn: frn_of(index),
+                });
+            };
+            let (data, tail) = match spec.format {
+                // Quatre items sur cinq du corpus : longueur fixe, sans
+                // appel. Trop court, `item_len` rend l'erreur.
+                ItemFormat::Fixed(len) if len <= rest.len() => rest.split_at(len),
+                ItemFormat::Rfs => rest.split_at(rfs_len(uap, spec, fspec, rest)?),
+                _ => rest.split_at(item_len(uap, spec, rest)?),
             };
             sink.item(AsterixItem {
-                frn,
+                frn: frn_of(index),
                 id: spec.id,
-                data: &buf[pos..pos + len],
+                data,
             });
             empty = false;
-            pos += len;
+            rest = tail;
         }
     }
     if empty {
         return Err(AsterixError::EmptyRecord { category });
     }
     sink.record(category, fspec);
-    Ok(pos)
+    Ok(buf.len() - rest.len())
+}
+
+/// Le FRN d'un rang dans l'UAP. Sature : un rang hors du u8 n'a pas d'item,
+/// le FSPEC d'un UAP connu tenant en sept octets.
+fn frn_of(index: usize) -> u8 {
+    u8::try_from(index + 1).unwrap_or(u8::MAX)
+}
+
+/// Les bits de presence poses d'un octet de FSPEC ou de primary subfield,
+/// par rang : 0 pour le bit 8 (poids fort, premier annonce) a 6 pour le
+/// bit 2. Le bit 1 est le FX, pas une presence.
+fn presence_bits(octet: u8) -> impl Iterator<Item = u8> {
+    let mut pending = octet & 0xfe;
+    std::iter::from_fn(move || {
+        if pending == 0 {
+            return None;
+        }
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "au plus 8 zeros en tete d'un u8"
+        )]
+        let rank = pending.leading_zeros() as u8;
+        pending &= !(0x80 >> rank);
+        Some(rank)
+    })
 }
 
 /// L'UAP du record quand la categorie en a plusieurs : CAT 001 lit le bit
@@ -967,6 +989,22 @@ mod tests {
                 AsterixPacket::try_from(bytes),
                 Err(expected),
                 "{bytes:02x?}"
+            );
+        }
+    }
+
+    /// Pour chaque octet, les rangs de ses bits de presence tels qu'un test
+    /// bit a bit les lirait, du bit 8 au bit 2 ; le FX n'en est pas un.
+    #[test]
+    fn test_presence_bits_lists_set_bits_from_the_most_significant() {
+        assert_eq!(presence_bits(0x82).collect::<Vec<_>>(), [0, 6]);
+        assert_eq!(presence_bits(0x01).count(), 0);
+        for octet in 0..=u8::MAX {
+            let expected: Vec<u8> = (0..7).filter(|bit| octet & (0x80 >> bit) != 0).collect();
+            assert_eq!(
+                presence_bits(octet).collect::<Vec<_>>(),
+                expected,
+                "{octet:#04x}"
             );
         }
     }
