@@ -31,7 +31,7 @@ use crate::parse::application::protocols::java_rmi::JavaRmiPacket;
 use crate::parse::application::protocols::ldap::LdapPdu;
 use crate::parse::application::protocols::modbus_tcp::ModbusTcpPacket;
 use crate::parse::application::protocols::mqtt::MqttPacket;
-use crate::parse::application::protocols::netbios::{NbnsPacket, NbssPacket};
+use crate::parse::application::protocols::netbios::{NbdsPacket, NbnsPacket, NbssPacket};
 use crate::parse::application::protocols::nmf::NmfSegment;
 use crate::parse::application::protocols::nntp::NntpMessage;
 use crate::parse::application::protocols::ntp::NtpPacket;
@@ -213,11 +213,14 @@ pub(super) enum ProbeId {
     /// Syslog sur TCP : des trames de la RFC 6587 qui pavent le segment,
     /// la derniere pouvant etre coupee (#374).
     SyslogTcp,
+    /// NetBIOS Datagram Service : un message dont la longueur annoncee est
+    /// celle du datagramme, noms decodes (#377).
+    Nbds,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::SyslogTcp;
+    pub(super) const LAST: Self = Self::Nbds;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -306,6 +309,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Ldap => LdapPdu::is_port_match(payload),
         ProbeId::Syslog => SyslogMessage::try_from(payload).is_ok(),
         ProbeId::SyslogTcp => SyslogFrame::is_port_match(payload),
+        ProbeId::Nbds => NbdsPacket::try_from(payload).is_ok(),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),

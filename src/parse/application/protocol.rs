@@ -127,6 +127,7 @@ application_protocols![
     (Skinny, "Skinny"),
     (Ldap, "LDAP"),
     (Syslog, "Syslog"),
+    (Nbds, "NBDS"),
 ];
 
 impl fmt::Display for ApplicationProtocol {
@@ -174,7 +175,7 @@ mod tests {
     /// tunnels, STP et `Unknown`. Une etiquette publiee ne change jamais de
     /// texte ; un protocole nouveau ajoute la sienne (`ModbusUDP` en 12.0.0,
     /// `Java RMI` en 13.0.0, `SIP` en 13.2.0).
-    const FROZEN_LABELS: [&str; 63] = [
+    const FROZEN_LABELS: [&str; 64] = [
         "AMS",
         "ASTERIX",
         "BACnet/IP",
@@ -205,6 +206,7 @@ mod tests {
         "ModbusTCP",
         "ModbusUDP",
         "NAT-keepalive",
+        "NBDS",
         "NBNS",
         "NBSS",
         "NMF",

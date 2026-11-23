@@ -335,6 +335,18 @@ Application detection is intentionally best-effort. Parser modules include:
   segments that carry the rest stay `Unknown`; a message with an inner LF
   is not told from two messages; TCP 514 is also the port of `rsh`, whose
   segments do not open with a priority; syslog over TLS (TCP 6514) is TLS
+- NetBIOS (RFC 1001 and 1002), one label per service: `NBNS`, the name
+  service on UDP 137; `NBSS`, the session service on TCP 139 and 445; `NBDS`,
+  the datagram service on UDP 138 or a Decode As port
+  (`DecodeAsProtocol::Nbds`). `NbdsPacket` exposes the message type
+  (`NbdsMessageType`), the flags, the datagram identifier, the source
+  address and port, then, by type (`NbdsBody`): the length, the packet
+  offset, the source and destination names (`NetbiosName`) and the user
+  data of a datagram; the code of an error; the name of a query to a
+  datagram distribution server. The announced length must be that of the
+  UDP datagram. The user data, most often SMB on a mailslot (Browser
+  announcements and elections, NETLOGON), is borrowed, not decoded; a
+  fragmented datagram is not reassembled
 - MQTT
 - PostgreSQL
 - FTP

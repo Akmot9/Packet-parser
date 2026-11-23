@@ -174,6 +174,11 @@ pub(super) fn is_nbns_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(137))
 }
 
+/// NetBIOS Datagram Service : UDP 138 (IANA `netbios-dgm`) (#377).
+pub(super) fn is_nbds_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(138))
+}
+
 /// NetBIOS Session Service : TCP 139, et TCP 445 (SMB direct hosting).
 pub(super) fn is_nbss_tcp_port(port: Option<u16>) -> bool {
     matches!(port, Some(139 | 445))

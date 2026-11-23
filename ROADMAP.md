@@ -28,6 +28,13 @@ de 341 charges. Sur le corpus prive, 482 trames quittent `Unknown`. Le
 trafic d'UDP 5405 de ce corpus, pris pour du Corosync, est chiffre : aucun
 decodeur ne le nommera.
 
+Meme jour, sur `main` et non publie aussi : **NBDS**, le service de
+datagrammes NetBIOS (RFC 1002, UDP 138, #377), troisieme service du module
+`netbios`. Decodeur `NbdsPacket`, regle a port, `DecodeAsProtocol::Nbds`,
+une capture du wiki Wireshark et un oracle tshark de 179 datagrammes. Sur
+le corpus prive, les 196 datagrammes d'UDP 138 sont nommes, dans 18
+captures.
+
 Etat au 2026-11-22, 13.3.0 : la **13.3.0 est publiee** (tag `v13.3.0`,
 publication par le workflow). Mineure, sans rupture, elle porte l'epic
 **#346**, qui visait le taux de parsing applicatif. Sur un corpus prive de

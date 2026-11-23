@@ -3,23 +3,28 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
-//! Parseurs NetBIOS (RFC 1001/1002) : Name Service (NBNS, UDP 137) et
-//! Session Service (NBSS, TCP 139).
+//! Parseurs NetBIOS (RFC 1001/1002) : Name Service (NBNS, UDP 137),
+//! Session Service (NBSS, TCP 139) et Datagram Service (NBDS, UDP 138,
+//! #377).
 //!
-//! Le Datagram Service (UDP 138) n'est pas implemente : le corpus du depot
-//! n'en contient aucune trame, il n'y a donc rien a verrouiller par un golden
-//! test.
+//! Le service de datagrammes porte les messages sans connexion d'un nom
+//! NetBIOS a un autre : surtout les annonces et les elections du service
+//! Browser de Windows, et les requetes NETLOGON, en SMB sur mailslot. Les
+//! donnees utilisateur sont rendues telles quelles.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, net::Ipv4Addr};
 
 use crate::{
     checks::application::netbios::{
-        NBNS_HEADER_LENGTH, NBNS_QUESTION_MIN_LENGTH, NBNS_RECORD_MIN_LENGTH, NBSS_HEADER_LENGTH,
-        extract_nbns_counts, extract_nbns_flags, extract_nbns_question, extract_nbns_record,
-        extract_nbss_length, extract_nbss_message_type, validate_nbns_min_length,
-        validate_nbss_length_for_type, validate_nbss_min_length, validate_nbss_payload_available,
+        NBDS_DATAGRAM_HEADER_LENGTH, NBDS_HEADER_LENGTH, NBNS_HEADER_LENGTH,
+        NBNS_QUESTION_MIN_LENGTH, NBNS_RECORD_MIN_LENGTH, NBSS_HEADER_LENGTH, extract_nbds_flags,
+        extract_nbds_message_type, extract_nbds_name, extract_nbns_counts, extract_nbns_flags,
+        extract_nbns_question, extract_nbns_record, extract_nbss_length, extract_nbss_message_type,
+        validate_nbds_datagram_length, validate_nbds_end, validate_nbds_length,
+        validate_nbns_min_length, validate_nbss_length_for_type, validate_nbss_min_length,
+        validate_nbss_payload_available,
     },
-    errors::application::netbios::{NbnsError, NbssError},
+    errors::application::netbios::{NbdsError, NbnsError, NbssError},
 };
 
 use super::bounded_capacity;
@@ -298,6 +303,195 @@ impl<'a> TryFrom<&'a [u8]> for NbssPacket<'a> {
                 length,
             },
             payload: &packet[NBSS_HEADER_LENGTH..NBSS_HEADER_LENGTH + length as usize],
+        })
+    }
+}
+
+/// Message type of an NBDS packet (RFC 1002 §4.4.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum NbdsMessageType {
+    /// 0x10: datagram to a unique name.
+    DirectUnique,
+    /// 0x11: datagram to a group name.
+    DirectGroup,
+    /// 0x12: datagram to every name.
+    Broadcast,
+    /// 0x13: a datagram could not be delivered.
+    Error,
+    /// 0x14: asks a datagram distribution server whether it knows a name.
+    QueryRequest,
+    /// 0x15: the server will relay to that name.
+    PositiveQueryResponse,
+    /// 0x16: the server will not.
+    NegativeQueryResponse,
+}
+
+impl NbdsMessageType {
+    /// Value of the type on the wire.
+    pub const fn code(self) -> u8 {
+        match self {
+            NbdsMessageType::DirectUnique => 0x10,
+            NbdsMessageType::DirectGroup => 0x11,
+            NbdsMessageType::Broadcast => 0x12,
+            NbdsMessageType::Error => 0x13,
+            NbdsMessageType::QueryRequest => 0x14,
+            NbdsMessageType::PositiveQueryResponse => 0x15,
+            NbdsMessageType::NegativeQueryResponse => 0x16,
+        }
+    }
+}
+
+/// Flags of an NBDS packet (RFC 1002 §4.4.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct NbdsFlags {
+    /// Node type of the sender: 0 B node, 1 P node, 2 M node, 3 NBDD.
+    pub node_type: u8,
+    /// Bit F: first fragment of the datagram.
+    pub first: bool,
+    /// Bit M: more fragments follow.
+    pub more: bool,
+}
+
+/// A datagram carried by NBDS, types 0x10 to 0x12 ([`NbdsBody::Datagram`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct NbdsDatagram<'a> {
+    /// Number of bytes that follow the packet offset: the two names and
+    /// the user data.
+    pub length: u16,
+    /// Offset of this fragment in the user data of the whole datagram.
+    pub packet_offset: u16,
+    pub source_name: NetbiosName,
+    /// Raw scope labels of the source name, empty in practice.
+    pub source_scope: &'a [u8],
+    pub destination_name: NetbiosName,
+    /// Raw scope labels of the destination name, empty in practice.
+    pub destination_scope: &'a [u8],
+    /// What the datagram carries, most often SMB on a mailslot; not
+    /// decoded.
+    pub user_data: &'a [u8],
+}
+
+/// What follows the common header of an NBDS packet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum NbdsBody<'a> {
+    /// Types 0x10 to 0x12: names and user data.
+    Datagram(NbdsDatagram<'a>),
+    /// Type 0x13: the error code, 0x82 (destination name not present),
+    /// 0x83 (invalid source name format) or 0x84 (invalid destination name
+    /// format).
+    #[non_exhaustive]
+    Error { code: u8 },
+    /// Types 0x14 to 0x16: the name a datagram distribution server is
+    /// asked about.
+    #[non_exhaustive]
+    Query {
+        destination_name: NetbiosName,
+        /// Raw scope labels of the name, empty in practice.
+        destination_scope: &'a [u8],
+    },
+}
+
+/// NetBIOS Datagram Service packet (RFC 1002 §4.4), UDP port 138.
+///
+/// ```mermaid
+/// ---
+/// title: NbdsPacket, datagram (types 0x10 to 0x12)
+/// ---
+/// packet-beta
+/// 0-7: "MSG_TYPE u8"
+/// 8-11: "reserved (0)"
+/// 12-13: "SNT"
+/// 14-14: "F"
+/// 15-15: "M"
+/// 16-31: "DGM_ID u16"
+/// 32-63: "SOURCE_IP"
+/// 64-79: "SOURCE_PORT u16"
+/// 80-95: "DGM_LENGTH u16"
+/// 96-111: "PACKET_OFFSET u16"
+/// 112-175: "SOURCE_NAME (34 bytes, first-level encoding)"
+/// 176-239: "DESTINATION_NAME (34 bytes)"
+/// 240-287: "USER_DATA"
+/// ```
+///
+/// An error (0x13) carries one byte of error code after the source port; a
+/// query (0x14 to 0x16) carries the destination name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct NbdsPacket<'a> {
+    pub message_type: NbdsMessageType,
+    pub flags: NbdsFlags,
+    /// Identifier of the datagram, shared by its fragments.
+    pub datagram_id: u16,
+    /// Address of the sender, as it writes it.
+    pub source_ip: Ipv4Addr,
+    pub source_port: u16,
+    pub body: NbdsBody<'a>,
+}
+
+impl<'a> TryFrom<&'a [u8]> for NbdsPacket<'a> {
+    type Error = NbdsError;
+
+    fn try_from(packet: &'a [u8]) -> Result<Self, NbdsError> {
+        validate_nbds_length(packet, NBDS_HEADER_LENGTH)?;
+
+        let message_type = extract_nbds_message_type(packet[0])?;
+        let flags = extract_nbds_flags(packet[1])?;
+        let datagram_id = u16::from_be_bytes([packet[2], packet[3]]);
+        let source_ip = Ipv4Addr::new(packet[4], packet[5], packet[6], packet[7]);
+        let source_port = u16::from_be_bytes([packet[8], packet[9]]);
+
+        let body = match message_type {
+            NbdsMessageType::DirectUnique
+            | NbdsMessageType::DirectGroup
+            | NbdsMessageType::Broadcast => {
+                validate_nbds_length(packet, NBDS_DATAGRAM_HEADER_LENGTH)?;
+                let length = u16::from_be_bytes([packet[10], packet[11]]);
+                let packet_offset = u16::from_be_bytes([packet[12], packet[13]]);
+                validate_nbds_datagram_length(packet, length)?;
+                let (source_name, source_scope, next) =
+                    extract_nbds_name(packet, NBDS_DATAGRAM_HEADER_LENGTH)?;
+                let (destination_name, destination_scope, next) = extract_nbds_name(packet, next)?;
+                NbdsBody::Datagram(NbdsDatagram {
+                    length,
+                    packet_offset,
+                    source_name,
+                    source_scope,
+                    destination_name,
+                    destination_scope,
+                    user_data: &packet[next..],
+                })
+            }
+            NbdsMessageType::Error => {
+                validate_nbds_length(packet, NBDS_HEADER_LENGTH + 1)?;
+                validate_nbds_end(packet, NBDS_HEADER_LENGTH + 1)?;
+                NbdsBody::Error {
+                    code: packet[NBDS_HEADER_LENGTH],
+                }
+            }
+            NbdsMessageType::QueryRequest
+            | NbdsMessageType::PositiveQueryResponse
+            | NbdsMessageType::NegativeQueryResponse => {
+                let (destination_name, destination_scope, next) =
+                    extract_nbds_name(packet, NBDS_HEADER_LENGTH)?;
+                validate_nbds_end(packet, next)?;
+                NbdsBody::Query {
+                    destination_name,
+                    destination_scope,
+                }
+            }
+        };
+
+        Ok(NbdsPacket {
+            message_type,
+            flags,
+            datagram_id,
+            source_ip,
+            source_port,
+            body,
         })
     }
 }
@@ -634,5 +828,215 @@ mod tests {
                 length: 4
             })
         );
+    }
+
+    /// Trame 3 de pcaps_exemple/protocols/netbios/smb-browser-elections.pcapng
+    /// (211 octets) : annonce de domaine de TUMBLEWEED<00> au groupe
+    /// `\x01\x02__MSBROWSE__\x02<01>`.
+    const NBDS_DOMAIN_ANNOUNCEMENT_HEX: &str = concat!(
+        "11028216c0a87b02008a00c500002046454646454e4543454d45464648454645",
+        "46454543414341434143414341414100204142414346504650454e4644454346",
+        "434550464846444546465046504143414200ff534d4225000000000000000000",
+        "0000000000000000000000000000000000001100002b000000000000000000e8",
+        "0300000000000000002b00560003000100010002003c005c4d41494c534c4f54",
+        "5c42524f575345000c00a0bb0d0053594e45524954590000000000000100030a",
+        "00100080d4febb0154554d424c455745454400",
+    );
+
+    /// Trame 4 de la meme capture (179 octets) : election du service
+    /// Browser, d'OBSIDIAN<00> a SYNERITY<1d>.
+    const NBDS_ELECTION_HEX: &str = concat!(
+        "110280d0c0a87b01008a00a5000020455045434644454a4545454a4542454f43",
+        "41434143414341434143414341414100204644464a454f45464643454a464546",
+        "4a4341434143414341434143414341424e00ff534d4225000000000000000000",
+        "0000000000000000000000000000000000001100000b000000000000000000e8",
+        "0300000000000000000b00560003000100010002001c005c4d41494c534c4f54",
+        "5c42524f5753450002004f4253494449414e00",
+    );
+
+    /// Trame 34 de pcaps_exemple/protocols/sip/wireshark_aaa.pcap (201
+    /// octets) : annonce d'hote de D002465<20> a ECI_DOMAIN<1d>, drapeaux
+    /// 0x0e.
+    const NBDS_HOST_ANNOUNCEMENT_HEX: &str = concat!(
+        "110e84ecc0a80102008a00bb0000204545444144414443444544474446434143",
+        "414341434143414341434143414341002045464544454a465045454550454e45",
+        "42454a454f43414341434143414341424e00ff534d4225000000000000000000",
+        "00000000000000000000000000000000000011000021000000000000000000e8",
+        "03000000000000000021005600030001000000020032005c4d41494c534c4f54",
+        "5c42524f57534500010080fc0a00443030323436350000000000000000000500",
+        "031000000f0155aa00",
+    );
+
+    #[test]
+    fn nbds_group_datagram_is_read() {
+        let bytes = payload(NBDS_ELECTION_HEX);
+        let packet = NbdsPacket::try_from(bytes.as_slice()).expect("datagramme NBDS");
+        assert_eq!(packet.message_type, NbdsMessageType::DirectGroup);
+        assert_eq!(packet.message_type.code(), 0x11);
+        assert_eq!(packet.flags.node_type, 0);
+        assert!(packet.flags.first && !packet.flags.more);
+        assert_eq!(packet.datagram_id, 0x80d0);
+        assert_eq!(packet.source_ip, Ipv4Addr::new(192, 168, 123, 1));
+        assert_eq!(packet.source_port, 138);
+        let NbdsBody::Datagram(datagram) = packet.body else {
+            panic!("pas un datagramme");
+        };
+        assert_eq!(datagram.length, 165);
+        assert_eq!(datagram.packet_offset, 0);
+        assert_eq!(datagram.source_name.as_str(), Some("OBSIDIAN"));
+        assert_eq!(datagram.source_name.suffix, 0x00);
+        assert_eq!(datagram.destination_name.as_str(), Some("SYNERITY"));
+        assert_eq!(datagram.destination_name.suffix, 0x1d);
+        assert!(datagram.source_scope.is_empty() && datagram.destination_scope.is_empty());
+        // Deux noms de 34 octets, puis du SMB sur mailslot.
+        assert_eq!(datagram.user_data.len(), 165 - 68);
+        assert!(datagram.user_data.starts_with(b"\xffSMB"));
+    }
+
+    #[test]
+    fn nbds_names_keep_their_raw_bytes() {
+        let bytes = payload(NBDS_DOMAIN_ANNOUNCEMENT_HEX);
+        let packet = NbdsPacket::try_from(bytes.as_slice()).expect("datagramme NBDS");
+        let NbdsBody::Datagram(datagram) = packet.body else {
+            panic!("pas un datagramme");
+        };
+        assert_eq!(datagram.source_name.as_str(), Some("TUMBLEWEED"));
+        // Le groupe des maitres explorateurs : des octets non imprimables.
+        assert_eq!(&datagram.destination_name.name, b"\x01\x02__MSBROWSE__\x02");
+        assert_eq!(datagram.destination_name.suffix, 0x01);
+        assert_eq!(datagram.destination_name.as_str(), None);
+
+        // Drapeaux 0x0e : type de noeud 3, premier fragment.
+        let bytes = payload(NBDS_HOST_ANNOUNCEMENT_HEX);
+        let packet = NbdsPacket::try_from(bytes.as_slice()).expect("datagramme NBDS");
+        assert_eq!(packet.flags.node_type, 3);
+        assert!(packet.flags.first && !packet.flags.more);
+        assert_eq!(packet.source_ip, Ipv4Addr::new(192, 168, 1, 2));
+    }
+
+    /// La trame reelle, modifiee octet par octet.
+    #[test]
+    fn nbds_rejects_malformed_datagrams() {
+        let bytes = payload(NBDS_ELECTION_HEX);
+        let with = |index: usize, value: u8| {
+            let mut bytes = bytes.clone();
+            bytes[index] = value;
+            NbdsPacket::try_from(bytes.as_slice()).map(|_| ())
+        };
+        assert_eq!(with(0, 0x0f), Err(NbdsError::UnknownMessageType(0x0f)));
+        assert_eq!(with(0, 0x17), Err(NbdsError::UnknownMessageType(0x17)));
+        assert_eq!(with(1, 0x12), Err(NbdsError::NonZeroReservedFlags(0x12)));
+        // La longueur annoncee doit etre celle du datagramme UDP.
+        assert_eq!(
+            with(11, 0xa4),
+            Err(NbdsError::LengthMismatch {
+                announced: 164,
+                actual: 165
+            })
+        );
+        assert_eq!(
+            NbdsPacket::try_from(&bytes[..bytes.len() - 1]).map(|_| ()),
+            Err(NbdsError::LengthMismatch {
+                announced: 165,
+                actual: 164
+            })
+        );
+        // Un nom qui n'est pas un label de 32 octets, ou mal encode.
+        assert_eq!(
+            with(14, 0x1f),
+            Err(NbdsError::InvalidName(NbnsError::InvalidNameLength {
+                offset: 14,
+                length: 0x1f
+            }))
+        );
+        assert_eq!(
+            with(15, b'Q'),
+            Err(NbdsError::InvalidName(NbnsError::InvalidNameEncoding {
+                offset: 15
+            }))
+        );
+        // Un pointeur de compression n'existe pas dans un nom NBDS.
+        assert_eq!(
+            with(48, 0xc0),
+            Err(NbdsError::InvalidName(NbnsError::InvalidNameLength {
+                offset: 48,
+                length: 0xc0
+            }))
+        );
+        assert_eq!(
+            NbdsPacket::try_from(&bytes[..9]).map(|_| ()),
+            Err(NbdsError::InvalidLength {
+                expected: 10,
+                actual: 9
+            })
+        );
+        assert_eq!(
+            NbdsPacket::try_from(&bytes[..12]).map(|_| ()),
+            Err(NbdsError::InvalidLength {
+                expected: 14,
+                actual: 12
+            })
+        );
+    }
+
+    /// Synthetique : les types absents du corpus. Un message d'erreur
+    /// (0x13) porte un octet de code ; une requete au serveur de
+    /// datagrammes (0x14 a 0x16) porte le nom recherche, pris ici a la
+    /// trame reelle.
+    #[test]
+    fn nbds_error_and_query_messages_are_read() {
+        let real = payload(NBDS_ELECTION_HEX);
+        let mut error = real[..10].to_vec();
+        error[0] = 0x13;
+        error.push(0x82);
+        let packet = NbdsPacket::try_from(error.as_slice()).expect("erreur NBDS");
+        assert_eq!(packet.message_type, NbdsMessageType::Error);
+        assert_eq!(packet.body, NbdsBody::Error { code: 0x82 });
+        error.push(0);
+        assert_eq!(
+            NbdsPacket::try_from(error.as_slice()),
+            Err(NbdsError::TrailingBytes(1))
+        );
+        assert_eq!(
+            NbdsPacket::try_from(&error[..10]),
+            Err(NbdsError::InvalidLength {
+                expected: 11,
+                actual: 10
+            })
+        );
+
+        for (code, message_type) in [
+            (0x14, NbdsMessageType::QueryRequest),
+            (0x15, NbdsMessageType::PositiveQueryResponse),
+            (0x16, NbdsMessageType::NegativeQueryResponse),
+        ] {
+            let mut query = real[..10].to_vec();
+            query[0] = code;
+            // Le nom destinataire de la trame reelle : SYNERITY<1d>.
+            query.extend_from_slice(&real[48..82]);
+            let packet = NbdsPacket::try_from(query.as_slice()).expect("requete NBDS");
+            assert_eq!(packet.message_type, message_type);
+            let NbdsBody::Query {
+                destination_name, ..
+            } = packet.body
+            else {
+                panic!("pas une requete");
+            };
+            assert_eq!(destination_name.as_str(), Some("SYNERITY"));
+            query.push(0);
+            assert_eq!(
+                NbdsPacket::try_from(query.as_slice()),
+                Err(NbdsError::TrailingBytes(1))
+            );
+        }
+
+        // Un datagramme direct (0x10) ou diffuse (0x12) se lit comme un
+        // datagramme de groupe.
+        for code in [0x10, 0x12] {
+            let mut datagram = real.clone();
+            datagram[0] = code;
+            let packet = NbdsPacket::try_from(datagram.as_slice()).expect("datagramme");
+            assert!(matches!(packet.body, NbdsBody::Datagram(_)));
+        }
     }
 }

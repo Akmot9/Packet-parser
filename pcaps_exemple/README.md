@@ -37,7 +37,7 @@ réellement capturées sur un réseau.
 |---|---|---|
 | `dns/` | #2 | requêtes/réponses DNS classiques (port 53) |
 | `mdns_llmnr_ssdp/` | #2 | ✅ mDNS (requete, QU, annonce et cache-flush) ; LLMNR/SSDP restent a ajouter — voir `SOURCE.md` |
-| `netbios/` | #8 | NBNS (137), Datagram (138), Session (139) |
+| `netbios/` | #8, #377 | ✅ service de datagrammes NetBIOS réel sur UDP 138 : `smb-browser-elections.pcapng` du wiki Wireshark (GPL), deux postes Windows en 2005, 165 datagrammes du service Browser (élections, annonces, demandes de liste) et 42 trames NBNS, voir `SOURCE.md`. Avec 14 datagrammes épars dans quatre autres dossiers, 179 datagrammes comparés à tshark champ par champ dans `tests/nbds_golden.rs`. NBNS (137) et NBSS (139, 445) sont testés sur `The-Ultimate-PCAP.pcapng` (`tests/netbios_golden.rs`) |
 | `openvpn/` | #5 | ✅ session `tls-auth` complète sur UDP 1194 **et** TCP 1194 (samples wiki Wireshark : hard resets v2, control, ack, data v1) — voir `SOURCE.md` |
 | `stp/` | #4 | BPDU STP, RSTP, MSTP |
 | `s7comm/` | #11 | trafic S7comm v2 **et** v3 pour les distinguer |
