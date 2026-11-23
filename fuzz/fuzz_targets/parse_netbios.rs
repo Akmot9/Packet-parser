@@ -82,7 +82,8 @@ fn exercise(data: &[u8]) {
             // Sans aucun compteur : la reponse negative du schema de la RFC
             // 1002 §4.2.14, et son enregistrement NULL qui finit l'entree.
             assert!(packet.flags.response && packet.flags.opcode == 0);
-            assert_ne!(packet.flags.rcode, 0);
+            // FMT_ERR a RFS_ERR, les cinq codes de ce paragraphe.
+            assert!((1..=5).contains(&packet.flags.rcode));
             assert_eq!(packet.resource_records.len(), 1);
             assert!(packet.resource_records[0].rdata.is_empty());
             assert_eq!(data[data.len() - 10..data.len() - 8], [0x00, 0x0a]);

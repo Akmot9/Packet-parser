@@ -379,7 +379,8 @@ Application detection is intentionally best-effort. Parser modules include:
   not reassembled, and its second fragment is not read. `NbnsPacket` reads
   the records its four counts announce, and one more form: the negative
   name query response as the figure of RFC 1002 §4.2.14 draws it, four
-  zero counts followed by a NULL record
+  zero counts followed by a NULL record, with one of the five error codes
+  of that section
 - MQTT
 - PostgreSQL
 - FTP

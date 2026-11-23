@@ -63,6 +63,10 @@ const NBNS_CLASS_IN: u16 = 0x0001;
 const NBNS_VALID_OPCODES: [u8; 7] = [0x0, 0x5, 0x6, 0x7, 0x8, 0x9, 0xf];
 /// Opcode d'une requete de nom et de sa reponse.
 const NBNS_OPCODE_QUERY: u8 = 0x0;
+/// Codes d'erreur d'une reponse negative a une requete de nom (RFC 1002
+/// §4.2.14) : de FMT_ERR (1) a RFS_ERR (5). ACT_ERR (6) et CFT_ERR (7)
+/// sont ceux d'une reponse a un enregistrement de nom (§4.2.6).
+const NBNS_NEGATIVE_QUERY_RCODES: std::ops::RangeInclusive<u8> = 0x1..=0x5;
 
 /// Rcodes NBNS valides (RFC 1002 §4.2.6 a §4.2.14) : FMT_ERR (0x1),
 /// SRV_ERR (0x2), NAM_ERR (0x3, nom inconnu : la reponse negative d'un
@@ -128,8 +132,9 @@ pub fn extract_nbns_flags(raw: u16) -> Result<NbnsFlags, NbnsError> {
 ///
 /// Une exception : le schema de NEGATIVE NAME QUERY RESPONSE (RFC 1002
 /// §4.2.14) montre quatre compteurs nuls suivis d'un enregistrement NULL.
-/// Une reponse negative a une requete de nom garde donc ses compteurs
-/// nuls ; son enregistrement est verifie par
+/// Une reponse negative a une requete de nom, a l'un des cinq codes
+/// d'erreur que ce paragraphe donne, garde donc ses compteurs nuls ; son
+/// enregistrement est verifie par
 /// [`validate_nbns_literal_negative_response`] (#383). La forme a
 /// ANCOUNT = 1, celle de Samba, suit les compteurs (#292).
 pub fn extract_nbns_counts(packet: &[u8], flags: &NbnsFlags) -> Result<[u16; 4], NbnsError> {
@@ -145,7 +150,7 @@ pub fn extract_nbns_counts(packet: &[u8], flags: &NbnsFlags) -> Result<[u16; 4],
     // L'en-tete seul reste un message vide, quel que soit son code.
     let is_negative_query_response = flags.response
         && flags.opcode == NBNS_OPCODE_QUERY
-        && flags.rcode != 0
+        && NBNS_NEGATIVE_QUERY_RCODES.contains(&flags.rcode)
         && packet.len() > NBNS_HEADER_LENGTH;
     if counts.iter().all(|count| *count == 0) && !is_negative_query_response {
         return Err(NbnsError::EmptyMessage);

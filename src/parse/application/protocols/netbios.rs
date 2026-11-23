@@ -649,9 +649,17 @@ mod tests {
             Some(ApplicationProtocol::Nbns)
         );
 
+        // Les cinq codes d'erreur du §4.2.14, de FMT_ERR a RFS_ERR.
+        for rcode in 1..=5 {
+            let bytes = negative_query_response([0x85, 0x80 | rcode], 0);
+            let packet = NbnsPacket::try_from(bytes.as_slice()).expect("code du §4.2.14");
+            assert_eq!(packet.flags.rcode, rcode);
+        }
+
         // Sans compteur, rien d'autre ne passe : une requete, une reponse
-        // sans erreur, une reponse a un enregistrement (opcode 5), un
-        // en-tete seul, un enregistrement d'un autre type ou a RDATA, un
+        // sans erreur, un code propre aux reponses a un enregistrement
+        // (ACT_ERR, CFT_ERR), une reponse a un enregistrement (opcode 5),
+        // un en-tete seul, un enregistrement d'un autre type ou a RDATA, un
         // octet de trop.
         let refused = |bytes: &[u8]| {
             assert_eq!(
@@ -662,6 +670,9 @@ mod tests {
         };
         refused(&negative_query_response([0x01, 0x03], 0));
         refused(&negative_query_response([0x85, 0x80], 0));
+        for rcode in [6, 7] {
+            refused(&negative_query_response([0x85, 0x80 | rcode], 0));
+        }
         refused(&negative_query_response([0xad, 0x83], 0));
         refused(&bytes[..12]);
         let mut other_type = bytes.clone();

@@ -281,8 +281,9 @@ trafic valide.
 - **NBNS : reponse negative a compteurs nuls.** Le schema de NEGATIVE NAME
   QUERY RESPONSE (RFC 1002 §4.2.14) porte quatre compteurs nuls devant son
   enregistrement NULL, et le decodeur refusait tout message sans compteur.
-  Une reponse a une requete de nom, a code d'erreur, sans compteur, est
-  maintenant lue quand cet enregistrement la suit et finit le datagramme :
+  Une reponse a une requete de nom, sans compteur, a l'un des cinq codes
+  d'erreur de ce paragraphe (FMT_ERR a RFS_ERR, 1 a 5), est maintenant
+  lue quand cet enregistrement la suit et finit le datagramme :
   `resource_records` le porte, les compteurs restent ceux du fil. La forme
   a `ANCOUNT = 1`, celle de Samba, etait deja lue (#292).
 
