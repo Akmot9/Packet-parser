@@ -73,8 +73,10 @@ serde_json = "1.0.150"
 # ingestion, capture live), avec son propre workspace et son Cargo.lock ;
 # verbench : Cargo.toml genere par run.sh ; fuzz : cargo-fuzz et nightly ;
 # benches : criterion et CodSpeed (#214) ; plugin : le kit des parseurs
-# charges a l'execution (#319), seul endroit du depot qui ecrit de l'unsafe.
-exclude = ["benches", "tools/lab", "tools/verbench", "fuzz", "plugin"]
+# charges a l'execution (#319), seul endroit du depot qui ecrit de l'unsafe ;
+# tools/compare : la comparaison avec etherparse et pnet_packet (#375), qui
+# ne sont jamais des dependances de la crate.
+exclude = ["benches", "tools/lab", "tools/verbench", "tools/compare", "fuzz", "plugin"]
 
 [profile.release]
 opt-level = 3         # Highest speed optimization
