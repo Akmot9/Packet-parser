@@ -33,10 +33,10 @@
 use std::convert::TryFrom;
 
 use crate::checks::application::kerberos::{
-    DerContents, KERBEROS_RECORD_MARK_LENGTH, extract_element, extract_field, extract_integer,
-    extract_message_type, extract_name_string, extract_principal_name, extract_record_length,
-    extract_sequence, extract_sequence_fields, extract_string, extract_ticket, validate_header,
-    validate_record_length,
+    DerContents, DerElement, KERBEROS_RECORD_MARK_LENGTH, extract_element, extract_field,
+    extract_integer, extract_message_type, extract_name_string, extract_principal_name,
+    extract_record_length, extract_sequence, extract_sequence_fields, extract_string,
+    extract_ticket, validate_header, validate_record_length,
 };
 use crate::errors::application::kerberos::KerberosError;
 
@@ -271,14 +271,20 @@ impl<'a> KerberosMessage<'a> {
     }
 }
 
-impl<'a> TryFrom<&'a [u8]> for KerberosMessage<'a> {
-    type Error = KerberosError;
-
-    fn try_from(bytes: &'a [u8]) -> Result<Self, Self::Error> {
-        // L'etiquette est jugee avant la longueur, pour qu'une entree qui
-        // n'est pas du Kerberos sorte sur son premier octet.
+impl<'a> KerberosMessage<'a> {
+    /// L'element `[APPLICATION n]` du message : son type et sa longueur.
+    /// L'etiquette est jugee avant la longueur, pour qu'une entree qui
+    /// n'est pas du Kerberos sorte sur son premier octet.
+    fn element(bytes: &'a [u8]) -> Result<(KerberosMessageType, DerElement<'a>), KerberosError> {
         let message_type = extract_message_type(bytes)?;
-        let message = extract_element("message", bytes)?;
+        Ok((message_type, extract_element("message", bytes)?))
+    }
+
+    /// Le message, une fois son element lu : sa SEQUENCE et son en-tete.
+    fn from_element(
+        message_type: KerberosMessageType,
+        message: DerElement<'a>,
+    ) -> Result<Self, KerberosError> {
         let sequence = extract_sequence(&message)?;
         validate_header(&sequence, message_type)?;
         Ok(Self {
@@ -288,6 +294,15 @@ impl<'a> TryFrom<&'a [u8]> for KerberosMessage<'a> {
             is_truncated: message.is_truncated(),
             rest: message.rest,
         })
+    }
+}
+
+impl<'a> TryFrom<&'a [u8]> for KerberosMessage<'a> {
+    type Error = KerberosError;
+
+    fn try_from(bytes: &'a [u8]) -> Result<Self, Self::Error> {
+        let (message_type, message) = Self::element(bytes)?;
+        Self::from_element(message_type, message)
     }
 }
 
@@ -375,9 +390,21 @@ impl<'a> KerberosRecord<'a> {
     }
 
     /// Sonde de la regle a port de TCP : des enregistrements bien formes
-    /// qui pavent le segment. Seul le dernier peut etre coupe.
+    /// qui pavent le segment. Seul le dernier peut etre coupe. TCP coupe ou
+    /// il veut : derriere un enregistrement entier, le suivant peut
+    /// s'arreter dans sa marque ou dans l'en-tete de son message, trop tot
+    /// pour etre lu. Ce reste ne retire rien a l'enregistrement qui le
+    /// precede (#382) ; seul, il ne nomme rien.
     pub(crate) fn is_port_match(payload: &'a [u8]) -> bool {
-        !payload.is_empty() && Self::records(payload).all(|record| record.is_ok())
+        let mut has_whole_record = false;
+        for record in Self::records(payload) {
+            match record {
+                Ok(record) => has_whole_record |= !record.is_truncated(),
+                Err(KerberosError::TooShort { .. }) => return has_whole_record,
+                Err(_) => return false,
+            }
+        }
+        !payload.is_empty()
     }
 }
 
@@ -386,8 +413,13 @@ impl<'a> TryFrom<&'a [u8]> for KerberosRecord<'a> {
 
     fn try_from(bytes: &'a [u8]) -> Result<Self, Self::Error> {
         let length = extract_record_length(bytes)?;
-        let message = KerberosMessage::try_from(&bytes[KERBEROS_RECORD_MARK_LENGTH..])?;
-        validate_record_length(length, message.wire_length())?;
+        // La marque est comparee a la longueur du message des que celle-ci
+        // se lit, avant l'en-tete : un debut d'enregistrement que TCP coupe
+        // dans l'en-tete est deja refuse si sa marque ment (#382).
+        let (message_type, element) =
+            KerberosMessage::element(&bytes[KERBEROS_RECORD_MARK_LENGTH..])?;
+        validate_record_length(length, element.total_length())?;
+        let message = KerberosMessage::from_element(message_type, element)?;
         Ok(Self { length, message })
     }
 }
@@ -575,7 +607,7 @@ mod tests {
         assert!(KerberosRecord::is_port_match(&bytes));
 
         // Des octets qui ne sont pas un enregistrement arretent la lecture.
-        bytes.extend([0, 0, 0, 1, 0xff]);
+        bytes.extend([0, 0, 0, 0x20, 0xff]);
         let records: Vec<_> = KerberosRecord::records(&bytes).collect();
         assert_eq!(records.len(), 3);
         assert_eq!(
@@ -584,6 +616,55 @@ mod tests {
         );
         assert!(!KerberosRecord::is_port_match(&bytes));
         assert!(!KerberosRecord::is_port_match(&[]));
+    }
+
+    /// Synthetique : l'enregistrement reel, puis le debut de l'autre, que
+    /// TCP coupe dans sa marque ou dans l'en-tete de son message (#382).
+    #[test]
+    fn record_start_behind_a_whole_record_keeps_the_probe() {
+        let whole = hex(TCP_AS_REQUEST);
+        let next = hex(TCP_ERROR);
+        // La marque (4 octets), les deux etiquettes et leurs longueurs (8),
+        // pvno (5) et msg-type (5) : l'en-tete se lit a 22 octets.
+        for cut in 1..22 {
+            let mut bytes = whole.clone();
+            bytes.extend(&next[..cut]);
+            let records: Vec<_> = KerberosRecord::records(&bytes).collect();
+            assert_eq!(records.len(), 2, "{cut}");
+            assert!(
+                matches!(records[1], Err(KerberosError::TooShort { .. })),
+                "{cut} : {:?}",
+                records[1]
+            );
+            assert!(KerberosRecord::is_port_match(&bytes), "{cut}");
+            // Seul, ce debut ne nomme rien.
+            assert!(!KerberosRecord::is_port_match(&next[..cut]), "{cut}");
+        }
+        let mut bytes = whole.clone();
+        bytes.extend(&next[..22]);
+        let records: Vec<_> = KerberosRecord::records(&bytes)
+            .collect::<Result<_, _>>()
+            .expect("deux enregistrements");
+        assert!(!records[0].is_truncated() && records[1].is_truncated());
+        assert!(KerberosRecord::is_port_match(&bytes));
+
+        // Un debut faux fait toujours refuser le segment : une etiquette
+        // qui n'est pas celle d'un message, une longueur DER indefinie.
+        // De meme une marque entiere qu'aucun message ne peut suivre
+        // (nulle, a bit reserve, trop petite), ou que la longueur du
+        // message dement.
+        for tail in [
+            &[0, 0, 0, 0x20, 0xff][..],
+            &[0, 0, 1, 0x12, 0x7e, 0x80],
+            &[0, 0, 0, 0],
+            &[0x80, 0, 0, 0x20],
+            &[0, 0, 0, 13],
+            &[0, 0, 0, 0x20, 0x7e, 0x20],
+        ] {
+            let mut bytes = whole.clone();
+            bytes.extend(tail);
+            assert!(!KerberosRecord::is_port_match(&bytes), "{tail:02x?}");
+        }
     }
 
     /// L'enregistrement reel, coupe comme un segment le couperait.
@@ -728,8 +809,28 @@ mod tests {
         // Le bit de poids fort de la marque est reserve.
         assert_eq!(
             with(0, 0x80),
+            Err(KerberosError::InvalidRecordMark(0x8000_00eb))
+        );
+        // Une marque entiere se juge sans son message : nulle, a bit
+        // reserve, ou sous les quatorze octets du plus court message.
+        for mark in [[0, 0, 0, 0], [0x80, 0, 0, 0xeb], [0, 0, 0, 13]] {
+            assert_eq!(
+                KerberosRecord::try_from(&mark[..]).map(|_| ()),
+                Err(KerberosError::InvalidRecordMark(u32::from_be_bytes(mark)))
+            );
+        }
+        assert!(matches!(
+            KerberosRecord::try_from(&[0, 0, 0, 14][..]),
+            Err(KerberosError::TooShort { .. })
+        ));
+        // La marque est comparee a la longueur du message avant que
+        // l'en-tete soit lu : six octets de message suffisent.
+        let mut cut = bytes[..10].to_vec();
+        cut[3] = 0xec;
+        assert_eq!(
+            KerberosRecord::try_from(cut.as_slice()).map(|_| ()),
             Err(KerberosError::RecordLengthMismatch {
-                record: 0x8000_00eb,
+                record: 236,
                 message: 235
             })
         );

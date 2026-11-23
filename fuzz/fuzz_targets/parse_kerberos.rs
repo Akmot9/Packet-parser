@@ -192,7 +192,8 @@ fn exercise(data: &[u8]) {
         let message = &rest[4..];
         check_message(message, &record.message);
         assert_eq!(record.length.to_be_bytes(), rest[..4]);
-        assert!(record.length < 0x8000_0000);
+        // Bit reserve nul, et au moins le plus court message (14 octets).
+        assert!((14..0x8000_0000).contains(&record.length));
         assert_eq!(record.length as usize, record.message.wire_length());
         assert_eq!(record.is_truncated(), record.message.is_truncated());
         assert!(inside(rest, record.rest()));

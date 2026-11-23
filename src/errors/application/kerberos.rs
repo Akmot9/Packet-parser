@@ -62,4 +62,10 @@ pub enum KerberosError {
     /// high bit that is reserved and null (RFC 4120 §7.2.2).
     #[error("Kerberos record of {record} bytes holds a message of {message} bytes")]
     RecordLengthMismatch { record: u32, message: usize },
+
+    /// A record mark that no message can follow: its reserved high bit is
+    /// set, or it announces fewer bytes than the header of a message
+    /// (RFC 4120 §7.2.2).
+    #[error("invalid Kerberos record mark {0:#010x}")]
+    InvalidRecordMark(u32),
 }

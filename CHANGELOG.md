@@ -27,12 +27,17 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     messages ; une longueur DER indefinie ou de plus de quatre octets ; une
     SEQUENCE qui ne remplit pas le message ; un `pvno` autre que 5 ; un
     `msg-type` qui n'est pas le numero de l'etiquette ; sur TCP, une
-    longueur d'enregistrement qui n'est pas celle du message, ou dont le
-    bit de poids fort n'est pas nul.
+    longueur d'enregistrement qui n'est pas celle du message, dont le bit
+    de poids fort n'est pas nul, ou sous les 14 octets du plus court
+    message. Une marque entiere se juge sans son message, et elle est
+    comparee a la longueur du message avant que son en-tete soit lu.
   - **Detection.** Regles a port sur UDP 88 (un message entier, seul dans
     son datagramme) et sur TCP 88 (des enregistrements qui pavent le
-    segment, le dernier pouvant etre coupe). Un autre port se declare par
-    Decode As.
+    segment, le dernier pouvant etre coupe). Derriere un enregistrement
+    entier, le debut du suivant, que TCP coupe dans sa marque ou dans
+    l'en-tete de son message, ne retire rien : le segment reste `Kerberos`
+    (#382). Une marque entiere et fausse le refuse. Un autre port se
+    declare par Decode As.
   - **Corpus et oracle.** Dix captures de nDPI dans
     `pcaps_exemple/protocols/kerberos/` (319 messages avec les deux
     datagrammes deja dans `ldap/`), en plus de `The-Ultimate-PCAP.pcapng`
@@ -66,7 +71,12 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     code ; pour une requete au serveur de datagrammes, le nom recherche.
   - **Ce qui est refuse.** Un type hors de 0x10 a 0x16 ; un quartet haut
     de drapeaux non nul ; une longueur annoncee qui n'est pas celle du
-    datagramme UDP ; un nom qui n'est pas un label de 32 octets de `A` a
+    datagramme UDP, sauf pour le premier de deux fragments (drapeaux
+    `FIRST` et `MORE`), qui annonce le datagramme entier et doit donc en
+    annoncer plus qu'il n'en porte (RFC 1002 §5.3.1, #382) ; un decalage
+    non nul dans un paquet `FIRST`, datagramme entier ou premier
+    fragment ; un nom qui
+    n'est pas un label de 32 octets de `A` a
     `P` suivi de son scope, ou qui porte un pointeur de compression ; des
     octets derriere une erreur ou une requete.
   - **Detection.** Regle a port sur UDP 138. Un autre port se declare par
@@ -82,9 +92,11 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     d'UDP 138, dans 18 captures, sortent `NBDS` ; aucune autre etiquette ne
     bouge.
   - **Limites.** Tout le corpus est fait de datagrammes de groupe (0x11) :
-    les six autres types ne sont testes que sur des octets synthetiques. Un
-    datagramme fragmente n'est pas reassemble. Les donnees utilisateur (SMB
-    sur mailslot) ne sont pas decodees.
+    les six autres types ne sont testes que sur des octets synthetiques, le
+    premier fragment aussi. Un datagramme fragmente n'est pas reassemble :
+    son premier fragment est lu, avec le debut des donnees ; son fragment
+    de suite est refuse, la RFC ne disant pas s'il repete les noms. Les
+    donnees utilisateur (SMB sur mailslot) ne sont pas decodees.
 - **Syslog** (RFC 3164, 5424 et 6587, #374) : etiquette `Syslog`, decodeur
   zero copie `parse::application::protocols::syslog::SyslogMessage`, trames
   TCP `SyslogFrame` et `DecodeAsProtocol::Syslog`. C'est le journal qu'un
@@ -148,7 +160,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     la RFC 1964 (cles DES et RC4), ou signature NTLMSSP. `messages()` rend
     les messages d'un jeton Kerberos signe sans etre chiffre.
   - **Ce qui est refuse.** Une longueur BER indefinie, sur plus de quatre
-    octets ou au-dela de 2^24 - 1 ; un identifiant de message hors de 0 a
+    octets ou au-dela de 2^31 - 1 (la borne du decodeur ; celle de 2^24 - 1
+    ne vaut que pour un tampon SASL, RFC 4752 §3.1, #382) ; un identifiant
+    de message hors de 0 a
     2^31 - 1 ; une etiquette qui n'est pas une operation de la RFC 4511 ;
     un UnbindRequest non vide ; autre chose que des controles derriere
     l'operation, ou des octets derriere eux ; un tampon SASL plus court que
@@ -156,7 +170,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   - **Detection.** Regles a port sur TCP 389 et 3268 et sur UDP 389 : un
     octet `30` et une longueur ne font pas une sonde aveugle. La sonde
     exige des PDU qui pavent le payload ; seul le dernier peut etre coupe
-    par le segment. Un autre port se declare par Decode As.
+    par le segment. Derriere un PDU entier, le debut du suivant, que TCP
+    coupe avant la fin de son en-tete, ne retire rien (#382). Un autre port
+    se declare par Decode As.
   - **Corpus et oracle.** `The-Ultimate-PCAP.pcapng` (440 segments et
     datagrammes d'un domaine Active Directory de 2024) et huit captures du
     wiki Wireshark dans `pcaps_exemple/protocols/ldap/` (79 segments : un
@@ -199,8 +215,11 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     port TCP : 2000 est aussi un port ephemere, et douze octets surtout nuls
     ne font pas une sonde aveugle. La sonde exige des messages qui pavent
     le segment, d'identifiant plausible (sous 0x0200, ou l'un des trois
-    messages SPCP) ; seul le dernier peut etre coupe par le segment. Un
-    autre port se declare par Decode As.
+    messages SPCP) ; seul le dernier peut etre coupe par le segment.
+    Derriere un message entier, le debut d'un en-tete que TCP coupe avant
+    son douzieme octet ne retire rien, si la longueur et la version qu'il
+    montre deja sont celles d'un message (#382). Un autre port se declare
+    par Decode As.
   - **Reference.** Le protocole est proprietaire, sans specification
     publique : la reference de fait est le dissecteur de Wireshark, d'ou
     viennent les versions d'en-tete admises et la plage des identifiants.

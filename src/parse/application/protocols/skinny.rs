@@ -84,12 +84,20 @@ impl<'a> SkinnyMessage<'a> {
 
     /// Sonde de la regle a port : des messages bien formes qui pavent le
     /// segment, d'identifiant plausible. Seul le dernier peut etre coupe par
-    /// le segment, et sa longueur doit alors rester plausible.
+    /// le segment, et sa longueur doit alors rester plausible. TCP coupe ou
+    /// il veut : derriere un message entier, le suivant peut s'arreter avant
+    /// la fin de ses douze octets d'en-tete. Ce reste ne retire rien au
+    /// message qui le precede (#382) ; seul, il ne nomme rien.
     pub(crate) fn is_port_match(payload: &'a [u8]) -> bool {
         let mut rest = payload;
+        let mut has_whole_message = false;
         loop {
-            let Ok(message) = SkinnyMessage::try_from(rest) else {
-                return false;
+            let message = match SkinnyMessage::try_from(rest) {
+                Ok(message) => message,
+                Err(SkinnyError::TooShort { .. }) => {
+                    return has_whole_message && checks::is_header_start(rest);
+                }
+                Err(_) => return false,
             };
             if !checks::is_plausible_message_id(message.message_id) {
                 return false;
@@ -100,6 +108,7 @@ impl<'a> SkinnyMessage<'a> {
             if message.rest.is_empty() {
                 return true;
             }
+            has_whole_message = true;
             rest = message.rest;
         }
     }
@@ -186,6 +195,22 @@ mod checks {
     /// retire.
     pub(super) fn body_length(data_length: u32) -> usize {
         usize::try_from(data_length.saturating_sub(MESSAGE_ID_LENGTH)).unwrap_or(usize::MAX)
+    }
+
+    /// Les octets presents d'un en-tete que TCP coupe avant son douzieme
+    /// octet (#382) : la longueur des donnees et la version, pour autant
+    /// qu'elles soient entieres, sont celles d'un message que la sonde
+    /// retiendrait coupe.
+    pub(super) fn is_header_start(bytes: &[u8]) -> bool {
+        let field = |at: usize| {
+            bytes
+                .get(at..)
+                .and_then(|field| field.first_chunk::<4>())
+                .map(|field| u32::from_le_bytes(*field))
+        };
+        field(0).is_none_or(|length| {
+            data_length(length).is_ok_and(|length| length <= MAX_CUT_DATA_LENGTH)
+        }) && field(4).is_none_or(|version| header_version(version).is_ok())
     }
 
     /// Les identifiants connus vont de 0x0000 a 0x0160, plus trois messages
@@ -304,11 +329,12 @@ mod tests {
 
     #[test]
     fn synthetic_trailing_bytes_refuse_the_probe() {
-        // Un message complet suivi d'octets qui ne sont pas un message.
+        // Un message complet suivi d'octets qui ne sont pas un debut de
+        // message : la longueur qu'ils annoncent passe 65 535 octets.
         let mut bytes = hex(KEEP_ALIVE);
-        bytes.extend([0xde, 0xad]);
+        bytes.extend([0xde, 0xad, 0xbe, 0xef]);
         let message = SkinnyMessage::try_from(bytes.as_slice()).expect("premier message");
-        assert_eq!(message.rest(), [0xde, 0xad]);
+        assert_eq!(message.rest(), [0xde, 0xad, 0xbe, 0xef]);
         assert!(!SkinnyMessage::is_port_match(&bytes));
         let results: Vec<_> = SkinnyMessage::messages(&bytes).collect();
         assert_eq!(results.len(), 2);
@@ -316,13 +342,58 @@ mod tests {
             results[1],
             Err(SkinnyError::TooShort {
                 expected: 12,
-                actual: 2
+                actual: 4
             })
         );
         // Un second en-tete entier mais invalide.
         let mut bytes = hex(KEEP_ALIVE);
         bytes.extend(hex("040000000100000000000000"));
         assert!(!SkinnyMessage::is_port_match(&bytes));
+    }
+
+    /// Synthetique : le KeepAlive reel, puis le debut du RegisterAck reel,
+    /// que TCP coupe avant la fin de ses douze octets d'en-tete (#382).
+    #[test]
+    fn synthetic_cut_header_behind_a_whole_message() {
+        let next = hex(REGISTER_ACK);
+        for cut in 1..12 {
+            let mut bytes = hex(KEEP_ALIVE);
+            bytes.extend(&next[..cut]);
+            let results: Vec<_> = SkinnyMessage::messages(&bytes).collect();
+            assert_eq!(results.len(), 2, "{cut}");
+            assert_eq!(
+                results[1],
+                Err(SkinnyError::TooShort {
+                    expected: 12,
+                    actual: cut
+                })
+            );
+            assert!(SkinnyMessage::is_port_match(&bytes), "{cut}");
+            // Seul, ce debut ne nomme rien.
+            assert!(!SkinnyMessage::is_port_match(&next[..cut]), "{cut}");
+        }
+        // A douze octets l'en-tete se lit : le second message est coupe.
+        let mut bytes = hex(KEEP_ALIVE);
+        bytes.extend(&next[..12]);
+        assert!(SkinnyMessage::messages(&bytes).all(|message| message.is_ok()));
+        assert!(SkinnyMessage::is_port_match(&bytes));
+
+        // Les octets presents doivent etre ceux d'un en-tete : une longueur
+        // sous les quatre octets de l'identifiant, une longueur de plus de
+        // 65 535 octets, une version d'en-tete inconnue.
+        for tail in [
+            &[0x03, 0, 0, 0][..],
+            &[0, 0, 0x01, 0, 0],
+            &[0x04, 0, 0, 0, 0x0c, 0, 0, 0],
+        ] {
+            let mut bytes = hex(KEEP_ALIVE);
+            bytes.extend(tail);
+            assert!(!SkinnyMessage::is_port_match(&bytes), "{tail:02x?}");
+        }
+        // Une version entiere et connue derriere une longueur plausible.
+        let mut bytes = hex(KEEP_ALIVE);
+        bytes.extend([0x04, 0, 0, 0, 0x13, 0, 0, 0, 0]);
+        assert!(SkinnyMessage::is_port_match(&bytes));
     }
 
     #[test]
