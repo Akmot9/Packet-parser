@@ -1380,6 +1380,36 @@ fn differential_payloads() -> Vec<Vec<u8>> {
     payloads
 }
 
+/// La table des sondes rend, pour chaque sonde de la table et de Decode As,
+/// ce que rend son bras de `probe_body` : chaque fonction est au rang de son
+/// identifiant.
+#[test]
+fn probe_table_runs_the_arm_of_each_probe() {
+    let payloads = differential_payloads();
+    let declared = DecodeAsProtocol::ALL.iter().flat_map(|protocol| {
+        [TransportProtocol::Tcp, TransportProtocol::Udp].map(|transport| protocol.rule(transport).2)
+    });
+    let mut accepted = std::collections::BTreeSet::new();
+    for probe in RULES.iter().map(|rule| rule.probe).chain(declared) {
+        for payload in &payloads {
+            let expected = probe_body(probe, payload);
+            assert_eq!(
+                run_probe(probe, payload),
+                expected,
+                "sonde {}, payload {}",
+                probe as u32,
+                hex::encode(payload)
+            );
+            if expected {
+                accepted.insert(probe as u32);
+            }
+        }
+    }
+    // Des sondes differentes acceptent des payloads differents : une table
+    // decalee d'un rang ne passerait pas.
+    assert!(accepted.len() > 15, "{accepted:?}");
+}
+
 /// `classify` rend ce que rend un parcours de `RULES`, pour chaque couple
 /// de ports que cite la table (plus un port ephemere et le port inconnu),
 /// sur TCP, UDP et un protocole que seules les regles `Guard::Any`

@@ -300,7 +300,8 @@ pub(super) fn classify(
 
 /// La table, sur un payload non vide. Hors de [`classify`] : un segment sans
 /// payload (un ACK nu, un quart des trames du corpus) ne paie pas l'entree
-/// d'une fonction qui porte toute la cascade.
+/// de la fonction qui parcourt la table, ses registres sauves et son cadre
+/// de pile.
 #[inline(never)]
 fn classify_payload(
     transport: &Transport<'_>,

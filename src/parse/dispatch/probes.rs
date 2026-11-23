@@ -90,20 +90,54 @@ pub(super) const PROBE_CAP: usize = 18 * 1024;
 /// memoise ses echecs par regle (voir [`super::index`]).
 pub(super) type ProbeMask = u128;
 
-/// Identite d'une sonde de contenu. Deux regles peuvent partager la meme
-/// sonde (port prioritaire puis repli aveugle) : la memoisation par identite
-/// garantit qu'elle ne s'execute qu'une fois par payload. Un bit du masque
-/// [`ProbeMask`] par identifiant, pour les echecs de Decode As.
-///
-/// Limite : 128 identifiants (`ProbeMask::BITS`). Une variante s'ajoute en
-/// fin d'enum et devient [`ProbeId::LAST`]. L'assertion qui suit l'enum
-/// refuse de compiler au-dela de la limite, et le test
-/// `probe_count_is_the_number_of_variants` verifie que `LAST` est bien la
-/// derniere variante (#212). Au-dela, `1 << 128` paniquerait en debug et
-/// replierait le bit sur celui de `Snmp` en release.
-#[derive(Clone, Copy)]
-#[repr(u32)]
-pub(super) enum ProbeId {
+/// Declare [`ProbeId`] et la table [`PROBES`] depuis une seule liste, comme
+/// `decode_as_protocols!` : une sonde ne peut pas manquer a la table, ni y
+/// etre a un autre rang que son identifiant.
+macro_rules! probe_ids {
+    ($($(#[$doc:meta])* $variant:ident),+ $(,)?) => {
+        /// Identite d'une sonde de contenu. Deux regles peuvent partager la
+        /// meme sonde (port prioritaire puis repli aveugle) : la memoisation
+        /// par identite garantit qu'elle ne s'execute qu'une fois par
+        /// payload. Un bit du masque [`ProbeMask`] par identifiant, pour les
+        /// echecs de Decode As.
+        ///
+        /// Limite : 128 identifiants (`ProbeMask::BITS`). Une variante
+        /// s'ajoute en fin de liste et devient [`ProbeId::LAST`].
+        /// L'assertion qui suit la liste refuse de compiler au-dela de la
+        /// limite, et [`PROBES`], qui a `COUNT` cases, quand `LAST` n'est pas
+        /// la derniere variante ; le test
+        /// `probe_count_is_the_number_of_variants` le verifie aussi (#212).
+        /// Au-dela, `1 << 128` paniquerait en debug et replierait le bit sur
+        /// celui de `Snmp` en release.
+        #[derive(Clone, Copy)]
+        #[repr(u32)]
+        pub(super) enum ProbeId {
+            $(
+                $(#[$doc])*
+                $variant,
+            )+
+        }
+
+        /// La fonction de chaque sonde, au rang de son identifiant : le bras
+        /// de [`probe_body`] pour cette sonde, et lui seul. Une fonction par
+        /// sonde plutot qu'un `match` integre dans la boucle de
+        /// [`classify`](super::classify) : la boucle reste courte, et un
+        /// payload ne paie que les sondes qu'il traverse. Integre, le
+        /// `match` laissait le compilateur sortir de la boucle les calculs
+        /// invariants de tous les decodeurs : une centaine d'instructions
+        /// par payload, meme reconnu a la premiere sonde.
+        static PROBES: [fn(&[u8]) -> bool; ProbeId::COUNT as usize] = [
+            $({
+                fn probe(payload: &[u8]) -> bool {
+                    probe_body(ProbeId::$variant, payload)
+                }
+                probe
+            }),+
+        ];
+    };
+}
+
+probe_ids![
     Snmp,
     Dhcpv6,
     S7Comm,
@@ -233,7 +267,7 @@ pub(super) enum ProbeId {
     /// ONC RPC sur TCP : des fragments d'enregistrement qui pavent le
     /// segment, le dernier pouvant etre coupe (#381).
     OncRpcTcp,
-}
+];
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
@@ -252,10 +286,20 @@ const _: () = assert!(
     "ProbeId depasse la largeur du masque de memoisation (ProbeMask)"
 );
 
-/// Sonde `probe` sur le payload reel. Les sondes des protocoles texte ne
-/// lisent que [`PROBE_CAP`] octets ; toutes les autres jugent les octets que
-/// leur decodeur lira (#184, #185).
+/// Sonde `probe` sur le payload reel : la fonction de la sonde, par
+/// [`PROBES`].
 pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
+    PROBES[probe as usize](payload)
+}
+
+/// Le corps de chaque sonde. Les sondes des protocoles texte ne lisent que
+/// [`PROBE_CAP`] octets ; toutes les autres jugent les octets que leur
+/// decodeur lira (#184, #185).
+///
+/// Toujours integre : chaque fonction de [`PROBES`] l'appelle avec sa sonde
+/// en constante, et il n'en reste que le bras de cette sonde.
+#[inline(always)]
+pub(super) fn probe_body(probe: ProbeId, payload: &[u8]) -> bool {
     let text = &payload[..payload.len().min(PROBE_CAP)];
     match probe {
         // Le message doit paver exactement le datagramme ou le segment.
