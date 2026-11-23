@@ -8,6 +8,49 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **Kerberos V5** (RFC 4120, #379) : etiquette `Kerberos`, decodeur zero
+  copie `parse::application::protocols::kerberos::KerberosMessage`,
+  enregistrement de TCP `KerberosRecord` et `DecodeAsProtocol::Kerberos`.
+  C'est l'echange de tickets d'un client avec le centre de distribution de
+  cles (KDC) de son royaume ; dans un domaine Active Directory, avec le
+  controleur de domaine.
+  - **Ce qui est lu.** Le type du message (`KerberosMessageType`, les dix
+    de la RFC), verifie contre son champ `msg-type`, et la version 5. Les
+    champs sont empruntes sans etre decodes (`KerberosMessage::field`).
+    Cinq lectures vont plus loin, pour les AS-REQ, AS-REP, TGS-REQ, TGS-REP
+    et KRB-ERROR : `error_code()`, `realm()`, `client_realm()`,
+    `client_name()` et `service_name()` (`KerberosPrincipalName` : le type
+    du nom et ses composantes). Sur TCP, `KerberosRecord` lit les quatre
+    octets de longueur de la RFC 4120 §7.2.2 et `KerberosRecord::records`
+    itere sur les enregistrements d'un segment.
+  - **Ce qui est refuse.** Une etiquette qui n'est pas celle d'un des dix
+    messages ; une longueur DER indefinie ou de plus de quatre octets ; une
+    SEQUENCE qui ne remplit pas le message ; un `pvno` autre que 5 ; un
+    `msg-type` qui n'est pas le numero de l'etiquette ; sur TCP, une
+    longueur d'enregistrement qui n'est pas celle du message, ou dont le
+    bit de poids fort n'est pas nul.
+  - **Detection.** Regles a port sur UDP 88 (un message entier, seul dans
+    son datagramme) et sur TCP 88 (des enregistrements qui pavent le
+    segment, le dernier pouvant etre coupe). Un autre port se declare par
+    Decode As.
+  - **Corpus et oracle.** Dix captures de nDPI dans
+    `pcaps_exemple/protocols/kerberos/` (319 messages avec les deux
+    datagrammes deja dans `ldap/`), en plus de `The-Ultimate-PCAP.pcapng`
+    (134 messages). Les 453 messages sont compares a tshark 4.6.9, rendu
+    sans reassemblage : type, longueur d'enregistrement, code d'erreur,
+    royaumes, noms (`tests/kerberos_golden.rs`, `tools/kerberos_oracle.sh`).
+    Cible de fuzz `parse_kerberos`.
+  - **Mesure.** Sur le corpus de terrain de #346, 30 trames du port 88
+    sortent `Kerberos` et 15 segments de suite restent `Unknown` ; aucune
+    autre etiquette ne bouge.
+  - **Limites.** Sans etat : un message plus long que son segment est coupe
+    (`KerberosMessage::is_truncated`, 150 des 415 messages TCP du corpus)
+    et les segments de suite restent `Unknown`. Les parties chiffrees
+    (tickets, authentifiants, pre-authentification) ne sont pas lues.
+    AP-REP, KRB-SAFE, KRB-PRIV et KRB-CRED ne sont testes que sur des
+    octets synthetiques : aucune capture du port 88 n'en porte. Kerberos
+    porte par un autre protocole (GSS-API dans LDAP ou SMB, kpasswd sur le
+    port 464) n'est pas cherche.
 - **NetBIOS Datagram Service** (RFC 1002 §4.4, #377) : etiquette `NBDS`,
   decodeur zero copie `parse::application::protocols::netbios::NbdsPacket`
   et `DecodeAsProtocol::Nbds`. C'est le troisieme service NetBIOS, apres

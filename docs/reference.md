@@ -335,6 +335,23 @@ Application detection is intentionally best-effort. Parser modules include:
   segments that carry the rest stay `Unknown`; a message with an inner LF
   is not told from two messages; TCP 514 is also the port of `rsh`, whose
   segments do not open with a priority; syslog over TLS (TCP 6514) is TLS
+- Kerberos V5 (RFC 4120) on UDP 88 and TCP 88, or on a Decode As port
+  (`DecodeAsProtocol::Kerberos`): the exchange of a client with the key
+  distribution centre of its realm. `KerberosMessage` reads the type of the
+  message (`KerberosMessageType`, the ten of the RFC), checked against its
+  `msg-type` field, and the version, 5; the fields are borrowed
+  (`KerberosMessage::field`), and five accessors read the AS-REQ, AS-REP,
+  TGS-REQ, TGS-REP and KRB-ERROR further: `error_code()`, `realm()`,
+  `client_realm()`, `client_name()` and `service_name()`
+  (`KerberosPrincipalName`). Over TCP, `KerberosRecord` reads the four
+  bytes of length before each message, and `KerberosRecord::records`
+  iterates over the records of a segment. The port rules ask for one
+  whole message per datagram, and for records that tile the segment.
+  Tickets, authenticators and pre-authentication data are encrypted and not
+  read. Stateless limits: a message longer than its segment is cut
+  (`KerberosMessage::is_truncated`) and the segments that carry the rest
+  stay `Unknown`; Kerberos carried by another protocol (GSS-API in LDAP or
+  SMB, kpasswd on port 464) is not looked for
 - NetBIOS (RFC 1001 and 1002), one label per service: `NBNS`, the name
   service on UDP 137; `NBSS`, the session service on TCP 139 and 445; `NBDS`,
   the datagram service on UDP 138 or a Decode As port

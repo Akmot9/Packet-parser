@@ -28,6 +28,7 @@ use crate::parse::application::protocols::http::{HttpRequest, HttpResponse};
 use crate::parse::application::protocols::iec104::Iec104Packet;
 use crate::parse::application::protocols::ike::{IkePacket, UdpEncapsulation};
 use crate::parse::application::protocols::java_rmi::JavaRmiPacket;
+use crate::parse::application::protocols::kerberos::{KerberosMessage, KerberosRecord};
 use crate::parse::application::protocols::ldap::LdapPdu;
 use crate::parse::application::protocols::modbus_tcp::ModbusTcpPacket;
 use crate::parse::application::protocols::mqtt::MqttPacket;
@@ -216,11 +217,17 @@ pub(super) enum ProbeId {
     /// NetBIOS Datagram Service : un message dont la longueur annoncee est
     /// celle du datagramme, noms decodes (#377).
     Nbds,
+    /// Kerberos en datagramme : un message entier, seul dans son
+    /// datagramme, en-tete `pvno` et `msg-type` verifie (#379).
+    Kerberos,
+    /// Kerberos sur TCP : des enregistrements prefixes de leur longueur qui
+    /// pavent le segment, le dernier pouvant etre coupe (#379).
+    KerberosTcp,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::Nbds;
+    pub(super) const LAST: Self = Self::KerberosTcp;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -310,6 +317,8 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Syslog => SyslogMessage::try_from(payload).is_ok(),
         ProbeId::SyslogTcp => SyslogFrame::is_port_match(payload),
         ProbeId::Nbds => NbdsPacket::try_from(payload).is_ok(),
+        ProbeId::Kerberos => KerberosMessage::is_port_match(payload),
+        ProbeId::KerberosTcp => KerberosRecord::is_port_match(payload),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),
