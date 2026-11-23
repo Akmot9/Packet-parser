@@ -498,6 +498,24 @@ pub(super) static RULES: &[Rule] = &[
         is_syslog_tcp_port,
         ProbeId::SyslogTcp,
     ),
+    // Kerberos V5 (#379) : UDP 88, un message par datagramme ; TCP 88, des
+    // enregistrements prefixes de leur longueur (RFC 4120 §7.2.2). L'en-tete
+    // se verifie sur une quinzaine d'octets (etiquette d'application,
+    // SEQUENCE qui la remplit, `pvno` 5, `msg-type` egal a l'etiquette),
+    // mais le corpus n'a pas de Kerberos hors du port 88 : garde par port,
+    // un autre port se declare par Decode As.
+    port_rule(
+        ApplicationProtocol::Kerberos,
+        Guard::Udp,
+        is_kerberos_port,
+        ProbeId::Kerberos,
+    ),
+    port_rule(
+        ApplicationProtocol::Kerberos,
+        Guard::Tcp,
+        is_kerberos_port,
+        ProbeId::KerberosTcp,
+    ),
     // WireGuard : UDP 51820, le port des exemples de `wg(8)` — aucun port
     // IANA. Comme pour l'heuristique de tshark, la forme du message suffit
     // a une initiation ou une reponse, octets reserves compris (Cloudflare

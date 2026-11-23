@@ -35,6 +35,13 @@ une capture du wiki Wireshark et un oracle tshark de 179 datagrammes. Sur
 le corpus prive, les 196 datagrammes d'UDP 138 sont nommes, dans 18
 captures.
 
+Meme jour, sur `main` et non publie aussi : **Kerberos V5** (RFC 4120,
+#379). Decodeur `KerberosMessage` et enregistrements TCP `KerberosRecord`,
+regles a port sur UDP 88 et TCP 88, `DecodeAsProtocol::Kerberos`, dix
+captures de nDPI en plus de `The-Ultimate-PCAP.pcapng`, et un oracle tshark
+de 453 messages. Sur le corpus prive, 30 trames quittent `Unknown` ; 15
+segments de suite y restent, faute d'etat.
+
 Etat au 2026-11-22, 13.3.0 : la **13.3.0 est publiee** (tag `v13.3.0`,
 publication par le workflow). Mineure, sans rupture, elle porte l'epic
 **#346**, qui visait le taux de parsing applicatif. Sur un corpus prive de

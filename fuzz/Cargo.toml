@@ -359,3 +359,10 @@ path = "fuzz_targets/parse_syslog.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_kerberos"
+path = "fuzz_targets/parse_kerberos.rs"
+test = false
+doc = false
+bench = false

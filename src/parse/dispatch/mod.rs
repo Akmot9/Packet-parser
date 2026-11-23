@@ -143,6 +143,9 @@ decode_as_protocols![
     Syslog,
     /// NetBIOS Datagram Service over UDP: the same rule as on UDP 138.
     Nbds,
+    /// Kerberos V5: one message per UDP datagram, length-prefixed records
+    /// over TCP, for a KDC that listens on another port than 88.
+    Kerberos,
 ];
 
 impl DecodeAsProtocol {
@@ -153,6 +156,8 @@ impl DecodeAsProtocol {
     /// aveugles : sur TCP, des messages complets qui pavent le segment
     /// (#288) ; ailleurs, un seul message. Syslog de meme : des trames de
     /// la RFC 6587 sur TCP, un message par datagramme ailleurs (#374).
+    /// Kerberos aussi : des enregistrements prefixes de leur longueur sur
+    /// TCP, un message par datagramme ailleurs (#379).
     fn rule(self, protocol: TransportProtocol) -> (ApplicationProtocol, Guard, ProbeId) {
         match self {
             Self::Ftp => (ApplicationProtocol::Ftp, Guard::Tcp, ProbeId::Ftp),
@@ -254,6 +259,14 @@ impl DecodeAsProtocol {
                 _ => (ApplicationProtocol::Syslog, Guard::Udp, ProbeId::Syslog),
             },
             Self::Nbds => (ApplicationProtocol::Nbds, Guard::Udp, ProbeId::Nbds),
+            Self::Kerberos => match protocol {
+                TransportProtocol::Tcp => (
+                    ApplicationProtocol::Kerberos,
+                    Guard::Tcp,
+                    ProbeId::KerberosTcp,
+                ),
+                _ => (ApplicationProtocol::Kerberos, Guard::Udp, ProbeId::Kerberos),
+            },
         }
     }
 }

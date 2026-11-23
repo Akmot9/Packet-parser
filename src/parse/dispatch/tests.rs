@@ -1312,6 +1312,71 @@ fn skinny_is_named_on_tcp_2000_only() {
     assert_eq!(label(Tcp, 2000, 80, http, &[]), Some("HTTP"));
 }
 
+/// Kerberos V5 (#379) : un message par datagramme sur UDP 88, un
+/// enregistrement prefixe de sa longueur sur TCP 88, ou sur un port declare,
+/// jamais ailleurs. Octets reels : la KRB-ERROR de 102 octets de
+/// pcaps_exemple/protocols/kerberos/ndpi_kerberos-error.pcap, trame 2 ; sa
+/// marque d'enregistrement est ajoutee ici.
+#[test]
+fn kerberos_is_named_on_its_port_only() {
+    use TransportProtocol::{Tcp, Udp};
+    let label = |protocol: TransportProtocol,
+                 source: u16,
+                 destination: u16,
+                 payload: &[u8],
+                 decode_as: &[(u16, DecodeAsProtocol)]| {
+        let transport = Transport {
+            protocol,
+            source_port: Some(source),
+            destination_port: Some(destination),
+            payload: Some(payload),
+            details: None,
+        };
+        classify(&transport, decode_as).map(|a| a.protocol.label())
+    };
+    let message = hex::decode(concat!(
+        "7e643062a003020105a10302011ea411180f32303232303232323037343630345aa5",
+        "0502030ec26da603020134a9111b0f4c494e55582e5348454c4c2e434f4daa243022",
+        "a003020102a11b30191b066b72627467741b0f4c494e55582e5348454c4c2e434f4d",
+    ))
+    .expect("hexa valide");
+    let mut record = vec![0, 0, 0, 102];
+    record.extend(&message);
+
+    assert_eq!(label(Udp, 49152, 88, &message, &[]), Some("Kerberos"));
+    assert_eq!(label(Udp, 88, 49152, &message, &[]), Some("Kerberos"));
+    assert_eq!(label(Tcp, 49152, 88, &record, &[]), Some("Kerberos"));
+    assert_eq!(label(Tcp, 88, 49152, &record, &[]), Some("Kerberos"));
+    assert_eq!(label(Udp, 49152, 89, &message, &[]), Some("Unknown"));
+    assert_eq!(label(Tcp, 49152, 89, &record, &[]), Some("Unknown"));
+
+    // Chaque transport a sa forme : la marque d'enregistrement n'existe que
+    // sur TCP.
+    assert_eq!(label(Udp, 49152, 88, &record, &[]), Some("Unknown"));
+    assert_eq!(label(Tcp, 49152, 88, &message, &[]), Some("Unknown"));
+    // Un segment peut couper un enregistrement, pas un datagramme.
+    assert_eq!(label(Tcp, 49152, 88, &record[..60], &[]), Some("Kerberos"));
+    assert_eq!(label(Udp, 49152, 88, &message[..60], &[]), Some("Unknown"));
+    // Un segment de suite ne s'ouvre pas par une marque et un message.
+    assert_eq!(label(Tcp, 49152, 88, &record[60..], &[]), Some("Unknown"));
+
+    // Un autre port se declare, sur TCP comme sur UDP, chacun sous sa forme.
+    let declared = [(8088, DecodeAsProtocol::Kerberos)];
+    assert_eq!(
+        label(Udp, 49152, 8088, &message, &declared),
+        Some("Kerberos")
+    );
+    assert_eq!(
+        label(Tcp, 49152, 8088, &record, &declared),
+        Some("Kerberos")
+    );
+    assert_eq!(label(Udp, 49152, 8088, &record, &declared), Some("Unknown"));
+    assert_eq!(
+        label(Tcp, 49152, 8088, &message, &declared),
+        Some("Unknown")
+    );
+}
+
 /// NetBIOS Datagram Service (#377) : sur UDP 138 ou sur un port declare,
 /// jamais ailleurs ni sur TCP. Octets synthetiques : un message d'erreur de
 /// onze octets et une requete de 44 octets, au nom fait de `A`.

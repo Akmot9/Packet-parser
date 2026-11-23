@@ -784,14 +784,18 @@ fn non_s7_protocol_corpus_has_no_s7comm_or_cotp_false_positive() {
     // decodees sans erreur L2 : 215 -> 216 captures, 214 -> 215 fichiers
     // lus, 82 086 -> 82 309 trames, 82 044 -> 82 267 flux. Aucune n'est
     // etiquetee S7Comm ni COTP.
-    assert_eq!(captures.len(), 216);
-    assert_eq!(opened_files, 215);
-    assert_eq!(frame_count, 82_309);
+    // 2026-11-23 (#379) : +10 captures Kerberos dans protocols/kerberos/
+    // (voir SOURCE.md : nDPI), 689 trames Ethernet decodees sans erreur L2 :
+    // 216 -> 226 captures, 215 -> 225 fichiers lus, 82 309 -> 82 998 trames,
+    // 82 267 -> 82 956 flux. Aucune n'est etiquetee S7Comm ni COTP.
+    assert_eq!(captures.len(), 226);
+    assert_eq!(opened_files, 225);
+    assert_eq!(frame_count, 82_998);
     // +17 / -17 depuis le support de LINKTYPE_IPV4 (228) : les 17 trames de
     // protocols/tls/tls12-dsb.pcapng echouaient toutes en L2 faute de decodeur.
     // +3 depuis l'ajout de protocols/icmp/icmp_destination_unreachable.pcapng,
     // +13 depuis celui de protocols/icmp/icmp_mtu_exceeded.pcapng.
-    assert_eq!(parsed_flows, 82_267);
+    assert_eq!(parsed_flows, 82_956);
     assert_eq!(link_errors, 42);
     assert_eq!(
         skipped_files,

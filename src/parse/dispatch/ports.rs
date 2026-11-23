@@ -225,6 +225,11 @@ pub(super) fn is_ldap_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(389))
 }
 
+/// Kerberos V5 : UDP 88 et TCP 88 (IANA `kerberos`, RFC 4120 §7.2) (#379).
+pub(super) fn is_kerberos_port(port: Option<u16>) -> bool {
+    matches!(port, Some(88))
+}
+
 /// Syslog : UDP 514 (IANA `syslog`, RFC 5426) (#374).
 pub(super) fn is_syslog_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(514))

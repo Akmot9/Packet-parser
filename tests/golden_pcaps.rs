@@ -558,12 +558,26 @@ fn application_classification_histogram_is_frozen() {
     // - +1 capture, netbios/smb-browser-elections.pcapng (wiki Wireshark,
     //   voir SOURCE.md), 223 trames : 165 "NBDS", 42 "NBNS" (857 -> 899) et
     //   16 ARP, "(sans application)" 7 482 -> 7 498.
+    //
+    // 2026-11-23 (#379, Kerberos) : Kerberos V5 sur UDP 88 et TCP 88.
+    // "Kerberos" 0 -> 319, les messages que tshark dissèque sans
+    // reassemblage (`tests/kerberos_golden.rs`) :
+    // - 2 quittent "Unknown" dans ldap/ldap-krb5-sign-seal-01.cap, deja la ;
+    // - +10 captures dans protocols/kerberos/ (corpus de nDPI, voir
+    //   SOURCE.md), 689 trames : 317 "Kerberos" ; 214 "Unknown", dont 99
+    //   segments de suite d'un message Kerberos, le reste des suites de SMB2
+    //   et de DCE/RPC ("Unknown" 16 928 - 2 + 214 = 17 140) ; et, dans les
+    //   deux captures d'un domaine Active Directory (ndpi_kerberos.pcap,
+    //   ndpi_kerberos2.pcap), 67 "LDAP" (79 -> 146), 33 "DCE/RPC" (0 -> 33)
+    //   et 24 "NBSS" (32 -> 56) ; 34 segments TCP sans charge,
+    //   "(sans application)" 7 498 -> 7 532.
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 7498),
+        (NO_APPLICATION, 7532),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 33),
+        ("DCE/RPC", 33),
         ("DHCP", 79),
         ("DIS", 390),
         ("DNP3", 218),
@@ -577,13 +591,14 @@ fn application_classification_histogram_is_frozen() {
         ("IEC 104", 374),
         ("IKE", 535),
         ("Java RMI", 143),
+        ("Kerberos", 319),
         ("IP-in-IP", 11),
-        ("LDAP", 79),
+        ("LDAP", 146),
         ("LLMNR", 138),
         ("MQTT", 187),
         ("NBDS", 179),
         ("NBNS", 899),
-        ("NBSS", 32),
+        ("NBSS", 56),
         ("ModbusTCP", 382),
         ("ModbusUDP", 38),
         ("UMAS", 181),
@@ -609,7 +624,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 16928),
+        ("Unknown", 17140),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),
