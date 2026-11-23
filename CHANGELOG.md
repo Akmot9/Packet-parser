@@ -64,9 +64,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
     contre le registre IANA vient de la. Hors depot, les 4 448 segments de
     suite d'une capture NFS de 7 038 trames, tronquee par sa capture, ne
     donnent aucun faux positif.
-  - **Mesure.** Le corpus de terrain de #346 n'a pas ete remesure : son
-    disque n'etait pas monte. Son etat des lieux comptait 206 trames sur
-    les ports 111 et 2049.
+  - **Mesure.** Sur le corpus de terrain de #346, 194 trames des ports 111
+    et 2049 sortent `ONC RPC` et 12 segments de suite restent `Unknown` ;
+    aucune autre etiquette ne bouge.
   - **Limites.** Sans etat : une reponse ne dit ni son programme ni sa
     procedure, que seul l'appel porte. Un enregistrement plus long que son
     segment est coupe (`OncRpcRecord::is_truncated`, quatre dans le corpus)
@@ -321,8 +321,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 ### Corrige
 
 Les revues automatiques des PR passees ont ete relues : des constats
-fondes etaient restes sans suite (#383). Ceux-ci nommaient `Unknown` un
-trafic valide.
+fondes etaient restes sans suite (#383). Sur le corpus de terrain de #346,
+leurs corrections ne deplacent aucun compte d'etiquette. Les premiers
+nommaient `Unknown` un trafic valide.
 
 - **RTPS : plusieurs messages dans un datagramme.** Un datagramme peut
   porter plusieurs messages RTPS ; le `messageLength` du HEADER_EXTENSION
