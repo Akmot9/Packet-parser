@@ -15,6 +15,38 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   vues d'`etherparse` et 39 a 57 ns pour `pnet_packet`. Rien ne change dans
   la crate.
 
+### Outillage
+
+- **`tools/verbench` : releve refait jusqu'a la 13.4.0**, et avec lui
+  `images/perf_by_version.svg`, la courbe du README. `perf_by_version.json`
+  porte 52 mesures, les 51 versions publiees depuis la 1.0.0 et la copie
+  locale ; le precedent s'arretait a la 11.8.2. Le paquet de reference se
+  parse en 715 ns en 13.4.0, contre 623 ns en 11.8.2 et 1 462 ns en 1.0.0.
+  La hausse depuis la 11.8.2 est celle de la couche 7, de 346 a 434 ns :
+  la charge de ce paquet TCP est chiffree, aucun protocole ne s'y
+  reconnait, et chaque sonde aveugle de TCP ajoutee depuis s'y execute
+  (Java RMI, SSH apres d'autres lignes, SIP, NMF, DCE/RPC). Les couches 2
+  a 4 ne bougent pas (125 puis 118 ns).
+- **`run.sh` mesure autrement.** Il tirait chaque version une seule fois,
+  juste apres sa compilation : le 2026-11-23, pendant qu'un autre banc
+  occupait un coeur de la machine, deux releves a la suite s'ecartaient de
+  20 a 86 % sur une meme version. Il compile maintenant toutes les
+  versions, puis mesure tous les binaires 15 fois (`VERBENCH_ROUNDS`), sur
+  un seul coeur quand `taskset` existe (`VERBENCH_CORE` ; par defaut le
+  dernier de la liste d'affinite du processus, et non `nproc - 1`, qui ne
+  nomme aucun coeur d'un cpuset ne commencant pas a 0), dans un ordre qui
+  tourne d'une passe a l'autre, et garde la mediane de chaque couche. Dans
+  les memes conditions, deux releves complets se recoupent a 2,5 % pres
+  (0,8 % en mediane). Le manifeste genere porte son propre `[workspace]` :
+  le harnais se compile aussi depuis un worktree pose sous un autre
+  checkout.
+- **`report.py --svg`** : le pic etiquete est celui qui suit le creux, ou
+  qu'il soit, et sur la premiere version de son plateau. Il n'etait
+  cherche que dans les huit dernieres versions : la regression de la sonde
+  HTTP (11.7.0 a 11.8.1, #214, #249) aurait perdu son etiquette.
+- **README** : 51 cibles de fuzz chaque nuit, et non 39 (le compte datait
+  de #272).
+
 ## [13.4.0] - 2026-11-23
 
 Mineure, sans rupture : six protocoles ajoutes (Skinny, LDAP, Syslog,
