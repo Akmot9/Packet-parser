@@ -98,7 +98,9 @@ As done for 11.7.0, 11.8.0, 11.8.1, 11.8.2, 12.0.0, 12.1.0, 13.0.0, 13.1.0, 13.1
 3. Change the install line `packet_parser = "X.Y.Z"` in `README.md`.
 4. In `CHANGELOG.md`, insert `## [X.Y.Z] - YYYY-MM-DD` right below `## [Non publie]` (now empty).
 5. In `ROADMAP.md`, write a new `Etat au YYYY-MM-DD` paragraph at the top; the
-   old one becomes `Etat anterieur (...)`.
+   old one becomes `Etat anterieur (...)`. This commit is merged before the tag
+   exists (steps 7 to 9): write that the tag publishes the version, not that
+   the version is published.
 6. Run the checklist above, then `cargo semver-checks check-release -p packet_parser`
    (it now checks the declared bump), `cargo publish --dry-run --locked --allow-dirty`, and
    `cargo package --list --allow-dirty` (no `pcaps_exemple/` file). `--allow-dirty`

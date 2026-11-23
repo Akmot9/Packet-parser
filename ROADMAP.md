@@ -1,7 +1,7 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-23, 13.4.0 : la **13.4.0 est publiee** (tag `v13.4.0`,
-publication par le workflow). Mineure, sans rupture, elle nomme les
+Etat au 2026-11-23, 13.4.0 : `main` porte la **13.4.0**, que le tag
+`v13.4.0` publie par le workflow. Mineure, sans rupture, elle nomme les
 standards qui restaient sans nom sur le corpus prive de 163 captures de
 terrain (28,66 M de trames) : six decodeurs, decrits ci-dessous dans
 l'ordre de leur livraison, tous du 2026-11-23. Elle porte aussi les
