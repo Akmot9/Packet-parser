@@ -453,53 +453,62 @@ fn walk_compound<'a>(
         actual: buf.len(),
     };
     let primary_len = fx_extent(buf).ok_or_else(|| truncated(buf.len() + 1))?;
-    let primary = &buf[..primary_len];
-    let mut pos = primary_len;
+    let (primary, mut rest) = buf.split_at(primary_len);
     for (octet_index, octet) in primary.iter().enumerate() {
-        for bit in 0..7u8 {
-            if octet & (0x80 >> bit) == 0 {
-                continue;
-            }
-            let index = octet_index * 7 + usize::from(bit);
-            let unknown = AsterixError::UnknownSubfield {
-                item,
-                // Numerotation a partir de 1, comme la specification ;
-                // `index` est borne par la longueur du primary subfield.
-                subfield: u8::try_from(index + 1).unwrap_or(u8::MAX),
+        for rank in presence_bits(*octet) {
+            let index = octet_index * 7 + usize::from(rank);
+            let (data, tail) = match subfields.get(index) {
+                // Le cas courant : longueur fixe, sans appel. Trop court,
+                // `subfield_len` rend l'erreur.
+                Some(Subfield::Fixed(len)) if *len <= rest.len() => rest.split_at(*len),
+                _ => rest.split_at(subfield_len(buf, rest, subfields, index, item)?),
             };
-            let rest = &buf[pos..];
-            let sub_truncated = |needed: usize| AsterixError::TruncatedItem {
-                item,
-                needed: pos + needed,
-                actual: buf.len(),
-            };
-            // Les erreurs des formes extensibles comptent depuis le debut du
-            // sous-champ : les ramener au debut de l'item.
-            let rebase = |error: AsterixError| match error {
-                AsterixError::TruncatedItem { item, needed, .. } => AsterixError::TruncatedItem {
-                    item,
-                    needed: pos + needed,
-                    actual: buf.len(),
-                },
-                other => other,
-            };
-            let len = match subfields.get(index).ok_or(unknown.clone())? {
-                Subfield::Spare => return Err(unknown),
-                Subfield::Fixed(len) => ensure(rest, *len, sub_truncated)?,
-                Subfield::Variable => {
-                    fx_extent(rest).ok_or_else(|| sub_truncated(rest.len() + 1))?
-                }
-                Subfield::Repetitive(each) => repetitive_len(rest, *each, sub_truncated)?,
-                Subfield::Extended(extents) => extended_len(rest, extents, item).map_err(rebase)?,
-                Subfield::RepetitiveFx(each) => {
-                    repetitive_fx_len(rest, *each, item).map_err(rebase)?
-                }
-            };
-            visit(index, &rest[..len]);
-            pos += len;
+            visit(index, data);
+            rest = tail;
         }
     }
-    Ok(pos)
+    Ok(buf.len() - rest.len())
+}
+
+/// Longueur du sous-champ d'index `index` (a partir de 0) de l'item compose
+/// `buf`, dont il occupe le debut de `rest`, fin de `buf`.
+fn subfield_len(
+    buf: &[u8],
+    rest: &[u8],
+    subfields: &'static [Subfield],
+    index: usize,
+    item: &'static str,
+) -> Result<usize, AsterixError> {
+    let pos = buf.len() - rest.len();
+    let unknown = || AsterixError::UnknownSubfield {
+        item,
+        // Numerotation a partir de 1, comme la specification ;
+        // `index` est borne par la longueur du primary subfield.
+        subfield: u8::try_from(index + 1).unwrap_or(u8::MAX),
+    };
+    let sub_truncated = |needed: usize| AsterixError::TruncatedItem {
+        item,
+        needed: pos + needed,
+        actual: buf.len(),
+    };
+    // Les erreurs des formes extensibles comptent depuis le debut du
+    // sous-champ : les ramener au debut de l'item.
+    let rebase = |error: AsterixError| match error {
+        AsterixError::TruncatedItem { item, needed, .. } => AsterixError::TruncatedItem {
+            item,
+            needed: pos + needed,
+            actual: buf.len(),
+        },
+        other => other,
+    };
+    match subfields.get(index).ok_or_else(unknown)? {
+        Subfield::Spare => Err(unknown()),
+        Subfield::Fixed(len) => ensure(rest, *len, sub_truncated),
+        Subfield::Variable => fx_extent(rest).ok_or_else(|| sub_truncated(rest.len() + 1)),
+        Subfield::Repetitive(each) => repetitive_len(rest, *each, sub_truncated),
+        Subfield::Extended(extents) => extended_len(rest, extents, item).map_err(rebase),
+        Subfield::RepetitiveFx(each) => repetitive_fx_len(rest, *each, item).map_err(rebase),
+    }
 }
 
 fn ensure(
@@ -806,6 +815,86 @@ mod tests {
                 item: "I048/120",
                 subfield: 3
             })
+        );
+    }
+
+    /// Octets synthetiques : les erreurs d'un sous-champ comptent depuis le
+    /// debut de l'item compose, quelle que soit sa forme.
+    #[test]
+    fn test_compound_subfield_errors_count_from_the_start_of_the_item() {
+        for (bytes, expected) in [
+            // I048/130 : SRL et APD annonces, APD absent.
+            (
+                &[0x30, 0x00, 0x06, 0x02, 0x82, 0xaa][..],
+                AsterixError::TruncatedItem {
+                    item: "I048/130",
+                    needed: 3,
+                    actual: 2,
+                },
+            ),
+            // Primary subfield dont le FX ne retombe pas.
+            (
+                &[0x30, 0x00, 0x05, 0x02, 0x83][..],
+                AsterixError::TruncatedItem {
+                    item: "I048/130",
+                    needed: 2,
+                    actual: 1,
+                },
+            ),
+            // Huitieme sous-champ : I048/130 n'en definit que sept.
+            (
+                &[0x30, 0x00, 0x08, 0x02, 0x81, 0x80, 0xaa, 0xbb][..],
+                AsterixError::UnknownSubfield {
+                    item: "I048/130",
+                    subfield: 8,
+                },
+            ),
+            // I048/120 (FRN 20) : CAL, puis RDS repetitif, REP 2 pour six
+            // octets.
+            (
+                &[
+                    0x30, 0x00, 0x10, 0x01, 0x01, 0x04, 0xc0, 0x11, 0x22, 0x02, 0xa1, 0xa2, 0xa3,
+                    0xa4, 0xa5, 0xa6,
+                ][..],
+                AsterixError::TruncatedItem {
+                    item: "I048/120",
+                    needed: 16,
+                    actual: 10,
+                },
+            ),
+            // I021/110 (FRN 34) : TIS, extensible a un seul extent, absent
+            // puis au FX pose.
+            (
+                &[0x15, 0x00, 0x09, 0x01, 0x01, 0x01, 0x01, 0x04, 0x80][..],
+                AsterixError::TruncatedItem {
+                    item: "I021/110",
+                    needed: 2,
+                    actual: 1,
+                },
+            ),
+            (
+                &[0x15, 0x00, 0x0a, 0x01, 0x01, 0x01, 0x01, 0x04, 0x80, 0x01][..],
+                AsterixError::ExtentOverflow { item: "I021/110" },
+            ),
+        ] {
+            assert_eq!(
+                AsterixPacket::try_from(bytes),
+                Err(expected),
+                "{bytes:02x?}"
+            );
+        }
+
+        // La forme valide de I048/120 : CAL sur deux octets, puis un RDS.
+        let datagram = [
+            0x30, 0x00, 0x10, 0x01, 0x01, 0x04, 0xc0, 0x11, 0x22, 0x01, 0xa1, 0xa2, 0xa3, 0xa4,
+            0xa5, 0xa6,
+        ];
+        let packet = AsterixPacket::try_from(&datagram[..]).expect("I048/120");
+        let record = &packet.blocks[0].records[0];
+        assert_eq!(record.subfield("I048/120", 1), Some(&[0x11, 0x22][..]));
+        assert_eq!(
+            record.subfield("I048/120", 2),
+            Some(&[0x01, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6][..])
         );
     }
 
