@@ -725,10 +725,13 @@ Docker, Postgres, Grafana or any CDN.
 xdg-open tools/verbench/perf_by_version.html
 ```
 
-`tools/verbench` reports average `l2_ns`, `l3_ns`, `l4_ns`, `l7_ns` and
-`total_ns` values on a fixed reference packet after warmup. Use these numbers to
-compare trends between versions on the same machine, not as universal absolute
-latency claims.
+`tools/verbench` reports `l2_ns`, `l3_ns`, `l4_ns`, `l7_ns` and `total_ns` on a
+fixed reference packet: each binary averages 200 000 parses after warmup, every
+version runs 15 times on one pinned core in a rotating order, and the JSON keeps
+the median of each layer. Use these numbers to compare trends between versions
+on the same machine, not as universal absolute latency claims; the reference
+packet is a TCP segment with an encrypted payload, so every blind TCP probe
+runs on it.
 
 ## Optional PCAP Pipeline
 

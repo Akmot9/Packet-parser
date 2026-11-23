@@ -622,11 +622,15 @@ def trend_svg(rows: list[dict[str, int | str]]) -> str:
         f'stroke-linecap="round" points="{polyline(points)}"/>'
     )
 
-    # Etiquettes directes, peu nombreuses : depart, creux, dernier pic, arrivee.
+    # Etiquettes directes, peu nombreuses : depart, creux, pic qui suit le
+    # creux (ou qu'il soit, et non dans les seules dernieres versions), arrivee.
+    # Le pic est la premiere version du plateau, celle ou la hausse apparait :
+    # entre deux versions a 5 % l'une de l'autre, le maximum tient au bruit.
     lowest = min(range(len(values)), key=values.__getitem__)
     marked = {0: "start", lowest: "middle", len(values) - 1: "end"}
-    tail = range(max(len(values) - 8, 1), len(values) - 1)
-    peak = max(tail, key=values.__getitem__, default=None)
+    after = range(lowest + 1, len(values) - 1)
+    top = max((values[index] for index in after), default=0)
+    peak = next((index for index in after if values[index] >= 0.95 * top), None)
     if peak is not None and values[peak] > 1.5 * values[-1]:
         marked[peak] = "end"
     for index, anchor in sorted(marked.items()):
