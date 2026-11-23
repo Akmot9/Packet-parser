@@ -56,6 +56,7 @@ use crate::parse::application::protocols::srvloc::SrvlocPacket;
 use crate::parse::application::protocols::ssdp::SsdpPacket;
 use crate::parse::application::protocols::ssh::SshPacket;
 use crate::parse::application::protocols::stanag5066::SisPdu;
+use crate::parse::application::protocols::syslog::{SyslogFrame, SyslogMessage};
 use crate::parse::application::protocols::tls::TlsPacket;
 use crate::parse::application::protocols::umas::UmasPacket;
 use crate::parse::application::protocols::valmet_dna::ValmetDnaPacket;
@@ -207,11 +208,16 @@ pub(super) enum ProbeId {
     /// couche SASL Kerberos qui pavent le payload, le dernier pouvant etre
     /// coupe (#372).
     Ldap,
+    /// Syslog en datagramme : un message ouvert par sa priorite (#374).
+    Syslog,
+    /// Syslog sur TCP : des trames de la RFC 6587 qui pavent le segment,
+    /// la derniere pouvant etre coupee (#374).
+    SyslogTcp,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::Ldap;
+    pub(super) const LAST: Self = Self::SyslogTcp;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -298,6 +304,8 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::RtcpBlind => RtcpCompound::is_blind_match(payload),
         ProbeId::Skinny => SkinnyMessage::is_port_match(payload),
         ProbeId::Ldap => LdapPdu::is_port_match(payload),
+        ProbeId::Syslog => SyslogMessage::try_from(payload).is_ok(),
+        ProbeId::SyslogTcp => SyslogFrame::is_port_match(payload),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),

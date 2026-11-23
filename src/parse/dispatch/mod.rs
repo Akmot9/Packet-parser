@@ -138,6 +138,9 @@ decode_as_protocols![
     /// LDAP over TCP or UDP: the same rule as on port 389, for a directory
     /// that listens on another port.
     Ldap,
+    /// Syslog: one message per UDP datagram, RFC 6587 frames over TCP, for
+    /// a collector that listens on another port than 514.
+    Syslog,
 ];
 
 impl DecodeAsProtocol {
@@ -146,7 +149,8 @@ impl DecodeAsProtocol {
     /// longueur sur TCP (RFC 1035 §4.2). AMS aussi : en-tete nu hors TCP,
     /// precede de l'en-tete AMS/TCP sur TCP. EtherNet/IP comme ses regles
     /// aveugles : sur TCP, des messages complets qui pavent le segment
-    /// (#288) ; ailleurs, un seul message.
+    /// (#288) ; ailleurs, un seul message. Syslog de meme : des trames de
+    /// la RFC 6587 sur TCP, un message par datagramme ailleurs (#374).
     fn rule(self, protocol: TransportProtocol) -> (ApplicationProtocol, Guard, ProbeId) {
         match self {
             Self::Ftp => (ApplicationProtocol::Ftp, Guard::Tcp, ProbeId::Ftp),
@@ -241,6 +245,12 @@ impl DecodeAsProtocol {
             Self::Rtcp => (ApplicationProtocol::Rtcp, Guard::Udp, ProbeId::Rtcp),
             Self::Skinny => (ApplicationProtocol::Skinny, Guard::Tcp, ProbeId::Skinny),
             Self::Ldap => (ApplicationProtocol::Ldap, Guard::Any, ProbeId::Ldap),
+            Self::Syslog => match protocol {
+                TransportProtocol::Tcp => {
+                    (ApplicationProtocol::Syslog, Guard::Tcp, ProbeId::SyslogTcp)
+                }
+                _ => (ApplicationProtocol::Syslog, Guard::Udp, ProbeId::Syslog),
+            },
         }
     }
 }

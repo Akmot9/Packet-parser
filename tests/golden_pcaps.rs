@@ -530,9 +530,25 @@ fn application_classification_histogram_is_frozen() {
     //   8 sans charge.
     // "Unknown" 16 929 -> 16 940 (+11), "(sans application)" 7 399 ->
     // 7 470 (+71).
+    //
+    // 2026-11-23 (#374, syslog) : +2 captures dans protocols/syslog/ (voir
+    // SOURCE.md, nDPI), 102 trames. "Syslog" 0 -> 88, et aucune trame des
+    // autres captures : les regles a port d'UDP 514 et de TCP 514 et 601 ne
+    // prennent rien ailleurs dans ce dossier.
+    // - ndpi_syslog.pcap (94) : 83 "Syslog" sur UDP 514, dont 6 dans un
+    //   tunnel IPv6 sur IPv4 (trames 26 a 31), que l'histogramme compte deux
+    //   fois : "IP-in-IP" 5 -> 11 pour le flux externe, "Syslog" pour le
+    //   flux interne ; 1 "Unknown" (trame 81, un message de la RFC 5424 sur
+    //   TCP 52173, nomme une fois le port declare par Decode As :
+    //   `tests/syslog_golden.rs`) ; 10 sans charge ;
+    // - ndpi_rsh-syslog-false-positive.pcap (8) : 5 "Syslog" sur TCP 514,
+    //   1 "Unknown" (trame 8, un segment de suite), et 2 trames que la
+    //   capture a coupees (6 et 7), arretees a la couche reseau.
+    // "Unknown" 16 940 -> 16 942 (+2), "(sans application)" 7 470 -> 7 482
+    // (+12).
     let expected: BTreeMap<String, usize> = [
         (LINK_ERROR, 42_usize),
-        (NO_APPLICATION, 7470),
+        (NO_APPLICATION, 7482),
         ("ASTERIX", 44_507),
         ("BACnet/IP", 45),
         ("COTP", 33),
@@ -549,7 +565,7 @@ fn application_classification_histogram_is_frozen() {
         ("IEC 104", 374),
         ("IKE", 535),
         ("Java RMI", 143),
-        ("IP-in-IP", 5),
+        ("IP-in-IP", 11),
         ("LDAP", 79),
         ("LLMNR", 138),
         ("MQTT", 187),
@@ -570,6 +586,7 @@ fn application_classification_histogram_is_frozen() {
         ("RDP", 89),
         ("RTCP", 52),
         ("Skinny", 656),
+        ("Syslog", 88),
         ("SIP", 181),
         ("SMTP", 6),
         ("SNMP", 14),
@@ -579,7 +596,7 @@ fn application_classification_histogram_is_frozen() {
         ("TLS", 1294),
         ("RTPS", 231),
         ("STANAG 5066", 34),
-        ("Unknown", 16940),
+        ("Unknown", 16942),
         ("Valmet DNA", 720),
         ("WireGuard", 128),
         ("mDNS", 12),

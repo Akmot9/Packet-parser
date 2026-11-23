@@ -116,12 +116,12 @@ on anything else; it is kept for compatibility only.
 - **Internet**: IPv4, IPv6, ARP, and directly over Ethernet: PROFINET, PTP,
   GOOSE, LLDP.
 - **Transport**: TCP, UDP, ICMPv4, ICMPv6, ESP.
-- **Application**, 52 labels: AMS, ASTERIX, BACnet/IP, Bitcoin, COTP,
+- **Application**, 53 labels: AMS, ASTERIX, BACnet/IP, Bitcoin, COTP,
   DCE/RPC, DHCP, DHCPv6, DIS, DNP3, DNS, ESP, EtherNet/IP, FTP, GIOP, HTTP,
   IEC 104, IKE, Java RMI, LDAP, LLMNR, mDNS, ModbusTCP, ModbusUDP, MQTT, NBNS,
   NBSS, NMF, NNTP, NTP, OPC UA, OpenVPN, PostgreSQL, PTP, QUIC, RADIUS, RDP,
-  RTCP, RTP, RTPS, S7Comm, SIP, Skinny, SMTP, SNMP, SRVLOC, SSDP, SSH, TLS,
-  UMAS, Valmet DNA, WireGuard.
+  RTCP, RTP, RTPS, S7Comm, SIP, Skinny, SMTP, SNMP, SRVLOC, SSDP, SSH, Syslog,
+  TLS, UMAS, Valmet DNA, WireGuard.
 - **Tunnels**, peeled into `flow.inner`: CAPWAP-Data, GRE, IP-in-IP, VXLAN,
   Geneve, GTP-U.
 

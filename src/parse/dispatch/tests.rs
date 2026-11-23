@@ -1312,6 +1312,66 @@ fn skinny_is_named_on_tcp_2000_only() {
     assert_eq!(label(Tcp, 2000, 80, http, &[]), Some("HTTP"));
 }
 
+/// Syslog (#374) : un message par datagramme sur UDP 514, des trames de la
+/// RFC 6587 sur TCP 514 et 601, ou sur un port declare, jamais ailleurs.
+/// Octets synthetiques.
+#[test]
+fn syslog_is_named_on_its_ports_only() {
+    use TransportProtocol::{Tcp, Udp};
+    let label = |protocol: TransportProtocol,
+                 source: u16,
+                 destination: u16,
+                 payload: &[u8],
+                 decode_as: &[(u16, DecodeAsProtocol)]| {
+        let transport = Transport {
+            protocol,
+            source_port: Some(source),
+            destination_port: Some(destination),
+            payload: Some(payload),
+            details: None,
+        };
+        classify(&transport, decode_as).map(|a| a.protocol.label())
+    };
+    let message = b"<13>Feb  5 17:32:18 host app: text";
+    let line = b"<13>Feb  5 17:32:18 host app: text\n";
+    let counted = b"34 <13>Feb  5 17:32:18 host app: text";
+
+    assert_eq!(label(Udp, 49152, 514, message, &[]), Some("Syslog"));
+    assert_eq!(label(Udp, 514, 49152, message, &[]), Some("Syslog"));
+    assert_eq!(label(Udp, 49152, 515, message, &[]), Some("Unknown"));
+    // 601 n'est un port syslog que sur TCP.
+    assert_eq!(label(Udp, 49152, 601, message, &[]), Some("Unknown"));
+    for payload in [&message[..], line, counted] {
+        assert_eq!(label(Tcp, 49152, 514, payload, &[]), Some("Syslog"));
+        assert_eq!(label(Tcp, 49152, 601, payload, &[]), Some("Syslog"));
+        assert_eq!(label(Tcp, 49152, 515, payload, &[]), Some("Unknown"));
+    }
+
+    // Un datagramme est un message : le comptage d'octets n'existe que sur
+    // TCP.
+    assert_eq!(label(Udp, 49152, 514, counted, &[]), Some("Unknown"));
+    // Sur TCP, chaque ligne s'ouvre par une priorite ; un datagramme, lui,
+    // garde ses LF dans son contenu.
+    let two_lines = b"<13>first\nsecond\n";
+    assert_eq!(label(Tcp, 49152, 514, two_lines, &[]), Some("Unknown"));
+    assert_eq!(label(Udp, 49152, 514, two_lines, &[]), Some("Syslog"));
+
+    // Un autre port se declare, sur TCP comme sur UDP, chacun sous sa forme.
+    let declared = [(1514, DecodeAsProtocol::Syslog)];
+    assert_eq!(label(Udp, 49152, 1514, message, &declared), Some("Syslog"));
+    assert_eq!(label(Tcp, 49152, 1514, counted, &declared), Some("Syslog"));
+    assert_eq!(label(Udp, 49152, 1514, counted, &declared), Some("Unknown"));
+
+    // Refus sur le port : pas de priorite, priorite hors bornes, le debut
+    // d'une session rsh sur TCP 514.
+    for payload in [&b"text without priority"[..], b"<192>text", b"<01>text"] {
+        assert_eq!(label(Udp, 49152, 514, payload, &[]), Some("Unknown"));
+        assert_eq!(label(Tcp, 49152, 514, payload, &[]), Some("Unknown"));
+    }
+    let rsh = b"1021\0root\0root\0ls\0";
+    assert_eq!(label(Tcp, 1022, 514, rsh, &[]), Some("Unknown"));
+}
+
 /// LDAP (#372) : des PDU qui pavent le payload, sur TCP 389 et 3268, sur
 /// UDP 389 ou sur un port declare, jamais ailleurs. Octets synthetiques :
 /// un UnbindRequest de sept octets, et l'en-tete d'un tampon SASL chiffre
