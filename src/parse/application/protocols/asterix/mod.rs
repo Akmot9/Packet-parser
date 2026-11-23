@@ -236,6 +236,9 @@ impl AsterixPacket<'_> {
 /// ce qu'ils en retiennent : l'un et l'autre acceptent donc exactement les
 /// memes octets.
 trait Sink<'a> {
+    /// Debut d'un record : son FSPEC, deja borne par l'UAP, annonce
+    /// `count` items.
+    fn expect_items(&mut self, count: usize);
     fn item(&mut self, item: AsterixItem<'a>);
     /// Fin d'un record : les items remis depuis le precedent sont les siens.
     fn record(&mut self, category: u8, fspec: &'a [u8]);
@@ -253,6 +256,12 @@ struct Decoded<'a> {
 }
 
 impl<'a> Sink<'a> for Decoded<'a> {
+    fn expect_items(&mut self, count: usize) {
+        // Une allocation par record, a sa taille, au lieu de la croissance
+        // par doublement de `push` (4, 8, 16, 32 items).
+        self.items.reserve_exact(count);
+    }
+
     fn item(&mut self, item: AsterixItem<'a>) {
         self.items.push(item);
     }
@@ -278,6 +287,8 @@ impl<'a> Sink<'a> for Decoded<'a> {
 struct Discard;
 
 impl<'a> Sink<'a> for Discard {
+    fn expect_items(&mut self, _count: usize) {}
+
     fn item(&mut self, _item: AsterixItem<'a>) {}
 
     fn record(&mut self, _category: u8, _fspec: &'a [u8]) {}
@@ -328,6 +339,13 @@ fn walk_record<'a, S: Sink<'a>>(
     if fspec_len > uap.max_fspec_octets() {
         return Err(AsterixError::FspecOverflow { category });
     }
+    // Un item par bit de presence, le bit 1 de chaque octet etant le FX.
+    sink.expect_items(
+        fspec
+            .iter()
+            .map(|octet| (octet & 0xfe).count_ones() as usize)
+            .sum(),
+    );
     let mut empty = true;
     for (octet_index, octet) in fspec.iter().enumerate() {
         for rank in presence_bits(*octet) {
