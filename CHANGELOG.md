@@ -6,6 +6,13 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [13.4.0] - 2026-11-23
+
+Mineure, sans rupture : six protocoles ajoutes (Skinny, LDAP, Syslog,
+NBDS, Kerberos V5, ONC RPC), les standards qui restaient sans nom sur le
+corpus de terrain de #346, et les corrections que la relecture des revues
+automatiques a demandees (#382, #383).
+
 ### Ajoute
 
 - **ONC RPC** (RFC 5531, #381) : etiquette `ONC RPC`, decodeur zero copie

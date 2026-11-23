@@ -86,7 +86,7 @@ in French.
 
 ## Releasing a version
 
-As done for 11.7.0, 11.8.0, 11.8.1, 11.8.2, 12.0.0, 12.1.0, 13.0.0, 13.1.0, 13.1.1, 13.2.0 and 13.3.0 (#206, #229, #242, #251, #267, #286, #322, #337, #339, #344, #366):
+As done for 11.7.0, 11.8.0, 11.8.1, 11.8.2, 12.0.0, 12.1.0, 13.0.0, 13.1.0, 13.1.1, 13.2.0, 13.3.0 and 13.4.0 (#206, #229, #242, #251, #267, #286, #322, #337, #339, #344, #366, #389):
 
 1. From an up-to-date `main`, create `chore/release-X.Y.Z`. Read `[Non publie]` to
    choose patch, minor or major. A major must be planned in the ROADMAP and come
@@ -98,7 +98,9 @@ As done for 11.7.0, 11.8.0, 11.8.1, 11.8.2, 12.0.0, 12.1.0, 13.0.0, 13.1.0, 13.1
 3. Change the install line `packet_parser = "X.Y.Z"` in `README.md`.
 4. In `CHANGELOG.md`, insert `## [X.Y.Z] - YYYY-MM-DD` right below `## [Non publie]` (now empty).
 5. In `ROADMAP.md`, write a new `Etat au YYYY-MM-DD` paragraph at the top; the
-   old one becomes `Etat anterieur (...)`.
+   old one becomes `Etat anterieur (...)`. This commit is merged before the tag
+   exists (steps 7 to 9): write that the tag publishes the version, not that
+   the version is published.
 6. Run the checklist above, then `cargo semver-checks check-release -p packet_parser`
    (it now checks the declared bump), `cargo publish --dry-run --locked --allow-dirty`, and
    `cargo package --list --allow-dirty` (no `pcaps_exemple/` file). `--allow-dirty`
