@@ -26,6 +26,8 @@
 //!   [`PROBE_CAP`](probes::PROBE_CAP) octets : la borne de l'issue #20, qui plafonnait jadis
 //!   toutes les sondes (#184, #185), et que l'oracle du fuzz recopie.
 
+use std::num::NonZero;
+
 use super::application::Application;
 use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
@@ -349,11 +351,8 @@ fn classify_payload(
     }
 
     // Du bit le plus faible au plus fort : l'ordre de la table.
-    while pending != 0 {
-        let rank = pending.trailing_zeros() as usize;
-        let Some(listed) = list.rules.get(rank) else {
-            break;
-        };
+    while let Some(set) = NonZero::new(pending) {
+        let listed = list.first(set);
         let rule = listed.rule;
 
         if run_probe(rule.probe, payload) {

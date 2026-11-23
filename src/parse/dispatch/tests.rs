@@ -1063,7 +1063,7 @@ fn transport_lists_are_the_table_filtered_by_its_guards() {
             .iter()
             .filter(|rule| rule.guard.admits(protocol))
             .collect();
-        let listed = index::list_for(protocol).rules;
+        let listed = index::list_for(protocol).rules();
         assert_eq!(listed.len(), expected.len(), "{protocol:?}");
         for (listed, expected) in listed.iter().map(|listed| listed.rule).zip(expected) {
             assert!(
@@ -1080,11 +1080,11 @@ fn transport_lists_are_the_table_filtered_by_its_guards() {
     }
     // Les trois listes existent : TCP et UDP ont leurs regles, les autres
     // protocoles seulement les regles `Guard::Any`.
-    assert!(index::list_for(TransportProtocol::Tcp).rules.len() > 4);
-    assert!(index::list_for(TransportProtocol::Udp).rules.len() > 4);
+    assert!(index::list_for(TransportProtocol::Tcp).rules().len() > 4);
+    assert!(index::list_for(TransportProtocol::Udp).rules().len() > 4);
     assert!(
         index::list_for(TransportProtocol::Sctp)
-            .rules
+            .rules()
             .iter()
             .all(|listed| matches!(listed.rule.guard, Guard::Any))
     );
@@ -1092,7 +1092,7 @@ fn transport_lists_are_the_table_filtered_by_its_guards() {
 
 /// Les regles de `list` que retient `keep`, en ensemble.
 fn rule_set(list: &index::RuleList, keep: impl Fn(&Rule) -> bool) -> RuleSet {
-    list.rules
+    list.rules()
         .iter()
         .enumerate()
         .filter(|(_, listed)| keep(listed.rule))
@@ -1129,7 +1129,7 @@ fn port_effects_are_the_port_guards_and_vetoes_of_each_rule() {
         // les ports par regle, plutot qu'une passe sur les regles par port.
         let mut opens: Vec<RuleSet> = vec![0; usize::from(u16::MAX) + 1];
         let mut vetoes: Vec<RuleSet> = vec![0; usize::from(u16::MAX) + 1];
-        for (rank, rule) in list.rules.iter().map(|listed| listed.rule).enumerate() {
+        for (rank, rule) in list.rules().iter().map(|listed| listed.rule).enumerate() {
             for port in 0..=u16::MAX {
                 if rule.ports.is_some_and(|ports| ports.contains(port)) {
                     opens[usize::from(port)] |= 1 << rank;
@@ -1172,9 +1172,9 @@ fn twins_are_the_later_rules_that_carry_the_same_probe() {
         let same_probe = |listed: &index::Listed, other: &Rule| {
             other.probe as u32 == listed.rule.probe as u32 && !other.terminal_on_port
         };
-        for (rank, listed) in list.rules.iter().enumerate() {
+        for (rank, listed) in list.rules().iter().enumerate() {
             let later = list
-                .rules
+                .rules()
                 .iter()
                 .enumerate()
                 .filter(|(later, other)| *later > rank && same_probe(listed, other.rule))
@@ -1201,10 +1201,10 @@ fn twins_are_the_later_rules_that_carry_the_same_probe() {
         // Aucune regle terminale de la table ne partage sa sonde : une
         // sonde ne s'execute donc qu'une fois par payload, regles
         // terminales comprises.
-        for (rank, listed) in list.rules.iter().enumerate() {
+        for (rank, listed) in list.rules().iter().enumerate() {
             if listed.rule.terminal_on_port {
                 assert!(
-                    list.rules.iter().enumerate().all(|(other, twin)| {
+                    list.rules().iter().enumerate().all(|(other, twin)| {
                         other == rank || twin.rule.probe as u32 != listed.rule.probe as u32
                     }),
                     "{protocol:?} : la regle terminale {} partage sa sonde",
@@ -1217,7 +1217,7 @@ fn twins_are_the_later_rules_that_carry_the_same_probe() {
     // TCP, chacune sur son port puis a l'aveugle.
     let twinned = |protocol| {
         index::list_for(protocol)
-            .rules
+            .rules()
             .iter()
             .filter(|listed| listed.left.count_zeros() > 1)
             .count()

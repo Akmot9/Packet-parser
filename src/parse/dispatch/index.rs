@@ -13,6 +13,8 @@
 //! l'ordre de la table. Une sonde qui echoue en retire les regles suivantes
 //! qui la portent : la memoisation des echecs est ce meme ensemble.
 
+use std::num::NonZero;
+
 use super::ports::Ports;
 use super::probes::ProbeMask;
 use super::rules::{RULES, Rule};
@@ -59,8 +61,13 @@ pub(super) struct Listed {
 /// elles.
 pub(super) struct RuleList {
     /// Les regles dont la garde de transport admet ce transport, dans
-    /// l'ordre de la table.
-    pub(super) rules: &'static [Listed],
+    /// l'ordre de la table, puis du bourrage jusqu'a la largeur de
+    /// [`RuleSet`] : le rang d'un bit d'un ensemble y est toujours un indice
+    /// valide, sans test de borne. Aucun ensemble de l'index ne designe une
+    /// case de bourrage.
+    listed: [Listed; RuleSet::BITS as usize],
+    /// Nombre de regles, bourrage exclu.
+    len: usize,
     /// Les regles sans garde de port : a visiter quels que soient les ports.
     pub(super) portless: RuleSet,
     /// Les regles terminales a garde de port : leurs ports sont reserves.
@@ -78,6 +85,17 @@ pub(super) struct RuleList {
 }
 
 impl RuleList {
+    /// Les regles de la liste, dans l'ordre de la table.
+    pub(super) fn rules(&self) -> &[Listed] {
+        self.listed.get(..self.len).unwrap_or(&[])
+    }
+
+    /// La premiere regle de `pending` dans l'ordre de la table : celle de
+    /// son bit le plus faible.
+    pub(super) fn first(&self, pending: NonZero<RuleSet>) -> &Listed {
+        &self.listed[pending.trailing_zeros() as usize]
+    }
+
     /// L'effet de `port` sur les regles de la liste : trois lectures, sans
     /// recherche.
     pub(super) fn port_effect(&self, port: Option<u16>) -> PortEffect {
@@ -97,7 +115,7 @@ impl RuleList {
     /// de `failed` ont deja echoue : celles qui portent une de ces sondes,
     /// hors regles terminales (voir [`Listed::left`]).
     pub(super) fn already_failed(&self, failed: ProbeMask) -> RuleSet {
-        self.rules
+        self.rules()
             .iter()
             .enumerate()
             .filter(|(_, listed)| {
@@ -143,17 +161,18 @@ const fn admitted<const N: usize>(protocol: TransportProtocol) -> [&'static Rule
 
 /// Chaque regle avec ce que son echec laisse a visiter : tout, sauf elle
 /// et ses jumelles, les regles non terminales qui la suivent et portent la
-/// meme sonde.
-const fn listed<const N: usize>(rules: &[&'static Rule; N]) -> [Listed; N] {
+/// meme sonde. Au-dela des regles, du bourrage : une case qu'aucun ensemble
+/// ne designe, et dont l'echec ne laisserait rien a visiter.
+const fn listed(rules: &[&'static Rule]) -> [Listed; RuleSet::BITS as usize] {
     let mut list = [Listed {
         rule: &RULES[0],
         left: 0,
-    }; N];
+    }; RuleSet::BITS as usize];
     let mut rank = 0;
-    while rank < N {
+    while rank < rules.len() {
         let mut settled: RuleSet = 1 << rank;
         let mut later = rank + 1;
-        while later < N {
+        while later < rules.len() {
             if rules[later].probe as u32 == rules[rank].probe as u32
                 && !rules[later].terminal_on_port
             {
@@ -360,7 +379,8 @@ macro_rules! rule_list {
         const SLOTS: [[u8; 256]; page_count(&PORTS)] = port_slots(&PORTS);
         const EFFECTS: [PortEffect; PORT_COUNT + 1] = port_effects(&LISTED, &PORTS);
         RuleList {
-            rules: &listed(&LISTED),
+            listed: listed(&LISTED),
+            len: RULE_COUNT,
             portless: portless(&LISTED),
             terminal: terminal(&LISTED),
             pages: port_pages(&PORTS),
