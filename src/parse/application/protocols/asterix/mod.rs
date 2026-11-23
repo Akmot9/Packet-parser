@@ -350,7 +350,7 @@ fn walk_record<'a, S: Sink<'a>>(
     for (octet_index, octet) in fspec.iter().enumerate() {
         for rank in presence_bits(*octet) {
             // Sept FRN par octet, numerotes a partir de 1.
-            let index = octet_index * 7 + usize::from(rank);
+            let index = octet_index * 7 + rank;
             let Some(Some(spec)) = uap.items.get(index) else {
                 return Err(AsterixError::UnknownFrn {
                     category,
@@ -389,19 +389,14 @@ fn frn_of(index: usize) -> u8 {
 /// Les bits de presence poses d'un octet de FSPEC ou de primary subfield,
 /// par rang : 0 pour le bit 8 (poids fort, premier annonce) a 6 pour le
 /// bit 2. Le bit 1 est le FX, pas une presence.
-fn presence_bits(octet: u8) -> impl Iterator<Item = u8> {
-    let mut pending = octet & 0xfe;
+fn presence_bits(octet: u8) -> impl Iterator<Item = usize> {
+    let mut pending = u32::from(octet & 0xfe);
     std::iter::from_fn(move || {
-        if pending == 0 {
-            return None;
-        }
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "au plus 8 zeros en tete d'un u8"
-        )]
-        let rank = pending.leading_zeros() as u8;
-        pending &= !(0x80 >> rank);
-        Some(rank)
+        // Le bit pose de poids le plus fort : du numero 7 (rang 0) au
+        // numero 1 (rang 6).
+        let top = pending.checked_ilog2()?;
+        pending &= !(1 << top);
+        Some(7 - top as usize)
     })
 }
 
@@ -474,7 +469,7 @@ fn walk_compound<'a>(
     let (primary, mut rest) = buf.split_at(primary_len);
     for (octet_index, octet) in primary.iter().enumerate() {
         for rank in presence_bits(*octet) {
-            let index = octet_index * 7 + usize::from(rank);
+            let index = octet_index * 7 + rank;
             let (data, tail) = match subfields.get(index) {
                 // Le cas courant : longueur fixe, sans appel. Trop court,
                 // `subfield_len` rend l'erreur.
@@ -1107,7 +1102,7 @@ mod tests {
         assert_eq!(presence_bits(0x82).collect::<Vec<_>>(), [0, 6]);
         assert_eq!(presence_bits(0x01).count(), 0);
         for octet in 0..=u8::MAX {
-            let expected: Vec<u8> = (0..7).filter(|bit| octet & (0x80 >> bit) != 0).collect();
+            let expected: Vec<usize> = (0..7).filter(|bit| octet & (0x80 >> bit) != 0).collect();
             assert_eq!(
                 presence_bits(octet).collect::<Vec<_>>(),
                 expected,
