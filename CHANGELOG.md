@@ -248,6 +248,95 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   HTTP gagne six lignes, les trois `GET` d'un poste Cisco sur TCP 6970 et
   leurs reponses.
 
+### Corrige
+
+Les revues automatiques des PR passees ont ete relues : des constats
+fondes etaient restes sans suite (#383). Ceux-ci nommaient `Unknown` un
+trafic valide.
+
+- **RTPS : plusieurs messages dans un datagramme.** Un datagramme peut
+  porter plusieurs messages RTPS ; le `messageLength` du HEADER_EXTENSION
+  dit alors ou chacun finit (RTI Connext 7.5). Le decodeur exigeait qu'il
+  soit la longueur du datagramme et refusait ces datagrammes. Il finit
+  maintenant le message a cette longueur, si elle tombe a la fin du
+  datagramme ou devant un autre en-tete RTPS. `RtpsMessage::rest()` rend ce
+  qui suit, `RtpsPacket::messages` itere sur les messages, et la sonde
+  exige qu'ils pavent le datagramme. Test sur des octets synthetiques : le
+  corpus n'a pas de tel datagramme.
+- **Java RMI : plusieurs messages dans un segment.** JRMP est un flux, et
+  TCP peut reunir deux messages dans un segment. Un Ping, un PingAck, un
+  ProtocolNotSupported, un DgcAck ou un ProtocolAck suivi d'un autre
+  message etait refuse, faute d'occuper le segment entier. Sur TCP 1099 et
+  par Decode As, la sonde lit maintenant les messages l'un apres l'autre
+  (`JavaRmiPacket::messages`) ; `JavaRmiPacket::try_from` lit toujours un
+  message seul.
+- **DNS hors du port 53 : `\` litteral.** La sonde aveugle ecartait tout
+  nom qui porte un `\`, pour ecarter les labels hors UTF-8, que le
+  decodeur echappe en `\DDD`. Un label UTF-8 valide peut porter ce
+  caractere : elle juge maintenant l'UTF-8 sur les octets du fil.
+- **CAPWAP : keep-alive du canal de donnees.** La RFC 5415 §4.4.1 met a
+  zero tous les champs de l'en-tete d'un keep-alive, sauf HLEN et le bit
+  K : son WBID est nul, et la regle de UDP 5246 et 5247 le refusait. Cette
+  forme est admise ; un WBID nul reste refuse ailleurs.
+- **NBNS : reponse negative a compteurs nuls.** Le schema de NEGATIVE NAME
+  QUERY RESPONSE (RFC 1002 §4.2.14) porte quatre compteurs nuls devant son
+  enregistrement NULL, et le decodeur refusait tout message sans compteur.
+  Une reponse a une requete de nom, sans compteur, a l'un des cinq codes
+  d'erreur de ce paragraphe (FMT_ERR a RFS_ERR, 1 a 5), est maintenant
+  lue quand cet enregistrement la suit et finit le datagramme :
+  `resource_records` le porte, les compteurs restent ceux du fil. La forme
+  a `ANCOUNT = 1`, celle de Samba, etait deja lue (#292).
+
+Ceux-ci nommaient un protocole sur des octets qui n'en sont pas.
+
+- **MQTT 5 : Topic Alias d'un PUBLISH a topic vide.** Un topic vide n'est
+  permis qu'avec un Topic Alias. La propriete suffisait, meme nulle ou
+  portee deux fois, ce que le §3.3.2.3.4 interdit : elle doit maintenant
+  figurer une fois, non nulle.
+- **BOOTP : zone `vend` nulle.** Sans magic cookie, une zone d'options
+  nulle etait admise quelle que soit sa longueur. La zone `vend` de la
+  RFC 951 fait 64 octets : une zone nulle plus courte est refusee
+  (`InvalidMagicCookie`) ; l'absence de zone reste admise.
+- **SIP : `Content-Length` en double.** Le premier gagnait, et le corps
+  etait coupe a sa valeur. Seul un champ a liste peut se repeter (RFC 3261
+  §7.3.1) : le message est refuse, erreur `SipError::DuplicateHeader`.
+- **NMF : longueur nulle.** Un Via ou une enveloppe de taille nulle,
+  `02 00` ou `06 00`, etaient lus. [MC-NMF] §2.2.3.3 et §2.2.4.1 les
+  interdisent : erreur `NmfError::ZeroLength`.
+- **DCE/RPC : refus de liaison sans motif.** Un `bind_nak` reduit a son
+  en-tete commun etait admis. Il porte au moins son
+  `provider_reject_reason` (C706 §12.6.4.5) : `frag_length` vaut 18 au
+  moins.
+- **Regles TOML : signature comptee par bit distinct.** Les seize bits
+  exiges des motifs d'une regle etaient sommes motif par motif : le meme
+  octet verifie deux fois passait. Chaque bit du payload compte maintenant
+  une fois. Une regle porte au plus 64 motifs (`MAX_PATTERNS`), comme elle
+  porte au plus 64 champs.
+
+Les autres ne changent aucune etiquette.
+
+- **RTPS : longueur d'une chaine CDR.** `4 + longueur` etait une addition
+  non verifiee : sur une cible 32 bits, une longueur de 2^32 - 1 la
+  faisait deborder. Elle est verifiee.
+- **Lecture des pcapng** (`examples/scan_pcaps.rs`, lecteur des tests,
+  `plugin/examples/plugin_host.rs`). Un Simple Packet Block vient de la
+  premiere interface de sa section, meme quand elle en decrit plusieurs ;
+  il n'etait lu que si elle n'en decrivait qu'une. Un paquet dont
+  l'interface n'est pas decrite n'est plus saute en silence : il est
+  compte et signale, ou arrete la lecture. L'hote de plugins lit aussi
+  les blocs Packet et Simple Packet.
+- **`tools/censor_capture.py`.** Un port haut n'est plus jamais rendu a
+  lui-meme (une capture dont un poste ecoute sur 50000 le gardait), et
+  `--check` le verifie. Le dernier octet d'un paquet RTCP a bit de
+  bourrage, qui en donne la longueur, n'est plus efface.
+- `examples/parse_hex_dump.rs` : l'exemple de relais DHCPv6 porte les 34
+  octets de son en-tete.
+- Documentation : la lecture du resultat de `parse` precise que la couche
+  applicative n'a pas d'etat « corrompu » ; le ROADMAP et la provenance
+  des captures GTP-U disent que le corpus nDPI n'avait pas de paquet IPv4
+  a peler, non qu'il n'avait rien ; `CONTRIBUTING.md` demande de lire la
+  revue automatique d'une PR avant de la merger.
+
 ## [13.3.0] - 2026-11-22
 
 Mineure, sans rupture : cinq protocoles ajoutes (.NET Message Framing,
@@ -2502,8 +2591,9 @@ Infrastructure).
   - La ROADMAP annoncait que le corpus nDPI levait ce blocage. Il ne le
     levait pas pour un golden de peeling : sur ses cinq captures GTP, aucun
     G-PDU ne transporte de paquet IPv4, et le seul a porter une chaine
-    d'extension a un T-PDU vide. Rien a peler. Le corpus lui-meme est bien
-    fourni — il couvre GTP-C, GTP', l'IPv6 et un faux positif.
+    d'extension a un T-PDU vide. Aucun paquet IPv4 a peler : seul son IPv6
+    s'y pretait. Le corpus lui-meme est bien fourni — il couvre GTP-C,
+    GTP', l'IPv6 et un faux positif.
   - Le `README` du corpus Zeek avertit qu'une partie de ses captures est
     generee par scapy ou par un LLM. La provenance a donc ete verifiee sur
     les octets — MAC virtuelles HSRP et VRRP, TTL varies, checksums valides,

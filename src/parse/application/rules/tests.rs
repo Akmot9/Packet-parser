@@ -241,6 +241,20 @@ fn each_mistake_is_refused_at_its_line() {
             2,
             "signature trop faible : 8 bits",
         ),
+        // Le meme octet verifie deux fois ne fait pas seize bits (#383) ; ni
+        // deux motifs qui se recouvrent sur leurs quatre bits communs.
+        (
+            rule("").replace("\"51 51\"", "\"51\"")
+                + "[[rule.pattern]]\noffset = 0\nbytes = \"51\"\n",
+            2,
+            "signature trop faible : 8 bits",
+        ),
+        (
+            rule("").replace("bytes = \"51 51\"", "bytes = \"50\"\nmask = \"FC\"")
+                + "[[rule.pattern]]\noffset = 0\nbytes = \"01\"\nmask = \"0F\"\n",
+            2,
+            "signature trop faible : 8 bits",
+        ),
         (
             rule("[[rule.pattern]]\noffset = 2\nbytes = \"00\"\nmask = \"00\"\n"),
             7,
@@ -439,6 +453,18 @@ fn the_bounds_are_enforced() {
         &format!("\"{}\"", "51 ".repeat(MAX_PATTERN_LENGTH + 1)),
     ));
     assert!(message.contains("motif de 65 octets"), "{message}");
+
+    let patterns: String = (0..MAX_PATTERNS)
+        .map(|index| format!("[[rule.pattern]]\noffset = {}\nbytes = \"51\"\n", index + 2))
+        .collect();
+    let (line, message) = refused(&rule(&patterns));
+    assert!(message.contains("plus de 64 motifs"), "{message}");
+    assert_eq!(line, Some(4 + 3 * MAX_PATTERNS));
+    // Soixante-quatre motifs passent.
+    let (allowed, _) = patterns
+        .rsplit_once("[[rule.pattern]]")
+        .expect("un motif de moins");
+    assert!(RuleSet::from_toml(&rule(allowed)).is_ok());
 
     let fields: String = (0..=MAX_FIELDS)
         .map(|index| format!("[[rule.field]]\nname = \"f{index}\"\noffset = 0\ntype = \"u8\"\n"))

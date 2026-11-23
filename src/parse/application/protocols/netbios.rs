@@ -21,8 +21,9 @@ use crate::{
         extract_nbds_message_type, extract_nbds_name, extract_nbns_counts, extract_nbns_flags,
         extract_nbns_question, extract_nbns_record, extract_nbss_length, extract_nbss_message_type,
         validate_nbds_datagram_length, validate_nbds_end, validate_nbds_length,
-        validate_nbds_packet_offset, validate_nbns_min_length, validate_nbss_length_for_type,
-        validate_nbss_min_length, validate_nbss_payload_available,
+        validate_nbds_packet_offset, validate_nbns_literal_negative_response,
+        validate_nbns_min_length, validate_nbss_length_for_type, validate_nbss_min_length,
+        validate_nbss_payload_available,
     },
     errors::application::netbios::{NbdsError, NbnsError, NbssError},
 };
@@ -161,6 +162,9 @@ pub struct NbnsPacket<'a> {
     pub additional_count: u16,
     pub questions: Vec<NbnsQuestion<'a>>,
     /// Enregistrements answer, authority puis additional, dans l'ordre wire.
+    /// Leur nombre est la somme des trois compteurs, sauf pour la reponse
+    /// negative a une requete de nom dans la forme du schema de la RFC 1002
+    /// §4.2.14 : quatre compteurs nuls, et un enregistrement NULL.
     pub resource_records: Vec<NbnsResourceRecord<'a>>,
 }
 
@@ -177,7 +181,7 @@ impl<'a> TryFrom<&'a [u8]> for NbnsPacket<'a> {
             answer_count,
             authority_count,
             additional_count,
-        ] = extract_nbns_counts(packet)?;
+        ] = extract_nbns_counts(packet, &flags)?;
 
         let mut offset = NBNS_HEADER_LENGTH;
 
@@ -194,6 +198,10 @@ impl<'a> TryFrom<&'a [u8]> for NbnsPacket<'a> {
 
         let record_count =
             answer_count as usize + authority_count as usize + additional_count as usize;
+        // Sans aucun compteur, c'est la reponse negative du §4.2.14 : son
+        // schema porte un enregistrement NULL que les compteurs taisent.
+        let is_literal_negative_response = question_count == 0 && record_count == 0;
+        let record_count = record_count.max(usize::from(is_literal_negative_response));
         let mut resource_records = Vec::with_capacity(bounded_capacity(
             record_count,
             packet.len().saturating_sub(offset),
@@ -203,6 +211,9 @@ impl<'a> TryFrom<&'a [u8]> for NbnsPacket<'a> {
             let (record, next) = extract_nbns_record(packet, offset)?;
             resource_records.push(record);
             offset = next;
+        }
+        if let (true, [record]) = (is_literal_negative_response, resource_records.as_slice()) {
+            validate_nbns_literal_negative_response(packet, record, offset)?;
         }
 
         Ok(NbnsPacket {
@@ -612,16 +623,68 @@ mod tests {
         );
     }
 
-    /// Le schema du §4.2.14 porte quatre compteurs nuls avant son
-    /// enregistrement : le decodeur suit les compteurs et refuse cette forme.
+    /// Synthetique. Le schema du §4.2.14 porte quatre compteurs nuls avant
+    /// son enregistrement NULL : cette forme litterale est lue (#383), et
+    /// elle seule.
     #[test]
-    fn a_negative_response_with_the_literal_zero_counts_is_refused() {
+    fn a_negative_response_with_the_literal_zero_counts_is_nbns() {
         let bytes = negative_query_response([0x85, 0x83], 0);
 
+        let packet = NbnsPacket::try_from(bytes.as_slice()).expect("forme du schema");
         assert_eq!(
-            NbnsPacket::try_from(bytes.as_slice()),
-            Err(NbnsError::EmptyMessage)
+            [
+                packet.question_count,
+                packet.answer_count,
+                packet.authority_count,
+                packet.additional_count
+            ],
+            [0; 4]
         );
+        assert_eq!(packet.resource_records.len(), 1);
+        assert_eq!(packet.resource_records[0].record_type, NbnsRecordType::Null);
+        assert!(packet.resource_records[0].rdata.is_empty());
+        assert_eq!(
+            crate::classify_payload(TransportProtocol::Udp, Some(137), Some(137), &bytes)
+                .map(|application| application.protocol),
+            Some(ApplicationProtocol::Nbns)
+        );
+
+        // Les cinq codes d'erreur du §4.2.14, de FMT_ERR a RFS_ERR.
+        for rcode in 1..=5 {
+            let bytes = negative_query_response([0x85, 0x80 | rcode], 0);
+            let packet = NbnsPacket::try_from(bytes.as_slice()).expect("code du §4.2.14");
+            assert_eq!(packet.flags.rcode, rcode);
+        }
+
+        // Sans compteur, rien d'autre ne passe : une requete, une reponse
+        // sans erreur, un code propre aux reponses a un enregistrement
+        // (ACT_ERR, CFT_ERR), une reponse a un enregistrement (opcode 5),
+        // un en-tete seul, un enregistrement d'un autre type ou a RDATA, un
+        // octet de trop.
+        let refused = |bytes: &[u8]| {
+            assert_eq!(
+                NbnsPacket::try_from(bytes).map(|_| ()),
+                Err(NbnsError::EmptyMessage),
+                "{bytes:02x?}"
+            );
+        };
+        refused(&negative_query_response([0x01, 0x03], 0));
+        refused(&negative_query_response([0x85, 0x80], 0));
+        for rcode in [6, 7] {
+            refused(&negative_query_response([0x85, 0x80 | rcode], 0));
+        }
+        refused(&negative_query_response([0xad, 0x83], 0));
+        refused(&bytes[..12]);
+        let mut other_type = bytes.clone();
+        other_type[47] = 0x20;
+        refused(&other_type);
+        let mut with_rdata = bytes.clone();
+        with_rdata[55] = 1;
+        with_rdata.push(0);
+        refused(&with_rdata);
+        let mut long = bytes.clone();
+        long.push(0);
+        refused(&long);
     }
 
     /// La registration de la trame 38172 passee en refresh a l'opcode 0x9,

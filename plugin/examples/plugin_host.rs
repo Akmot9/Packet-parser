@@ -24,6 +24,8 @@ use pcap_file::pcap::PcapReader;
 use pcap_file::pcapng::{Block, PcapNgReader};
 
 const PCAPNG_MAGIC: u32 = 0x0A0D_0D0A;
+const UNKNOWN_INTERFACE: &str =
+    "a packet block names an interface that the capture does not describe";
 
 type Frames = Vec<(LinkType, Vec<u8>)>;
 
@@ -44,11 +46,24 @@ fn frames(path: &str) -> Result<Frames, Box<dyn std::error::Error>> {
                 Block::InterfaceDescription(interface) => {
                     link_types.push(LinkType::from(u32::from(interface.linktype)));
                 }
+                // The three packet blocks of pcapng. A packet whose
+                // interface is not described cannot be read: it is an error,
+                // not a frame to skip.
                 Block::EnhancedPacket(packet) => {
                     let interface = usize::try_from(packet.interface_id)?;
-                    if let Some(&link_type) = link_types.get(interface) {
-                        frames.push((link_type, packet.data.into_owned()));
-                    }
+                    let link_type = link_types.get(interface).ok_or(UNKNOWN_INTERFACE)?;
+                    frames.push((*link_type, packet.data.into_owned()));
+                }
+                Block::Packet(packet) => {
+                    let interface = usize::from(packet.interface_id);
+                    let link_type = link_types.get(interface).ok_or(UNKNOWN_INTERFACE)?;
+                    frames.push((*link_type, packet.data.into_owned()));
+                }
+                // A Simple Packet Block has no interface id: it comes from
+                // the first interface of its section.
+                Block::SimplePacket(packet) => {
+                    let link_type = link_types.first().ok_or(UNKNOWN_INTERFACE)?;
+                    frames.push((*link_type, packet.data.into_owned()));
                 }
                 _ => {}
             }

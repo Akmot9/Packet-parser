@@ -6,6 +6,10 @@
 // arguments, valeur) la finissent, le nom d'hote du ProtocolAck est suivi
 // de son port, et le decodage a la demande du message suivant un en-tete,
 // l'affichage et les accesseurs ne paniquent pas.
+//
+// Messages d'un segment (#383) : seul le dernier element de l'iterateur
+// peut etre une erreur, et une entree qui est un message entier n'en rend
+// qu'un, le meme.
 #![no_main]
 
 #[path = "../oracles/seeds.rs"]
@@ -70,9 +74,14 @@ fn block_start(data: &[u8]) -> usize {
 }
 
 fn exercise(data: &[u8]) {
+    let messages: Vec<_> = JavaRmiPacket::messages(data).collect();
+    assert_eq!(messages.is_empty(), data.is_empty());
+    assert!(messages.iter().rev().skip(1).all(|message| message.is_ok()));
+
     let Ok(packet) = JavaRmiPacket::try_from(data) else {
         return;
     };
+    assert_eq!(messages, [Ok(packet)]);
     assert_eq!(packet.message_type(), data[0]);
     assert_eq!(
         packet.is_self_identifying(),
@@ -105,7 +114,10 @@ fn exercise(data: &[u8]) {
         JavaRmiPacket::Call(call) => {
             assert_eq!(&data[1..5], [0xac, 0xed, 0x00, 0x05]);
             let start = block_start(data);
-            assert_eq!(call.object.object_number, i64::from_be_bytes(be(data, start)));
+            assert_eq!(
+                call.object.object_number,
+                i64::from_be_bytes(be(data, start))
+            );
             assert_uid(call.object.space, data, start + 8);
             assert_eq!(call.operation, i32::from_be_bytes(be(data, start + 22)));
             assert_eq!(call.hash, i64::from_be_bytes(be(data, start + 26)));

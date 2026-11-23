@@ -35,4 +35,9 @@ pub enum NmfError {
 
     #[error("NMF record {record_type:#04X} carries a string that is not valid UTF-8")]
     InvalidString { record_type: u8 },
+
+    /// The length of a Via record and the size of a Sized Envelope record
+    /// « MUST NOT be set to 0 » ([MC-NMF] §2.2.3.3 and §2.2.4.1).
+    #[error("NMF record {record_type:#04X} has a zero length")]
+    ZeroLength { record_type: u8 },
 }

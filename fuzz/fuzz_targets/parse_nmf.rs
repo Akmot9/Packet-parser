@@ -47,10 +47,15 @@ fn exercise(data: &[u8]) {
             } => {
                 assert!(inside(data, payload));
                 assert!(payload.len() <= declared_length as usize);
+                // Une enveloppe de taille nulle est refusee.
+                assert_ne!(declared_length, 0);
+            }
+            NmfRecord::Via(text) => {
+                assert!(inside(data, text.as_bytes()));
+                assert!(!text.is_empty());
             }
             NmfRecord::UnsizedEnvelope { chunks } => assert!(inside(data, chunks)),
-            NmfRecord::Via(text)
-            | NmfRecord::ExtensibleEncoding(text)
+            NmfRecord::ExtensibleEncoding(text)
             | NmfRecord::Fault(text)
             | NmfRecord::UpgradeRequest(text) => assert!(inside(data, text.as_bytes())),
             NmfRecord::Version { major, minor } => assert_eq!((major, minor), (1, 0)),

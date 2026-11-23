@@ -550,6 +550,9 @@ synergie avec le code existant.
 Au 2026-11-03, tous les protocoles de ces trois tableaux sont livres, sauf
 quatre : Sampled Values (Tier 2), SMB2/3, DTLS et SIP (Tier 3). SIP est
 livre le 2026-11-19 (#342). Le reliquat des trois autres est decrit au §3.
+Les notes des tableaux sont celles de la proposition, ecrites avant la
+livraison : « jamais decode » (ICMP) ou « dossier prepare » decrivent
+l'etat d'alors, pas celui du depot.
 
 ### Tier 1 — les evidences (captures deja dans le repo ou dossier prepare)
 
@@ -682,8 +685,9 @@ de l'issue. Il vient du corpus de **Zeek** (BSD 3-clause) et non de nDPI,
 pour une raison etroite et mesuree : sur les cinq captures GTP de nDPI,
 **aucun G-PDU ne transporte de paquet IPv4** — le seul a porter une chaine
 d'extension a un T-PDU vide, et `ipv6_in_gtp.pcap` ne porte que de l'IPv6.
-Rien a peler, donc rien a figer dans un golden de peeling. Zeek en donne 32
-pelables dans un seul fichier.
+Le decodeur pele aussi l'IPv6, mais le cas nominal, un paquet IPv4
+encapsule, manquait au golden de peeling. Zeek en donne 32 dans un seul
+fichier.
 
 Ce n'est pas un reproche au corpus de nDPI, qui repartit delibere ses cinq
 captures sur les variantes du protocole — GTP-U, plan de controle, GTP',

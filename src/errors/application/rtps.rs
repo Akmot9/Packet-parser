@@ -61,9 +61,9 @@ pub enum RtpsParseError {
     #[error("RTPS HEADER_EXTENSION at offset {offset}, not right after the header")]
     MisplacedHeaderExtension { offset: usize },
 
-    /// Le `messageLength` du HEADER_EXTENSION ne vaut pas la longueur du
-    /// message, qui est celle du datagramme (§9.5 : un message par
-    /// datagramme UDP). En fin d'enum : ajoutee apres la 11.6.0.
+    /// Le `messageLength` du HEADER_EXTENSION ne finit le message ni a la
+    /// fin du datagramme, ni au debut d'un autre message RTPS (#383). En
+    /// fin d'enum : ajoutee apres la 11.6.0.
     #[error(
         "RTPS HEADER_EXTENSION declares a message of {declared} bytes, the datagram has {actual}"
     )]

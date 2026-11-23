@@ -233,6 +233,10 @@ def scrub_rtcp(payload):
             packet[4 + 4 * count :] = bytes(max(0, length - 4 - 4 * count))
         elif kind in (204, 207):
             packet[8:] = bytes(max(0, length - 8))
+        # Le bit de bourrage reste : le dernier octet du paquet en donne la
+        # longueur, il n'est pas efface avec ce qui le precede (#383).
+        if first & 0x20:
+            packet[length - 1] = payload[end - 1]
         out[offset:end] = packet[:length]
         offset = end
     if offset != len(payload):
@@ -247,6 +251,7 @@ class Censor:
     def __init__(self, scrub):
         self.scrub = scrub
         self.macs, self.vlans, self.ips, self.ports = {}, {}, {}, {}
+        self.next_port = FIRST_PORT
 
     def mac(self, raw):
         if raw == b"\xff" * 6:
@@ -266,7 +271,15 @@ class Censor:
         if value < 1024:
             return value
         if value not in self.ports:
-            self.ports[value] = FIRST_PORT + len(self.ports)
+            # Le port rendu n'est jamais celui d'origine : une capture dont
+            # un poste ecoute deja sur 50000 le garderait tel quel (#383).
+            candidate = self.next_port
+            if candidate == value:
+                candidate += 1
+            if candidate > 0xFFFF:
+                sys.exit("plus de ports hauts que la plage 50000-65535 : reduire l'extrait")
+            self.ports[value] = candidate
+            self.next_port = candidate + 1
         return self.ports[value]
 
     def frame(self, raw):
@@ -338,10 +351,13 @@ class Censor:
 
 
 def check(censor, frames):
-    """Aucune valeur d'origine ne doit rester a sa place d'en-tete."""
+    """Aucune valeur d'origine ne doit rester a sa place d'en-tete. Une
+    adresse se cherche dans les octets ; un port, deux octets que le hasard
+    reproduit, se verifie dans la table : aucun ne doit etre rendu a
+    lui-meme."""
     originals = set(censor.macs) | set(censor.ips)
     replaced = set(censor.macs.values()) | set(censor.ips.values())
-    leaks = 0
+    leaks = sum(1 for original, new in censor.ports.items() if original == new)
     for raw in frames:
         for secret in originals - replaced:
             if secret in raw:
@@ -389,7 +405,7 @@ def main():
         leaks = check(censor, [raw for _, _, raw in kept])
         if leaks:
             sys.exit(f"ECHEC : {leaks} valeur(s) d'origine encore presente(s)")
-        print("verification : aucune adresse d'origine dans la sortie")
+        print("verification : aucune adresse d'origine dans la sortie, aucun port rendu a lui-meme")
 
 
 if __name__ == "__main__":

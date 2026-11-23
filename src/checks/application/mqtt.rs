@@ -442,8 +442,28 @@ fn validate_connack_vh(first_byte: u8, body: &[u8]) -> Result<usize, MqttError> 
     Ok(body.len())
 }
 
+/// La valeur du Topic Alias d'un bloc de proprietes, s'il se lit et porte
+/// la propriete une fois et une seule : la repeter est une erreur de
+/// protocole (§3.3.2.3.4).
+fn extract_topic_alias(buf: &[u8]) -> Option<u16> {
+    let (props_len, varint_bytes) = decode_remaining_length(buf).ok()?;
+    let end = varint_bytes.checked_add(usize::try_from(props_len).ok()?)?;
+    let mut props = buf.get(varint_bytes..end)?;
+    let mut alias = None;
+    while let [id, value @ ..] = props {
+        let len = property_value_len(*id, value)?;
+        if *id == TOPIC_ALIAS {
+            let bytes = value.first_chunk::<2>().filter(|_| alias.is_none())?;
+            alias = Some(u16::from_be_bytes(*bytes));
+        }
+        props = &value[len..];
+    }
+    alias
+}
+
 /// Un PUBLISH v5 a topic vide doit porter un Topic Alias (§3.3.2.1) : apres
-/// l'eventuel packet id, le bloc de proprietes doit se lire et le contenir.
+/// l'eventuel packet id, le bloc de proprietes doit se lire et le contenir,
+/// une seule fois et non nul (§3.3.2.3.4, #383).
 fn publish_has_topic_alias(qos: u8, after_topic: &[u8]) -> bool {
     let props_start = if qos > 0 {
         match after_topic {
@@ -453,7 +473,7 @@ fn publish_has_topic_alias(qos: u8, after_topic: &[u8]) -> bool {
     } else {
         0
     };
-    read_properties(&after_topic[props_start..]).is_some_and(|props| props.contains(TOPIC_ALIAS))
+    extract_topic_alias(&after_topic[props_start..]).is_some_and(|alias| alias != 0)
 }
 
 /// Variable header PUBLISH : longueur de topic, topic name valide, puis
@@ -1103,6 +1123,13 @@ mod tests {
             variable_header_len(MqttPacketType::Publish, 0x30, &publish).ok(),
             Some(2)
         );
+        // Le Topic Alias apres une autre propriete (Payload Format
+        // Indicator), et de valeur maximale.
+        let publish_two = [0x00, 0x00, 0x05, 0x01, 0x01, 0x23, 0xFF, 0xFF, b'h'];
+        assert_eq!(
+            variable_header_len(MqttPacketType::Publish, 0x30, &publish_two).ok(),
+            Some(2)
+        );
         // QoS 1 : le packet id precede les proprietes.
         let publish_qos1 = [0x00, 0x00, 0x00, 0x07, 0x03, 0x23, 0x00, 0x01, b'h'];
         assert_eq!(
@@ -1146,11 +1173,16 @@ mod tests {
     #[test]
     fn mqtt5_forms_keep_their_guards() {
         // Topic vide sans Topic Alias, ou avec une propriete inconnue : refuse.
+        // De meme avec un Topic Alias nul, ou porte deux fois (§3.3.2.3.4,
+        // #383).
         for body in [
             &[0x00, 0x00][..],
             &[0x00, 0x00, 0x00, b'h'],
             &[0x00, 0x00, 0x02, 0x01, 0x00],
             &[0x00, 0x00, 0x03, 0x04, 0x00, 0x01],
+            &[0x00, 0x00, 0x03, 0x23, 0x00, 0x00, b'h'],
+            &[0x00, 0x00, 0x06, 0x23, 0x00, 0x01, 0x23, 0x00, 0x01],
+            &[0x00, 0x00, 0x06, 0x23, 0x00, 0x01, 0x23, 0x00, 0x02],
         ] {
             assert!(
                 matches!(

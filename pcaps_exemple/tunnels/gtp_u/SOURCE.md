@@ -41,9 +41,9 @@ sous forme fragmentée. Sept trames y couvrent plus de cas de figure que nos
 Ce qui nous manquait est plus étroit, et c'est mesuré : sur l'ensemble de
 ces cinq captures, **aucun G-PDU ne transporte de paquet IPv4**. Leur seul
 G-PDU à extension (`gtp.pcap` trame 6) a un T-PDU **vide**, la chaîne
-consommant tout le message ; `ipv6_in_gtp.pcap` ne porte que de l'IPv6. Pour
-un décodeur qui pèle et ré-analyse l'encapsulé, il n'y avait donc rien à
-peler.
+consommant tout le message ; `ipv6_in_gtp.pcap` ne porte que de l'IPv6. Le
+décodeur pèle aussi l'IPv6 : ce corpus donnait donc de quoi peler, mais pas
+le cas nominal, un paquet IPv4 encapsulé.
 
 Zeek donne 32 G-PDU pelables dans un seul fichier, plus l'IPv6 encapsulé,
 une chaîne d'extension et deux négatifs. C'est ce besoin-là qui a tranché,

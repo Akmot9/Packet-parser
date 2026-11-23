@@ -15,7 +15,7 @@ use toml::Spanned;
 use super::matcher::{Anchor, Field, FieldKind, Pattern, Rule, RuleParser};
 use super::{
     FORMAT_VERSION, MAX_FIELD_LENGTH, MAX_FIELDS, MAX_NAME_LENGTH, MAX_OFFSET, MAX_PATTERN_LENGTH,
-    MAX_PORTS, MAX_RULES, MAX_VALUES, MIN_SIGNATURE_BITS, RulesError, intern,
+    MAX_PATTERNS, MAX_PORTS, MAX_RULES, MAX_VALUES, MIN_SIGNATURE_BITS, RulesError, intern,
 };
 use crate::parse::application::custom::{CustomTransports, check_label};
 
@@ -231,16 +231,28 @@ fn compile(raw: RawRule, span: &Range<usize>, at: &Locator<'_>) -> Result<Rule, 
             "une regle demande au moins un motif ([[rule.pattern]])",
         ));
     }
+    // Tous les motifs sont gardes et compares a chaque payload : leur
+    // nombre est borne comme celui des champs (#383).
+    if let Some(extra) = raw.pattern.get(MAX_PATTERNS) {
+        return Err(at.error(
+            &extra.span(),
+            format!("plus de {MAX_PATTERNS} motifs dans la regle"),
+        ));
+    }
     let patterns = raw
         .pattern
         .iter()
         .map(|pattern| compile_pattern(pattern, at))
         .collect::<Result<Vec<_>, _>>()?;
-    let bits: u32 = patterns
-        .iter()
-        .flat_map(|pattern| &pattern.mask)
-        .map(|mask| mask.count_ones())
-        .sum();
+    // Chaque bit du payload compte une fois : deux motifs qui se recouvrent
+    // ne verifient pas deux fois le meme bit (#383).
+    let mut checked: BTreeMap<usize, u8> = BTreeMap::new();
+    for pattern in &patterns {
+        for (index, mask) in pattern.mask.iter().enumerate() {
+            *checked.entry(pattern.offset + index).or_default() |= mask;
+        }
+    }
+    let bits: u32 = checked.values().map(|mask| mask.count_ones()).sum();
     if bits < MIN_SIGNATURE_BITS {
         return Err(at.error(
             span,

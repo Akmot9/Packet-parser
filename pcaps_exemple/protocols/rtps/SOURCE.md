@@ -27,6 +27,12 @@ Contenu vérifié avec tshark 4.6.6 (`-Y rtps`).
   plupart des trames ne sont reconnaissables que par le magic `RTPS`.
   Commit épinglé `33cd4d493818c9fe8a876bc34526d29fcb556c97`, URL
   `https://raw.githubusercontent.com/foxglove/rtps/33cd4d493818c9fe8a876bc34526d29fcb556c97/docs/talker-listener-rtps.pcapng`.
+  Cyclone annonce dans ses messages de découverte le nom d'hôte de la
+  machine de capture, `Johns-MacBook-Pro.local` (11 occurrences, avec la
+  version de Cyclone et le système). Ce nom est public en amont, dans le
+  dépôt de Foxglove ; la capture est gardée telle quelle, pour que son
+  SHA-256 reste celui de l'origine (constat de la revue de la PR #126,
+  relu dans #383).
 - **`RTPS_Discovery.pcapng`** — découverte RTI Connext (Shapes Demo, domaine
   116), capturée le 2018-09-12 sur un réseau de labo (cartes VirtualBox,
   Dell, HP). 16 trames sont des **fragments IPv4** : tshark les réassemble et

@@ -65,6 +65,9 @@ fn collect_pcaps(path: &Path, out: &mut Vec<PathBuf>) {
 struct ReadOutcome {
     frames: usize,
     truncated_by: Option<String>,
+    /// Blocs de paquet dont l'interface n'est decrite par aucun IDB de la
+    /// section : ils ne peuvent pas etre lus, et ils se comptent (#383).
+    unknown_interface: usize,
 }
 
 /// Applique `on_packet` à chaque paquet du fichier, avec le `LinkType` de
@@ -129,27 +132,31 @@ fn read_pcapng(
             Block::InterfaceDescription(idb) => {
                 linktypes.push(LinkType::from(u32::from(idb.linktype)));
             }
-            Block::EnhancedPacket(epb) => {
-                if let Some(&link_type) = linktypes.get(epb.interface_id as usize) {
+            Block::EnhancedPacket(epb) => match linktypes.get(epb.interface_id as usize) {
+                Some(&link_type) => {
                     outcome.frames += 1;
                     on_packet(link_type, &epb.data);
                 }
-            }
+                None => outcome.unknown_interface += 1,
+            },
             // Bloc obsolete (pcapng pre-1.0), conserve par certains outils.
-            Block::Packet(pb) => {
-                if let Some(&link_type) = linktypes.get(pb.interface_id as usize) {
+            Block::Packet(pb) => match linktypes.get(pb.interface_id as usize) {
+                Some(&link_type) => {
                     outcome.frames += 1;
                     on_packet(link_type, &pb.data);
                 }
-            }
-            // Le Simple Packet Block ne porte pas d'`interface_id` : il n'est
-            // valide que si la section decrit une seule interface.
-            Block::SimplePacket(spb) => {
-                if let [link_type] = linktypes[..] {
+                None => outcome.unknown_interface += 1,
+            },
+            // Le Simple Packet Block ne porte pas d'`interface_id` : il vient
+            // de la premiere interface de la section, meme quand elle en
+            // decrit plusieurs (pcapng §4.4, #383).
+            Block::SimplePacket(spb) => match linktypes.first() {
+                Some(&link_type) => {
                     outcome.frames += 1;
                     on_packet(link_type, &spb.data);
                 }
-            }
+                None => outcome.unknown_interface += 1,
+            },
             _ => {}
         }
     }
@@ -284,6 +291,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n== {} ({} trames)", file.display(), outcome.frames);
         if let Some(raison) = &outcome.truncated_by {
             println!("   ⚠ lecture incomplete : {raison}");
+            incomplets.push(file.display().to_string());
+        }
+        if outcome.unknown_interface > 0 {
+            println!(
+                "   ⚠ {} paquet(s) d'une interface non decrite, non lus",
+                outcome.unknown_interface
+            );
             incomplets.push(file.display().to_string());
         }
         for (proto, count) in &tally {

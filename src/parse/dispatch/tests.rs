@@ -1248,6 +1248,30 @@ fn capwap_is_named_on_its_two_udp_ports_only() {
     fragment[3] = 0x80;
     fragment[7] = 0x08;
     assert_eq!(label(Udp, 5247, &fragment), Some("CAPWAP"));
+
+    // Keep-alive du canal de donnees (RFC 5415 §4.4.1, #383) : tout l'en-tete
+    // est nul sauf HLEN et le bit K, WBID compris. Puis la longueur des
+    // elements et un Session ID (type 35, seize octets).
+    let mut keep_alive = vec![0x00, 0x10, 0x00, 0x08, 0, 0, 0, 0, 0, 20, 0, 35, 0, 16];
+    keep_alive.extend([0xab; 16]);
+    assert_eq!(label(Udp, 5247, &keep_alive), Some("CAPWAP"));
+    // Avec un WBID, comme l'emettent des equipements, il passait deja.
+    let mut with_wbid = keep_alive.clone();
+    with_wbid[2] = 0x02;
+    assert_eq!(label(Udp, 5247, &with_wbid), Some("CAPWAP"));
+    // Un WBID nul n'est admis que sous cette forme : K seul, le reste nul.
+    for (index, value) in [
+        (3, 0x00),
+        (3, 0x18),
+        (1, 0x11),
+        (2, 0x01),
+        (5, 0x01),
+        (7, 0x08),
+    ] {
+        let mut bad = keep_alive.clone();
+        bad[index] = value;
+        assert_eq!(label(Udp, 5247, &bad), Some("Unknown"), "octet {index}");
+    }
 }
 
 /// Skinny (#370) : des messages qui pavent le segment, sur TCP 2000 ou sur

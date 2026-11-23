@@ -135,6 +135,11 @@ As done for 11.7.0, 11.8.0, 11.8.1, 11.8.2, 12.0.0, 12.1.0, 13.0.0, 13.1.0, 13.1
   `docs(<area>)` or `docs:`, `ci:`, `chore(release)`.
 - Branches: `feat/<topic>-<N>`, `fix/<topic>-<N>`, `docs/...`, `ci/...`,
   `chore/release-X.Y.Z`. PRs are merged with a merge commit.
+- Before merging, read the automated review of the PR, not only the CI. The
+  reviewer posts inline comments a few minutes after the PR opens, and no
+  check-run shows them: `gh api repos/Akmot9/Packet-parser/pulls/<n>/comments`.
+  Each finding is fixed in the PR, or answered there with the reason it is
+  declined (#383).
 
 ## Capture corpus
 

@@ -64,6 +64,8 @@ fn exercise(data: &[u8]) {
     // Une suite n'existe que derriere un fragment complet.
     assert!(pdu.rest().is_empty() || !pdu.is_truncated());
     assert!(usize::from(pdu.auth_length) < fragment);
+    // Un refus de liaison porte au moins son motif de rejet.
+    assert!(pdu.pdu_type != DceRpcPduType::BindNak || fragment >= DCERPC_COMMON_HEADER_LENGTH + 2);
     if let Some(request) = pdu.request() {
         assert_eq!(pdu.pdu_type, DceRpcPduType::Request);
         assert!(pdu.body.len() >= 8);

@@ -59,8 +59,28 @@ pub fn validate_java_rmi_min_length(packet: &[u8], expected: usize) -> Result<()
     Ok(())
 }
 
+/// La longueur d'un message de taille connue quand d'autres octets le
+/// suivent dans le segment : un octet pour Ping, PingAck et
+/// ProtocolNotSupported, quinze pour le DgcAck, et pour le ProtocolAck ce que
+/// dit son nom d'hote. JRMP est un flux : TCP peut reunir deux messages
+/// dans un segment (#383). `None` pour un message qui occupe tout ce qui
+/// reste : un en-tete de flux, un Call, un Return, ou un message de taille
+/// connue que rien ne suit.
+pub fn extract_java_rmi_message_length(packet: &[u8]) -> Option<usize> {
+    let length = match *packet.first()? {
+        MESSAGE_PING | MESSAGE_PING_ACK | MESSAGE_PROTOCOL_NOT_SUPPORTED => 1,
+        MESSAGE_DGC_ACK => JAVA_RMI_DGC_ACK_LEN,
+        MESSAGE_PROTOCOL_ACK => {
+            let hostname = packet.get(1..3)?;
+            3 + usize::from(u16::from_be_bytes([hostname[0], hostname[1]])) + 4
+        }
+        _ => return None,
+    };
+    (length < packet.len()).then_some(length)
+}
+
 /// Les messages a taille fixe, et le ProtocolAck dont la taille suit le nom
-/// d'hote, occupent le segment entier.
+/// d'hote, occupent tous les octets qu'on leur donne.
 pub fn validate_java_rmi_exact_length(
     packet: &[u8],
     message: u8,

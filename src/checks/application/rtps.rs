@@ -108,6 +108,34 @@ pub fn ensure_len(buf: &[u8], needed: usize) -> Result<(), RtpsParseError> {
     Ok(())
 }
 
+/// La fin du message qu'annonce le `messageLength` d'un HEADER_EXTENSION
+/// (§9.4.5.2), qui compte l'en-tete RTPS. Elle est celle du datagramme, ou
+/// le debut d'un autre message : un datagramme peut en porter plusieurs, et
+/// seul ce champ dit alors ou chacun finit (RTI Connext 7.5, #383). Elle ne
+/// tombe ni dans les octets deja lus (`minimum`), ni au-dela du datagramme,
+/// ni devant autre chose qu'un en-tete RTPS.
+pub fn extract_message_end(
+    declared: u32,
+    minimum: usize,
+    payload: &[u8],
+) -> Result<usize, RtpsParseError> {
+    let mismatch = RtpsParseError::HeaderExtensionLengthMismatch {
+        declared,
+        actual: payload.len(),
+    };
+    let Some(rest) = usize::try_from(declared)
+        .ok()
+        .filter(|end| *end >= minimum)
+        .and_then(|end| payload.get(end..))
+    else {
+        return Err(mismatch);
+    };
+    if !rest.is_empty() && (rest.len() < RTPS_HEADER_LENGTH || extract_magic(rest).is_err()) {
+        return Err(mismatch);
+    }
+    Ok(payload.len() - rest.len())
+}
+
 /// Les quatre octets `RTPS` (ou `RTPX`, variante RTI) en tete du message,
 /// rendus tels quels.
 pub fn extract_magic(buf: &[u8]) -> Result<[u8; 4], RtpsParseError> {
@@ -373,10 +401,13 @@ pub fn parameter_list_length(
 
 /// Une chaine CDR en tete de la valeur d'un parametre : longueur u32, NUL
 /// final compris, puis les octets. Rend les octets sans le NUL ; `None` si
-/// la longueur deborde de la valeur.
+/// la longueur deborde de la valeur. L'addition est verifiee : sur une
+/// cible 32 bits, une longueur de 2^32 - 1 tient dans un `usize` et
+/// `4 + longueur` deborde (#383).
 pub fn cdr_string(value: &[u8], little_endian: bool) -> Option<&[u8]> {
     let length = read_u32(value.get(..4)?.try_into().ok()?, little_endian);
-    let text = value.get(4..4 + usize::try_from(length).ok()?)?;
+    let end = usize::try_from(length).ok()?.checked_add(4)?;
+    let text = value.get(4..end)?;
     Some(text.strip_suffix(&[0]).unwrap_or(text))
 }
 
@@ -401,6 +432,25 @@ mod tests {
             extract_version(1, 2),
             Err(RtpsParseError::UnsupportedVersion { major: 1, minor: 2 })
         );
+    }
+
+    #[test]
+    fn test_cdr_string_length_is_bounded() {
+        // « ab », son NUL, un octet de bourrage.
+        assert_eq!(
+            cdr_string(&[3, 0, 0, 0, b'a', b'b', 0, 0], true),
+            Some(&b"ab"[..])
+        );
+        assert_eq!(
+            cdr_string(&[0, 0, 0, 3, b'a', b'b', 0, 0], false),
+            Some(&b"ab"[..])
+        );
+        // Une longueur qui deborde de la valeur, jusqu'a 2^32 - 1 : `None`,
+        // sans addition qui deborde sur une cible 32 bits (#383).
+        assert_eq!(cdr_string(&[5, 0, 0, 0, b'a', b'b', 0, 0], true), None);
+        assert_eq!(cdr_string(&[0xff; 8], true), None);
+        assert_eq!(cdr_string(&[0xff; 8], false), None);
+        assert_eq!(cdr_string(&[3, 0, 0], true), None);
     }
 
     #[test]

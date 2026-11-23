@@ -32,7 +32,9 @@
 //! assez forte pour etre reconnus sur tout port TCP. Les messages d'un
 //! octet (Ping, PingAck, ProtocolNotSupported), le DgcAck et le ProtocolAck
 //! ne le sont que sur TCP 1099 (`rmiregistry`) ou par Decode As
-//! ([`JavaRmiPacket::is_self_identifying`]).
+//! ([`JavaRmiPacket::is_self_identifying`]). La, un segment peut reunir
+//! plusieurs messages ([`JavaRmiPacket::messages`]) : un message de taille
+//! connue, puis un autre.
 
 use std::fmt;
 
@@ -40,9 +42,10 @@ use crate::checks::application::java_rmi::{
     JAVA_RMI_CALL_HEADER_LEN, JAVA_RMI_DGC_ACK_LEN, JAVA_RMI_HEADER_LEN,
     JAVA_RMI_RETURN_HEADER_LEN, MESSAGE_CALL, MESSAGE_DGC_ACK, MESSAGE_HEADER, MESSAGE_PING,
     MESSAGE_PING_ACK, MESSAGE_PROTOCOL_ACK, MESSAGE_PROTOCOL_NOT_SUPPORTED, MESSAGE_RETURN,
-    extract_java_rmi_block, extract_java_rmi_port, extract_java_rmi_protocol,
-    extract_java_rmi_return_type, extract_java_rmi_version, validate_java_rmi_exact_length,
-    validate_java_rmi_magic, validate_java_rmi_min_length, validate_java_rmi_stream_header,
+    extract_java_rmi_block, extract_java_rmi_message_length, extract_java_rmi_port,
+    extract_java_rmi_protocol, extract_java_rmi_return_type, extract_java_rmi_version,
+    validate_java_rmi_exact_length, validate_java_rmi_magic, validate_java_rmi_min_length,
+    validate_java_rmi_stream_header,
 };
 use crate::errors::application::java_rmi::JavaRmiError;
 
@@ -333,7 +336,7 @@ pub enum JavaRmiReturnType {
     Exceptional,
 }
 
-impl JavaRmiPacket<'_> {
+impl<'a> JavaRmiPacket<'a> {
     /// L'octet de type du message : `0x4a` (le `J` de `JRMI`) pour un
     /// en-tete de flux, `0x4e` a `0x54` pour les autres.
     pub const fn message_type(&self) -> u8 {
@@ -354,6 +357,45 @@ impl JavaRmiPacket<'_> {
     /// tiennent en un octet, ou en un octet et quelques champs libres.
     pub const fn is_self_identifying(&self) -> bool {
         matches!(self, Self::Header(_) | Self::Call(_) | Self::Return(_))
+    }
+
+    /// Les messages d'un segment, dans l'ordre. JRMP est un flux, et TCP
+    /// peut reunir deux messages dans un segment : un Ping, un PingAck, un
+    /// ProtocolNotSupported, un DgcAck ou un ProtocolAck, de taille connue,
+    /// peut etre suivi d'un autre message. Un en-tete de flux, un Call ou un
+    /// Return prend tout ce qui reste du segment. L'iterateur s'arrete apres
+    /// la premiere erreur.
+    pub fn messages(payload: &'a [u8]) -> JavaRmiMessages<'a> {
+        JavaRmiMessages { rest: payload }
+    }
+
+    /// Sonde de la regle a port : des messages bien formes qui pavent le
+    /// segment.
+    pub(crate) fn is_port_match(payload: &'a [u8]) -> bool {
+        !payload.is_empty() && Self::messages(payload).all(|message| message.is_ok())
+    }
+}
+
+/// Iterateur sur les messages d'un segment ([`JavaRmiPacket::messages`]).
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct JavaRmiMessages<'a> {
+    rest: &'a [u8],
+}
+
+impl<'a> Iterator for JavaRmiMessages<'a> {
+    type Item = Result<JavaRmiPacket<'a>, JavaRmiError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.rest.is_empty() {
+            return None;
+        }
+        let length = extract_java_rmi_message_length(self.rest).unwrap_or(self.rest.len());
+        let (message, rest) = self.rest.split_at(length);
+        let packet = JavaRmiPacket::try_from(message);
+        // Apres une erreur, la suite du segment n'a plus de frontiere.
+        self.rest = if packet.is_ok() { rest } else { &[] };
+        Some(packet)
     }
 }
 
@@ -708,6 +750,61 @@ mod tests {
             JavaRmiPacket::try_from(frame.as_slice()),
             Err(JavaRmiError::UnknownProtocol(0x4e))
         );
+    }
+
+    /// Synthetique : des messages reels mis bout a bout dans un segment, ce
+    /// que TCP fait d'un flux et que la capture ne montre pas (#383).
+    #[test]
+    fn messages_coalesced_in_one_segment() {
+        let kinds = |segment: &[u8]| -> Vec<Result<u8, JavaRmiError>> {
+            JavaRmiPacket::messages(segment)
+                .map(|message| message.map(|message| message.message_type()))
+                .collect()
+        };
+        // Un DgcAck, puis l'appel suivant du client.
+        let mut segment = bytes(capture::DGC_ACK);
+        segment.extend(bytes(capture::STATION_ADD));
+        assert_eq!(kinds(&segment), [Ok(0x54), Ok(0x50)]);
+        assert!(JavaRmiPacket::is_port_match(&segment));
+        // Seul, le premier message ne prend pas le segment entier.
+        assert_eq!(
+            JavaRmiPacket::try_from(segment.as_slice()),
+            Err(JavaRmiError::UnexpectedLength {
+                message: 0x54,
+                expected: 15,
+                actual: segment.len(),
+            })
+        );
+
+        // Un PingAck, le ProtocolAck d'une autre ouverture, un Return.
+        let mut segment = vec![0x53];
+        segment.extend(bytes(capture::PROTOCOL_ACK));
+        segment.extend(bytes(capture::STATION_ADD_RETURN));
+        assert_eq!(kinds(&segment), [Ok(0x53), Ok(0x4e), Ok(0x51)]);
+        assert!(JavaRmiPacket::is_port_match(&segment));
+
+        // Un message seul est rendu tel quel.
+        for frame in [
+            capture::DGC_ACK,
+            capture::PROTOCOL_ACK,
+            capture::STATION_ADD,
+        ] {
+            let frame = bytes(frame);
+            let messages: Vec<_> = JavaRmiPacket::messages(&frame).collect();
+            assert_eq!(messages, [JavaRmiPacket::try_from(frame.as_slice())]);
+        }
+
+        // Derriere un Ping, des octets qui ne sont pas un message : la
+        // lecture s'arrete et la sonde refuse.
+        assert_eq!(
+            kinds(&[0x52, 0x00, 0x52]),
+            [Ok(0x52), Err(JavaRmiError::UnknownMessageType(0x00))]
+        );
+        assert!(!JavaRmiPacket::is_port_match(&[0x52, 0x00, 0x52]));
+        // Un DgcAck coupe reste refuse : il n'a pas ses quinze octets.
+        let cut = &bytes(capture::DGC_ACK)[..10];
+        assert!(!JavaRmiPacket::is_port_match(cut));
+        assert!(!JavaRmiPacket::is_port_match(&[]));
     }
 
     /// Ping (trame 36), PingAck (37) et ProtocolNotSupported (331) tiennent
