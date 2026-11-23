@@ -1312,6 +1312,83 @@ fn skinny_is_named_on_tcp_2000_only() {
     assert_eq!(label(Tcp, 2000, 80, http, &[]), Some("HTTP"));
 }
 
+/// LDAP (#372) : des PDU qui pavent le payload, sur TCP 389 et 3268, sur
+/// UDP 389 ou sur un port declare, jamais ailleurs. Octets synthetiques :
+/// un UnbindRequest de sept octets, et l'en-tete d'un tampon SASL chiffre
+/// suivi de quatre octets de donnees.
+#[test]
+fn ldap_is_named_on_its_ports_only() {
+    use TransportProtocol::{Tcp, Udp};
+    let label = |protocol: TransportProtocol,
+                 source: u16,
+                 destination: u16,
+                 payload: &[u8],
+                 decode_as: &[(u16, DecodeAsProtocol)]| {
+        let transport = Transport {
+            protocol,
+            source_port: Some(source),
+            destination_port: Some(destination),
+            payload: Some(payload),
+            details: None,
+        };
+        classify(&transport, decode_as).map(|a| a.protocol.label())
+    };
+    let unbind = [0x30, 0x05, 0x02, 0x01, 0x01, 0x42, 0x00];
+    let sealed = [
+        0, 0, 0, 20, 0x05, 0x04, 0x06, 0xff, 0, 0, 0, 0x1c, 0, 0, 0, 0, 0, 0, 0, 1, 0xde, 0xad,
+        0xbe, 0xef,
+    ];
+    for payload in [&unbind[..], &sealed[..]] {
+        assert_eq!(label(Tcp, 49152, 389, payload, &[]), Some("LDAP"));
+        assert_eq!(label(Tcp, 389, 49152, payload, &[]), Some("LDAP"));
+        assert_eq!(label(Tcp, 49152, 3268, payload, &[]), Some("LDAP"));
+        assert_eq!(label(Udp, 49152, 389, payload, &[]), Some("LDAP"));
+        // Le catalogue global n'existe que sur TCP.
+        assert_eq!(label(Udp, 49152, 3268, payload, &[]), Some("Unknown"));
+        assert_eq!(label(Tcp, 49152, 390, payload, &[]), Some("Unknown"));
+        assert_eq!(label(Udp, 49152, 390, payload, &[]), Some("Unknown"));
+    }
+
+    // Un autre port se declare, sur TCP comme sur UDP.
+    let declared = [(10389, DecodeAsProtocol::Ldap)];
+    assert_eq!(label(Tcp, 49152, 10389, &unbind, &declared), Some("LDAP"));
+    assert_eq!(label(Udp, 49152, 10389, &unbind, &declared), Some("LDAP"));
+
+    // Deux PDU qui pavent le segment ; deux octets de trop le refusent.
+    let mut two = sealed.to_vec();
+    two.extend(unbind);
+    assert_eq!(label(Tcp, 49152, 389, &two, &[]), Some("LDAP"));
+    two.extend([0xde, 0xad]);
+    assert_eq!(label(Tcp, 49152, 389, &two, &[]), Some("Unknown"));
+
+    // Refus sur le port : pas une SEQUENCE, longueur indefinie, identifiant
+    // qui n'est pas un INTEGER, operation inconnue, UnbindRequest non vide.
+    for (index, value) in [(0, 0x31), (1, 0x80), (2, 0x04), (5, 0x62), (6, 0x01)] {
+        let mut bad = unbind;
+        bad[index] = value;
+        assert_eq!(
+            label(Tcp, 49152, 389, &bad, &[]),
+            Some("Unknown"),
+            "octet {index}"
+        );
+    }
+    // Tampon SASL : longueur sous l'en-tete du jeton, autre jeton, bourrage.
+    for (index, value) in [(3, 15), (0, 1), (4, 0x60), (5, 0x05), (7, 0x00)] {
+        let mut bad = sealed;
+        bad[index] = value;
+        assert_eq!(
+            label(Tcp, 49152, 389, &bad, &[]),
+            Some("Unknown"),
+            "octet {index}"
+        );
+    }
+
+    // 3268 est aussi un port ephemere : une requete HTTP qui en part garde
+    // son etiquette.
+    let http = b"GET / HTTP/1.1\r\nHost: example.org\r\n\r\n";
+    assert_eq!(label(Tcp, 3268, 80, http, &[]), Some("HTTP"));
+}
+
 /// NMF (#352) : la sonde aveugle prend un preambule ou une enveloppe qui
 /// s'ouvre comme [MC-NBFSE] ; l'accuse de preambule, un octet, ne se nomme
 /// que sur un port declare. Octets synthetiques.

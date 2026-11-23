@@ -28,6 +28,7 @@ use crate::parse::application::protocols::http::{HttpRequest, HttpResponse};
 use crate::parse::application::protocols::iec104::Iec104Packet;
 use crate::parse::application::protocols::ike::{IkePacket, UdpEncapsulation};
 use crate::parse::application::protocols::java_rmi::JavaRmiPacket;
+use crate::parse::application::protocols::ldap::LdapPdu;
 use crate::parse::application::protocols::modbus_tcp::ModbusTcpPacket;
 use crate::parse::application::protocols::mqtt::MqttPacket;
 use crate::parse::application::protocols::netbios::{NbnsPacket, NbssPacket};
@@ -202,11 +203,15 @@ pub(super) enum ProbeId {
     /// Skinny sur TCP 2000 : des messages d'identifiant plausible qui
     /// pavent le segment, le dernier pouvant etre coupe (#370).
     Skinny,
+    /// LDAP sur ses ports : des messages en clair ou des tampons de la
+    /// couche SASL Kerberos qui pavent le payload, le dernier pouvant etre
+    /// coupe (#372).
+    Ldap,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::Skinny;
+    pub(super) const LAST: Self = Self::Ldap;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -292,6 +297,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Rtcp => RtcpCompound::try_from(payload).is_ok(),
         ProbeId::RtcpBlind => RtcpCompound::is_blind_match(payload),
         ProbeId::Skinny => SkinnyMessage::is_port_match(payload),
+        ProbeId::Ldap => LdapPdu::is_port_match(payload),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),

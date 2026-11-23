@@ -300,6 +300,26 @@ Application detection is intentionally best-effort. Parser modules include:
   (`SkinnyMessage::is_truncated`), the segments that carry the rest stay
   `Unknown`, and so does a message that starts in the middle of a segment;
   encrypted signalling (TLS on TCP 2443) is TLS
+- LDAP (RFC 4511) on TCP 389, on TCP 3268 (the global catalog of an Active
+  Directory domain), on UDP 389 (CLDAP, under the same label) or a Decode As
+  port (`DecodeAsProtocol::Ldap`), never on another port: a `30` byte and a
+  BER length make no blind probe. An `LdapPdu` is a message or a buffer of
+  the SASL security layer, and `LdapPdu::pdus` iterates over the PDUs of a
+  segment or of a datagram. `LdapMessage` exposes the message identifier
+  and the operation (`LdapOperation`) and borrows the body and the
+  controls, which are not decoded, except by three readers: `result()`
+  (code, matched DN and diagnostic of a response), `bind_request()`
+  (version, name, simple or SASL authentication) and `search_request()`
+  (base and scope). `LdapSaslBuffer` exposes its length and the header of
+  its token (`LdapSaslToken`): the Kerberos V5 Wrap token of RFC 4121 or of
+  RFC 1964, or an NTLMSSP signature; `messages()` yields the messages of a
+  Kerberos token that is signed without being sealed. The port rule asks
+  for PDUs that tile the payload. Stateless limits: a PDU longer than its
+  segment is cut (`LdapPdu::is_truncated`) and the segments that carry the
+  rest stay `Unknown`; a sealed buffer shows its header only, and nothing
+  is read behind an NTLMSSP signature, which does not say whether the
+  message is encrypted; the security layer of DIGEST-MD5 is not read;
+  LDAPS (TCP 636 and 3269) is TLS
 - MQTT
 - PostgreSQL
 - FTP

@@ -135,6 +135,9 @@ decode_as_protocols![
     /// Skinny (Cisco SCCP) over TCP: the same rule as on TCP 2000, for a
     /// call manager that listens on another port.
     Skinny,
+    /// LDAP over TCP or UDP: the same rule as on port 389, for a directory
+    /// that listens on another port.
+    Ldap,
 ];
 
 impl DecodeAsProtocol {
@@ -237,6 +240,7 @@ impl DecodeAsProtocol {
             Self::Nmf => (ApplicationProtocol::Nmf, Guard::Tcp, ProbeId::Nmf),
             Self::Rtcp => (ApplicationProtocol::Rtcp, Guard::Udp, ProbeId::Rtcp),
             Self::Skinny => (ApplicationProtocol::Skinny, Guard::Tcp, ProbeId::Skinny),
+            Self::Ldap => (ApplicationProtocol::Ldap, Guard::Any, ProbeId::Ldap),
         }
     }
 }
