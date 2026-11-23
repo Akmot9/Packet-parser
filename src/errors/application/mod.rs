@@ -46,6 +46,7 @@ pub mod rtp;
 pub mod rtps;
 pub mod s7comm;
 pub mod sip;
+pub mod skinny;
 pub mod smtp;
 pub mod snmp;
 pub mod srvloc;

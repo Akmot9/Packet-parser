@@ -21,6 +21,11 @@
 # de nDPI, #342) sur 5060, ou tshark essaie SIP.
 set -euo pipefail
 
+# skinny/wireshark_8805_packets.cap (#370) finit au milieu d'un
+# enregistrement : tshark lit ses 759 trames puis sort en erreur. Toute
+# autre erreur de tshark arrete le script.
+cut_short() { [[ "$1" == */skinny/wireshark_8805_packets.cap ]]; }
+
 if [ "$#" -gt 0 ]; then
     captures=("$@")
 else
@@ -37,15 +42,21 @@ for capture in "${captures[@]}"; do
         http-on-port-5432.pcap) decode_as=(-d tcp.port==5432,http) ;;
         ndpi_http_on_sip_port.pcap) decode_as=(-d tcp.port==5060,http) ;;
     esac
-    tshark -r "$capture" -o tcp.desegment_tcp_streams:FALSE \
-        -Y 'tcp.analysis.retransmission && tcp.len > 0' -T fields -e frame.number 2>/dev/null |
+    {
+        tshark -r "$capture" -o tcp.desegment_tcp_streams:FALSE \
+            -Y 'tcp.analysis.retransmission && tcp.len > 0' -T fields -e frame.number 2>/dev/null ||
+            cut_short "$capture"
+    } |
         LC_ALL=C awk -v OFS='\t' -v capture="$(basename "$capture")" '{ print capture, $1, "retransmission", "-", "-", "-" }'
-    tshark -r "$capture" -o tcp.desegment_tcp_streams:FALSE "${decode_as[@]}" \
-        -Y 'http && !tls && !tcp.analysis.retransmission && (http.request || http.response)' \
-        -T fields -E separator='|' -E occurrence=f \
-        -e frame.number -e http.request -e http.response \
-        -e http.request.method -e http.request.uri -e http.request.version \
-        -e http.response.version -e http.response.code -e http.response.phrase 2>/dev/null |
+    {
+        tshark -r "$capture" -o tcp.desegment_tcp_streams:FALSE "${decode_as[@]}" \
+            -Y 'http && !tls && !tcp.analysis.retransmission && (http.request || http.response)' \
+            -T fields -E separator='|' -E occurrence=f \
+            -e frame.number -e http.request -e http.response \
+            -e http.request.method -e http.request.uri -e http.request.version \
+            -e http.response.version -e http.response.code -e http.response.phrase 2>/dev/null ||
+            cut_short "$capture"
+    } |
         LC_ALL=C awk -F'|' -v OFS='\t' -v capture="$(basename "$capture")" '{
             if (($2 == "1" || $2 == "True") && ($3 == "1" || $3 == "True")) kind = "both"
             else if ($2 == "1" || $2 == "True") kind = "request"
