@@ -10,9 +10,11 @@
 //!
 //! [`classify`](super::classify) lit les deux ports une fois, en tire
 //! l'ensemble des regles a visiter, et ne parcourt que celles-la, dans
-//! l'ordre de la table.
+//! l'ordre de la table. Une sonde qui echoue en retire les regles suivantes
+//! qui la portent : la memoisation des echecs est ce meme ensemble.
 
 use super::ports::Ports;
+use super::probes::ProbeMask;
 use super::rules::{RULES, Rule};
 use crate::parse::transport::protocols::TransportProtocol;
 
@@ -41,12 +43,23 @@ impl PortEffect {
     };
 }
 
+/// Une regle d'une liste, et ce que l'echec de sa sonde apprend.
+#[derive(Clone, Copy)]
+pub(super) struct Listed {
+    pub(super) rule: &'static Rule,
+    /// Les regles suivantes de la liste qui portent la meme sonde : apres
+    /// un echec, elles ne la rejouent pas. Une regle terminale n'y est
+    /// jamais : son verdict, `None`, doit etre rendu a son rang, et elle
+    /// rejoue la sonde, qui echoue de nouveau.
+    pub(super) twins: RuleSet,
+}
+
 /// Les regles de la table qu'un transport admet, et l'effet des ports sur
 /// elles.
 pub(super) struct RuleList {
     /// Les regles dont la garde de transport admet ce transport, dans
     /// l'ordre de la table.
-    pub(super) rules: &'static [&'static Rule],
+    pub(super) rules: &'static [Listed],
     /// Les regles sans garde de port : a visiter quels que soient les ports.
     pub(super) portless: RuleSet,
     /// Les regles terminales a garde de port : leurs ports sont reserves.
@@ -77,6 +90,19 @@ impl RuleList {
             .and_then(|slots| self.effects.get(usize::from(slots[usize::from(low)])))
             .copied()
             .unwrap_or(PortEffect::NONE)
+    }
+
+    /// Les regles de la liste qu'il ne reste pas a visiter quand les sondes
+    /// de `failed` ont deja echoue : celles qui portent une de ces sondes,
+    /// hors regles terminales (voir [`Listed::twins`]).
+    pub(super) fn already_failed(&self, failed: ProbeMask) -> RuleSet {
+        self.rules
+            .iter()
+            .enumerate()
+            .filter(|(_, listed)| {
+                !listed.rule.terminal_on_port && failed & listed.rule.probe.bit() != 0
+            })
+            .fold(0, |set, (rank, _)| set | 1 << rank)
     }
 }
 
@@ -112,6 +138,34 @@ const fn admitted<const N: usize>(protocol: TransportProtocol) -> [&'static Rule
     }
     assert!(rank == N);
     rules
+}
+
+/// Chaque regle avec ses jumelles : les regles non terminales qui la
+/// suivent et portent la meme sonde.
+const fn listed<const N: usize>(rules: &[&'static Rule; N]) -> [Listed; N] {
+    let mut list = [Listed {
+        rule: &RULES[0],
+        twins: 0,
+    }; N];
+    let mut rank = 0;
+    while rank < N {
+        let mut twins = 0;
+        let mut later = rank + 1;
+        while later < N {
+            if rules[later].probe as u32 == rules[rank].probe as u32
+                && !rules[later].terminal_on_port
+            {
+                twins |= 1 << later;
+            }
+            later += 1;
+        }
+        list[rank] = Listed {
+            rule: rules[rank],
+            twins,
+        };
+        rank += 1;
+    }
+    list
 }
 
 /// Le plus petit port, a partir de `floor`, que cite la famille.
@@ -304,7 +358,7 @@ macro_rules! rule_list {
         const SLOTS: [[u8; 256]; page_count(&PORTS)] = port_slots(&PORTS);
         const EFFECTS: [PortEffect; PORT_COUNT + 1] = port_effects(&LISTED, &PORTS);
         RuleList {
-            rules: &LISTED,
+            rules: &listed(&LISTED),
             portless: portless(&LISTED),
             terminal: terminal(&LISTED),
             pages: port_pages(&PORTS),

@@ -85,13 +85,15 @@ use crate::parse::transport::protocols::esp::EspPacket;
 /// Recopie par l'oracle FTP du fuzz : voir [`FTP_ONLY_VERBS`].
 pub(super) const PROBE_CAP: usize = 18 * 1024;
 
-/// Masque de memoisation de [`classify`](super::classify) : un bit par [`ProbeId`].
+/// Les sondes qui ont echoue sur les ports declares (« Decode As ») de
+/// [`classify`](super::classify) : un bit par [`ProbeId`]. La table, elle,
+/// memoise ses echecs par regle (voir [`super::index`]).
 pub(super) type ProbeMask = u128;
 
 /// Identite d'une sonde de contenu. Deux regles peuvent partager la meme
 /// sonde (port prioritaire puis repli aveugle) : la memoisation par identite
 /// garantit qu'elle ne s'execute qu'une fois par payload. Un bit du masque
-/// [`ProbeMask`] par identifiant.
+/// [`ProbeMask`] par identifiant, pour les echecs de Decode As.
 ///
 /// Limite : 128 identifiants (`ProbeMask::BITS`). Une variante s'ajoute en
 /// fin d'enum et devient [`ProbeId::LAST`]. L'assertion qui suit l'enum

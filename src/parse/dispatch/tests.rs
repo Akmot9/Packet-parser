@@ -1065,7 +1065,7 @@ fn transport_lists_are_the_table_filtered_by_its_guards() {
             .collect();
         let listed = index::list_for(protocol).rules;
         assert_eq!(listed.len(), expected.len(), "{protocol:?}");
-        for (listed, expected) in listed.iter().zip(expected) {
+        for (listed, expected) in listed.iter().map(|listed| listed.rule).zip(expected) {
             assert!(
                 listed.label == expected.label
                     && listed.probe as u32 == expected.probe as u32
@@ -1086,7 +1086,7 @@ fn transport_lists_are_the_table_filtered_by_its_guards() {
         index::list_for(TransportProtocol::Sctp)
             .rules
             .iter()
-            .all(|rule| matches!(rule.guard, Guard::Any))
+            .all(|listed| matches!(listed.rule.guard, Guard::Any))
     );
 }
 
@@ -1095,7 +1095,7 @@ fn rule_set(list: &index::RuleList, keep: impl Fn(&Rule) -> bool) -> RuleSet {
     list.rules
         .iter()
         .enumerate()
-        .filter(|(_, rule)| keep(rule))
+        .filter(|(_, listed)| keep(listed.rule))
         .fold(0, |set, (rank, _)| set | 1 << rank)
 }
 
@@ -1129,7 +1129,7 @@ fn port_effects_are_the_port_guards_and_vetoes_of_each_rule() {
         // les ports par regle, plutot qu'une passe sur les regles par port.
         let mut opens: Vec<RuleSet> = vec![0; usize::from(u16::MAX) + 1];
         let mut vetoes: Vec<RuleSet> = vec![0; usize::from(u16::MAX) + 1];
-        for (rank, rule) in list.rules.iter().enumerate() {
+        for (rank, rule) in list.rules.iter().map(|listed| listed.rule).enumerate() {
             for port in 0..=u16::MAX {
                 if rule.ports.is_some_and(|ports| ports.contains(port)) {
                     opens[usize::from(port)] |= 1 << rank;
@@ -1155,6 +1155,70 @@ fn port_effects_are_the_port_guards_and_vetoes_of_each_rule() {
     assert_eq!(dns(TransportProtocol::Udp).count_ones(), 1);
     let ftp = index::list_for(TransportProtocol::Tcp).port_effect(Some(21));
     assert_eq!((ftp.opens.count_ones(), ftp.vetoes.count_ones()), (1, 3));
+}
+
+/// La memoisation des echecs : les jumelles d'une regle sont les regles non
+/// terminales qui la suivent dans sa liste et portent sa sonde, et rien
+/// d'autre. Une regle retiree a tort de la visite changerait un verdict ;
+/// une regle terminale retiree ne rendrait plus `None` a son rang.
+#[test]
+fn twins_are_the_later_rules_that_carry_the_same_probe() {
+    for protocol in [
+        TransportProtocol::Tcp,
+        TransportProtocol::Udp,
+        TransportProtocol::Sctp,
+    ] {
+        let list = index::list_for(protocol);
+        let same_probe = |listed: &index::Listed, other: &Rule| {
+            other.probe as u32 == listed.rule.probe as u32 && !other.terminal_on_port
+        };
+        for (rank, listed) in list.rules.iter().enumerate() {
+            let later = list
+                .rules
+                .iter()
+                .enumerate()
+                .filter(|(later, other)| *later > rank && same_probe(listed, other.rule))
+                .fold(0, |set, (later, _)| set | 1 << later);
+            assert_eq!(listed.twins, later, "{protocol:?}, rang {rank}");
+            // Un echec vu par Decode As retire les memes regles, ou
+            // qu'elles soient dans la liste.
+            assert_eq!(
+                list.already_failed(listed.rule.probe.bit()),
+                rule_set(list, |other| same_probe(listed, other)),
+                "{protocol:?}, rang {rank}"
+            );
+        }
+        assert_eq!(list.already_failed(0), 0);
+        assert_eq!(
+            list.already_failed(ProbeMask::MAX),
+            rule_set(list, |rule| !rule.terminal_on_port)
+        );
+        // Aucune regle terminale de la table ne partage sa sonde : une
+        // sonde ne s'execute donc qu'une fois par payload, regles
+        // terminales comprises.
+        for (rank, listed) in list.rules.iter().enumerate() {
+            if listed.rule.terminal_on_port {
+                assert!(
+                    list.rules.iter().enumerate().all(|(other, twin)| {
+                        other == rank || twin.rule.probe as u32 != listed.rule.probe as u32
+                    }),
+                    "{protocol:?} : la regle terminale {} partage sa sonde",
+                    listed.rule.label
+                );
+            }
+        }
+    }
+    // La table a des sondes partagees : SNMP et RADIUS sur UDP, UMAS sur
+    // TCP, chacune sur son port puis a l'aveugle.
+    let twinned = |protocol| {
+        index::list_for(protocol)
+            .rules
+            .iter()
+            .filter(|listed| listed.twins != 0)
+            .count()
+    };
+    assert!(twinned(TransportProtocol::Udp) >= 2);
+    assert!(twinned(TransportProtocol::Tcp) >= 1);
 }
 
 /// `Ports::first_from`, dont l'index tire la liste des ports cites, rend le

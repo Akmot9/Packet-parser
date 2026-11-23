@@ -15,9 +15,9 @@
 //! Invariants :
 //! - une regle a port n'etiquette que si **port et contenu** concordent — le
 //!   port seul ne decide jamais (fin de l'override OPC UA, issue #25) ;
-//! - chaque sonde s'execute **au plus une fois** par payload : les echecs
-//!   sont memoises par [`ProbeId`] (fin du double sondage PostgreSQL et
-//!   SNMP, issue #29) ;
+//! - chaque sonde s'execute **au plus une fois** par payload : une sonde
+//!   qui echoue retire de la visite les regles suivantes qui la portent (fin
+//!   du double sondage PostgreSQL et SNMP, issue #29) ;
 //! - chaque sonde juge les octets que son decodeur lira : le payload entier,
 //!   que les decodeurs exigent souvent pave jusqu'au dernier octet (SNMP,
 //!   Modbus/TCP, ASTERIX...) ou couvert par une longueur declaree (NBSS,
@@ -307,8 +307,6 @@ fn classify_payload(
     payload: &[u8],
     decode_as: &[(u16, DecodeAsProtocol)],
 ) -> Option<Application> {
-    let mut failed_probes: ProbeMask = 0;
-
     // Les ports sont lus une fois : l'index donne, pour chacun, les regles
     // de ce transport qu'il ouvre et celles qu'il interdit.
     let list = index::list_for(transport.protocol);
@@ -317,12 +315,19 @@ fn classify_payload(
     let opened = source.opens | destination.opens;
     let vetoed = source.vetoes | destination.vetoes;
 
+    // Les regles a visiter : celles sans garde de port et celles qu'un des
+    // deux ports ouvre, moins celles qu'un des deux ports interdit. La garde
+    // de transport est deja appliquee, la liste ne porte que les regles de
+    // ce transport.
+    let mut pending = (list.portless | opened) & !vetoed;
+
     // Ports declares par l'appelant (« Decode As ») : evalues avant la
     // table, port ET contenu, garde de transport conservee. Un echec est
-    // memoise comme ceux de la table. Les ports que la table declare
-    // terminaux (mDNS 5353, LLMNR 5355 — reserves par leurs RFC) ne sont
-    // jamais contournables : « etendre les gardes sans les remplacer ».
+    // memoise : la table ne rejoue pas la sonde. Les ports que la table
+    // declare terminaux (mDNS 5353, LLMNR 5355 — reserves par leurs RFC) ne
+    // sont jamais contournables : « etendre les gardes sans les remplacer ».
     if !decode_as.is_empty() && opened & list.terminal == 0 {
+        let mut failed_probes: ProbeMask = 0;
         for (port, protocol) in decode_as {
             if transport.source_port != Some(*port) && transport.destination_port != Some(*port) {
                 continue;
@@ -337,31 +342,31 @@ fn classify_payload(
             }
             failed_probes |= bit;
         }
+        if failed_probes != 0 {
+            pending &= !list.already_failed(failed_probes);
+        }
     }
-    // Les regles a visiter : celles sans garde de port et celles qu'un des
-    // deux ports ouvre, moins celles qu'un des deux ports interdit. La garde
-    // de transport est deja appliquee, la liste ne porte que les regles de
-    // ce transport. Du bit le plus faible au plus fort : l'ordre de la
-    // table.
-    let mut pending = (list.portless | opened) & !vetoed;
+
+    // Du bit le plus faible au plus fort : l'ordre de la table.
     while pending != 0 {
         let rank = pending.trailing_zeros() as usize;
         pending &= pending - 1;
-        let Some(rule) = list.rules.get(rank) else {
+        let Some(listed) = list.rules.get(rank) else {
             break;
         };
+        let rule = listed.rule;
 
-        let bit = rule.probe.bit();
-        let matched = failed_probes & bit == 0 && run_probe(rule.probe, payload);
-        if matched {
+        if run_probe(rule.probe, payload) {
             return Some(Application {
                 protocol: rule.label,
             });
         }
-        failed_probes |= bit;
         if rule.terminal_on_port {
             return None;
         }
+        // La sonde a echoue : les regles suivantes qui la portent ne la
+        // rejouent pas.
+        pending &= !listed.twins;
     }
 
     Some(Application {
