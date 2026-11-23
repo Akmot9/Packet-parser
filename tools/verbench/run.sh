@@ -32,10 +32,20 @@ rm -rf "$BINS"
 mkdir -p "$BINS"
 
 # Un cœur pour toute la mesure, quand taskset existe (Linux) : le processus
-# ne migre pas, et le cœur reste à sa fréquence entre deux binaires.
+# ne migre pas, et le cœur reste à sa fréquence entre deux binaires. Par
+# défaut, le dernier cœur de la liste d'affinité du processus : `nproc`
+# compte les cœurs sans les nommer, et dans un cpuset qui ne commence pas à
+# 0 (8-11 : quatre cœurs, aucun ne s'appelle 3) son résultat n'en désigne
+# aucun. Un cœur refusé laisse la mesure non épinglée, sans l'interrompre.
 PIN=()
 if command -v taskset > /dev/null 2>&1; then
-    PIN=(taskset -c "${VERBENCH_CORE:-$(($(nproc) - 1))}")
+    ALLOWED=$(LC_ALL=C taskset -cp $$ | sed 's/.*: *//')
+    CORE=${VERBENCH_CORE:-${ALLOWED##*[,-]}}
+    if taskset -c "$CORE" true 2> /dev/null; then
+        PIN=(taskset -c "$CORE")
+    else
+        echo "cœur $CORE hors de la liste d'affinité ($ALLOWED) : mesure non épinglée" >&2
+    fi
 fi
 
 # Liste des versions bench-ables, triée par semver croissant.

@@ -41,8 +41,9 @@ navigateur et ne dépend pas de Docker, Postgres, Grafana ou d'un CDN.
   sous un autre checkout.
 - Une fois tout compilé, `run.sh` mesure tous les binaires 15 fois
   (`VERBENCH_ROUNDS`), sur un seul cœur quand `taskset` existe
-  (`VERBENCH_CORE`, le dernier par défaut), dans un ordre qui tourne d'une
-  passe à l'autre. Le JSON garde la médiane de chaque couche, et `run.sh`
+  (`VERBENCH_CORE` ; par défaut le dernier de la liste d'affinité du
+  processus, et sans épinglage si ce cœur est refusé), dans un ordre qui
+  tourne d'une passe à l'autre. Le JSON garde la médiane de chaque couche, et `run.sh`
   affiche l'étendue du total sur les passes.
 - `report.py` transforme le JSON agrégé en rapport HTML statique avec
   graphiques SVG, résumé des deltas et tableau détaillé.

@@ -23,7 +23,9 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   occupait un coeur de la machine, deux releves a la suite s'ecartaient de
   20 a 86 % sur une meme version. Il compile maintenant toutes les
   versions, puis mesure tous les binaires 15 fois (`VERBENCH_ROUNDS`), sur
-  un seul coeur quand `taskset` existe (`VERBENCH_CORE`), dans un ordre qui
+  un seul coeur quand `taskset` existe (`VERBENCH_CORE` ; par defaut le
+  dernier de la liste d'affinite du processus, et non `nproc - 1`, qui ne
+  nomme aucun coeur d'un cpuset ne commencant pas a 0), dans un ordre qui
   tourne d'une passe a l'autre, et garde la mediane de chaque couche. Dans
   les memes conditions, deux releves complets se recoupent a 2,5 % pres
   (0,8 % en mediane). Le manifeste genere porte son propre `[workspace]` :
