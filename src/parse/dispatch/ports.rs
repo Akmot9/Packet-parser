@@ -202,3 +202,9 @@ pub(super) fn is_ptp_port(port: Option<u16>) -> bool {
 pub(super) fn is_dns_port(port: Option<u16>) -> bool {
     matches!(port, Some(53))
 }
+
+/// Skinny (SCCP) : TCP 2000 (IANA `cisco-sccp`), le port ou les postes
+/// joignent leur serveur d'appel (#370).
+pub(super) fn is_skinny_tcp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(2000))
+}
