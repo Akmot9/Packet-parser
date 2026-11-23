@@ -1886,3 +1886,91 @@ fn ams_reads_its_tcp_header_on_tcp_and_the_bare_header_on_udp() {
         Some("AMS")
     );
 }
+
+/// ONC RPC (#381) : un message par datagramme sur UDP 111 et 2049, des
+/// fragments d'enregistrement sur TCP 111 et 2049, ou sur un port declare,
+/// jamais ailleurs. Octets reels : l'appel au portmapper de 64 octets de
+/// pcaps_exemple/protocols/oncrpc/ndpi_nfsv2.pcap, trame 1, et l'appel NFSv3
+/// de 144 octets, marque comprise, de wireshark_getsetacl.cap, trame 1.
+#[test]
+fn oncrpc_is_named_on_its_ports_only() {
+    use TransportProtocol::{Tcp, Udp};
+    let label = |protocol: TransportProtocol,
+                 source: u16,
+                 destination: u16,
+                 payload: &[u8],
+                 decode_as: &[(u16, DecodeAsProtocol)]| {
+        let transport = Transport {
+            protocol,
+            source_port: Some(source),
+            destination_port: Some(destination),
+            payload: Some(payload),
+            details: None,
+        };
+        classify(&transport, decode_as).map(|a| a.protocol.label())
+    };
+    let message = hex::decode(concat!(
+        "3841169f0000000000000002000186a0000000030000000300000000000000000000",
+        "000000000000000186a50000000100000003756470000000000000000000",
+    ))
+    .expect("hexa valide");
+    let record = hex::decode(concat!(
+        "8000008c2a8d57520000000000000002000186a30000000300000004000000010000",
+        "004802b007a70000000f7361686c626572672d6c6170746f7000000003e8000003e8",
+        "000000090000000400000014000000180000002e00000069000000770000007a0000",
+        "007b000003e8000000000000000000000014010006003643452cf67348ea92152c6c",
+        "306413990000001f",
+    ))
+    .expect("hexa valide");
+
+    for port in [111, 2049] {
+        assert_eq!(label(Udp, 49152, port, &message, &[]), Some("ONC RPC"));
+        assert_eq!(label(Udp, port, 49152, &message, &[]), Some("ONC RPC"));
+        assert_eq!(label(Tcp, 49152, port, &record, &[]), Some("ONC RPC"));
+        assert_eq!(label(Tcp, port, 49152, &record, &[]), Some("ONC RPC"));
+    }
+    // mountd, statd et lockd prennent un port que le portmapper annonce :
+    // sans declaration, ils ne sont pas nommes.
+    assert_eq!(label(Udp, 49152, 671, &message, &[]), Some("Unknown"));
+    assert_eq!(label(Tcp, 49152, 671, &record, &[]), Some("Unknown"));
+
+    // Chaque transport a sa forme : la marque de fragment n'existe que sur
+    // TCP.
+    assert_eq!(label(Udp, 49152, 2049, &record, &[]), Some("Unknown"));
+    assert_eq!(label(Tcp, 49152, 2049, &message, &[]), Some("Unknown"));
+    // Un segment peut couper un enregistrement une fois son en-tete lu, pas
+    // un datagramme.
+    assert_eq!(
+        label(Tcp, 49152, 2049, &record[..120], &[]),
+        Some("ONC RPC")
+    );
+    assert_eq!(
+        label(Udp, 49152, 2049, &message[..36], &[]),
+        Some("Unknown")
+    );
+    // Un segment de suite ne s'ouvre pas par une marque et un message.
+    assert_eq!(
+        label(Tcp, 49152, 2049, &record[120..], &[]),
+        Some("Unknown")
+    );
+
+    // TCP coupe ou il veut : derriere un enregistrement entier, le debut
+    // du suivant garde l'etiquette ; seul, il ne nomme rien, et une marque
+    // entiere qui n'annonce aucun message refuse le segment.
+    let with = |tail: &[u8]| [record.as_slice(), tail].concat();
+    assert_eq!(
+        label(Tcp, 49152, 2049, &with(&record[..10]), &[]),
+        Some("ONC RPC")
+    );
+    assert_eq!(label(Tcp, 49152, 2049, &record[..10], &[]), Some("Unknown"));
+    for mark in [[0, 0, 0, 0], [0x80, 0, 0, 19]] {
+        assert_eq!(label(Tcp, 49152, 2049, &with(&mark), &[]), Some("Unknown"));
+    }
+
+    // Un autre port se declare, sur TCP comme sur UDP, chacun sous sa forme.
+    let declared = [(671, DecodeAsProtocol::OncRpc)];
+    assert_eq!(label(Udp, 49152, 671, &message, &declared), Some("ONC RPC"));
+    assert_eq!(label(Tcp, 49152, 671, &record, &declared), Some("ONC RPC"));
+    assert_eq!(label(Udp, 49152, 671, &record, &declared), Some("Unknown"));
+    assert_eq!(label(Tcp, 49152, 671, &message, &declared), Some("Unknown"));
+}

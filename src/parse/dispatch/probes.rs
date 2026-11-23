@@ -36,6 +36,7 @@ use crate::parse::application::protocols::netbios::{NbdsPacket, NbnsPacket, Nbss
 use crate::parse::application::protocols::nmf::NmfSegment;
 use crate::parse::application::protocols::nntp::NntpMessage;
 use crate::parse::application::protocols::ntp::NtpPacket;
+use crate::parse::application::protocols::oncrpc::{OncRpcMessage, OncRpcRecord};
 use crate::parse::application::protocols::opcua::OpcuaPacket;
 use crate::parse::application::protocols::openvpn::OpenVpnPacket;
 use crate::parse::application::protocols::postgresql::{
@@ -224,11 +225,17 @@ pub(super) enum ProbeId {
     /// Kerberos sur TCP : des enregistrements prefixes de leur longueur qui
     /// pavent le segment, le dernier pouvant etre coupe (#379).
     KerberosTcp,
+    /// ONC RPC en datagramme : un appel de version 2 ou une reponse, aux
+    /// champs d'authentification bornes (#381).
+    OncRpc,
+    /// ONC RPC sur TCP : des fragments d'enregistrement qui pavent le
+    /// segment, le dernier pouvant etre coupe (#381).
+    OncRpcTcp,
 }
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
-    pub(super) const LAST: Self = Self::KerberosTcp;
+    pub(super) const LAST: Self = Self::OncRpcTcp;
     /// Nombre d'identifiants ; les discriminants vont de 0 a `COUNT - 1`.
     pub(super) const COUNT: u32 = Self::LAST as u32 + 1;
 
@@ -320,6 +327,8 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::Nbds => NbdsPacket::try_from(payload).is_ok(),
         ProbeId::Kerberos => KerberosMessage::is_port_match(payload),
         ProbeId::KerberosTcp => KerberosRecord::is_port_match(payload),
+        ProbeId::OncRpc => OncRpcMessage::try_from(payload).is_ok(),
+        ProbeId::OncRpcTcp => OncRpcRecord::is_port_match(payload),
         // Les messages doivent paver le segment.
         ProbeId::Postgresql => is_likely_postgresql_payload(payload),
         ProbeId::PostgresqlPort => is_plausible_postgresql_payload(payload),

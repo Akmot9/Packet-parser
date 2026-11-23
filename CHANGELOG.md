@@ -8,6 +8,76 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **ONC RPC** (RFC 5531, #381) : etiquette `ONC RPC`, decodeur zero copie
+  `parse::application::protocols::oncrpc::OncRpcMessage`, enregistrement
+  de TCP `OncRpcRecord` et `DecodeAsProtocol::OncRpc`. C'est l'appel de
+  procedure distante de Sun : le transport de NFS, du portmapper, de
+  `mountd`, de NLM et de NIS.
+  - **Ce qui est lu.** L'identifiant de transaction et le type du message.
+    D'un appel (`OncRpcCall`) : le programme, sa version, la procedure,
+    l'authentifiant et le verifieur (`OncRpcAuth` : la saveur et le
+    corps), et les arguments, empruntes sans etre decodes ;
+    `program_name()` nomme les programmes les plus courants. D'une reponse
+    (`OncRpcReply`) : acceptee, avec son verifieur, son etat
+    (`OncRpcAcceptStatus`) et ses resultats, ou refusee, avec les versions
+    d'un `RPC_MISMATCH` ou la cause d'un `AUTH_ERROR`. Sur TCP,
+    `OncRpcRecord` lit la marque de fragment de la RFC 5531 §11 et le
+    message du premier fragment ; `continuation()` rend les fragments de
+    suite que le segment porte, et `OncRpcRecord::records` itere sur les
+    enregistrements d'un segment.
+  - **Ce qui est refuse.** Un type qui n'est ni appel ni reponse ; un
+    appel d'une autre version que la 2 ; une saveur d'authentification qui
+    n'est pas un numero attribue du registre IANA ; un corps
+    d'authentification de plus de 400 octets ; un etat de reponse,
+    d'acceptation ou de refus inconnu ; des octets apres une reponse sans
+    resultat, qu'ils soient dans l'entree, annonces par la marque ou
+    portes par un fragment de suite. Sur TCP, une marque qui annonce moins
+    que le plus court message de son type (40 octets pour un appel, 24
+    pour une reponse acceptee, 20 sinon), ou un premier fragment qui finit
+    avant la fin de l'en-tete qu'il ouvre, que le segment le porte entier
+    ou non.
+  - **Detection.** Regles a port sur 111 (portmapper) et 2049 (NFS) : en
+    UDP, un message entier, seul dans son datagramme ; en TCP, des
+    enregistrements qui pavent le segment, le dernier pouvant etre coupe.
+    Derriere un enregistrement entier, le debut du suivant, que TCP coupe
+    dans sa marque ou dans l'en-tete de son message, ne retire rien ; seul,
+    il ne nomme rien, et une marque entiere et fausse refuse le segment.
+    Pas de sonde aveugle : un appel et une reponse s'ouvrent par des mots
+    presque tous nuls. `mountd`, `statd` et `lockd` prennent un port que le
+    portmapper annonce : il se declare par Decode As.
+  - **Corpus et oracle.** Quatre captures dans
+    `pcaps_exemple/protocols/oncrpc/` (deux de nDPI, deux du wiki
+    Wireshark) : NFS versions 2 et 3 sur UDP, 3 et 4.1 sur TCP, portmapper,
+    `mountd`, NFS_ACL. Avec trois appels au portmapper deja dans `goose/`,
+    409 messages sont compares a tshark 4.6.9, rendu sans reassemblage :
+    marque de fragment, identifiant, type, programme, version, procedure,
+    saveurs et longueurs d'authentification, etats d'une reponse
+    (`tests/oncrpc_golden.rs`, `tools/oncrpc_oracle.sh`). 399 sortent
+    `ONC RPC` ; les dix de `mountd` sortent `Unknown`, puis `ONC RPC` par
+    Decode As. Cible de fuzz `parse_oncrpc`.
+  - **Un faux positif ecarte.** Le golden a montre un segment de suite lu
+    comme une reponse : au milieu d'une liste de repertoire de NFS, « une
+    entree suit », le haut d'un identifiant de fichier, son bas et la
+    longueur d'un nom tombent ou une reponse acceptee porte son type, son
+    etat, la saveur de son verifieur et sa longueur
+    (`wireshark_getsetacl.cap`, trame 33). La verification des saveurs
+    contre le registre IANA vient de la. Hors depot, les 4 448 segments de
+    suite d'une capture NFS de 7 038 trames, tronquee par sa capture, ne
+    donnent aucun faux positif.
+  - **Mesure.** Le corpus de terrain de #346 n'a pas ete remesure : son
+    disque n'etait pas monte. Son etat des lieux comptait 206 trames sur
+    les ports 111 et 2049.
+  - **Limites.** Sans etat : une reponse ne dit ni son programme ni sa
+    procedure, que seul l'appel porte. Un enregistrement plus long que son
+    segment est coupe (`OncRpcRecord::is_truncated`, quatre dans le corpus)
+    et les segments de suite restent `Unknown`. Un segment qui coupe un
+    appel dans son en-tete n'est pas nomme, sauf derriere un
+    enregistrement entier. D'un enregistrement en plusieurs fragments,
+    seul le premier est decode. Les arguments et les resultats, dont le
+    format est celui de chaque programme, ne sont pas lus. Les refus, les
+    erreurs et les fragments de suite ne sont testes que sur des octets
+    synthetiques : aucune capture du corpus n'en porte. Une saveur privee,
+    hors du registre, laisse le message `Unknown`.
 - **Kerberos V5** (RFC 4120, #379) : etiquette `Kerberos`, decodeur zero
   copie `parse::application::protocols::kerberos::KerberosMessage`,
   enregistrement de TCP `KerberosRecord` et `DecodeAsProtocol::Kerberos`.

@@ -516,6 +516,25 @@ pub(super) static RULES: &[Rule] = &[
         is_kerberos_port,
         ProbeId::KerberosTcp,
     ),
+    // ONC RPC (#381) : le portmapper (111) et NFS (2049), en UDP (un message
+    // par datagramme) et en TCP (des fragments d'enregistrement, RFC 5531
+    // §11). Garde par port : un appel s'ouvre par un identifiant libre puis
+    // sept octets nuls et un `02`, une reponse par des octets presque tous
+    // nuls, ce que des formats proprietaires font aussi. Les programmes
+    // sans port fixe (`mountd`, `statd`, `lockd`) se declarent par Decode
+    // As.
+    port_rule(
+        ApplicationProtocol::OncRpc,
+        Guard::Udp,
+        is_oncrpc_port,
+        ProbeId::OncRpc,
+    ),
+    port_rule(
+        ApplicationProtocol::OncRpc,
+        Guard::Tcp,
+        is_oncrpc_port,
+        ProbeId::OncRpcTcp,
+    ),
     // WireGuard : UDP 51820, le port des exemples de `wg(8)` — aucun port
     // IANA. Comme pour l'heuristique de tshark, la forme du message suffit
     // a une initiation ou une reponse, octets reserves compris (Cloudflare
