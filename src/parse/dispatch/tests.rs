@@ -1179,7 +1179,12 @@ fn twins_are_the_later_rules_that_carry_the_same_probe() {
                 .enumerate()
                 .filter(|(later, other)| *later > rank && same_probe(listed, other.rule))
                 .fold(0, |set, (later, _)| set | 1 << later);
-            assert_eq!(listed.twins, later, "{protocol:?}, rang {rank}");
+            // L'echec retire la regle et ses jumelles, et laisse le reste.
+            assert_eq!(
+                listed.left,
+                !(1 << rank | later),
+                "{protocol:?}, rang {rank}"
+            );
             // Un echec vu par Decode As retire les memes regles, ou
             // qu'elles soient dans la liste.
             assert_eq!(
@@ -1214,7 +1219,7 @@ fn twins_are_the_later_rules_that_carry_the_same_probe() {
         index::list_for(protocol)
             .rules
             .iter()
-            .filter(|listed| listed.twins != 0)
+            .filter(|listed| listed.left.count_zeros() > 1)
             .count()
     };
     assert!(twinned(TransportProtocol::Udp) >= 2);

@@ -43,15 +43,16 @@ impl PortEffect {
     };
 }
 
-/// Une regle d'une liste, et ce que l'echec de sa sonde apprend.
+/// Une regle d'une liste, et ce que l'echec de sa sonde laisse a visiter.
 #[derive(Clone, Copy)]
 pub(super) struct Listed {
     pub(super) rule: &'static Rule,
-    /// Les regles suivantes de la liste qui portent la meme sonde : apres
-    /// un echec, elles ne la rejouent pas. Une regle terminale n'y est
-    /// jamais : son verdict, `None`, doit etre rendu a son rang, et elle
-    /// rejoue la sonde, qui echoue de nouveau.
-    pub(super) twins: RuleSet,
+    /// Les regles qu'il reste a visiter quand la sonde de celle-ci echoue :
+    /// toutes, sauf elle-meme et ses jumelles, les regles suivantes de la
+    /// liste qui portent la meme sonde et ne la rejouent donc pas. Une regle
+    /// terminale n'est jamais jumelle : son verdict, `None`, doit etre rendu
+    /// a son rang, et elle rejoue la sonde, qui echoue de nouveau.
+    pub(super) left: RuleSet,
 }
 
 /// Les regles de la table qu'un transport admet, et l'effet des ports sur
@@ -94,7 +95,7 @@ impl RuleList {
 
     /// Les regles de la liste qu'il ne reste pas a visiter quand les sondes
     /// de `failed` ont deja echoue : celles qui portent une de ces sondes,
-    /// hors regles terminales (voir [`Listed::twins`]).
+    /// hors regles terminales (voir [`Listed::left`]).
     pub(super) fn already_failed(&self, failed: ProbeMask) -> RuleSet {
         self.rules
             .iter()
@@ -140,28 +141,29 @@ const fn admitted<const N: usize>(protocol: TransportProtocol) -> [&'static Rule
     rules
 }
 
-/// Chaque regle avec ses jumelles : les regles non terminales qui la
-/// suivent et portent la meme sonde.
+/// Chaque regle avec ce que son echec laisse a visiter : tout, sauf elle
+/// et ses jumelles, les regles non terminales qui la suivent et portent la
+/// meme sonde.
 const fn listed<const N: usize>(rules: &[&'static Rule; N]) -> [Listed; N] {
     let mut list = [Listed {
         rule: &RULES[0],
-        twins: 0,
+        left: 0,
     }; N];
     let mut rank = 0;
     while rank < N {
-        let mut twins = 0;
+        let mut settled: RuleSet = 1 << rank;
         let mut later = rank + 1;
         while later < N {
             if rules[later].probe as u32 == rules[rank].probe as u32
                 && !rules[later].terminal_on_port
             {
-                twins |= 1 << later;
+                settled |= 1 << later;
             }
             later += 1;
         }
         list[rank] = Listed {
             rule: rules[rank],
-            twins,
+            left: !settled,
         };
         rank += 1;
     }

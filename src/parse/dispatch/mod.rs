@@ -351,7 +351,6 @@ fn classify_payload(
     // Du bit le plus faible au plus fort : l'ordre de la table.
     while pending != 0 {
         let rank = pending.trailing_zeros() as usize;
-        pending &= pending - 1;
         let Some(listed) = list.rules.get(rank) else {
             break;
         };
@@ -365,9 +364,9 @@ fn classify_payload(
         if rule.terminal_on_port {
             return None;
         }
-        // La sonde a echoue : les regles suivantes qui la portent ne la
-        // rejouent pas.
-        pending &= !listed.twins;
+        // La sonde a echoue : la regle est visitee, et les regles suivantes
+        // qui portent la meme sonde ne la rejouent pas.
+        pending &= listed.left;
     }
 
     Some(Application {
