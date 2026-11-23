@@ -352,3 +352,10 @@ path = "fuzz_targets/parse_ldap.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "parse_syslog"
+path = "fuzz_targets/parse_syslog.rs"
+test = false
+doc = false
+bench = false

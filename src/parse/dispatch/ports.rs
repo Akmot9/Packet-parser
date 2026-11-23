@@ -219,3 +219,14 @@ pub(super) fn is_ldap_tcp_port(port: Option<u16>) -> bool {
 pub(super) fn is_ldap_udp_port(port: Option<u16>) -> bool {
     matches!(port, Some(389))
 }
+
+/// Syslog : UDP 514 (IANA `syslog`, RFC 5426) (#374).
+pub(super) fn is_syslog_udp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(514))
+}
+
+/// Syslog sur TCP (RFC 6587) : 514, le port le plus courant bien que l'IANA
+/// le donne a `shell` (rsh), et 601 (IANA `syslog-conn`) (#374).
+pub(super) fn is_syslog_tcp_port(port: Option<u16>) -> bool {
+    matches!(port, Some(514 | 601))
+}

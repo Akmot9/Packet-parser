@@ -8,6 +8,51 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ### Ajoute
 
+- **Syslog** (RFC 3164, 5424 et 6587, #374) : etiquette `Syslog`, decodeur
+  zero copie `parse::application::protocols::syslog::SyslogMessage`, trames
+  TCP `SyslogFrame` et `DecodeAsProtocol::Syslog`. C'est le journal qu'un
+  equipement ou un systeme envoie a un collecteur, sur UDP 514 ou sur TCP.
+  - **Ce qui est lu.** D'un message (`SyslogMessage`, un datagramme UDP) :
+    la priorite (`facility()` et `severity()`), la version de la RFC 5424
+    quand elle est la, et le contenu, emprunte. Pour la RFC 5424,
+    `header()` rend l'horodatage, l'hote, l'application, l'identifiant de
+    processus et l'identifiant de message, puis ce qui les suit. Le format
+    BSD de la RFC 3164 n'a pas d'en-tete fiable : son contenu est rendu tel
+    quel. Sur TCP, `SyslogFrame::frames` rend les trames d'un segment sous
+    les deux cadrages de la RFC 6587 : comptage d'octets (`octet_count`) ou
+    message termine par LF.
+  - **Ce qui est refuse.** Un message qui ne s'ouvre pas par `<` ; une
+    priorite sans chiffre, de plus de trois chiffres, a zero de tete ou
+    au-dela de 191 ; un comptage d'octets nul, a zero de tete, de plus de
+    dix chiffres, au-dela de 2^32 - 1 ou sans espace derriere lui.
+  - **Detection.** Regles a port sur UDP 514, TCP 514 et TCP 601 : trois a
+    cinq octets de priorite ne font pas une sonde aveugle. Sur TCP, la
+    sonde exige des trames qui pavent le segment, chacune ouverte par une
+    priorite ; seule la derniere peut etre coupee. TCP 514 est aussi le
+    port de `rsh`, dont les segments ne s'ouvrent pas ainsi. Un autre port
+    se declare par Decode As ; le port 6514 (RFC 5425) est du TLS.
+  - **Corpus et oracle.** `The-Ultimate-PCAP.pcapng` (250 charges : UDP
+    514, TCP 514 et 601, les deux cadrages) et deux captures de nDPI dans
+    `pcaps_exemple/protocols/syslog/` (RFC 5424, plusieurs messages par
+    segment, un segment de suite). 341 charges sont comparees a tshark
+    4.6.9 (`tests/syslog_golden.rs`, `tools/syslog_oracle.sh`) : facilite,
+    gravite, version, comptages d'octets et en-tete de la RFC 5424. Aucune
+    autre trame de ces captures ne sort `Syslog`. Nouvelle cible de fuzz
+    `parse_syslog`.
+  - **Ecarts avec tshark, voulus.** tshark ne lit syslog que sur UDP 514 et
+    prend TCP 514 pour du RSH : l'oracle le declare par Decode As. D'un
+    segment de messages termines par LF, il ne lit que le premier ; la
+    crate les separe. Il nomme syslog toute charge d'UDP 514 ; la crate
+    exige la priorite.
+  - **Mesure.** Sur le corpus de terrain de #346, 482 trames `Unknown`
+    sortent `Syslog`, sans qu'aucune autre etiquette ne bouge. Restent sans
+    nom, sur ces ports, des segments de suite et les datagrammes d'un agent
+    qui n'ecrit pas de priorite.
+  - **Limites, sans etat.** Un message plus long que son segment est coupe
+    (`SyslogFrame::is_truncated`) et les segments de suite restent
+    `Unknown`. Un message a LF interne n'est pas distingue de deux
+    messages : chaque ligne doit s'ouvrir par une priorite. Seul LF finit
+    une trame ; les autres fins de message de la RFC 6587 ne sont pas lues.
 - **LDAP** (RFC 4511, #372) : etiquette `LDAP`, decodeur zero copie
   `parse::application::protocols::ldap::LdapPdu` et
   `DecodeAsProtocol::Ldap`. C'est l'acces a un annuaire, sur TCP 389, sur

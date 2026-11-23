@@ -20,6 +20,14 @@ corpus prive, 895 trames quittent `Unknown`. Les standards qui y restent
 sans nom sont petits : Corosync (1 700 trames), syslog, NetBIOS Datagram,
 ONC RPC et Kerberos (quelques centaines chacun).
 
+Meme jour, sur `main` et non publie aussi : **Syslog** (RFC 3164, 5424 et
+6587, #374). Decodeur `SyslogMessage` et trames TCP `SyslogFrame`, regles a
+port sur UDP 514 et sur TCP 514 et 601, `DecodeAsProtocol::Syslog`, deux
+captures de nDPI en plus de `The-Ultimate-PCAP.pcapng`, et un oracle tshark
+de 341 charges. Sur le corpus prive, 482 trames quittent `Unknown`. Le
+trafic d'UDP 5405 de ce corpus, pris pour du Corosync, est chiffre : aucun
+decodeur ne le nommera.
+
 Etat au 2026-11-22, 13.3.0 : la **13.3.0 est publiee** (tag `v13.3.0`,
 publication par le workflow). Mineure, sans rupture, elle porte l'epic
 **#346**, qui visait le taux de parsing applicatif. Sur un corpus prive de

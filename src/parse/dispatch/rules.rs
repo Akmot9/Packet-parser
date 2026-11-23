@@ -473,6 +473,24 @@ pub(super) static RULES: &[Rule] = &[
         is_ldap_udp_port,
         ProbeId::Ldap,
     ),
+    // Syslog (#374) : UDP 514, un message par datagramme ; TCP 514 et 601,
+    // des trames de la RFC 6587 (comptage d'octets ou LF). Garde par port :
+    // la priorite `<PRI>`, trois a cinq octets, ne fait pas une sonde
+    // aveugle. TCP 514 est aussi le port de rsh, dont les segments ne
+    // s'ouvrent pas par une priorite. Un autre port se declare par Decode
+    // As ; le port 6514 (RFC 5425) est du TLS.
+    port_rule(
+        ApplicationProtocol::Syslog,
+        Guard::Udp,
+        is_syslog_udp_port,
+        ProbeId::Syslog,
+    ),
+    port_rule(
+        ApplicationProtocol::Syslog,
+        Guard::Tcp,
+        is_syslog_tcp_port,
+        ProbeId::SyslogTcp,
+    ),
     // WireGuard : UDP 51820, le port des exemples de `wg(8)` — aucun port
     // IANA. Comme pour l'heuristique de tshark, la forme du message suffit
     // a une initiation ou une reponse, octets reserves compris (Cloudflare

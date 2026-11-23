@@ -320,6 +320,21 @@ Application detection is intentionally best-effort. Parser modules include:
   is read behind an NTLMSSP signature, which does not say whether the
   message is encrypted; the security layer of DIGEST-MD5 is not read;
   LDAPS (TCP 636 and 3269) is TLS
+- Syslog (RFC 3164, RFC 5424) on UDP 514, on TCP 514 and 601 (RFC 6587) or
+  a Decode As port (`DecodeAsProtocol::Syslog`), never on another port: the
+  three to five bytes of a priority make no blind probe. `SyslogMessage`
+  reads a UDP datagram: the priority (`facility()`, `severity()`), the
+  version of RFC 5424 when it is there, and the content, borrowed;
+  `header()` reads the five header fields of an RFC 5424 message, and the
+  BSD content is left as it is. Over TCP, `SyslogFrame::frames` iterates
+  over the frames of a segment, under octet counting (`octet_count`) or
+  ended by LF; the port rule asks for frames that tile the segment, each
+  one opened by a priority. A message without a priority is not named,
+  where tshark names any payload of UDP 514. Stateless limits: a message
+  longer than its segment is cut (`SyslogFrame::is_truncated`) and the
+  segments that carry the rest stay `Unknown`; a message with an inner LF
+  is not told from two messages; TCP 514 is also the port of `rsh`, whose
+  segments do not open with a priority; syslog over TLS (TCP 6514) is TLS
 - MQTT
 - PostgreSQL
 - FTP
