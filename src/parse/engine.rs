@@ -207,9 +207,16 @@ impl<'a> PacketFlow<'a> {
         }
 
         if let Some(transport) = &self.transport {
-            let (application, inner) = Self::application_and_inner(transport, depth, config);
-            self.application = application;
-            self.inner = inner;
+            if l4 == L4::Tcp {
+                // Aucun tunnel n'est porte par TCP : la table de dispatch
+                // seule, et `inner` reste vide.
+                debug_assert!(tunnel::detect_inner(transport, depth, config).is_none());
+                self.application = Self::parse_application_from_transport(transport, config);
+            } else {
+                let (application, inner) = Self::application_and_inner(transport, depth, config);
+                self.application = application;
+                self.inner = inner;
+            }
         }
         if self.application.is_none() {
             self.application = Self::detect_stp(&self.data_link);
