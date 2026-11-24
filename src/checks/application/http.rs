@@ -197,18 +197,19 @@ pub fn require_uri(part: Option<&str>) -> Result<&str, HttpParseError> {
 /// let arbitrary text be classified as an HTTP request line.
 pub fn require_version(part: Option<&str>) -> Result<&str, HttpParseError> {
     let version = part.ok_or(HttpParseError::MissingVersion)?;
-    let invalid = || HttpParseError::InvalidVersion(version.to_string());
 
-    let digits = version.strip_prefix("HTTP/").ok_or_else(invalid)?;
-    let (major, minor) = match digits.split_once('.') {
-        Some((major, minor)) => (major, Some(minor)),
-        None => (digits, None),
+    // `HTTP/x` ou `HTTP/x.y`, chacun un chiffre ASCII : lus en un motif
+    // d'octets, la ou `strip_prefix` puis `split_once('.')` coutaient 160
+    // instructions par message.
+    let is_valid = match version.as_bytes() {
+        [b'H', b'T', b'T', b'P', b'/', major] => major.is_ascii_digit(),
+        [b'H', b'T', b'T', b'P', b'/', major, b'.', minor] => {
+            major.is_ascii_digit() && minor.is_ascii_digit()
+        }
+        _ => false,
     };
-
-    let is_single_digit =
-        |part: &str| part.len() == 1 && part.starts_with(|c: char| c.is_ascii_digit());
-    if !is_single_digit(major) || minor.is_some_and(|minor| !is_single_digit(minor)) {
-        return Err(invalid());
+    if !is_valid {
+        return Err(HttpParseError::InvalidVersion(version.to_string()));
     }
     Ok(version)
 }
@@ -549,6 +550,70 @@ mod tests {
     fn test_require_version() {
         assert_eq!(require_version(Some("HTTP/1.1")), Ok("HTTP/1.1"));
         assert_eq!(require_version(None), Err(HttpParseError::MissingVersion));
+    }
+
+    /// La lecture d'origine de la version : prefixe, puis coupe au point.
+    fn reference_require_version(part: Option<&str>) -> Result<&str, HttpParseError> {
+        let version = part.ok_or(HttpParseError::MissingVersion)?;
+        let invalid = || HttpParseError::InvalidVersion(version.to_string());
+
+        let digits = version.strip_prefix("HTTP/").ok_or_else(invalid)?;
+        let (major, minor) = match digits.split_once('.') {
+            Some((major, minor)) => (major, Some(minor)),
+            None => (digits, None),
+        };
+
+        let is_single_digit =
+            |part: &str| part.len() == 1 && part.starts_with(|c: char| c.is_ascii_digit());
+        if !is_single_digit(major) || minor.is_some_and(|minor| !is_single_digit(minor)) {
+            return Err(invalid());
+        }
+        Ok(version)
+    }
+
+    /// Le motif d'octets rend ce que rendait la lecture d'origine : sur
+    /// `HTTP/` suivi de toute suite de quatre caracteres au plus (chiffres
+    /// ASCII et arabes, point, lettre, blanc), et sur chaque octet du
+    /// prefixe altere.
+    #[test]
+    fn test_require_version_agrees_with_the_reference() {
+        let alphabet = ['0', '9', '.', '/', 'a', ' ', '\u{0663}', '\u{ff11}'];
+        let mut suffixes = vec![String::new()];
+        let mut start = 0;
+        for _ in 0..4 {
+            let end = suffixes.len();
+            for index in start..end {
+                for character in alphabet {
+                    let mut longer = suffixes[index].clone();
+                    longer.push(character);
+                    suffixes.push(longer);
+                }
+            }
+            start = end;
+        }
+        let (mut accepted, mut checked) = (0, 0);
+        let mut check = |version: &str| {
+            let expected = reference_require_version(Some(version));
+            assert_eq!(require_version(Some(version)), expected, "{version:?}");
+            accepted += usize::from(expected.is_ok());
+            checked += 1;
+        };
+        for suffix in &suffixes {
+            for prefix in ["HTTP/", "HTTP", "http/", "HTTP/1.1", " HTTP/", "H"] {
+                check(&format!("{prefix}{suffix}"));
+            }
+        }
+        for version in ["HTTP/1.1", "HTTP/2", "HTTP/0.9"] {
+            for position in 0..version.len() {
+                for value in 0..=0x7f_u8 {
+                    let mut bytes = version.as_bytes().to_vec();
+                    bytes[position] = value;
+                    check(core::str::from_utf8(&bytes).expect("ASCII"));
+                }
+            }
+        }
+        assert!(checked > 25_000, "{checked} versions");
+        assert!(accepted > 50, "{accepted} versions valides");
     }
 
     #[test]
