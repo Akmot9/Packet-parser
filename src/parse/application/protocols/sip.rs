@@ -30,8 +30,8 @@ use crate::{
     checks::application::sip::{
         SipCoreHeader, extract_sip_content_length, extract_sip_cseq, extract_sip_header_line,
         extract_sip_status_code, extract_sip_text, is_sip_version, known_sip_method,
-        sip_core_header, sip_header_alias, sip_header_lines, split_sip_head,
-        strip_status_line_version, validate_sip_request_uri,
+        sip_core_header, sip_header_alias, sip_header_lines, split_sip_head, split_sip_header_line,
+        split_sip_start_line, strip_status_line_version, validate_sip_request_uri,
     },
     errors::application::sip::SipError,
 };
@@ -221,7 +221,7 @@ impl<'a> TryFrom<&'a [u8]> for SipMessage<'a> {
     fn try_from(payload: &'a [u8]) -> Result<Self, SipError> {
         let (head, rest) = split_sip_head(payload)?;
         let head = extract_sip_text(head)?;
-        let (start, block) = head.split_once("\r\n").unwrap_or((head, ""));
+        let (start, block) = split_sip_start_line(head);
         let start_line = parse_start_line(start)?;
 
         let mut via = None;
@@ -231,7 +231,7 @@ impl<'a> TryFrom<&'a [u8]> for SipMessage<'a> {
         let mut cseq = None;
         let mut content_length = None;
         for line in sip_header_lines(block) {
-            let (name, value) = extract_sip_header_line(line)?;
+            let (name, value) = split_sip_header_line(line)?;
             // Les autres en-tetes sont valides, et lus par `headers`.
             let Some(header) = sip_core_header(name) else {
                 continue;
@@ -247,7 +247,7 @@ impl<'a> TryFrom<&'a [u8]> for SipMessage<'a> {
             // La premiere occurrence gagne : le Via du haut est celui du
             // dernier saut.
             if slot.is_none() {
-                *slot = Some(value);
+                *slot = Some(value.trim());
             } else if header == SipCoreHeader::ContentLength {
                 // Seul un champ a liste se repete (§7.3.1) ; deux
                 // Content-Length laisseraient la fin du corps au hasard
@@ -314,7 +314,7 @@ pub(crate) mod reference {
         Ok((&payload[..index], &payload[index + 4..]))
     }
 
-    fn extract_sip_header_line(line: &str) -> Result<(&str, &str), SipError> {
+    pub(crate) fn extract_sip_header_line(line: &str) -> Result<(&str, &str), SipError> {
         let (name, value) = line.split_once(':').ok_or(SipError::InvalidHeader)?;
         let name = name.trim_end_matches([' ', '\t']);
         let is_token = |byte: u8| {
@@ -437,13 +437,29 @@ mod tests {
 
     /// Le decodeur rend la valeur ou l'erreur de sa reference, et la vue
     /// sur les en-tetes les memes paires ; rend vrai pour un message decode.
+    /// Les lignes logiques et leur lecture sont aussi comparees sur tout
+    /// payload en UTF-8, decode ou non.
     fn agrees_with_the_reference(payload: &[u8]) -> bool {
         let decoded = SipMessage::try_from(payload);
         assert_eq!(decoded, reference::parse(payload), "{payload:?}");
         if let Ok(message) = &decoded {
-            let expected: Vec<&str> = reference::sip_header_lines(message.headers.block).collect();
-            let lines: Vec<&str> = sip_header_lines(message.headers.block).collect();
+            let expected: Vec<(&str, &str)> = reference::sip_header_lines(message.headers.block)
+                .filter_map(|line| reference::extract_sip_header_line(line).ok())
+                .collect();
+            let pairs: Vec<(&str, &str)> = message.headers.iter().collect();
+            assert_eq!(pairs, expected, "{payload:?}");
+        }
+        if let Ok(text) = std::str::from_utf8(payload) {
+            let expected: Vec<&str> = reference::sip_header_lines(text).collect();
+            let lines: Vec<&str> = sip_header_lines(text).collect();
             assert_eq!(lines, expected, "{payload:?}");
+            for line in lines {
+                assert_eq!(
+                    extract_sip_header_line(line),
+                    reference::extract_sip_header_line(line),
+                    "{line:?}"
+                );
+            }
         }
         decoded.is_ok()
     }
