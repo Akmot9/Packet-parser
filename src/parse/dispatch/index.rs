@@ -11,10 +11,13 @@
 //! [`classify`](super::classify) lit les deux ports une fois, en tire
 //! l'ensemble des regles a visiter, et ne parcourt que celles-la, dans
 //! l'ordre de la table. Une sonde qui echoue en retire les regles suivantes
-//! qui la portent : la memoisation des echecs est ce meme ensemble.
+//! qui la portent : la memoisation des echecs est ce meme ensemble. Le
+//! premier octet du payload en retire d'abord les regles dont la sonde le
+//! refuse a coup sur ([`first_bytes`]).
 
 use std::num::NonZero;
 
+use super::first_bytes::first_bytes;
 use super::ports::Ports;
 use super::probes::ProbeMask;
 use super::rules::{RULES, Rule};
@@ -72,6 +75,9 @@ pub(super) struct RuleList {
     pub(super) portless: RuleSet,
     /// Les regles terminales a garde de port : leurs ports sont reserves.
     pub(super) terminal: RuleSet,
+    /// Pour chaque premier octet d'un payload, les regles qui valent une
+    /// visite : voir [`RuleList::worth_visiting`].
+    by_first_byte: [RuleSet; 256],
     /// Pour l'octet de poids fort d'un port, sa page dans `slots`. La page 0
     /// est celle des ports qu'aucune regle ne cite.
     pages: [u8; 256],
@@ -94,6 +100,16 @@ impl RuleList {
     /// son bit le plus faible.
     pub(super) fn first(&self, pending: NonZero<RuleSet>) -> &Listed {
         &self.listed[pending.trailing_zeros() as usize]
+    }
+
+    /// Les regles qui valent une visite quand le payload commence par
+    /// `first` : celles dont la sonde peut accepter cet octet
+    /// ([`first_bytes`]), et toutes les regles terminales, dont le verdict,
+    /// `None`, se rend a leur rang quand leur sonde echoue. Les autres
+    /// echoueraient sans rien changer au verdict : ne pas les visiter rend
+    /// le meme resultat.
+    pub(super) fn worth_visiting(&self, first: u8) -> RuleSet {
+        self.by_first_byte[usize::from(first)]
     }
 
     /// L'effet de `port` sur les regles de la liste : trois lectures, sans
@@ -369,6 +385,28 @@ const fn terminal(rules: &[&Rule]) -> RuleSet {
     set
 }
 
+/// Par premier octet, les regles dont la sonde peut l'accepter, et les
+/// regles terminales.
+const fn by_first_byte(rules: &[&Rule]) -> [RuleSet; 256] {
+    let mut sets = [0; 256];
+    let mut rank = 0;
+    while rank < rules.len() {
+        let accepted = first_bytes(rules[rank].probe);
+        let mut byte = u8::MIN;
+        loop {
+            if rules[rank].terminal_on_port || accepted.contains(byte) {
+                sets[byte as usize] |= 1 << rank;
+            }
+            if byte == u8::MAX {
+                break;
+            }
+            byte += 1;
+        }
+        rank += 1;
+    }
+    sets
+}
+
 /// La liste des regles qu'admet un transport, calculee a la compilation.
 macro_rules! rule_list {
     ($protocol:expr) => {{
@@ -383,6 +421,7 @@ macro_rules! rule_list {
             len: RULE_COUNT,
             portless: portless(&LISTED),
             terminal: terminal(&LISTED),
+            by_first_byte: by_first_byte(&LISTED),
             pages: port_pages(&PORTS),
             slots: &SLOTS,
             effects: &EFFECTS,

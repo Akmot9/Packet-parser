@@ -24,7 +24,10 @@
 //!   DNS sur TCP, TLS...). Seules les sondes des protocoles texte (FTP, SMTP,
 //!   NNTP, HTTP), qui valident tout le texte en UTF-8, ne lisent que
 //!   [`PROBE_CAP`](probes::PROBE_CAP) octets : la borne de l'issue #20, qui plafonnait jadis
-//!   toutes les sondes (#184, #185), et que l'oracle du fuzz recopie.
+//!   toutes les sondes (#184, #185), et que l'oracle du fuzz recopie ;
+//! - une sonde n'est tentee que si le premier octet du payload peut lui
+//!   convenir ([`first_bytes`]) : les regles ecartees auraient echoue, et le
+//!   verdict reste celui d'un parcours de toute la table.
 
 use std::num::NonZero;
 
@@ -33,6 +36,7 @@ use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
 use crate::parse::application::protocol::ApplicationProtocol;
 
+mod first_bytes;
 mod index;
 mod ports;
 mod probes;
@@ -294,22 +298,45 @@ pub(super) fn classify(
     decode_as: &[(u16, DecodeAsProtocol)],
 ) -> Option<Application> {
     let payload = transport.payload?;
-    if payload.is_empty() {
-        return None;
-    }
-    classify_payload(transport, payload, decode_as)
+    let first = *payload.first()?;
+    classify_payload(transport, payload, first, decode_as)
 }
 
-/// La table, sur un payload non vide. Hors de [`classify`] : un segment sans
-/// payload (un ACK nu, un quart des trames du corpus) ne paie pas l'entree
-/// de la fonction qui parcourt la table, ses registres sauves et son cadre
-/// de pile.
+/// L'oracle du prefiltre, en build de debug : chaque regle de la liste que
+/// le premier octet ecarte, quels que soient les ports, voit sa sonde
+/// rejouee, et elle doit refuser. Les tests, le corpus de reference et les
+/// cibles de fuzz verifient ainsi chaque ensemble declare sur chaque payload
+/// qu'ils classent.
+#[cfg(debug_assertions)]
+fn assert_excluded_probes_reject(
+    list: &index::RuleList,
+    worth_visiting: index::RuleSet,
+    payload: &[u8],
+    first: u8,
+) {
+    for (rank, listed) in list.rules().iter().enumerate() {
+        if worth_visiting >> rank & 1 == 0 {
+            debug_assert!(
+                !run_probe(listed.rule.probe, payload),
+                "la sonde {} accepte un payload dont elle exclut le premier octet {first:#04x}",
+                listed.rule.label,
+            );
+        }
+    }
+}
+
+/// La table, sur un payload non vide, dont `first` est le premier octet.
+/// Hors de [`classify`] : un segment sans payload (un ACK nu, un quart des
+/// trames du corpus) ne paie pas l'entree de la fonction qui parcourt la
+/// table, ses registres sauves et son cadre de pile.
 #[inline(never)]
 fn classify_payload(
     transport: &Transport<'_>,
     payload: &[u8],
+    first: u8,
     decode_as: &[(u16, DecodeAsProtocol)],
 ) -> Option<Application> {
+    debug_assert_eq!(payload.first(), Some(&first));
     // Les ports sont lus une fois : l'index donne, pour chacun, les regles
     // de ce transport qu'il ouvre et celles qu'il interdit.
     let list = index::list_for(transport.protocol);
@@ -323,6 +350,17 @@ fn classify_payload(
     // de transport est deja appliquee, la liste ne porte que les regles de
     // ce transport.
     let mut pending = (list.portless | opened) & !vetoed;
+
+    // Le premier octet ecarte les regles dont la sonde le refuse a coup sur
+    // (voir `first_bytes`) : sur un payload que rien ne reconnait, il ne
+    // reste que quelques sondes a tenter. Decode As, plus bas, n'est pas
+    // filtre.
+    if payload.len() < first_bytes::PROVEN_BELOW {
+        let worth_visiting = list.worth_visiting(first);
+        #[cfg(debug_assertions)]
+        assert_excluded_probes_reject(list, worth_visiting, payload, first);
+        pending &= worth_visiting;
+    }
 
     // Ports declares par l'appelant (« Decode As ») : evalues avant la
     // table, port ET contenu, garde de transport conservee. Un echec est
