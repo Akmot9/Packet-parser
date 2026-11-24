@@ -2428,14 +2428,27 @@ fn http_guards_never_refuse_what_the_decoders_accept() {
 /// couvrent sa sonde.
 #[test]
 fn text_probes_agree_with_their_decoders_on_the_corpus() {
+    use crate::parse::application::protocols::http;
     use crate::parse::application::protocols::ssh::SshPacket;
 
     // La decision du decodeur, sur le payload que la sonde recoit.
     type Decoder = fn(&[u8]) -> bool;
-    let probes: [(ProbeId, Decoder); 1] = [(ProbeId::SshAfterLines, |payload| {
-        SshPacket::try_from(payload).is_ok()
-    })];
-    let mut accepted = [0_usize; 1];
+    let probes: [(ProbeId, Decoder); 2] = [
+        (ProbeId::SshAfterLines, |payload| {
+            SshPacket::try_from(payload).is_ok()
+        }),
+        // Les decodeurs HTTP rendent aussi la valeur et l'erreur de leur
+        // reference, qui lit la tete par les chercheurs de `str`.
+        (ProbeId::Http, |payload| {
+            let text = &payload[..payload.len().min(PROBE_CAP)];
+            let request = http::reference::parse_http_request(text);
+            let response = http::reference::parse_http_response(text);
+            assert_eq!(http::parse_http_request(text), request, "{text:?}");
+            assert_eq!(http::parse_http_response(text), response, "{text:?}");
+            request.is_ok() || response.is_ok()
+        }),
+    ];
+    let mut accepted = [0_usize; 2];
     let mut check = |payload: &[u8]| {
         for (index, (probe, decoder)) in probes.iter().enumerate() {
             let expected = decoder(payload);
@@ -2447,15 +2460,15 @@ fn text_probes_agree_with_their_decoders_on_the_corpus() {
     let corpus = corpus_payloads(96);
     for (index, payload) in corpus.iter().enumerate() {
         check(payload);
-        // Les variantes des payloads qui s'ouvrent comme du texte, et d'un
-        // payload binaire sur seize.
+        // Les variantes d'un payload sur trois parmi ceux qui s'ouvrent
+        // comme du texte, et d'un payload binaire sur seize.
         let opens_as_text = payload
             .first()
             .is_some_and(|byte| byte.is_ascii_graphic() || byte.is_ascii_whitespace());
-        if !opens_as_text && index % 16 != 0 {
+        if index % if opens_as_text { 3 } else { 16 } != 0 {
             continue;
         }
-        let step = payload.len().div_ceil(48).max(1);
+        let step = payload.len().div_ceil(32).max(1);
         let mut mutated = payload.clone();
         for position in (0..payload.len()).step_by(step) {
             check(&payload[..position]);

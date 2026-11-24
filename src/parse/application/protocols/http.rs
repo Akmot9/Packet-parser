@@ -13,8 +13,8 @@ use std::convert::TryFrom;
 
 use crate::{
     checks::application::http::{
-        extract_header_line, parse_payload_as_utf8, require_method, require_status_code,
-        require_uri, require_version, split_head_body_bytes,
+        extract_header_line, find_byte, find_crlf, parse_payload_as_utf8, require_method,
+        require_status_code, require_uri, require_version, split_head_body_bytes,
     },
     errors::application::http::HttpParseError,
 };
@@ -121,22 +121,35 @@ pub fn parse_http_response(payload: &[u8]) -> Result<HttpResponse<'_>, HttpParse
 /// La ligne de depart d'une tete, et la vue sur ses en-tetes, chacun valide
 /// une fois.
 fn split_start_line(head: &str) -> Result<(&str, HttpHeaders<'_>), HttpParseError> {
-    let mut lines = head.split("\r\n");
-
-    // `split("\r\n")` produit toujours au moins un element, meme sur une
-    // chaine vide : la premiere ligne existe donc structurellement, et une
-    // ligne vide echoue ensuite sur son premier jeton.
-    let start_line = lines.next().unwrap_or_default();
+    // La premiere ligne existe structurellement, meme sur une chaine vide :
+    // sans `CRLF`, c'est toute la tete, et une ligne vide echoue ensuite sur
+    // son premier jeton.
+    let (start_line, block) = match find_crlf(head.as_bytes()) {
+        Some(end) => (
+            head.get(..end).unwrap_or_default(),
+            head.get(end + 2..).unwrap_or_default(),
+        ),
+        None => (head, ""),
+    };
 
     // Les headers sont valides ici, une fois, et exposes comme une vue sur
-    // leur bloc : rien n'est collecte.
-    let block = head.get(start_line.len()..).unwrap_or_default();
-    let block = block.strip_prefix("\r\n").unwrap_or(block);
-    for line in lines {
+    // leur bloc : rien n'est collecte. Une ligne est valide quand elle porte
+    // un `:` (`extract_header_line`) ; la lecture s'arrete a la ligne vide.
+    let mut rest = block.as_bytes();
+    loop {
+        let (line, after) = match find_crlf(rest) {
+            Some(end) => (rest.get(..end), rest.get(end + 2..)),
+            None => (Some(rest), None),
+        };
+        let line = line.unwrap_or_default();
         if line.is_empty() {
             break;
         }
-        extract_header_line(line)?;
+        if find_byte(line, b':').is_none() {
+            return Err(HttpParseError::InvalidHeader);
+        }
+        let Some(after) = after else { break };
+        rest = after;
     }
     Ok((start_line, HttpHeaders { block }))
 }
@@ -219,9 +232,166 @@ pub fn parse_http_request(payload: &[u8]) -> Result<HttpRequest<'_>, HttpParseEr
     })
 }
 
+/// Les decodeurs tels qu'ils lisaient la tete par les chercheurs de `str`
+/// (`windows`, `split("\r\n")`, `splitn(2, ':')`) : la reference des tests
+/// differentiels, ici et dans ceux du dispatch.
+#[cfg(test)]
+pub(crate) mod reference {
+    use super::*;
+
+    fn split_head_body_bytes(payload: &[u8]) -> (&[u8], &[u8]) {
+        match payload.windows(4).position(|window| window == b"\r\n\r\n") {
+            Some(index) => (&payload[..index], &payload[index + 4..]),
+            None => (payload, &[]),
+        }
+    }
+
+    fn split_start_line(head: &str) -> Result<(&str, HttpHeaders<'_>), HttpParseError> {
+        let mut lines = head.split("\r\n");
+        let start_line = lines.next().unwrap_or_default();
+        let block = head.get(start_line.len()..).unwrap_or_default();
+        let block = block.strip_prefix("\r\n").unwrap_or(block);
+        for line in lines {
+            if line.is_empty() {
+                break;
+            }
+            extract_header_line(line)?;
+        }
+        Ok((start_line, HttpHeaders { block }))
+    }
+
+    pub(crate) fn parse_http_request(payload: &[u8]) -> Result<HttpRequest<'_>, HttpParseError> {
+        let (head, body_bytes) = split_head_body_bytes(payload);
+        let head = parse_payload_as_utf8(head)?;
+        let (request_line, headers) = split_start_line(head)?;
+
+        let mut request_parts = request_line.split_whitespace();
+        let method = require_method(request_parts.next())?;
+        let uri = require_uri(request_parts.next())?;
+        let version = require_version(request_parts.next())?;
+
+        Ok(HttpRequest {
+            method,
+            uri,
+            version,
+            headers,
+            body: std::str::from_utf8(body_bytes).unwrap_or_default(),
+            body_bytes,
+        })
+    }
+
+    pub(crate) fn parse_http_response(payload: &[u8]) -> Result<HttpResponse<'_>, HttpParseError> {
+        let (head, body) = split_head_body_bytes(payload);
+        let head = parse_payload_as_utf8(head)?;
+        let (status_line, headers) = split_start_line(head)?;
+
+        let mut parts = status_line.splitn(3, ' ');
+        let version = require_version(parts.next().filter(|part| !part.is_empty()))?;
+        let status_code = require_status_code(parts.next())?;
+        let reason = parts.next().unwrap_or_default();
+
+        Ok(HttpResponse {
+            version,
+            status_code,
+            reason,
+            headers,
+            body,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Requetes et reponses du corpus (`The-Ultimate-PCAP.pcapng`, trames
+    /// 1515 et 1517, corps abrege) et synthetiques : les graines du test
+    /// differentiel.
+    const DIFFERENTIAL_SEEDS: [&[u8]; 10] = [
+        b"GET / HTTP/1.1\r\nHost: ip.webernetz.net\r\nUser-Agent: Mozilla/5.0 (Windows NT 6.1; \
+          WOW64; rv:26.0) Gecko/20100101 Firefox/26.0\r\nAccept: text/html,application/xhtml+xml,\
+          application/xml;q=0.9,*/*;q=0.8\r\nAccept-Language: de-de,de;q=0.8,en-us;q=0.5,en;q=0.3\
+          \r\nAccept-Encoding: gzip, deflate\r\nConnection: keep-alive\r\n\r\n",
+        b"HTTP/1.1 200 OK\r\nDate: Tue, 21 Jan 2014 11:28:16 GMT\r\nServer: Apache\r\n\
+          Content-Length: 1328\r\nKeep-Alive: timeout=5, max=100\r\nConnection: Keep-Alive\r\n\
+          Content-Type: text/html\r\n\r\n<table border=\"1\">\n\t<tr><td>caf\xc3\xa9</td></tr>\r\n\r\n",
+        b"POST /submit HTTP/1.0\r\nContent-Length: 2\r\n\r\nok",
+        b"POST /upload HTTP/1.1\r\nHost: a\r\nContent-Type: image/png\r\n\r\n\x89PNG\r\n\x1a\n\xff",
+        b"OPTIONS * HTTP/2",
+        b" \t\r\n GET  /espaces\t HTTP/1.1 \r\nX-Empty:\r\n:\r\n",
+        b"CONNECT example.com:443 HTTP/1.1\r\n\r\n",
+        b"HTTP/1.0 404 Not Found",
+        b"HTTP/1.1 204 \r\nServer: x\r\nNotAHeader\r\n\r\n",
+        b"GET /caf\xc3\xa9 HTTP/1.1\r\nX-Nom: \xe2\x82\xac\r\n\r\n",
+    ];
+
+    /// Les deux decodeurs rendent ce que rend leur reference, valeur ou
+    /// erreur. Rend le nombre de succes.
+    fn agrees_with_the_reference(payload: &[u8]) -> usize {
+        let request = parse_http_request(payload);
+        assert_eq!(
+            request,
+            reference::parse_http_request(payload),
+            "{payload:?}"
+        );
+        let response = parse_http_response(payload);
+        assert_eq!(
+            response,
+            reference::parse_http_response(payload),
+            "{payload:?}"
+        );
+        usize::from(request.is_ok()) + usize::from(response.is_ok())
+    }
+
+    /// La tete lue par mots de huit octets donne, pour tout payload, le
+    /// resultat de la lecture par les chercheurs de `str` : sur les graines,
+    /// leurs troncatures, des fins de ligne inserees a chaque position et
+    /// chaque octet remplace par les octets qui comptent pour la tete.
+    #[test]
+    fn test_decoders_agree_with_the_reference() {
+        let (mut accepted, mut checked) = (0, 0);
+        let mut check = |payload: &[u8]| {
+            accepted += agrees_with_the_reference(payload);
+            checked += 1;
+        };
+        check(b"");
+        for seed in DIFFERENTIAL_SEEDS {
+            check(seed);
+            let mut mutated = seed.to_vec();
+            for position in 0..seed.len() {
+                check(&seed[..position]);
+                let original = seed[position];
+                for value in [
+                    b'\r',
+                    b'\n',
+                    b':',
+                    b' ',
+                    b'\t',
+                    b'/',
+                    b'.',
+                    b'1',
+                    0x00,
+                    0x0c,
+                    0x80,
+                    0xff,
+                    original ^ 0x20,
+                    original.wrapping_add(1),
+                ] {
+                    mutated[position] = value;
+                    check(&mutated);
+                }
+                mutated[position] = original;
+                for inserted in [&b"\r\n"[..], b"\r\n\r\n", b"\r", b"\n", b":"] {
+                    let mut longer = seed[..position].to_vec();
+                    longer.extend_from_slice(inserted);
+                    longer.extend_from_slice(&seed[position..]);
+                    check(&longer);
+                }
+            }
+        }
+        assert!(checked > 15_000, "{checked} payloads");
+        assert!(accepted > 8_000, "{accepted} decodages reussis");
+    }
 
     #[test]
     fn test_headers_view_is_zero_copy_case_insensitive_and_validated_once() {

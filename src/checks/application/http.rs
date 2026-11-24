@@ -16,17 +16,75 @@ pub fn parse_payload_as_utf8(payload: &[u8]) -> Result<&str, HttpParseError> {
     std::str::from_utf8(payload).map_err(|_| HttpParseError::InvalidUtf8)
 }
 
+/// L'octet de poids faible, puis de poids fort, de chaque octet d'un mot.
+const LOW_BITS: u64 = 0x0101_0101_0101_0101;
+const HIGH_BITS: u64 = 0x8080_8080_8080_8080;
+
+/// Indice du premier octet `needle` de `haystack`, lu par mots de huit
+/// octets : une instruction par octet, la ou une boucle octet par octet,
+/// `windows` ou le `find` de `str` en coutent de cinq a dix sur les lignes
+/// d'une tete HTTP.
+///
+/// `word ^ pattern` annule les octets egaux a `needle` ; `(x - LOW_BITS) &
+/// !x & HIGH_BITS` leve alors le bit fort de chaque octet nul. Une retenue
+/// peut le lever a tort sur un octet valant 1, mais seulement au-dessus d'un
+/// octet nul : le bit leve le plus bas designe toujours le premier octet
+/// egal, et lui seul est lu.
+pub(crate) fn find_byte(haystack: &[u8], needle: u8) -> Option<usize> {
+    let pattern = LOW_BITS * u64::from(needle);
+    let mut rest = haystack;
+    let mut index = 0;
+    while let Some((word, after)) = rest.split_first_chunk::<8>() {
+        let x = u64::from_le_bytes(*word) ^ pattern;
+        let found = x.wrapping_sub(LOW_BITS) & !x & HIGH_BITS;
+        if found != 0 {
+            return Some(index + (found.trailing_zeros() / 8) as usize);
+        }
+        rest = after;
+        index += 8;
+    }
+    rest.iter()
+        .position(|byte| *byte == needle)
+        .map(|position| index + position)
+}
+
+/// Indice du premier `CRLF` de `text` : ce que rend `str::find("\r\n")`
+/// sur du texte, sans le chercheur de sous-chaine de la bibliotheque.
+pub(crate) fn find_crlf(text: &[u8]) -> Option<usize> {
+    let mut from = 0;
+    loop {
+        let carriage_return = from + find_byte(text.get(from..)?, b'\r')?;
+        if text.get(carriage_return + 1) == Some(&b'\n') {
+            return Some(carriage_return);
+        }
+        from = carriage_return + 1;
+    }
+}
+
+/// Indice du premier `CRLF CRLF` de `payload`, la fin d'une tete HTTP, SIP
+/// ou SSDP. Un `CRLF` que ne suit pas un second ne peut en ouvrir un autre
+/// avant deux octets : la recherche reprend apres lui.
+pub(crate) fn find_head_end(payload: &[u8]) -> Option<usize> {
+    let mut from = 0;
+    loop {
+        let line_end = from + find_crlf(payload.get(from..)?)?;
+        if payload.get(line_end + 2..line_end + 4) == Some(b"\r\n") {
+            return Some(line_end);
+        }
+        from = line_end + 2;
+    }
+}
+
 /// Coupe le payload autour du premier `CRLF CRLF` : la tete (ligne de depart
 /// et en-tetes) et le corps, en octets. Sans separateur, tout le payload est
 /// la tete et le corps est vide. Seule la tete est ensuite validee en UTF-8
 /// (#176) : le corps peut etre binaire (image, gzip).
 pub fn split_head_body_bytes(payload: &[u8]) -> (&[u8], &[u8]) {
-    let separator = HEAD_BODY_SEPARATOR.as_bytes();
-    match payload
-        .windows(separator.len())
-        .position(|window| window == separator)
-    {
-        Some(index) => (&payload[..index], &payload[index + separator.len()..]),
+    match find_head_end(payload) {
+        Some(index) => (
+            &payload[..index],
+            &payload[index + HEAD_BODY_SEPARATOR.len()..],
+        ),
         None => (payload, &[]),
     }
 }
@@ -224,6 +282,129 @@ mod tests {
             split_head_body_bytes(b"HTTP/1.1 200 OK\r\n"),
             (&b"HTTP/1.1 200 OK\r\n"[..], &b""[..])
         );
+    }
+
+    /// Chaque sequence de `length` octets pris dans `alphabet`.
+    fn sequences(alphabet: &[u8], length: usize, visit: &mut impl FnMut(&[u8])) {
+        let mut digits = vec![0; length];
+        let mut sequence = vec![alphabet[0]; length];
+        loop {
+            visit(&sequence);
+            let mut position = 0;
+            loop {
+                let Some(digit) = digits.get_mut(position) else {
+                    return;
+                };
+                *digit = (*digit + 1) % alphabet.len();
+                sequence[position] = alphabet[*digit];
+                if *digit != 0 {
+                    break;
+                }
+                position += 1;
+            }
+        }
+    }
+
+    /// La recherche par mots rend l'indice de `position`, sur toutes les
+    /// sequences courtes d'un alphabet qui porte l'octet cherche et ceux
+    /// qu'une retenue pourrait confondre avec lui (`needle ^ 1`, `needle ^
+    /// 0x80`), puis autour des frontieres de mots.
+    #[test]
+    fn find_byte_is_the_position_of_the_first_equal_byte() {
+        for needle in [b'\r', b':', 0x00, 0x01, 0x7f, 0x80, 0xff] {
+            let alphabet = [
+                needle,
+                needle ^ 1,
+                needle ^ 0x80,
+                b'a',
+                needle.wrapping_add(1),
+            ];
+            let mut checked = 0;
+            for length in 0..=7 {
+                sequences(&alphabet, length, &mut |haystack| {
+                    assert_eq!(
+                        find_byte(haystack, needle),
+                        haystack.iter().position(|byte| *byte == needle),
+                        "{needle:#04x} dans {haystack:02x?}"
+                    );
+                    checked += 1;
+                });
+            }
+            assert!(checked > 90_000, "{checked} sequences");
+
+            // Un octet cherche, puis deux, a chaque position de 40 octets de
+            // chaque octet de remplissage.
+            for filler in alphabet.into_iter().skip(1) {
+                for length in 0..40 {
+                    let mut haystack = vec![filler; length];
+                    assert_eq!(find_byte(&haystack, needle), None);
+                    for first in 0..length {
+                        haystack[first] = needle;
+                        assert_eq!(find_byte(&haystack, needle), Some(first));
+                        for second in first + 1..length {
+                            haystack[second] = needle;
+                            assert_eq!(find_byte(&haystack, needle), Some(first));
+                            haystack[second] = filler;
+                        }
+                        haystack[first] = filler;
+                    }
+                }
+            }
+        }
+    }
+
+    /// `find_crlf` et `find_head_end` rendent l'indice de la premiere
+    /// occurrence, comme la recherche par fenetres qu'ils remplacent : sur
+    /// toutes les sequences de CR, de LF et de texte jusqu'a dix octets, puis
+    /// sur des lignes plus longues qu'un mot.
+    #[test]
+    fn line_end_searches_are_the_first_occurrence() {
+        fn first(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+            haystack
+                .windows(needle.len())
+                .position(|window| window == needle)
+        }
+        fn check(text: &[u8]) {
+            assert_eq!(find_crlf(text), first(text, b"\r\n"), "{text:?}");
+            assert_eq!(find_head_end(text), first(text, b"\r\n\r\n"), "{text:?}");
+            let (head, body) = split_head_body_bytes(text);
+            match first(text, b"\r\n\r\n") {
+                Some(index) => assert_eq!((head, body), (&text[..index], &text[index + 4..])),
+                None => assert_eq!((head, body), (text, &b""[..])),
+            }
+        }
+        let mut checked = 0;
+        for length in 0..=10 {
+            sequences(b"\r\na", length, &mut |text| {
+                check(text);
+                checked += 1;
+            });
+        }
+        assert!(checked > 80_000, "{checked} sequences");
+
+        // Des fins de ligne a chaque position de lignes de 0 a 20 octets.
+        for line in 0..=20 {
+            for ending in [
+                &b"\r\n"[..],
+                b"\r\n\r\n",
+                b"\r",
+                b"\n",
+                b"\r\r\n",
+                b"\r\n\r",
+                b"\n\r\n",
+            ] {
+                for lines in 1..=3 {
+                    let mut text = Vec::new();
+                    for _ in 0..lines {
+                        text.resize(text.len() + line, b'x');
+                        text.extend_from_slice(ending);
+                    }
+                    check(&text);
+                    text.extend_from_slice(b"\r\n\r\nbody");
+                    check(&text);
+                }
+            }
+        }
     }
 
     #[test]
