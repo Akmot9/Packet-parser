@@ -21,6 +21,21 @@ use crate::{
     timing::{NoTiming, Stage, TimingSink},
 };
 
+/// Ce que l'etape L4 vient d'ecrire dans le flux : la suite du pipeline
+/// s'aiguille dessus sans relire la couche transport.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum L4 {
+    /// Un segment TCP.
+    Tcp,
+    /// Un segment TCP porteur d'une anomalie semantique (voir
+    /// `TcpPacket::anomaly`).
+    AnomalousTcp,
+    /// Un datagramme UDP.
+    Udp,
+    /// Rien, ou la couche d'un autre protocole IP.
+    Other,
+}
+
 impl<'a> PacketFlow<'a> {
     fn parse_application_from_transport(
         transport: &Transport<'a>,
@@ -101,15 +116,32 @@ impl<'a> PacketFlow<'a> {
     /// [`fill_l3`](Self::fill_l3) ; les autres protocoles passent par
     /// [`Transport::try_from_parts`], hors ligne.
     #[inline(always)]
-    fn fill_l4(&mut self) {
+    fn fill_l4(&mut self) -> L4 {
         let Some(internet) = &self.internet else {
-            return;
+            return L4::Other;
         };
         let payload = internet.payload;
         match internet.payload_protocol {
-            Some(TransportProtocol::Tcp) => self.set_l4(Transport::try_from_tcp(payload)),
-            Some(TransportProtocol::Udp) => self.set_l4(Transport::try_from_udp(payload)),
-            other => self.fill_l4_other(other, payload),
+            Some(TransportProtocol::Tcp) => {
+                let parsed = Transport::try_from_tcp(payload);
+                let read = match &parsed {
+                    Ok(transport) if transport.is_anomalous_tcp() => L4::AnomalousTcp,
+                    Ok(_) => L4::Tcp,
+                    Err(_) => L4::Other,
+                };
+                self.set_l4(parsed);
+                read
+            }
+            Some(TransportProtocol::Udp) => {
+                let parsed = Transport::try_from_udp(payload);
+                let read = if parsed.is_ok() { L4::Udp } else { L4::Other };
+                self.set_l4(parsed);
+                read
+            }
+            other => {
+                self.fill_l4_other(other, payload);
+                L4::Other
+            }
         }
     }
 
@@ -156,11 +188,14 @@ impl<'a> PacketFlow<'a> {
     /// tunnel name as THIS flow's application protocol and parse the inner
     /// packet into `inner`. Otherwise, best-effort application detection.
     #[inline(always)]
-    fn fill_l7_and_inner(&mut self, depth: u8, config: &ParseConfig) {
+    fn fill_l7_and_inner(&mut self, l4: L4, depth: u8, config: &ParseConfig) {
         // Tunnels au niveau IP d'abord (GRE, IP-in-IP) : leur detection ne
         // depend pas de la couche transport — GRE n'en a pas, et elle ne
-        // doit pas reposer sur le Transport creux du fourre-tout L4.
-        if let Some(internet) = &self.internet
+        // doit pas reposer sur le Transport creux du fourre-tout L4. Sous
+        // un segment TCP ou un datagramme UDP, le protocole IP n'est pas
+        // celui d'un de ces tunnels : rien a chercher.
+        if l4 == L4::Other
+            && let Some(internet) = &self.internet
             && let Some((tunnel_name, inner_flow)) =
                 tunnel::detect_inner_l3(internet, depth, config)
         {
@@ -339,13 +374,11 @@ impl<'a> PacketFlow<'a> {
         sink.time(Stage::L3, || {
             self.fill_l3(network_protocol, network_payload);
         });
-        sink.time(Stage::L4, || self.fill_l4());
-        if let Some(transport) = &self.transport
-            && transport.is_anomalous_tcp()
-        {
+        let l4 = sink.time(Stage::L4, || self.fill_l4());
+        if l4 == L4::AnomalousTcp {
             self.report_tcp_anomaly();
             return;
         }
-        sink.time(Stage::L7, || self.fill_l7_and_inner(depth, config));
+        sink.time(Stage::L7, || self.fill_l7_and_inner(l4, depth, config));
     }
 }
