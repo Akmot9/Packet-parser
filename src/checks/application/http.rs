@@ -90,17 +90,69 @@ pub(crate) fn find_head_end(payload: &[u8]) -> Option<usize> {
     }
 }
 
-/// Coupe le payload autour du premier `CRLF CRLF` : la tete (ligne de depart
-/// et en-tetes) et le corps, en octets. Sans separateur, tout le payload est
-/// la tete et le corps est vide. Seule la tete est ensuite validee en UTF-8
-/// (#176) : le corps peut etre binaire (image, gzip).
-pub fn split_head_body_bytes(payload: &[u8]) -> (&[u8], &[u8]) {
-    match find_head_end(payload) {
-        Some(index) => (
-            &payload[..index],
-            &payload[index + HEAD_BODY_SEPARATOR.len()..],
-        ),
-        None => (payload, &[]),
+/// Un message HTTP coupe autour de son premier `CRLF CRLF`, et ce que la
+/// lecture de ses lignes a etabli en chemin.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct HttpHead<'a> {
+    /// La tete, ligne de depart et en-tetes, sans le separateur ; tout le
+    /// payload quand il n'en porte pas. Elle seule est ensuite validee en
+    /// UTF-8 (#176) : le corps peut etre binaire (image, gzip).
+    pub head: &'a [u8],
+    /// Ce qui suit le separateur ; vide sans lui.
+    pub body: &'a [u8],
+    /// Longueur de la ligne de depart, son `CRLF` exclu.
+    pub start_line: usize,
+    /// Faux quand une ligne d'en-tete non vide ne porte pas de `:`, ce que
+    /// refuse `extract_header_line`.
+    pub headers_are_valid: bool,
+}
+
+/// Coupe le payload autour du premier `CRLF CRLF` en lisant ses lignes une
+/// seule fois : la fin de la tete est le premier `CRLF` qu'un autre suit
+/// aussitot, et chaque ligne d'en-tete croisee en chemin est validee. Chercher
+/// le separateur, puis relire la tete ligne par ligne, coutait deux parcours.
+pub(crate) fn split_http_head(payload: &[u8]) -> HttpHead<'_> {
+    let Some(start_line) = find_crlf(payload) else {
+        return HttpHead {
+            head: payload,
+            body: &[],
+            start_line: payload.len(),
+            headers_are_valid: true,
+        };
+    };
+    let mut headers_are_valid = true;
+    // Le `CRLF` qui ferme la derniere ligne lue.
+    let mut line_end = start_line;
+    loop {
+        let rest = payload.get(line_end + 2..).unwrap_or_default();
+        match find_crlf(rest) {
+            // Une ligne vide : le second `CRLF` du separateur.
+            Some(0) => {
+                return HttpHead {
+                    head: payload.get(..line_end).unwrap_or_default(),
+                    body: rest
+                        .get(HEAD_BODY_SEPARATOR.len() / 2..)
+                        .unwrap_or_default(),
+                    start_line,
+                    headers_are_valid,
+                };
+            }
+            Some(length) => {
+                let line = rest.get(..length).unwrap_or_default();
+                headers_are_valid &= find_byte(line, b':').is_some();
+                line_end += 2 + length;
+            }
+            // La derniere ligne, sans `CRLF` : tout le payload est la tete.
+            None => {
+                headers_are_valid &= rest.is_empty() || find_byte(rest, b':').is_some();
+                return HttpHead {
+                    head: payload,
+                    body: &[],
+                    start_line,
+                    headers_are_valid,
+                };
+            }
+        }
     }
 }
 
@@ -288,14 +340,33 @@ mod tests {
     }
 
     #[test]
-    fn test_split_head_body_bytes() {
+    fn test_split_http_head() {
         assert_eq!(
-            split_head_body_bytes(b"HTTP/1.1 200 OK\r\nA: b\r\n\r\n\xff\xfe"),
-            (&b"HTTP/1.1 200 OK\r\nA: b"[..], &b"\xff\xfe"[..])
+            split_http_head(b"HTTP/1.1 200 OK\r\nA: b\r\n\r\n\xff\xfe"),
+            HttpHead {
+                head: b"HTTP/1.1 200 OK\r\nA: b",
+                body: b"\xff\xfe",
+                start_line: 15,
+                headers_are_valid: true,
+            }
         );
         assert_eq!(
-            split_head_body_bytes(b"HTTP/1.1 200 OK\r\n"),
-            (&b"HTTP/1.1 200 OK\r\n"[..], &b""[..])
+            split_http_head(b"HTTP/1.1 200 OK\r\n"),
+            HttpHead {
+                head: b"HTTP/1.1 200 OK\r\n",
+                body: b"",
+                start_line: 15,
+                headers_are_valid: true,
+            }
+        );
+        assert_eq!(
+            split_http_head(b"GET / HTTP/1.1\r\nA: b\r\nsans deux-points\r\n\r\ncorps: x"),
+            HttpHead {
+                head: b"GET / HTTP/1.1\r\nA: b\r\nsans deux-points",
+                body: b"corps: x",
+                start_line: 14,
+                headers_are_valid: false,
+            }
         );
     }
 
@@ -379,14 +450,31 @@ mod tests {
                 .windows(needle.len())
                 .position(|window| window == needle)
         }
+        // La tete coupee en un parcours est celle de la recherche du
+        // separateur, puis de la lecture de ses lignes par `split`.
         fn check(text: &[u8]) {
             assert_eq!(find_crlf(text), first(text, b"\r\n"), "{text:?}");
             assert_eq!(find_head_end(text), first(text, b"\r\n\r\n"), "{text:?}");
-            let (head, body) = split_head_body_bytes(text);
-            match first(text, b"\r\n\r\n") {
-                Some(index) => assert_eq!((head, body), (&text[..index], &text[index + 4..])),
-                None => assert_eq!((head, body), (text, &b""[..])),
-            }
+            let (head, body) = match first(text, b"\r\n\r\n") {
+                Some(index) => (&text[..index], &text[index + 4..]),
+                None => (text, &b""[..]),
+            };
+            let lines = core::str::from_utf8(head).expect("sequence ASCII");
+            let mut lines = lines.split("\r\n");
+            let start_line = lines.next().unwrap_or_default().len();
+            let headers_are_valid = lines
+                .take_while(|line| !line.is_empty())
+                .all(|line| extract_header_line(line).is_ok());
+            assert_eq!(
+                split_http_head(text),
+                HttpHead {
+                    head,
+                    body,
+                    start_line,
+                    headers_are_valid
+                },
+                "{text:?}"
+            );
         }
         let mut checked = 0;
         for length in 0..=10 {
@@ -395,7 +483,13 @@ mod tests {
                 checked += 1;
             });
         }
-        assert!(checked > 80_000, "{checked} sequences");
+        for length in 0..=8 {
+            sequences(b"\r\n:a", length, &mut |text| {
+                check(text);
+                checked += 1;
+            });
+        }
+        assert!(checked > 170_000, "{checked} sequences");
 
         // Des fins de ligne a chaque position de lignes de 0 a 20 octets.
         for line in 0..=20 {

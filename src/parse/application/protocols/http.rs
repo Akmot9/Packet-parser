@@ -13,8 +13,8 @@ use std::convert::TryFrom;
 
 use crate::{
     checks::application::http::{
-        extract_header_line, find_byte, find_crlf, parse_payload_as_utf8, require_method,
-        require_status_code, require_uri, require_version, split_head_body_bytes,
+        extract_header_line, parse_payload_as_utf8, require_method, require_status_code,
+        require_uri, require_version, split_http_head,
     },
     errors::application::http::HttpParseError,
 };
@@ -100,9 +100,7 @@ impl<'a> TryFrom<&'a [u8]> for HttpResponse<'a> {
 /// The strict version and the three-digit code keep arbitrary text out of
 /// HTTP.
 pub fn parse_http_response(payload: &[u8]) -> Result<HttpResponse<'_>, HttpParseError> {
-    let (head, body) = split_head_body_bytes(payload);
-    let head = parse_payload_as_utf8(head)?;
-    let (status_line, headers) = split_start_line(head)?;
+    let (status_line, headers, body) = split_message(payload)?;
 
     let mut parts = status_line.splitn(3, ' ');
     let version = require_version(parts.next().filter(|part| !part.is_empty()))?;
@@ -118,40 +116,24 @@ pub fn parse_http_response(payload: &[u8]) -> Result<HttpResponse<'_>, HttpParse
     })
 }
 
-/// La ligne de depart d'une tete, et la vue sur ses en-tetes, chacun valide
-/// une fois.
-fn split_start_line(head: &str) -> Result<(&str, HttpHeaders<'_>), HttpParseError> {
-    // La premiere ligne existe structurellement, meme sur une chaine vide :
-    // sans `CRLF`, c'est toute la tete, et une ligne vide echoue ensuite sur
-    // son premier jeton.
-    let (start_line, block) = match find_crlf(head.as_bytes()) {
-        Some(end) => (
-            head.get(..end).unwrap_or_default(),
-            head.get(end + 2..).unwrap_or_default(),
-        ),
-        None => (head, ""),
-    };
-
-    // Les headers sont valides ici, une fois, et exposes comme une vue sur
-    // leur bloc : rien n'est collecte. Une ligne est valide quand elle porte
-    // un `:` (`extract_header_line`) ; la lecture s'arrete a la ligne vide.
-    let mut rest = block.as_bytes();
-    loop {
-        let (line, after) = match find_crlf(rest) {
-            Some(end) => (rest.get(..end), rest.get(end + 2..)),
-            None => (Some(rest), None),
-        };
-        let line = line.unwrap_or_default();
-        if line.is_empty() {
-            break;
-        }
-        if find_byte(line, b':').is_none() {
-            return Err(HttpParseError::InvalidHeader);
-        }
-        let Some(after) = after else { break };
-        rest = after;
+/// La ligne de depart d'un message, la vue sur ses en-tetes, chacun valide
+/// une fois, et son corps.
+fn split_message(payload: &[u8]) -> Result<(&str, HttpHeaders<'_>, &[u8]), HttpParseError> {
+    // Les headers sont valides par la lecture qui coupe la tete, une fois,
+    // et exposes comme une vue sur leur bloc : rien n'est collecte. La tete
+    // qui n'est pas de l'UTF-8 est refusee avant un en-tete invalide.
+    let parts = split_http_head(payload);
+    let head = parse_payload_as_utf8(parts.head)?;
+    if !parts.headers_are_valid {
+        return Err(HttpParseError::InvalidHeader);
     }
-    Ok((start_line, HttpHeaders { block }))
+
+    // La premiere ligne existe structurellement, meme sur une chaine vide :
+    // sans `CRLF`, c'est toute la tete, le bloc des en-tetes est vide, et
+    // une ligne vide echoue ensuite sur son premier jeton.
+    let start_line = head.get(..parts.start_line).unwrap_or_default();
+    let block = head.get(parts.start_line + 2..).unwrap_or_default();
+    Ok((start_line, HttpHeaders { block }, parts.body))
 }
 
 /// The header fields of an [`HttpRequest`] or an [`HttpResponse`]: a
@@ -213,9 +195,7 @@ impl<'a> TryFrom<&'a [u8]> for HttpRequest<'a> {
 /// `split`, `split_whitespace` — no indexing), so an empty payload safely
 /// flows through the chain and fails with `MissingMethod`.
 pub fn parse_http_request(payload: &[u8]) -> Result<HttpRequest<'_>, HttpParseError> {
-    let (head, body_bytes) = split_head_body_bytes(payload);
-    let head = parse_payload_as_utf8(head)?;
-    let (request_line, headers) = split_start_line(head)?;
+    let (request_line, headers, body_bytes) = split_message(payload)?;
 
     let mut request_parts = request_line.split_whitespace();
     let method = require_method(request_parts.next())?;
