@@ -61,7 +61,7 @@ const GENEVE_PORT: u16 = 6081;
 /// Detects an encapsulation on the transport layer. On success returns
 /// `(tunnel_name, inner_flow)`: the name is meant for the *outer* flow's
 /// application-protocol field, and `inner_flow` is the fully re-parsed
-/// encapsulated packet.
+/// encapsulated packet, in the box the outer flow keeps it in.
 ///
 /// Returns `None` (graceful degradation, never an error) when there is no
 /// tunnel, the payload is encrypted (e.g. CAPWAP/DTLS), truncated, or uses a
@@ -75,7 +75,7 @@ pub(crate) fn detect_inner<'a>(
     transport: &Transport<'a>,
     depth: u8,
     config: &crate::parse::ParseConfig,
-) -> Option<(ApplicationProtocol, PacketFlow<'a>)> {
+) -> Option<(ApplicationProtocol, Box<PacketFlow<'a>>)> {
     if transport.protocol != TransportProtocol::Udp
         || !(is_tunnel_port(transport.source_port) || is_tunnel_port(transport.destination_port))
     {
@@ -100,7 +100,7 @@ fn detect_inner_udp<'a>(
     transport: &Transport<'a>,
     depth: u8,
     config: &crate::parse::ParseConfig,
-) -> Option<(ApplicationProtocol, PacketFlow<'a>)> {
+) -> Option<(ApplicationProtocol, Box<PacketFlow<'a>>)> {
     if depth + 1 >= MAX_TUNNEL_DEPTH {
         return None;
     }
@@ -112,9 +112,8 @@ fn detect_inner_udp<'a>(
         && (transport.source_port == Some(CAPWAP_DATA_PORT)
             || transport.destination_port == Some(CAPWAP_DATA_PORT))
         && let Some(inner_link) = peel_capwap_ieee80211(payload)
-        && let Ok(inner) =
-            PacketFlow::parse_decoded_with(DecodedLink::new(inner_link), depth + 1, config)
     {
+        let inner = PacketFlow::boxed_from_decoded(DecodedLink::new(inner_link), depth + 1, config);
         return Some((ApplicationProtocol::Capwap, inner));
     }
 
@@ -123,8 +122,8 @@ fn detect_inner_udp<'a>(
         && (transport.source_port == Some(VXLAN_PORT)
             || transport.destination_port == Some(VXLAN_PORT))
         && let Some(inner_link) = peel_vxlan(payload)
-        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, config)
     {
+        let inner = PacketFlow::boxed_from_decoded(inner_link, depth + 1, config);
         return Some((ApplicationProtocol::Vxlan, inner));
     }
 
@@ -133,8 +132,8 @@ fn detect_inner_udp<'a>(
         && (transport.source_port == Some(GENEVE_PORT)
             || transport.destination_port == Some(GENEVE_PORT))
         && let Some(inner_link) = peel_geneve(payload)
-        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, config)
     {
+        let inner = PacketFlow::boxed_from_decoded(inner_link, depth + 1, config);
         return Some((ApplicationProtocol::Geneve, inner));
     }
 
@@ -151,10 +150,11 @@ fn detect_inner_udp<'a>(
         && (transport.source_port == Some(GTP_U_PORT)
             || transport.destination_port == Some(GTP_U_PORT))
         && let Some(inner_link) = peel_gtp_u(payload)
-        && let Ok(inner) = PacketFlow::parse_decoded_with(inner_link, depth + 1, config)
-        && inner.corrupted.is_none()
     {
-        return Some((ApplicationProtocol::GtpU, inner));
+        let inner = PacketFlow::boxed_from_decoded(inner_link, depth + 1, config);
+        if inner.corrupted.is_none() {
+            return Some((ApplicationProtocol::GtpU, inner));
+        }
     }
 
     None
@@ -168,7 +168,7 @@ pub(crate) fn detect_inner_l3<'a>(
     internet: &Internet<'a>,
     depth: u8,
     config: &crate::parse::ParseConfig,
-) -> Option<(ApplicationProtocol, PacketFlow<'a>)> {
+) -> Option<(ApplicationProtocol, Box<PacketFlow<'a>>)> {
     if depth + 1 >= MAX_TUNNEL_DEPTH {
         return None;
     }
@@ -189,9 +189,10 @@ pub(crate) fn detect_inner_l3<'a>(
         _ => return None,
     };
 
-    PacketFlow::parse_decoded_with(inner_link, depth + 1, config)
-        .ok()
-        .map(|inner| (label, inner))
+    Some((
+        label,
+        PacketFlow::boxed_from_decoded(inner_link, depth + 1, config),
+    ))
 }
 
 /// Pele un en-tete GRE version 0 (RFC 2784, extensions RFC 2890 : checksum,

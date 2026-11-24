@@ -202,7 +202,7 @@ impl<'a> PacketFlow<'a> {
             self.application = Some(Application {
                 protocol: tunnel_name,
             });
-            self.inner = Some(Box::new(inner_flow));
+            self.inner = Some(inner_flow);
             return;
         }
 
@@ -242,7 +242,7 @@ impl<'a> PacketFlow<'a> {
                 Some(Application {
                     protocol: tunnel_name,
                 }),
-                Some(Box::new(inner_flow)),
+                Some(inner_flow),
             ),
             None => (
                 Self::parse_application_from_transport(transport, config),
@@ -323,6 +323,20 @@ impl<'a> PacketFlow<'a> {
         let mut flow = Self::from_link(data_link);
         flow.fill_layers(network_protocol, network_payload, depth, config);
         Ok(flow)
+    }
+
+    /// Le flux interne d'un tunnel, lu dans la boite ou le flux externe le
+    /// garde : le pipeline l'y complete sur place, au lieu de le construire
+    /// sur la pile et de recopier ses 472 octets jusqu'a elle.
+    pub(crate) fn boxed_from_decoded(
+        decoded: link::DecodedLink<'a>,
+        depth: u8,
+        config: &ParseConfig,
+    ) -> Box<Self> {
+        let (data_link, network_protocol, network_payload) = decoded.into_parts();
+        let mut flow = Box::new(Self::from_link(data_link));
+        flow.fill_layers(network_protocol, network_payload, depth, config);
+        flow
     }
 
     /// Le pipeline du chemin normal, hors ligne et sans mesure : une seule
