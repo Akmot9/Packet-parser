@@ -52,25 +52,23 @@ impl IpType {
         }
     }
 
-    fn from_ipv4(ipv4_addr: &Ipv4Addr) -> Self {
-        if ipv4_addr.is_broadcast() {
-            Self::Broadcast
-        } else if ipv4_addr.is_private() {
-            Self::Private
-        } else if ipv4_addr.is_loopback() {
-            Self::Loopback
-        } else if is_apipa_ip(ipv4_addr) {
-            Self::Apipa
-        } else if ipv4_addr.is_multicast() {
-            Self::Multicast
-        } else if ipv4_addr.is_documentation() {
-            Self::Documentation
-        } else if ipv4_addr.is_link_local() {
-            Self::LinkLocal
-        } else if ipv4_addr.is_unspecified() {
-            Self::Unknown
-        } else {
-            Self::Public
+    /// Classe d'une adresse IPv4, en un seul aiguillage sur ses octets. Les
+    /// plages sont celles des predicats de `Ipv4Addr` (`is_private`,
+    /// `is_loopback`, `is_multicast`, `is_documentation`...), toutes
+    /// disjointes : les essayer un par un coutait jusqu'a huit tests a
+    /// chaque adresse publique, deux fois par paquet. 169.254.0.0/16 se
+    /// classe `Apipa` : aucune adresse IPv4 n'est `LinkLocal`.
+    #[inline]
+    pub(crate) fn from_ipv4(ipv4_addr: &Ipv4Addr) -> Self {
+        match ipv4_addr.octets() {
+            [10, ..] | [172, 16..=31, ..] | [192, 168, ..] => Self::Private,
+            [127, ..] => Self::Loopback,
+            [169, 254, ..] => Self::Apipa,
+            [224..=239, ..] => Self::Multicast,
+            [192, 0, 2, _] | [198, 51, 100, _] | [203, 0, 113, _] => Self::Documentation,
+            [255, 255, 255, 255] => Self::Broadcast,
+            [0, 0, 0, 0] => Self::Unknown,
+            _ => Self::Public,
         }
     }
 
@@ -115,11 +113,6 @@ impl fmt::Display for IpType {
 
 // Implémenter Default pour IpType
 
-// Fonctions auxiliaires pour les vérifications spécifiques
-fn is_apipa_ip(ip: &Ipv4Addr) -> bool {
-    ip.octets()[0] == 169 && ip.octets()[1] == 254
-}
-
 /// Prefixes de documentation IPv6 : 2001:db8::/32 (RFC 3849) et 3fff::/20
 /// (RFC 9637), pendants de 192.0.2.0/24 et consorts cote IPv4.
 /// `Ipv6Addr::is_documentation` n'est pas stable.
@@ -132,6 +125,57 @@ fn is_ipv6_documentation(ip: &Ipv6Addr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La chaine de predicats de `Ipv4Addr` que `from_ipv4` remplace, dans
+    /// son ordre d'origine : la reference du test differentiel.
+    fn from_ipv4_by_predicates(ipv4_addr: &Ipv4Addr) -> IpType {
+        let octets = ipv4_addr.octets();
+        if ipv4_addr.is_broadcast() {
+            IpType::Broadcast
+        } else if ipv4_addr.is_private() {
+            IpType::Private
+        } else if ipv4_addr.is_loopback() {
+            IpType::Loopback
+        } else if octets[0] == 169 && octets[1] == 254 {
+            IpType::Apipa
+        } else if ipv4_addr.is_multicast() {
+            IpType::Multicast
+        } else if ipv4_addr.is_documentation() {
+            IpType::Documentation
+        } else if ipv4_addr.is_link_local() {
+            IpType::LinkLocal
+        } else if ipv4_addr.is_unspecified() {
+            IpType::Unknown
+        } else {
+            IpType::Public
+        }
+    }
+
+    /// `from_ipv4` rend la classe de la chaine de predicats pour toute
+    /// adresse : les deux premiers octets sont parcourus en entier, les
+    /// deux derniers sur toutes les valeurs que les plages distinguent et
+    /// sur leurs voisines.
+    #[test]
+    fn test_from_ipv4_agrees_with_the_std_predicates() {
+        const THIRD: [u8; 15] = [
+            0, 1, 2, 3, 50, 51, 99, 100, 101, 112, 113, 114, 168, 254, 255,
+        ];
+        const FOURTH: [u8; 8] = [0, 1, 2, 100, 113, 127, 254, 255];
+        for a in 0..=u8::MAX {
+            for b in 0..=u8::MAX {
+                for c in THIRD {
+                    for d in FOURTH {
+                        let addr = Ipv4Addr::new(a, b, c, d);
+                        assert_eq!(
+                            IpType::from_ipv4(&addr),
+                            from_ipv4_by_predicates(&addr),
+                            "{addr}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     /// 255.255.255.255 sortait « Publique » faute de bras dedie (#9).
     /// Les discriminants des variantes historiques sont figes : une nouvelle

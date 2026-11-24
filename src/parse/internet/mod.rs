@@ -195,9 +195,9 @@ impl<'a> Internet<'a> {
 
         Internet {
             source: Some(IpAddr::V4(ipv4_packet.source_addr)),
-            source_type: Some(IpType::from_addr(&IpAddr::V4(ipv4_packet.source_addr))),
+            source_type: Some(IpType::from_ipv4(&ipv4_packet.source_addr)),
             destination: Some(IpAddr::V4(ipv4_packet.dest_addr)),
-            destination_type: Some(IpType::from_addr(&IpAddr::V4(ipv4_packet.dest_addr))),
+            destination_type: Some(IpType::from_ipv4(&ipv4_packet.dest_addr)),
             protocol_name: "IPv4",
             payload_protocol,
             payload: ipv4_packet.payload,
