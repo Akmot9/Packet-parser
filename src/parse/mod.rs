@@ -71,7 +71,7 @@ pub const fn is_supported(link_type: LinkType) -> bool {
 /// bytes, without a PCAP or PCAPNG record header.
 #[inline(always)]
 pub fn parse(link_type: LinkType, bytes: &[u8]) -> Result<PacketFlow<'_>, ParseError> {
-    PacketFlow::parse_decoded(link::decode(link_type, bytes)?, 0)
+    PacketFlow::parse_frame(link_type, bytes, &DEFAULT_CONFIG)
 }
 
 /// Like [`fn@parse`], with a configuration supplied by the caller: "my FTP
@@ -84,7 +84,7 @@ pub fn parse_with<'a>(
     bytes: &'a [u8],
     config: &ParseConfig,
 ) -> Result<PacketFlow<'a>, ParseError> {
-    PacketFlow::parse_decoded_with(link::decode(link_type, bytes)?, 0, config)
+    PacketFlow::parse_frame(link_type, bytes, config)
 }
 
 /// Caller-side parsing configuration ("Decode As"). Built as a builder;

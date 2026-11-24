@@ -43,6 +43,7 @@ pub(crate) struct DecodedLink<'a> {
 }
 
 impl<'a> DecodedLink<'a> {
+    #[inline(always)]
     pub(crate) fn new(layer: LinkLayer<'a>) -> Self {
         Self {
             network_protocol: layer.network_protocol(),
@@ -51,6 +52,7 @@ impl<'a> DecodedLink<'a> {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn into_parts(self) -> (LinkLayer<'a>, NetworkProtocol, &'a [u8]) {
         (self.layer, self.network_protocol, self.network_payload)
     }

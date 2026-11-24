@@ -148,6 +148,19 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
     type Error = DataLinkError;
 
     fn try_from(packets: &'a [u8]) -> Result<Self, Self::Error> {
+        // Cas courant, sans tag ni PPPoE : chemin en ligne droite.
+        match Self::untagged(packets) {
+            Some(frame) => Ok(frame),
+            None => Self::try_from_any(packets),
+        }
+    }
+}
+
+impl<'a> DataLink<'a> {
+    /// Le decodeur complet, pour toute trame : trop courte, taguee, PPPoE,
+    /// et le cas courant aussi, que [`untagged`](Self::untagged) lui prend
+    /// en amont.
+    fn try_from_any(packets: &'a [u8]) -> Result<Self, DataLinkError> {
         validate_data_link_length(packets)?;
 
         let destination_mac = MacAddress::try_from(&packets[0..6])?;
@@ -168,22 +181,57 @@ impl<'a> TryFrom<&'a [u8]> for DataLink<'a> {
             ));
         }
 
-        // Cas courant, sans tag : chemin en ligne droite. La pile de tags vit
-        // dans une fonction a part — la derouler ici coutait ~13 ns a chaque
-        // trame, taguee ou non (mesure sur le paquet de reference).
-        Ok(DataLink {
+        Ok(Self::plain(
+            destination_mac,
+            source_mac,
+            raw_ethertype,
+            &packets[DATALINK_HEADER_LEN..],
+        ))
+    }
+
+    /// Trame Ethernet II sans tag VLAN ni session PPPoE, le cas courant :
+    /// `None` pour toute autre trame, trop courte comprise, que `try_from`
+    /// confie a `try_from_any`. En ligne et sans `Result` : le moteur
+    /// l'appelle directement et ecrit la trame a sa place dans le flux. La
+    /// pile de tags vit dans une fonction a part — la derouler ici coutait
+    /// ~13 ns a chaque trame, taguee ou non (mesure sur le paquet de
+    /// reference).
+    #[inline(always)]
+    pub(crate) fn untagged(packets: &'a [u8]) -> Option<Self> {
+        let (header, payload) = packets.split_first_chunk::<DATALINK_HEADER_LEN>()?;
+        let [d0, d1, d2, d3, d4, d5, s0, s1, s2, s3, s4, s5, e0, e1] = *header;
+        // EtherType brut : couche 3, ou TPID d'un tag VLAN.
+        let raw_ethertype = u16::from_be_bytes([e0, e1]);
+        if VlanTag::is_tpid(raw_ethertype) || raw_ethertype == PPPOE_SESSION_ETHERTYPE {
+            return None;
+        }
+        Some(Self::plain(
+            MacAddress([d0, d1, d2, d3, d4, d5]),
+            MacAddress([s0, s1, s2, s3, s4, s5]),
+            raw_ethertype,
+            payload,
+        ))
+    }
+
+    /// La trame sans tag ni session : `ethertype` est celui de l'en-tete.
+    #[inline(always)]
+    fn plain(
+        destination_mac: MacAddress,
+        source_mac: MacAddress,
+        raw_ethertype: u16,
+        payload: &'a [u8],
+    ) -> Self {
+        DataLink {
             destination_mac,
             source_mac,
             vlan: None,
             vlan_stack: VlanStack::default(),
             pppoe: None,
             ethertype: Ethertype::from(raw_ethertype),
-            payload: &packets[DATALINK_HEADER_LEN..],
-        })
+            payload,
+        }
     }
-}
 
-impl<'a> DataLink<'a> {
     /// Pile de tags VLAN. Chaque tag fait 4 octets (TCI + EtherType suivant)
     /// et cet EtherType peut lui-meme etre un TPID : 802.1ad met un S-tag
     /// 0x88a8 (ou 0x9100 historique) devant le C-tag 0x8100, et certains
@@ -319,6 +367,42 @@ mod tests {
         frame.extend(protocol.to_be_bytes());
         frame.extend(body);
         frame
+    }
+
+    /// Le raccourci du cas courant rend la trame du decodeur complet, et ne
+    /// prend que les trames ni trop courtes, ni taguees, ni PPPoE : tous
+    /// les EtherTypes qui aiguillent le decodeur et leurs voisins, a toutes
+    /// les longueurs autour de l'en-tete.
+    #[test]
+    fn untagged_agrees_with_the_full_decoder() {
+        const ETHERTYPES: [u16; 14] = [
+            0x0000, 0x05dc, 0x0800, 0x0806, 0x80ff, 0x8100, 0x8101, 0x86dd, 0x8863, 0x8864, 0x8865,
+            0x88a8, 0x9100, 0xffff,
+        ];
+        for ethertype in ETHERTYPES {
+            let mut frame: Vec<u8> = (0u8..12).collect();
+            frame.extend(ethertype.to_be_bytes());
+            frame.extend((0u8..40).map(|byte| byte.wrapping_mul(37)));
+            for len in 0..=frame.len() {
+                let bytes = &frame[..len];
+                let full = DataLink::try_from_any(bytes);
+                let Some(fast) = DataLink::untagged(bytes) else {
+                    // Refusee par le raccourci : trop courte, taguee ou PPPoE.
+                    let tagged = matches!(ethertype, 0x8100 | 0x88a8 | 0x9100);
+                    assert!(len < 14 || tagged || ethertype == 0x8864, "{bytes:02x?}");
+                    continue;
+                };
+                let full = full.expect("le decodeur complet lit le cas courant");
+                // `PartialEq` ignore la charge : comparee a part, avec
+                // les champs qu'il ne regarde pas tous.
+                assert_eq!(fast, full, "{bytes:02x?}");
+                assert_eq!(fast.payload, full.payload);
+                assert_eq!(fast.payload.as_ptr(), full.payload.as_ptr());
+                assert_eq!(fast.pppoe, full.pppoe);
+                assert!(fast.vlan.is_none() && fast.vlan_stack.is_empty());
+                assert_eq!(format!("{fast:?}"), format!("{full:?}"));
+            }
+        }
     }
 
     fn hash_of(frame: &DataLink<'_>) -> u64 {

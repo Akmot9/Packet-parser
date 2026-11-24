@@ -10,6 +10,7 @@ use serde::{Serialize, Serializer};
 pub struct Ethertype(pub u16);
 
 impl Ethertype {
+    #[inline]
     pub fn from(code: u16) -> Self {
         Ethertype(code)
     }

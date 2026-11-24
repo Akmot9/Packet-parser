@@ -47,6 +47,7 @@ pub struct VlanTag {
 impl VlanTag {
     /// Vrai si `ethertype` est un TPID, c'est-a-dire annonce un tag VLAN de
     /// 4 octets (TCI + EtherType suivant) plutot qu'une charge utile.
+    #[inline]
     pub fn is_tpid(ethertype: u16) -> bool {
         matches!(ethertype, TPID_8021Q | TPID_8021AD | TPID_QINQ_LEGACY)
     }

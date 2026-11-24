@@ -13,10 +13,10 @@ use super::data_link::stp::BpduPacket;
 use super::internet::Internet;
 use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
-use super::{CorruptedLayer, DEFAULT_CONFIG, PacketFlow, ParseConfig, dispatch, link, tunnel};
+use super::{CorruptedLayer, PacketFlow, ParseConfig, dispatch, link, tunnel};
 use crate::parse::application::protocol::ApplicationProtocol;
 use crate::{
-    LinkLayer, NetworkProtocol, ParseError,
+    DataLink, LinkLayer, LinkType, NetworkProtocol, ParseError,
     errors::{internet::InternetError, transport::TransportError},
     timing::{NoTiming, Stage, TimingSink},
 };
@@ -233,14 +233,39 @@ impl<'a> PacketFlow<'a> {
         })
     }
 
-    /// Parses the shared L3/L4/L7 pipeline from a normalized link decoder
-    /// output. `depth` bounds tunnel nesting.
+    /// Une trame entiere : la couche liaison selon `link_type`, puis le
+    /// pipeline L3/L4/L7.
+    ///
+    /// La trame Ethernet II sans tag ni PPPoE, le cas courant, est lue en
+    /// ligne et ecrite directement dans le flux. Tout le reste — autre
+    /// LINKTYPE, tags VLAN, PPPoE, trame trop courte — passe hors ligne par
+    /// [`link::decode`], qui lit aussi ce cas courant de la meme facon
+    /// ([`DataLink::untagged`]).
     #[inline(always)]
-    pub(crate) fn parse_decoded(
-        decoded: link::DecodedLink<'a>,
-        depth: u8,
+    pub(crate) fn parse_frame(
+        link_type: LinkType,
+        bytes: &'a [u8],
+        config: &ParseConfig,
     ) -> Result<Self, ParseError> {
-        Self::parse_decoded_with(decoded, depth, &DEFAULT_CONFIG)
+        if link_type == LinkType::ETHERNET
+            && let Some(frame) = DataLink::untagged(bytes)
+        {
+            return Self::parse_decoded_with(
+                link::DecodedLink::new(LinkLayer::ethernet(frame)),
+                0,
+                config,
+            );
+        }
+        Self::parse_other_frame(link_type, bytes, config)
+    }
+
+    #[inline(never)]
+    fn parse_other_frame(
+        link_type: LinkType,
+        bytes: &'a [u8],
+        config: &ParseConfig,
+    ) -> Result<Self, ParseError> {
+        Self::parse_decoded_with(link::decode(link_type, bytes)?, 0, config)
     }
 
     /// Variante avec la configuration de l'appelant : ports declares
