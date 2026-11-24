@@ -388,7 +388,7 @@ pub(super) fn probe_body(probe: ProbeId, payload: &[u8]) -> bool {
         // preambule (#307), apres HTTP, pour qu'une reponse HTTP dont le
         // corps cite une banniere reste HTTP.
         ProbeId::Ssh => payload.starts_with(SSH_PREFIX) && SshPacket::try_from(payload).is_ok(),
-        ProbeId::SshAfterLines => SshPacket::try_from(payload).is_ok(),
+        ProbeId::SshAfterLines => SshPacket::is_tcp_match(payload),
         // Requete ou reponse (#176) : la tete, jusqu'au premier CRLF CRLF,
         // est validee en UTF-8 et ligne par ligne ; sans separateur, tout le
         // prefixe est la tete. Chaque decodeur est precede de sa garde a cout

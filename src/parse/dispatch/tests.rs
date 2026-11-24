@@ -2421,6 +2421,65 @@ fn http_guards_never_refuse_what_the_decoders_accept() {
     assert!(accepted > 2_000, "{accepted} cas acceptes seulement");
 }
 
+/// Les sondes texte qui ne passent pas par `try_from` rendent la decision de
+/// leur decodeur : sur les payloads du corpus, leurs troncatures et des
+/// alterations de leurs octets (fins de ligne, separateurs, casse, binaire).
+/// Hors du depot, le corpus est vide et seuls les tests de chaque decodeur
+/// couvrent sa sonde.
+#[test]
+fn text_probes_agree_with_their_decoders_on_the_corpus() {
+    use crate::parse::application::protocols::ssh::SshPacket;
+
+    // La decision du decodeur, sur le payload que la sonde recoit.
+    type Decoder = fn(&[u8]) -> bool;
+    let probes: [(ProbeId, Decoder); 1] = [(ProbeId::SshAfterLines, |payload| {
+        SshPacket::try_from(payload).is_ok()
+    })];
+    let mut accepted = [0_usize; 1];
+    let mut check = |payload: &[u8]| {
+        for (index, (probe, decoder)) in probes.iter().enumerate() {
+            let expected = decoder(payload);
+            assert_eq!(run_probe(*probe, payload), expected, "{payload:02x?}");
+            accepted[index] += usize::from(expected);
+        }
+    };
+
+    let corpus = corpus_payloads(96);
+    for (index, payload) in corpus.iter().enumerate() {
+        check(payload);
+        // Les variantes des payloads qui s'ouvrent comme du texte, et d'un
+        // payload binaire sur seize.
+        let opens_as_text = payload
+            .first()
+            .is_some_and(|byte| byte.is_ascii_graphic() || byte.is_ascii_whitespace());
+        if !opens_as_text && index % 16 != 0 {
+            continue;
+        }
+        let step = payload.len().div_ceil(48).max(1);
+        let mut mutated = payload.clone();
+        for position in (0..payload.len()).step_by(step) {
+            check(&payload[..position]);
+            let original = payload[position];
+            for value in [b'\r', b'\n', b' ', b':', b'S', 0x00, 0x80, original ^ 0x20] {
+                mutated[position] = value;
+                check(&mutated);
+            }
+            mutated[position] = original;
+        }
+        // Une ligne de preambule devant le payload, puis le debut d'une
+        // banniere SSH, que la premiere ligne d'un payload texte complete.
+        for prefix in [&b"motd\r\n"[..], b"SSH-2.0-", b"motd\r\nSSH-2.0-"] {
+            let mut prefixed = prefix.to_vec();
+            prefixed.extend_from_slice(payload);
+            check(&prefixed);
+        }
+    }
+    assert!(
+        corpus.is_empty() || accepted.iter().all(|count| *count > 50),
+        "{accepted:?} payloads acceptes"
+    );
+}
+
 /// AMS (#290) : sur TCP 48898, l'en-tete AMS/TCP de 6 octets precede chaque
 /// message ; la regle UDP 48899 lit l'en-tete AMS nu. Chaque transport n'a
 /// que sa forme, Decode As compris.
