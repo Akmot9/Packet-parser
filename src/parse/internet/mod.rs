@@ -209,9 +209,9 @@ impl<'a> Internet<'a> {
     fn from_ipv6(ipv6_packet: ipv6::Ipv6Packet<'a>) -> Self {
         Internet {
             source: Some(IpAddr::V6(ipv6_packet.source_addr)),
-            source_type: Some(IpType::from_addr(&IpAddr::V6(ipv6_packet.source_addr))),
+            source_type: Some(IpType::from_ipv6(&ipv6_packet.source_addr)),
             destination: Some(IpAddr::V6(ipv6_packet.dest_addr)),
-            destination_type: Some(IpType::from_addr(&IpAddr::V6(ipv6_packet.dest_addr))),
+            destination_type: Some(IpType::from_ipv6(&ipv6_packet.dest_addr)),
             protocol_name: "IPv6",
             payload_protocol: ipv6_packet
                 .transport_protocol

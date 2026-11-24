@@ -42,13 +42,7 @@ impl IpType {
     pub fn from_addr(ip: &IpAddr) -> Self {
         match ip {
             IpAddr::V4(ipv4_addr) => Self::from_ipv4(ipv4_addr),
-            // ::ffff:a.b.c.d (RFC 4291 §2.5.5.2) porte une IPv4 entiere : un
-            // socket dual-stack logue ses clients IPv4 sous cette forme, et
-            // l'adresse se classe comme l'IPv4 qu'elle porte (#136).
-            IpAddr::V6(ipv6_addr) => match ipv6_addr.to_ipv4_mapped() {
-                Some(ipv4_addr) => Self::from_ipv4(&ipv4_addr),
-                None => Self::from_ipv6(ipv6_addr),
-            },
+            IpAddr::V6(ipv6_addr) => Self::from_ipv6(ipv6_addr),
         }
     }
 
@@ -72,20 +66,38 @@ impl IpType {
         }
     }
 
-    fn from_ipv6(ipv6_addr: &Ipv6Addr) -> Self {
-        if ipv6_addr.is_multicast() {
-            Self::Multicast
+    /// Classe d'une adresse IPv6, en un seul aiguillage sur ses premiers
+    /// octets : memes plages que les predicats de `Ipv6Addr`, essayes un par
+    /// un jusque-la (une cinquantaine d'instructions par adresse publique).
+    /// Les cas rares vivent tous dans ::/8, traite a part.
+    #[inline]
+    pub(crate) fn from_ipv6(ipv6_addr: &Ipv6Addr) -> Self {
+        match ipv6_addr.octets() {
+            [0xff, ..] => Self::Multicast,
+            // fe80::/10 (RFC 4291 §2.5.6), pas seulement fe80::/16 (#136).
+            [0xfe, 0x80..=0xbf, ..] => Self::LinkLocal,
+            [0xfc | 0xfd, ..] => Self::Ula,
+            // 2001:db8::/32 (RFC 3849) et 3fff::/20 (RFC 9637), pendants de
+            // 192.0.2.0/24 et consorts cote IPv4. `Ipv6Addr::is_documentation`
+            // n'est pas stable.
+            [0x20, 0x01, 0x0d, 0xb8, ..] | [0x3f, 0xff, 0x00..=0x0f, ..] => Self::Documentation,
+            [0x00, ..] => Self::from_ipv6_zero_prefix(ipv6_addr),
+            _ => Self::Public,
+        }
+    }
+
+    /// ::/8 : l'adresse non specifiee, le loopback et les IPv4 mappees.
+    #[inline(never)]
+    fn from_ipv6_zero_prefix(ipv6_addr: &Ipv6Addr) -> Self {
+        // ::ffff:a.b.c.d (RFC 4291 §2.5.5.2) porte une IPv4 entiere : un
+        // socket dual-stack logue ses clients IPv4 sous cette forme, et
+        // l'adresse se classe comme l'IPv4 qu'elle porte (#136).
+        if let Some(ipv4_addr) = ipv6_addr.to_ipv4_mapped() {
+            Self::from_ipv4(&ipv4_addr)
         } else if ipv6_addr.is_loopback() {
             Self::Loopback
-        } else if ipv6_addr.is_unicast_link_local() {
-            // fe80::/10 (RFC 4291 §2.5.6), pas seulement fe80::/16 (#136).
-            Self::LinkLocal
-        } else if ipv6_addr.is_unique_local() {
-            Self::Ula
         } else if ipv6_addr.is_unspecified() {
             Self::Unknown
-        } else if is_ipv6_documentation(ipv6_addr) {
-            Self::Documentation
         } else {
             Self::Public
         }
@@ -109,17 +121,6 @@ impl fmt::Display for IpType {
 
         write!(f, "{display_string}")
     }
-}
-
-// Implémenter Default pour IpType
-
-/// Prefixes de documentation IPv6 : 2001:db8::/32 (RFC 3849) et 3fff::/20
-/// (RFC 9637), pendants de 192.0.2.0/24 et consorts cote IPv4.
-/// `Ipv6Addr::is_documentation` n'est pas stable.
-fn is_ipv6_documentation(ip: &Ipv6Addr) -> bool {
-    let segments = ip.segments();
-    (segments[0] == 0x2001 && segments[1] == 0x0db8)
-        || (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0)
 }
 
 #[cfg(test)]
@@ -148,6 +149,71 @@ mod tests {
             IpType::Unknown
         } else {
             IpType::Public
+        }
+    }
+
+    /// La chaine de predicats de `Ipv6Addr` que `from_ipv6` remplace, IPv4
+    /// mappee comprise, dans son ordre d'origine.
+    fn from_ipv6_by_predicates(ipv6_addr: &Ipv6Addr) -> IpType {
+        let segments = ipv6_addr.segments();
+        if let Some(ipv4_addr) = ipv6_addr.to_ipv4_mapped() {
+            from_ipv4_by_predicates(&ipv4_addr)
+        } else if ipv6_addr.is_multicast() {
+            IpType::Multicast
+        } else if ipv6_addr.is_loopback() {
+            IpType::Loopback
+        } else if ipv6_addr.is_unicast_link_local() {
+            IpType::LinkLocal
+        } else if ipv6_addr.is_unique_local() {
+            IpType::Ula
+        } else if ipv6_addr.is_unspecified() {
+            IpType::Unknown
+        } else if (segments[0] == 0x2001 && segments[1] == 0x0db8)
+            || (segments[0] == 0x3fff && (segments[1] & 0xf000) == 0)
+        {
+            IpType::Documentation
+        } else {
+            IpType::Public
+        }
+    }
+
+    /// `from_ipv6` rend la classe de la chaine de predicats : les deux
+    /// premiers octets sont parcourus en entier, le reste sur les motifs
+    /// que les plages distinguent (zero, loopback, IPv4 mappee de chaque
+    /// classe, prefixes de documentation et leurs voisins).
+    #[test]
+    fn test_from_ipv6_agrees_with_the_std_predicates() {
+        const TAILS: [[u8; 14]; 16] = [
+            [0; 14],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 168, 1, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 127, 0, 0, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 224, 0, 0, 251],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 255, 255, 255, 255],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 8, 8, 8, 8],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 0xff, 0xff, 192, 168, 1, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xfe, 192, 168, 1, 1],
+            [0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [0x0d, 0xb9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [0x0f, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [0x10, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [0xff; 14],
+        ];
+        for a in 0..=u8::MAX {
+            for b in 0..=u8::MAX {
+                for tail in TAILS {
+                    let mut octets = [0u8; 16];
+                    octets[0] = a;
+                    octets[1] = b;
+                    octets[2..].copy_from_slice(&tail);
+                    let addr = Ipv6Addr::from(octets);
+                    let expected = from_ipv6_by_predicates(&addr);
+                    assert_eq!(IpType::from_ipv6(&addr), expected, "{addr}");
+                    assert_eq!(IpType::from_addr(&IpAddr::V6(addr)), expected, "{addr}");
+                }
+            }
         }
     }
 
