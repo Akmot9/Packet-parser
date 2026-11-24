@@ -2428,12 +2428,12 @@ fn http_guards_never_refuse_what_the_decoders_accept() {
 /// couvrent sa sonde.
 #[test]
 fn text_probes_agree_with_their_decoders_on_the_corpus() {
-    use crate::parse::application::protocols::http;
     use crate::parse::application::protocols::ssh::SshPacket;
+    use crate::parse::application::protocols::{http, sip};
 
     // La decision du decodeur, sur le payload que la sonde recoit.
     type Decoder = fn(&[u8]) -> bool;
-    let probes: [(ProbeId, Decoder); 2] = [
+    let probes: [(ProbeId, Decoder); 3] = [
         (ProbeId::SshAfterLines, |payload| {
             SshPacket::try_from(payload).is_ok()
         }),
@@ -2447,8 +2447,16 @@ fn text_probes_agree_with_their_decoders_on_the_corpus() {
             assert_eq!(http::parse_http_response(text), response, "{text:?}");
             request.is_ok() || response.is_ok()
         }),
+        // De meme pour SIP, dont la reference compare chaque nom d'en-tete
+        // aux six qu'elle lit.
+        (ProbeId::Sip, |payload| {
+            let text = &payload[..payload.len().min(PROBE_CAP)];
+            let message = sip::reference::parse(text);
+            assert_eq!(sip::SipMessage::try_from(text), message, "{text:?}");
+            message.is_ok()
+        }),
     ];
-    let mut accepted = [0_usize; 2];
+    let mut accepted = [0_usize; 3];
     let mut check = |payload: &[u8]| {
         for (index, (probe, decoder)) in probes.iter().enumerate() {
             let expected = decoder(payload);
