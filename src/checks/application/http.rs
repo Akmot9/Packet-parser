@@ -61,6 +61,21 @@ pub(crate) fn find_crlf(text: &[u8]) -> Option<usize> {
     }
 }
 
+/// Les lignes de `text` : ce que rend `text.split("\r\n")`, la derniere
+/// ligne, vide ou non, comprise.
+pub(crate) fn crlf_lines(text: &str) -> impl Iterator<Item = &str> {
+    let mut rest = Some(text);
+    std::iter::from_fn(move || {
+        let text = rest?;
+        let end = find_crlf(text.as_bytes());
+        rest = end.and_then(|end| text.get(end + 2..));
+        match end {
+            Some(end) => text.get(..end),
+            None => Some(text),
+        }
+    })
+}
+
 /// Indice du premier `CRLF CRLF` de `payload`, la fin d'une tete HTTP, SIP
 /// ou SSDP. Un `CRLF` que ne suit pas un second ne peut en ouvrir un autre
 /// avant deux octets : la recherche reprend apres lui.

@@ -12,7 +12,9 @@
 //! doit en plus porter `MAN: "ssdp:discover"` (UDA 1.1 §1.3.2).
 
 use crate::{
-    errors::application::ssdp::SsdpError, parse::application::protocols::ssdp::SsdpMessageType,
+    checks::application::http::{find_byte, find_head_end},
+    errors::application::ssdp::SsdpError,
+    parse::application::protocols::ssdp::SsdpMessageType,
 };
 
 /// Ligne de statut, seule reponse definie : `HTTP/1.1 200 OK`.
@@ -57,10 +59,9 @@ pub fn extract_ssdp_text(payload: &[u8]) -> Result<&str, SsdpError> {
 /// corpus (`pcaps_exemple/The-Ultimate-PCAP.pcapng`) emet un CRLF surnumeraire
 /// apres la fin du message.
 pub fn extract_ssdp_head(text: &str) -> Result<&str, SsdpError> {
-    match text.find(HEAD_TERMINATOR) {
-        Some(index) => Ok(&text[..index]),
-        None => Err(SsdpError::MissingHeaderTerminator),
-    }
+    find_head_end(text.as_bytes())
+        .and_then(|index| text.get(..index))
+        .ok_or(SsdpError::MissingHeaderTerminator)
 }
 
 /// Classe la premiere ligne et renvoie le type de message.
@@ -102,7 +103,10 @@ pub fn extract_ssdp_message_type(line: &str) -> Result<SsdpMessageType, SsdpErro
 /// L'espace apres `:` est optionnel : la trame 38194 du corpus emet
 /// `ST:upnp:rootdevice` sans espace.
 pub fn extract_ssdp_header_line(line: &str) -> Result<(&str, &str), SsdpError> {
-    let (name, value) = line.split_once(':').ok_or(SsdpError::InvalidHeader)?;
+    let colon = find_byte(line.as_bytes(), b':').ok_or(SsdpError::InvalidHeader)?;
+    let (Some(name), Some(value)) = (line.get(..colon), line.get(colon + 1..)) else {
+        return Err(SsdpError::InvalidHeader);
+    };
     let name = name.trim();
     if name.is_empty() {
         return Err(SsdpError::InvalidHeader);

@@ -20,9 +20,12 @@
 use std::convert::TryFrom;
 
 use crate::{
-    checks::application::ssdp::{
-        extract_ssdp_head, extract_ssdp_header_line, extract_ssdp_message_type, extract_ssdp_text,
-        validate_ssdp_man, validate_ssdp_min_length,
+    checks::application::{
+        http::crlf_lines,
+        ssdp::{
+            extract_ssdp_head, extract_ssdp_header_line, extract_ssdp_message_type,
+            extract_ssdp_text, validate_ssdp_man, validate_ssdp_min_length,
+        },
     },
     errors::application::ssdp::SsdpError,
 };
@@ -85,9 +88,9 @@ impl<'a> TryFrom<&'a [u8]> for SsdpPacket<'a> {
         let text = extract_ssdp_text(payload)?;
         let head = extract_ssdp_head(text)?;
 
-        let mut lines = head.split("\r\n");
-        // `split` produit toujours au moins un element : la premiere ligne
-        // existe structurellement, et une ligne vide echoue en UnknownMethod.
+        let mut lines = crlf_lines(head);
+        // Il y a toujours au moins une ligne : la premiere existe
+        // structurellement, et une ligne vide echoue en UnknownMethod.
         let message_type = extract_ssdp_message_type(lines.next().unwrap_or_default())?;
 
         let mut man = None;
@@ -139,9 +142,136 @@ impl<'a> TryFrom<&'a [u8]> for SsdpPacket<'a> {
     }
 }
 
+/// Le decodeur tel qu'il lisait la tete par les chercheurs de `str`
+/// (`find`, `split("\r\n")`, `split_once(':')`) : la reference des tests
+/// differentiels, ici et dans ceux du dispatch.
+#[cfg(test)]
+pub(crate) mod reference {
+    use super::*;
+
+    fn extract_ssdp_header_line(line: &str) -> Result<(&str, &str), SsdpError> {
+        let (name, value) = line.split_once(':').ok_or(SsdpError::InvalidHeader)?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(SsdpError::InvalidHeader);
+        }
+        Ok((name, value.trim()))
+    }
+
+    pub(crate) fn parse(payload: &[u8]) -> Result<SsdpPacket<'_>, SsdpError> {
+        validate_ssdp_min_length(payload)?;
+        let text = extract_ssdp_text(payload)?;
+        let head = match text.find("\r\n\r\n") {
+            Some(index) => &text[..index],
+            None => return Err(SsdpError::MissingHeaderTerminator),
+        };
+
+        let mut lines = head.split("\r\n");
+        let message_type = extract_ssdp_message_type(lines.next().unwrap_or_default())?;
+
+        let mut man = None;
+        let mut mx = None;
+        let mut st = None;
+        let mut nt = None;
+        let mut nts = None;
+        let mut usn = None;
+        let mut location = None;
+        let mut server = None;
+        for line in lines {
+            let (name, value) = extract_ssdp_header_line(line)?;
+            let slot = match () {
+                _ if name.eq_ignore_ascii_case("MAN") => &mut man,
+                _ if name.eq_ignore_ascii_case("MX") => &mut mx,
+                _ if name.eq_ignore_ascii_case("ST") => &mut st,
+                _ if name.eq_ignore_ascii_case("NT") => &mut nt,
+                _ if name.eq_ignore_ascii_case("NTS") => &mut nts,
+                _ if name.eq_ignore_ascii_case("USN") => &mut usn,
+                _ if name.eq_ignore_ascii_case("LOCATION") => &mut location,
+                _ if name.eq_ignore_ascii_case("SERVER") => &mut server,
+                _ => continue,
+            };
+            if slot.is_none() {
+                *slot = Some(value);
+            }
+        }
+
+        validate_ssdp_man(message_type, man)?;
+
+        Ok(SsdpPacket {
+            message_type,
+            man,
+            mx,
+            st,
+            nt,
+            nts,
+            usn,
+            location,
+            server,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La tete lue par mots de huit octets donne, pour tout datagramme, le
+    /// paquet ou l'erreur de la lecture par les chercheurs de `str` : sur les
+    /// trames du corpus et la reponse, leurs troncatures, des fins de ligne
+    /// et des blancs inseres a chaque position, et chaque octet remplace par
+    /// les octets qui comptent pour la tete.
+    #[test]
+    fn test_decoder_agrees_with_the_reference() {
+        let seeds: [&[u8]; 5] = [
+            MSEARCH_AVM,
+            NOTIFY_ALIVE,
+            RESPONSE,
+            b"NOTIFY * HTTP/1.1\r\nST:upnp:rootdevice\r\n \xc2\xa0nts\xe2\x80\x83: x\r\nUSN:\r\n\r\n\r\n",
+            b"M-SEARCH * HTTP/1.1\r\nman : \"ssdp:discover\" \r\nMX:1\r\nmx:2\r\n\r\nsuite: x\r\n\r\n",
+        ];
+        let (mut accepted, mut checked) = (0, 0);
+        let mut check = |payload: &[u8]| {
+            let decoded = SsdpPacket::try_from(payload);
+            assert_eq!(decoded, reference::parse(payload), "{payload:?}");
+            accepted += usize::from(decoded.is_ok());
+            checked += 1;
+        };
+        check(b"");
+        for seed in seeds {
+            check(seed);
+            let mut mutated = seed.to_vec();
+            for position in 0..seed.len() {
+                check(&seed[..position]);
+                let original = seed[position];
+                for value in [
+                    b'\r',
+                    b'\n',
+                    b':',
+                    b' ',
+                    b'\t',
+                    b'M',
+                    b'x',
+                    0x00,
+                    0x0c,
+                    0x80,
+                    original ^ 0x20,
+                    original.wrapping_add(1),
+                ] {
+                    mutated[position] = value;
+                    check(&mutated);
+                }
+                mutated[position] = original;
+                for inserted in [&b"\r\n"[..], b"\r\n\r\n", b"\r", b"\n", b":", b" "] {
+                    let mut longer = seed[..position].to_vec();
+                    longer.extend_from_slice(inserted);
+                    longer.extend_from_slice(&seed[position..]);
+                    check(&longer);
+                }
+            }
+        }
+        assert!(checked > 12_000, "{checked} datagrammes");
+        assert!(accepted > 8_000, "{accepted} paquets decodes");
+    }
 
     /// Trame 8156 : M-SEARCH d'une box AVM vers 239.255.255.250:1900
     /// (pcaps_exemple/The-Ultimate-PCAP.pcapng).

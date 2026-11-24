@@ -2429,11 +2429,11 @@ fn http_guards_never_refuse_what_the_decoders_accept() {
 #[test]
 fn text_probes_agree_with_their_decoders_on_the_corpus() {
     use crate::parse::application::protocols::ssh::SshPacket;
-    use crate::parse::application::protocols::{http, sip};
+    use crate::parse::application::protocols::{http, sip, ssdp};
 
     // La decision du decodeur, sur le payload que la sonde recoit.
     type Decoder = fn(&[u8]) -> bool;
-    let probes: [(ProbeId, Decoder); 3] = [
+    let probes: [(ProbeId, Decoder); 4] = [
         (ProbeId::SshAfterLines, |payload| {
             SshPacket::try_from(payload).is_ok()
         }),
@@ -2455,8 +2455,14 @@ fn text_probes_agree_with_their_decoders_on_the_corpus() {
             assert_eq!(sip::SipMessage::try_from(text), message, "{text:?}");
             message.is_ok()
         }),
+        // Et pour SSDP, sur le datagramme entier.
+        (ProbeId::Ssdp, |payload| {
+            let packet = ssdp::reference::parse(payload);
+            assert_eq!(ssdp::SsdpPacket::try_from(payload), packet, "{payload:?}");
+            packet.is_ok()
+        }),
     ];
-    let mut accepted = [0_usize; 3];
+    let mut accepted = [0_usize; 4];
     let mut check = |payload: &[u8]| {
         for (index, (probe, decoder)) in probes.iter().enumerate() {
             let expected = decoder(payload);
