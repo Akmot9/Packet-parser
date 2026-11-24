@@ -12,6 +12,7 @@ use super::application::custom;
 use super::data_link::stp::BpduPacket;
 use super::internet::Internet;
 use super::transport::Transport;
+use super::transport::protocols::TransportProtocol;
 use super::{CorruptedLayer, DEFAULT_CONFIG, PacketFlow, ParseConfig, dispatch, link, tunnel};
 use crate::parse::application::protocol::ApplicationProtocol;
 use crate::{
@@ -62,9 +63,30 @@ impl<'a> PacketFlow<'a> {
     /// empty; a known EtherType with a corrupt payload is reported in
     /// `corrupted` — never a hard error, so the data-link information is
     /// preserved.
+    ///
+    /// IPv4 et IPv6 en ligne droite : chacun ecrit sa couche directement
+    /// dans le flux. Les autres protocoles passent par
+    /// [`Internet::try_from_network_parts`], hors ligne.
     #[inline(always)]
     fn fill_l3(&mut self, network_protocol: NetworkProtocol, network_payload: &'a [u8]) {
-        match Internet::try_from_network_parts(network_protocol, network_payload) {
+        match network_protocol {
+            NetworkProtocol::Ipv4 => self.set_l3(Internet::try_from_ipv4(network_payload)),
+            NetworkProtocol::Ipv6 => self.set_l3(Internet::try_from_ipv6(network_payload)),
+            other => self.fill_l3_other(other, network_payload),
+        }
+    }
+
+    #[inline(never)]
+    fn fill_l3_other(&mut self, network_protocol: NetworkProtocol, network_payload: &'a [u8]) {
+        self.set_l3(Internet::try_from_network_parts(
+            network_protocol,
+            network_payload,
+        ));
+    }
+
+    #[inline(always)]
+    fn set_l3(&mut self, parsed: Result<Internet<'a>, InternetError>) {
+        match parsed {
             Ok(internet) => self.internet = Some(internet),
             Err(InternetError::UnsupportedProtocol) => {}
             Err(e) => self.corrupted = Some(CorruptedLayer::from(e)),
@@ -74,12 +96,31 @@ impl<'a> PacketFlow<'a> {
     /// La couche transport, lue dans la charge de la couche internet. Sans
     /// couche internet il n'y a rien a lire, et `corrupted` garde ce que
     /// l'etape L3 y a mis : les deux etapes ne signalent jamais ensemble.
+    ///
+    /// TCP et UDP en ligne droite, comme IPv4 et IPv6 dans
+    /// [`fill_l3`](Self::fill_l3) ; les autres protocoles passent par
+    /// [`Transport::try_from_parts`], hors ligne.
     #[inline(always)]
     fn fill_l4(&mut self) {
         let Some(internet) = &self.internet else {
             return;
         };
-        match Transport::try_from_parts(internet.payload_protocol, internet.payload) {
+        let payload = internet.payload;
+        match internet.payload_protocol {
+            Some(TransportProtocol::Tcp) => self.set_l4(Transport::try_from_tcp(payload)),
+            Some(TransportProtocol::Udp) => self.set_l4(Transport::try_from_udp(payload)),
+            other => self.fill_l4_other(other, payload),
+        }
+    }
+
+    #[inline(never)]
+    fn fill_l4_other(&mut self, payload_protocol: Option<TransportProtocol>, payload: &'a [u8]) {
+        self.set_l4(Transport::try_from_parts(payload_protocol, payload));
+    }
+
+    #[inline(always)]
+    fn set_l4(&mut self, parsed: Result<Transport<'a>, TransportError>) {
+        match parsed {
             Ok(transport) => self.transport = Some(transport),
             Err(TransportError::UnsupportedProtocol) => {}
             Err(e) => self.corrupted = Some(CorruptedLayer::from(e)),
