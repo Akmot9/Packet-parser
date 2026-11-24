@@ -60,6 +60,12 @@ pub(super) struct Listed {
     pub(super) left: RuleSet,
 }
 
+/// Nombre de pages de ports d'une liste, la page vide comprise : une
+/// puissance de deux, pour qu'un numero de page se borne par un masque. TCP
+/// et UDP en occupent une quinzaine chacun.
+const PAGE_CAPACITY: usize = 32;
+const _: () = assert!(PAGE_CAPACITY.is_power_of_two());
+
 /// Les regles de la table qu'un transport admet, et l'effet des ports sur
 /// elles.
 pub(super) struct RuleList {
@@ -83,11 +89,12 @@ pub(super) struct RuleList {
     pages: [u8; 256],
     /// Par page, pour l'octet de poids faible d'un port, le rang de son
     /// effet dans `effects`. Un octet par rang : au plus 255 ports cites et
-    /// 255 pages par transport, verifie a la compilation.
-    slots: &'static [[u8; 256]],
+    /// [`PAGE_CAPACITY`] pages par transport, verifie a la compilation.
+    slots: [[u8; 256]; PAGE_CAPACITY],
     /// Les effets des ports cites ; au rang 0, celui d'un port qu'aucune
-    /// regle ne cite.
-    effects: &'static [PortEffect],
+    /// regle ne cite. Une case par valeur d'octet : un rang y est toujours
+    /// un indice valide.
+    effects: [PortEffect; 256],
 }
 
 impl RuleList {
@@ -113,18 +120,16 @@ impl RuleList {
     }
 
     /// L'effet de `port` sur les regles de la liste : trois lectures, sans
-    /// recherche.
+    /// recherche ni test de borne.
     pub(super) fn port_effect(&self, port: Option<u16>) -> PortEffect {
         let Some(port) = port else {
             return PortEffect::NONE;
         };
         let [high, low] = port.to_be_bytes();
-        let page = self.pages[usize::from(high)];
-        self.slots
-            .get(usize::from(page))
-            .and_then(|slots| self.effects.get(usize::from(slots[usize::from(low)])))
-            .copied()
-            .unwrap_or(PortEffect::NONE)
+        // Le masque ne change aucun numero de page, tous sous
+        // `PAGE_CAPACITY` : il dispense du test de borne.
+        let page = usize::from(self.pages[usize::from(high)]) % PAGE_CAPACITY;
+        self.effects[usize::from(self.slots[page][usize::from(low)])]
     }
 
     /// Les regles de la liste qu'il ne reste pas a visiter quand les sondes
@@ -276,10 +281,10 @@ const fn cites(ports: Option<Ports>, port: u16) -> bool {
 }
 
 /// L'effet de chaque port de `ports` sur les regles, un rang plus loin : le
-/// rang 0 reste celui d'un port qu'aucune regle ne cite. `E` vaut le nombre
-/// de ports plus un.
+/// rang 0 reste celui d'un port qu'aucune regle ne cite. `E` depasse le
+/// nombre de ports ; les cases au-dela restent sans effet.
 const fn port_effects<const E: usize>(rules: &[&Rule], ports: &[u16]) -> [PortEffect; E] {
-    assert!(E == ports.len() + 1);
+    assert!(ports.len() < E, "trop de ports cites");
     let mut effects = [PortEffect::NONE; E];
     let mut at = 0;
     while at < ports.len() {
@@ -343,9 +348,13 @@ const fn page_count(ports: &[u16]) -> usize {
 
 /// Par page, pour chaque octet de poids faible, le rang de l'effet du port
 /// dans [`port_effects`] : son rang dans `ports` plus un, 0 pour un port
-/// absent de `ports`. `G` vaut [`page_count`].
+/// absent de `ports`. `G` vaut au moins [`page_count`] ; les pages au-dela
+/// restent vides.
 const fn port_slots<const G: usize>(ports: &[u16]) -> [[u8; 256]; G] {
-    assert!(G == page_count(ports));
+    assert!(
+        page_count(ports) <= G,
+        "trop de pages de ports : elargir PAGE_CAPACITY"
+    );
     let pages = port_pages(ports);
     let mut slots = [[0; 256]; G];
     let mut effect: u8 = 0;
@@ -414,8 +423,6 @@ macro_rules! rule_list {
         const LISTED: [&Rule; RULE_COUNT] = admitted($protocol);
         const PORT_COUNT: usize = cited_port_count(&LISTED);
         const PORTS: [u16; PORT_COUNT] = cited_ports(&LISTED);
-        const SLOTS: [[u8; 256]; page_count(&PORTS)] = port_slots(&PORTS);
-        const EFFECTS: [PortEffect; PORT_COUNT + 1] = port_effects(&LISTED, &PORTS);
         RuleList {
             listed: listed(&LISTED),
             len: RULE_COUNT,
@@ -423,8 +430,8 @@ macro_rules! rule_list {
             terminal: terminal(&LISTED),
             by_first_byte: by_first_byte(&LISTED),
             pages: port_pages(&PORTS),
-            slots: &SLOTS,
-            effects: &EFFECTS,
+            slots: port_slots(&PORTS),
+            effects: port_effects(&LISTED, &PORTS),
         }
     }};
 }
