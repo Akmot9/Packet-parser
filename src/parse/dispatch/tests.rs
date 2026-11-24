@@ -322,6 +322,81 @@ fn modbus_is_lenient_on_port_502_and_strict_elsewhere() {
     assert_eq!(declared(tcp), Some("Unknown"));
 }
 
+/// La garde du bras `ModbusTcpBlind` (identifiant de protocole nul aux
+/// octets 2 et 3) ne refuse rien que la sonde aveugle accepte : le bras rend
+/// la decision de `is_blind_tcp_match` sur des ADU construits, sur les
+/// payloads du corpus, sur leurs troncatures et sur chaque valeur de leurs
+/// huit premiers octets.
+#[test]
+fn modbus_blind_guard_never_refuses_what_the_probe_accepts() {
+    use crate::parse::application::protocols::modbus_tcp::ModbusTcpPacket;
+
+    // Rend la decision commune du bras et de la sonde sans garde.
+    fn agree(payload: &[u8]) -> bool {
+        let expected = ModbusTcpPacket::is_blind_tcp_match(payload);
+        assert_eq!(
+            run_probe(ProbeId::ModbusTcpBlind, payload),
+            expected,
+            "{payload:02x?}"
+        );
+        expected
+    }
+    // Troncatures de l'en-tete, puis chaque valeur de ses octets.
+    fn agree_on_variants(payload: &[u8], accepted: &mut usize, rejected: &mut usize) {
+        let mut check = |candidate: &[u8]| {
+            if agree(candidate) {
+                *accepted += 1;
+            } else {
+                *rejected += 1;
+            }
+        };
+        check(payload);
+        for length in 0..payload.len().min(16) {
+            check(&payload[..length]);
+        }
+        let mut mutated = payload.to_vec();
+        for index in 0..payload.len().min(8) {
+            for value in 0..=u8::MAX {
+                mutated[index] = value;
+                check(&mutated);
+            }
+            mutated[index] = payload[index];
+        }
+    }
+
+    let seeds: [&[u8]; 5] = [
+        // Read Holding Registers : requete, reponse, puis les deux a la suite.
+        &[0x00, 0xd1, 0, 0, 0, 6, 0x01, 0x03, 0x00, 0x01, 0x00, 0x01],
+        &[0x00, 0xd1, 0, 0, 0, 5, 0x01, 0x03, 0x02, 0x12, 0x34],
+        &[
+            0x00, 0xd1, 0, 0, 0, 6, 0x01, 0x03, 0x00, 0x01, 0x00, 0x01, 0x00, 0xd2, 0, 0, 0, 5,
+            0x01, 0x03, 0x02, 0x12, 0x34,
+        ],
+        // Write Single Coil, puis une exception.
+        &[0x12, 0x34, 0, 0, 0, 6, 0xff, 0x05, 0x00, 0x10, 0xff, 0x00],
+        &[0x00, 0x01, 0, 0, 0, 3, 0x01, 0x83, 0x02],
+    ];
+    let (mut accepted, mut rejected) = (0, 0);
+    for seed in seeds {
+        assert!(agree(seed), "{seed:02x?}");
+        agree_on_variants(seed, &mut accepted, &mut rejected);
+    }
+    assert!(accepted > 2_000, "{accepted} variantes acceptees");
+    assert!(rejected > 2_000, "{rejected} variantes refusees");
+
+    // Le corpus, absent de l'archive publiee : chaque payload, et les
+    // variantes d'un sur sept.
+    let corpus = corpus_payloads(64);
+    let mut recognised = 0;
+    for (index, payload) in corpus.iter().enumerate() {
+        recognised += usize::from(agree(payload));
+        if index % 7 == 0 {
+            agree_on_variants(payload, &mut accepted, &mut rejected);
+        }
+    }
+    assert!(corpus.is_empty() || recognised > 100, "{recognised} ADU");
+}
+
 /// #164 : sur UDP 123, le decodeur NTP tolerant ; sur tout autre port,
 /// la sonde aveugle stricte. Synthetique : une reponse NTPv4 de serveur
 /// (stratum 2, poll 6, precision -20), puis la meme avec une precision

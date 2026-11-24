@@ -408,7 +408,14 @@ pub(super) fn probe_body(probe: ProbeId, payload: &[u8]) -> bool {
         // Les MBAP doivent paver le segment, tous en UMAS (#295).
         ProbeId::Umas => UmasPacket::is_tcp_match(payload),
         ProbeId::ModbusTcp => ModbusTcpPacket::try_from(payload).is_ok(),
-        ProbeId::ModbusTcpBlind => ModbusTcpPacket::is_blind_tcp_match(payload),
+        // Garde a cout constant : le decodeur lit d'abord le MBAP de tete et
+        // refuse un identifiant de protocole non nul (octets 2 et 3). Sans
+        // elle, tout segment TCP non reconnu payait l'entree du decodeur, son
+        // Vec et sa valeur d'erreur : 62 instructions sur le paquet de
+        // reference.
+        ProbeId::ModbusTcpBlind => {
+            matches!(payload, [_, _, 0, 0, ..]) && ModbusTcpPacket::is_blind_tcp_match(payload)
+        }
         // La longueur de l'en-tete long doit tenir dans le datagramme.
         ProbeId::QuicLongHeader => QuicPacket::is_blind_udp_match(payload),
         // Les paquets doivent paver le segment.
