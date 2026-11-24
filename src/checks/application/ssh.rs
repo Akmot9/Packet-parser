@@ -18,7 +18,10 @@
 //! En revanche `protoversion` reste strictement contraint a `2.0` ou `1.99` :
 //! c'est ce qui rend la signature assez forte pour le probing a l'aveugle.
 
-use crate::errors::application::ssh::SshError;
+use crate::{
+    checks::application::http::{HIGH_BITS, LOW_BITS},
+    errors::application::ssh::SshError,
+};
 
 /// Prefixe litteral de toute chaine d'identification SSH.
 pub const SSH_PREFIX: &[u8] = b"SSH-";
@@ -80,16 +83,22 @@ pub fn find_ssh_identification(payload: &[u8]) -> Option<&[u8]> {
     if payload.starts_with(SSH_PREFIX) {
         return Some(payload);
     }
-    // La premiere ligne refuse presque tout segment qui n'est pas du SSH :
-    // elle est lue ici, sans appel ni cadre de pile ; la suite est rare.
-    let text = prelude_text_length(payload)?;
-    find_ssh_identification_after(payload, text)
+    // Les premiers octets de la premiere ligne refusent presque tout segment
+    // qui n'est pas du SSH : ils sont lus ici, sans appel ni cadre de pile ;
+    // la suite est rare.
+    let first_line = prelude_text_start(payload)?;
+    find_ssh_identification_after(payload, first_line)
 }
 
 /// La suite de [`find_ssh_identification`] quand le segment s'ouvre par une
-/// ligne de preambule de `text` octets, que suit son CRLF.
+/// ligne de preambule : de `first_line` octets, que suit son CRLF, ou qui
+/// reste a lire au-dela de ses premiers octets (`None`).
 #[inline(never)]
-fn find_ssh_identification_after(payload: &[u8], mut text: usize) -> Option<&[u8]> {
+fn find_ssh_identification_after(payload: &[u8], first_line: Option<usize>) -> Option<&[u8]> {
+    let mut text = match first_line {
+        Some(text) => text,
+        None => prelude_text_length_by_words(payload)?,
+    };
     let mut rest = payload;
     let mut start = 0;
     loop {
@@ -124,18 +133,81 @@ static ENDS_PRELUDE_TEXT: [bool; 256] = {
 /// [`SSH_MAX_PRELUDE_LENGTH`] premiers, qui doit etre un CR devant un LF.
 /// Le texte reste a valider en UTF-8.
 fn prelude_text_length(rest: &[u8]) -> Option<usize> {
+    match prelude_text_start(rest)? {
+        Some(text) => Some(text),
+        None => prelude_text_length_by_words(rest),
+    }
+}
+
+/// Les octets que [`prelude_text_start`] lit un a un, avant la lecture par
+/// mots : une charge binaire, un octet de controle sur huit, s'y arrete
+/// vingt-quatre fois sur vingt-cinq, et l'entree de la lecture par mots
+/// coute plus que les quelques octets qu'elle lui epargnerait.
+const PRELUDE_FIRST_BYTES: usize = 24;
+
+/// Le debut de [`prelude_text_length`], sur les [`PRELUDE_FIRST_BYTES`]
+/// premiers octets de `rest` : la longueur du texte quand la ligne y finit,
+/// `Some(None)` quand ils sont tous du texte et que d'autres octets suivent,
+/// `None` quand la ligne est refusee.
+#[inline(always)]
+fn prelude_text_start(rest: &[u8]) -> Option<Option<usize>> {
+    let first = rest.get(..PRELUDE_FIRST_BYTES).unwrap_or(rest);
+    match first
+        .iter()
+        .position(|byte| ENDS_PRELUDE_TEXT[usize::from(*byte)])
+    {
+        Some(index) => prelude_text_end(rest, index).map(Some),
+        None if first.len() < rest.len() => Some(None),
+        None => None,
+    }
+}
+
+/// `index` quand l'octet de controle qui s'y trouve est le CR d'un CRLF.
+fn prelude_text_end(rest: &[u8], index: usize) -> Option<usize> {
+    match rest.get(index..index + 2) {
+        Some(b"\r\n") => Some(index),
+        _ => None,
+    }
+}
+
+/// La suite de [`prelude_text_length`] quand les [`PRELUDE_FIRST_BYTES`]
+/// premiers octets sont du texte : la ligne se lit par mots de huit octets,
+/// une instruction et demie par octet au lieu de six. Du texte sans fin de
+/// ligne (JSON, base64, le corps d'une reponse HTTP) est lu jusqu'a la
+/// borne.
+///
+/// `(x - n) & !x` leve le bit fort de chaque octet sous `n` : sous 0x20 dans
+/// le mot, sous 1 dans le mot croise avec 0x7f, donc sur chaque DEL. Une
+/// retenue peut le lever a tort, mais seulement au-dessus d'un octet qui le
+/// leve a raison : le bit leve le plus bas designe le premier octet de
+/// controle, et lui seul est lu.
+#[inline(never)]
+fn prelude_text_length_by_words(rest: &[u8]) -> Option<usize> {
     let scanned = rest.get(..SSH_MAX_PRELUDE_LENGTH).unwrap_or(rest);
-    let mut index = 0;
-    while let Some(byte) = scanned.get(index) {
-        if ENDS_PRELUDE_TEXT[usize::from(*byte)] {
-            return match rest.get(index..index + 2) {
-                Some(b"\r\n") => Some(index),
-                _ => None,
-            };
+    let mut index = PRELUDE_FIRST_BYTES;
+    while let Some(word) = scanned.get(index..).and_then(<[u8]>::first_chunk::<8>) {
+        let word = u64::from_le_bytes(*word);
+        let below_space = word.wrapping_sub(LOW_BITS * 0x20) & !word;
+        let delete = word ^ (LOW_BITS * 0x7f);
+        let delete = delete.wrapping_sub(LOW_BITS) & !delete;
+        let controls = (below_space | delete) & HIGH_BITS;
+        if controls == 0 {
+            index += 8;
+            continue;
         }
+        index += (controls.trailing_zeros() / 8) as usize;
+        if scanned.get(index) != Some(&b'\t') {
+            return prelude_text_end(rest, index);
+        }
+        // TAB est du texte : la lecture reprend apres lui.
         index += 1;
     }
-    None
+    // Moins d'un mot avant la borne ou la fin du segment.
+    let position = scanned
+        .get(index..)?
+        .iter()
+        .position(|byte| ENDS_PRELUDE_TEXT[usize::from(*byte)])?;
+    prelude_text_end(rest, index + position)
 }
 
 /// Renvoie la ligne d'identification, terminateur exclu.
@@ -325,6 +397,38 @@ mod tests {
         }
         assert!(found > 20_000, "{found} recherches abouties");
         assert!(refused > 10_000, "{refused} recherches refusees");
+    }
+
+    /// La lecture par mots de huit octets : toutes les suites de cinq octets
+    /// pris parmi le texte, TAB, les controles et leurs voisins qu'une
+    /// retenue pourrait confondre (espace, `~`), a chaque decalage dans le
+    /// mot au-dela des octets lus un a un et a cheval sur leur frontiere,
+    /// devant une fin de ligne et une banniere.
+    #[test]
+    fn prelude_search_agrees_with_the_reference_on_every_word_pattern() {
+        const ALPHABET: [u8; 9] = [b'a', b'\t', b' ', b'~', 0x7f, 0x1f, b'\r', b'\n', 0x80];
+        let (mut found, mut refused) = (0, 0);
+        let mut digits = [0_usize; 5];
+        loop {
+            let pattern = digits.map(|digit| ALPHABET[digit]);
+            for offset in PRELUDE_FIRST_BYTES - 3..PRELUDE_FIRST_BYTES + 8 {
+                let mut payload = vec![b'x'; offset];
+                payload.extend_from_slice(&pattern);
+                payload.extend_from_slice(b"xy\r\nSSH-2.0-OpenSSH_9.6\r\n");
+                if agrees(&payload) {
+                    found += 1;
+                } else {
+                    refused += 1;
+                }
+            }
+            let Some(position) = digits.iter().position(|digit| digit + 1 < ALPHABET.len()) else {
+                break;
+            };
+            digits[position] += 1;
+            digits[..position].fill(0);
+        }
+        assert!(found > 12_000, "{found} recherches abouties");
+        assert!(refused > 600_000, "{refused} recherches refusees");
     }
 
     /// Autour de la borne des lignes de preambule : une ligne, puis deux,

@@ -17,8 +17,8 @@ pub fn parse_payload_as_utf8(payload: &[u8]) -> Result<&str, HttpParseError> {
 }
 
 /// L'octet de poids faible, puis de poids fort, de chaque octet d'un mot.
-const LOW_BITS: u64 = 0x0101_0101_0101_0101;
-const HIGH_BITS: u64 = 0x8080_8080_8080_8080;
+pub(crate) const LOW_BITS: u64 = 0x0101_0101_0101_0101;
+pub(crate) const HIGH_BITS: u64 = 0x8080_8080_8080_8080;
 
 /// Indice du premier octet `needle` de `haystack`, lu par mots de huit
 /// octets : une instruction par octet, la ou une boucle octet par octet,
