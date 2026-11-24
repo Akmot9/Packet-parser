@@ -46,23 +46,27 @@ impl IpType {
         }
     }
 
-    /// Classe d'une adresse IPv4, en un seul aiguillage sur ses octets. Les
-    /// plages sont celles des predicats de `Ipv4Addr` (`is_private`,
-    /// `is_loopback`, `is_multicast`, `is_documentation`...), toutes
-    /// disjointes : les essayer un par un coutait jusqu'a huit tests a
-    /// chaque adresse publique, deux fois par paquet. 169.254.0.0/16 se
-    /// classe `Apipa` : aucune adresse IPv4 n'est `LinkLocal`.
+    /// Classe d'une adresse IPv4. Les plages sont celles des predicats de
+    /// `Ipv4Addr` (`is_private`, `is_loopback`, `is_multicast`,
+    /// `is_documentation`...), toutes disjointes : les essayer un par un
+    /// coutait jusqu'a huit tests a chaque adresse publique, deux fois par
+    /// paquet. Le premier octet fixe la classe a lui seul pour 249 valeurs
+    /// sur 256, lues dans une table ; les sept autres se departagent sur
+    /// les octets suivants. 169.254.0.0/16 se classe `Apipa` : aucune
+    /// adresse IPv4 n'est `LinkLocal`.
     #[inline]
     pub(crate) fn from_ipv4(ipv4_addr: &Ipv4Addr) -> Self {
-        match ipv4_addr.octets() {
-            [10, ..] | [172, 16..=31, ..] | [192, 168, ..] => Self::Private,
-            [127, ..] => Self::Loopback,
-            [169, 254, ..] => Self::Apipa,
-            [224..=239, ..] => Self::Multicast,
-            [192, 0, 2, _] | [198, 51, 100, _] | [203, 0, 113, _] => Self::Documentation,
-            [255, 255, 255, 255] => Self::Broadcast,
-            [0, 0, 0, 0] => Self::Unknown,
-            _ => Self::Public,
+        let octets = ipv4_addr.octets();
+        match &FIRST_OCTET_CLASS[usize::from(octets[0])] {
+            Some(class) => class.clone(),
+            None => match octets {
+                [172, 16..=31, ..] | [192, 168, ..] => Self::Private,
+                [169, 254, ..] => Self::Apipa,
+                [192, 0, 2, _] | [198, 51, 100, _] | [203, 0, 113, _] => Self::Documentation,
+                [255, 255, 255, 255] => Self::Broadcast,
+                [0, 0, 0, 0] => Self::Unknown,
+                _ => Self::Public,
+            },
         }
     }
 
@@ -103,6 +107,32 @@ impl IpType {
         }
     }
 }
+
+/// Classe d'une adresse IPv4 d'apres son seul premier octet ; `None` pour
+/// les sept valeurs dont une plage ne couvre qu'une partie, que
+/// [`IpType::from_ipv4`] departage sur les octets suivants.
+const fn class_of_first_octet(first: u8) -> Option<IpType> {
+    match first {
+        10 => Some(IpType::Private),
+        127 => Some(IpType::Loopback),
+        224..=239 => Some(IpType::Multicast),
+        0 | 169 | 172 | 192 | 198 | 203 | 255 => None,
+        _ => Some(IpType::Public),
+    }
+}
+
+static FIRST_OCTET_CLASS: [Option<IpType>; 256] = {
+    let mut table = [const { None }; 256];
+    let mut first = 0u8;
+    loop {
+        table[first as usize] = class_of_first_octet(first);
+        if first == u8::MAX {
+            break;
+        }
+        first += 1;
+    }
+    table
+};
 
 impl fmt::Display for IpType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
