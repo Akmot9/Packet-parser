@@ -2429,11 +2429,11 @@ fn http_guards_never_refuse_what_the_decoders_accept() {
 #[test]
 fn text_probes_agree_with_their_decoders_on_the_corpus() {
     use crate::parse::application::protocols::ssh::SshPacket;
-    use crate::parse::application::protocols::{http, sip, ssdp};
+    use crate::parse::application::protocols::{ftp, http, sip, smtp, ssdp};
 
     // La decision du decodeur, sur le payload que la sonde recoit.
     type Decoder = fn(&[u8]) -> bool;
-    let probes: [(ProbeId, Decoder); 4] = [
+    let probes: [(ProbeId, Decoder); 6] = [
         (ProbeId::SshAfterLines, |payload| {
             SshPacket::try_from(payload).is_ok()
         }),
@@ -2461,8 +2461,21 @@ fn text_probes_agree_with_their_decoders_on_the_corpus() {
             assert_eq!(ssdp::SsdpPacket::try_from(payload), packet, "{payload:?}");
             packet.is_ok()
         }),
+        // FTP et SMTP : leurs references coupent les lignes par `str::find`.
+        (ProbeId::Ftp, |payload| {
+            let text = &payload[..payload.len().min(PROBE_CAP)];
+            let message = ftp::reference::parse_ftp_message(text);
+            assert_eq!(ftp::parse_ftp_message(text), message, "{text:?}");
+            message.is_ok()
+        }),
+        (ProbeId::Smtp, |payload| {
+            let text = &payload[..payload.len().min(PROBE_CAP)];
+            let message = smtp::reference::parse_smtp_message(text);
+            assert_eq!(smtp::parse_smtp_message(text), message, "{text:?}");
+            message.is_ok()
+        }),
     ];
-    let mut accepted = [0_usize; 4];
+    let mut accepted = [0_usize; 6];
     let mut check = |payload: &[u8]| {
         for (index, (probe, decoder)) in probes.iter().enumerate() {
             let expected = decoder(payload);
