@@ -2973,3 +2973,292 @@ fn first_byte_filter_stops_at_the_proven_payload_size() {
         );
     }
 }
+
+/// Les ensembles de `first_bytes.rs` couvrent ce que le controle du premier
+/// octet de chaque decodeur accepte, appele ici directement sur les 256
+/// valeurs. Les deux tiers de ces ensembles sont des litteraux recopies : un
+/// decodeur elargi sans le sien (un type de message de plus, une version)
+/// echoue ici, avant de changer une etiquette en silence, alors que ses
+/// propres tests, qui appellent `try_from` et non `classify`, restent verts.
+#[test]
+fn first_byte_sets_cover_what_the_decoder_checks_accept() {
+    use crate::checks::application as checks;
+    use crate::errors::application::java_rmi::JavaRmiError;
+    use crate::errors::application::srvloc::SrvlocPacketParseError;
+    use crate::parse::application::protocols;
+
+    let any = |accepts: &dyn Fn(u8) -> bool| (u8::MIN..=u8::MAX).any(accepts);
+    let covers = |check: &str, probes: &[ProbeId], accepts: &dyn Fn(u8) -> bool| {
+        let mut accepted = 0;
+        for byte in u8::MIN..=u8::MAX {
+            if !accepts(byte) {
+                continue;
+            }
+            accepted += 1;
+            for probe in probes {
+                assert!(
+                    first_bytes(*probe).contains(byte),
+                    "{check} accepte {byte:#04x}, hors de l'ensemble de la sonde {}",
+                    *probe as usize
+                );
+            }
+        }
+        assert!(accepted > 0, "{check} n'accepte aucun octet");
+    };
+
+    covers("la version TPKT de S7Comm", &[ProbeId::S7Comm], &|byte| {
+        checks::s7comm::validate_tpkt_version(byte).is_ok()
+    });
+    covers("l'en-tete TPKT de RDP", &[ProbeId::Rdp], &|byte| {
+        checks::rdp::validate_tpkt_header(byte, 0).is_ok()
+    });
+    covers("les octets de depart DNP3", &[ProbeId::Dnp3], &|byte| {
+        any(&|second| checks::dnp3::validate_start_bytes([byte, second]).is_ok())
+    });
+    covers(
+        "le type de message OPC UA",
+        &[ProbeId::Opcua, ProbeId::OpcuaBlind],
+        &|byte| {
+            any(&|second| {
+                any(&|third| checks::opcua::extract_message_type([byte, second, third]).is_ok())
+            })
+        },
+    );
+    covers(
+        "la commande EtherNet/IP",
+        &[ProbeId::EthernetIp, ProbeId::EthernetIpTcp],
+        &|byte| {
+            any(&|high| {
+                protocols::ethernet_ip::EtherNetIpCommand::try_from(u16::from_le_bytes([
+                    byte, high,
+                ]))
+                .is_ok()
+            })
+        },
+    );
+    covers(
+        "le type de message PostgreSQL",
+        &[ProbeId::Postgresql, ProbeId::PostgresqlPort],
+        &|byte| checks::postgresql::extract_message_type(byte).is_ok(),
+    );
+    covers("l'etiquette ASN.1 de SNMP", &[ProbeId::Snmp], &|byte| {
+        checks::snmp::validate_tag("message", byte, checks::snmp::ASN1_SEQUENCE_TAG).is_ok()
+    });
+    covers("le type de contenu TLS", &[ProbeId::Tls], &|byte| {
+        protocols::tls::TlsContentType::try_from(byte).is_ok()
+    });
+    covers(
+        "le type de message Java RMI",
+        &[ProbeId::JavaRmi],
+        &|byte| {
+            !matches!(
+                protocols::java_rmi::JavaRmiPacket::try_from(&[byte][..]),
+                Err(JavaRmiError::UnknownMessageType(_))
+            )
+        },
+    );
+    covers("le type et les drapeaux MQTT", &[ProbeId::Mqtt], &|byte| {
+        checks::mqtt::parse_packet_type(byte)
+            .and_then(|kind| checks::mqtt::validate_fixed_header_flags(kind, byte))
+            .is_ok()
+    });
+    covers(
+        "les drapeaux NTP",
+        &[ProbeId::Ntp, ProbeId::NtpBlind],
+        &|byte| checks::ntp::extract_flags(&byte).is_ok(),
+    );
+    covers("la magie Valmet DNA", &[ProbeId::ValmetDnaBlind], &|byte| {
+        any(&|low| checks::valmet_dna::validate_magic(u16::from_be_bytes([byte, low])).is_ok())
+    });
+    covers("la categorie ASTERIX", &[ProbeId::Asterix], &|byte| {
+        protocols::asterix::uap::uap_for(byte).is_some()
+    });
+    covers(
+        "la version DIS",
+        &[ProbeId::Dis, ProbeId::DisLenient],
+        &|byte| checks::dis::extract_version(byte).is_ok(),
+    );
+    covers("le code RADIUS", &[ProbeId::Radius], &|byte| {
+        checks::radius::validate_code(byte).is_ok()
+    });
+    covers("le type BVLC de BACnet", &[ProbeId::Bacnet], &|byte| {
+        checks::bacnet::validate_bvlc_type(byte).is_ok()
+    });
+    covers("l'operation DHCP", &[ProbeId::Dhcp], &|byte| {
+        checks::dhcp::validate_operation(byte).is_ok()
+    });
+    covers(
+        "le premier octet d'un en-tete long QUIC",
+        &[ProbeId::QuicLongHeader, ProbeId::QuicLongHeaderPort],
+        &|byte| checks::quic::extract_first_byte(byte).is_ok(),
+    );
+    covers(
+        "l'en-tete court QUIC",
+        &[ProbeId::QuicShortHeader],
+        &|byte| checks::quic::is_plausible_short_header(&[byte; 1500]),
+    );
+    covers(
+        "les invariants de l'en-tete long QUIC",
+        &[ProbeId::QuicLongHeaderPort],
+        &|byte| {
+            let mut datagram = [0; 64];
+            datagram[0] = byte;
+            datagram[1..5].copy_from_slice(&[0xfa, 0xce, 0xb0, 0x02]);
+            checks::quic::is_invariant_long_header(&datagram)
+        },
+    );
+    covers(
+        "le type de message WireGuard",
+        &[ProbeId::WireGuardBlind, ProbeId::WireGuardPort],
+        &|byte| {
+            (0..2048).any(|length| checks::wireguard::validate_message_length(byte, length).is_ok())
+        },
+    );
+    covers("le type de message DHCPv6", &[ProbeId::Dhcpv6], &|byte| {
+        checks::dhcpv6::validate_dhcpv6_message_type(byte).is_ok()
+    });
+    covers("l'octet de depart IEC 104", &[ProbeId::Iec104], &|byte| {
+        checks::iec104::validate_start_byte(byte).is_ok()
+    });
+    covers(
+        "le preambule STANAG 5066",
+        &[ProbeId::Stanag5066],
+        &|byte| any(&|second| checks::stanag5066::validate_preamble([byte, second]).is_ok()),
+    );
+    covers("le type de message NBSS", &[ProbeId::Nbss], &|byte| {
+        checks::netbios::extract_nbss_message_type(byte).is_ok()
+    });
+    covers("le type de message NBDS", &[ProbeId::Nbds], &|byte| {
+        checks::netbios::extract_nbds_message_type(byte).is_ok()
+    });
+    covers("la version SLP", &[ProbeId::Srvloc], &|byte| {
+        !matches!(
+            protocols::srvloc::SrvlocPacket::try_from(&[byte, 1, 0, 0, 0, 0, 0, 0][..]),
+            Err(SrvlocPacketParseError::UnsupportedVersion(_))
+        )
+    });
+
+    // Les gardes des sondes texte lisent plus d'un octet : chaque debut
+    // qu'elles acceptent, l'initiale de chaque mot remplacee par les 256
+    // valeurs.
+    let starts = |accepts: &dyn Fn(&[u8]) -> bool, tails: &[&[u8]]| {
+        let mut first = [false; 256];
+        let mut payload = Vec::new();
+        for byte in u8::MIN..=u8::MAX {
+            for tail in tails {
+                payload.clear();
+                payload.push(byte);
+                payload.extend_from_slice(tail);
+                first[usize::from(byte)] |= accepts(&payload);
+            }
+        }
+        first
+    };
+    // Et ce qui peut preceder ce debut : un, deux ou trois octets, les deux
+    // derniers pris parmi les octets de continuation d'UTF-8 quand il y en a
+    // trois (les blancs Unicode qu'un decodeur saute, le texte d'un
+    // preambule).
+    let leads = |accepts: &dyn Fn(&[u8]) -> bool, text: &[u8]| {
+        let mut first = [false; 256];
+        let mut payload = Vec::new();
+        let mut try_lead = |lead: &[u8]| {
+            payload.clear();
+            payload.extend_from_slice(lead);
+            payload.extend_from_slice(text);
+            first[usize::from(lead[0])] |= accepts(&payload);
+        };
+        for byte in u8::MIN..=u8::MAX {
+            try_lead(&[byte]);
+            for second in u8::MIN..=u8::MAX {
+                try_lead(&[byte, second]);
+            }
+            for second in 0x80..=0xbf {
+                for third in 0x80..=0xbf {
+                    try_lead(&[byte, second, third]);
+                }
+            }
+        }
+        first
+    };
+    let either = |a: [bool; 256], b: [bool; 256]| {
+        move |byte: u8| a[usize::from(byte)] || b[usize::from(byte)]
+    };
+
+    let http_guard = |payload: &[u8]| {
+        checks::http::may_start_request(payload) || checks::http::may_start_response(payload)
+    };
+    let request: &[u8] = b"GET / HTTP/1.1\r\nHost: a\r\n\r\n";
+    covers(
+        "la garde HTTP",
+        &[ProbeId::Http],
+        &either(
+            starts(
+                &http_guard,
+                &[
+                    b"ET / HTTP/1.1\r\n\r\n",
+                    b"EAD / HTTP/1.1\r\n\r\n",
+                    b"OST / HTTP/1.1\r\n\r\n",
+                    b"UT / HTTP/1.1\r\n\r\n",
+                    b"ELETE / HTTP/1.1\r\n\r\n",
+                    b"ONNECT a:1 HTTP/1.1\r\n\r\n",
+                    b"PTIONS * HTTP/1.1\r\n\r\n",
+                    b"RACE / HTTP/1.1\r\n\r\n",
+                    b"ATCH / HTTP/1.1\r\n\r\n",
+                    b"TTP/1.1 200 OK\r\n\r\n",
+                ],
+            ),
+            leads(&http_guard, request),
+        ),
+    );
+    covers(
+        "la garde SIP",
+        &[ProbeId::Sip],
+        &either(
+            starts(
+                &checks::sip::may_start_sip,
+                &[
+                    b"IP/2.0 200 OK\r\n",
+                    b"NVITE sip:a SIP/2.0\r\n",
+                    b"CK sip:a SIP/2.0\r\n",
+                    b"PTIONS sip:a SIP/2.0\r\n",
+                    b"YE sip:a SIP/2.0\r\n",
+                    b"ANCEL sip:a SIP/2.0\r\n",
+                    b"EGISTER sip:a SIP/2.0\r\n",
+                    b"RACK sip:a SIP/2.0\r\n",
+                    b"UBSCRIBE sip:a SIP/2.0\r\n",
+                    b"OTIFY sip:a SIP/2.0\r\n",
+                    b"UBLISH sip:a SIP/2.0\r\n",
+                    b"NFO sip:a SIP/2.0\r\n",
+                    b"EFER sip:a SIP/2.0\r\n",
+                    b"ESSAGE sip:a SIP/2.0\r\n",
+                    b"PDATE sip:a SIP/2.0\r\n",
+                ],
+            ),
+            leads(&checks::sip::may_start_sip, b"INVITE sip:a SIP/2.0\r\n"),
+        ),
+    );
+    let after_lines = |payload: &[u8]| checks::ssh::locate_ssh_identification(payload).is_ok();
+    covers(
+        "l'identification SSH apres d'autres lignes",
+        &[ProbeId::SshAfterLines],
+        &either(
+            starts(&after_lines, &[b"SH-2.0-OpenSSH_9.6\r\n"]),
+            leads(&after_lines, b"\r\nSSH-2.0-OpenSSH_9.6\r\n"),
+        ),
+    );
+    for (family, probe, verbs) in [
+        ("FTP", ProbeId::FtpUnambiguous, &FTP_ONLY_VERBS[..]),
+        ("SMTP", ProbeId::SmtpUnambiguous, &SMTP_ONLY_VERBS[..]),
+        ("NNTP", ProbeId::NntpUnambiguous, &NNTP_ONLY_VERBS[..]),
+    ] {
+        let tails: Vec<Vec<u8>> = verbs
+            .iter()
+            .map(|verb| [&verb.as_bytes()[1..], b" x\r\n"].concat())
+            .collect();
+        let tails: Vec<&[u8]> = tails.iter().map(Vec::as_slice).collect();
+        let accepted = starts(&|payload: &[u8]| starts_with_one_of(payload, verbs), &tails);
+        covers(&format!("un verbe propre a {family}"), &[probe], &|byte| {
+            accepted[usize::from(byte)]
+        });
+    }
+}
