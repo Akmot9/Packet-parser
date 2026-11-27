@@ -27,6 +27,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   Sans LTO, le profil par defaut de cargo que voit un projet qui depend de
   la crate (et celui de `tools/verbench`) : corpus 3 380 -> 1 153, paquet
   de reference 5 440 -> 815, segment TCP sans charge 1 197 -> 606.
+
+  En temps, sur le bench du depot (`benches/`, deux passes alternees sur
+  une meme machine, la meilleure de chaque) : paquet de reference
+  368 -> 79 ns, segment TCP sans charge 88 -> 51 ns, TLS 309 -> 61 ns, DNS
+  620 -> 260 ns, VXLAN 208 -> 120 ns, segment de 60 000 octets non reconnu
+  439 -> 71 ns, ASTERIX multi-blocs 2,44 µs -> 381 ns, sous-ensemble du
+  corpus 297 -> 106 ns par trame. Les trois trames corrompues du bench
+  passent de 85-96 ns a 47-58 ns.
+
   - **Table de dispatch** : une liste de regles par transport et un index
     des ports, derives de `RULES` a la compilation (`RULES` reste la seule
     source declarative) ; les regles a visiter tiennent dans un ensemble de
