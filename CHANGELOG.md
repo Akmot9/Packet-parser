@@ -6,6 +6,12 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+## [13.4.1] - 2026-11-27
+
+Correctif, sans rupture : `parse` est environ trois fois plus rapide sur
+le corpus, a comportement constant (#393), et deux debordements d'entier
+sont corriges sur cible 32 bits.
+
 ### Change
 
 - **Vitesse de `parse`** (#393) : revue de performance de tout le chemin
