@@ -1,7 +1,40 @@
 # Roadmap packet_parser
 
-Etat au 2026-11-23, 13.4.0 : `main` porte la **13.4.0**, que le tag
-`v13.4.0` publie par le workflow. Mineure, sans rupture, elle nomme les
+Etat au 2026-11-27, 13.4.1 : `main` porte la **13.4.1**, que le tag
+`v13.4.1` publie par le workflow. Correctif, sans rupture, elle porte la
+revue de performance de `parse` (#393) et deux corrections sur cible
+32 bits.
+
+**Vitesse de `parse`.** A comportement constant, sur le corpus
+`pcaps_exemple/` entier (399 095 trames) : 1 061 instructions par trame
+contre 3 248, et 0,35 allocation par trame contre 2,06. Le paquet de
+reference passe de 5 556 a 800 instructions, un segment TCP sans charge de
+1 053 a 583, une requete HTTP de 11 348 a 2 402. Sans LTO, le profil que
+voit un projet qui depend de la crate : corpus 3 380 -> 1 153. Ce qui a
+change : la table de dispatch (listes par transport, index des ports, une
+fonction par sonde), un prefiltre prouve sur le premier octet du payload
+(3 sondes au lieu de 23 sur un segment TCP non reconnu), le moteur qui
+ecrit chaque couche a sa place, des sondes qui ne decodent plus (ASTERIX,
+SSH, Modbus), les protocoles texte lus par mots de huit octets, un nom DNS
+decode en une allocation. Aucune etiquette, aucune valeur decodee, aucune
+erreur ne change en 64 bits ; l'API publique non plus. Le detail et la
+verification sont au CHANGELOG.
+
+**Cibles 32 bits.** Deux decodeurs additionnaient en `usize` une longueur
+declaree de 32 bits : avec les controles de debordement, `parse` paniquait
+sur un segment TCP de cinq octets (PostgreSQL) et sur un segment NMF de
+neuf octets. Les deux additions saturent. La suite de tests passe sur
+`i686-unknown-linux-gnu`, que la CI ne teste pas encore (#399).
+
+Reste ouvert apres cette revue : #399 (job 32 bits dans la CI), #400 (copie
+finale du `PacketFlow`), #401 (GIOP en 32 et 64 bits), #402
+(`docs/benchmark-l2-l4.md` a refaire sur la machine du premier releve),
+#403 et #404 (sondes DNS et S7Comm sans decodage), #405 (autres decodeurs
+qui allouent en tant que sondes) ; et toujours #364 (nommer les flux RTP
+sans faux positif). Hors de ce depot : le livre, a passer a la 13.4.1.
+
+Etat anterieur (2026-11-23, 13.4.0) : la **13.4.0 est publiee** (tag
+`v13.4.0`, publication par le workflow). Mineure, sans rupture, elle nomme les
 standards qui restaient sans nom sur le corpus prive de 163 captures de
 terrain (28,66 M de trames) : six decodeurs, decrits ci-dessous dans
 l'ordre de leur livraison, tous du 2026-11-23. Elle porte aussi les
