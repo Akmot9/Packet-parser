@@ -586,7 +586,7 @@ def trend_svg(rows: list[dict[str, int | str]]) -> str:
         f'<text class="title t1" x="{left - 36}" y="26">'
         "Time to parse one reference packet, by published version</text>",
         f'<text class="t2" x="{left - 36}" y="44">'
-        "Nanoseconds, lower is better. One laptop: read the trend, not the exact figures.</text>",
+        "Nanoseconds, lower is better. One machine: read the trend, not the exact figures.</text>",
     ]
 
     for tick in ticks:
@@ -626,7 +626,10 @@ def trend_svg(rows: list[dict[str, int | str]]) -> str:
     # creux (ou qu'il soit, et non dans les seules dernieres versions), arrivee.
     # Le pic est la premiere version du plateau, celle ou la hausse apparait :
     # entre deux versions a 5 % l'une de l'autre, le maximum tient au bruit.
-    lowest = min(range(len(values)), key=values.__getitem__)
+    # Le creux se cherche avant l'arrivee : quand la derniere version est la
+    # plus rapide de toutes, elle a deja son etiquette, et sans cela ni le
+    # creux qui la precede ni le pic qui l'a suivi n'en auraient.
+    lowest = min(range(len(values) - 1), key=values.__getitem__)
     marked = {0: "start", lowest: "middle", len(values) - 1: "end"}
     after = range(lowest + 1, len(values) - 1)
     top = max((values[index] for index in after), default=0)

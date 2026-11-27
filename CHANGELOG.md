@@ -6,6 +6,27 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Outillage
+
+- **`tools/verbench` : releve refait jusqu'a la 13.4.1**, et avec lui
+  `images/perf_by_version.svg`, la courbe du README. `perf_by_version.json`
+  porte 53 mesures, les 52 versions publiees depuis la 1.0.0 et la copie
+  locale. Le paquet de reference se parse en 275 ns en 13.4.1, contre
+  607 ns en 13.4.0 : c'est la version la plus rapide de la serie, sous le
+  creux des 2.x a 4.x (321 ns). La couche 7 passe de 318 a 43 ns, la
+  couche 3 de 46 a 35 ns, la couche 4 de 40 a 27 ns. Toutes les versions
+  sont remesurees dans la meme passe, sur une machine qui n'est pas celle
+  du releve precedent (la 13.4.0 y prenait 715 ns) : les chiffres des deux
+  releves ne se comparent pas entre eux. Cette machine virtuelle partagee
+  est plus bruitee, l'etendue du total entre les 15 passes y est de 20 a
+  24 % en mediane ; deux releves complets faits a la suite s'y recoupent
+  pourtant a 2,8 % pres (0,6 % en mediane).
+- **`report.py --svg`** : le creux etiquete se cherche avant la derniere
+  version. Quand celle-ci est la plus rapide de toutes, ce qui est le cas
+  de la 13.4.1, ni le creux ni le pic qui l'a suivi n'avaient plus
+  d'etiquette. Le sous-titre de la courbe dit « One machine », et plus
+  « One laptop ».
+
 ## [13.4.1] - 2026-11-27
 
 Correctif, sans rupture : `parse` est environ trois fois plus rapide sur

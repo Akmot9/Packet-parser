@@ -62,6 +62,13 @@ un cœur de la machine. Jusque-là `run.sh` tirait chaque version une seule
 fois, juste après sa compilation : dans les mêmes conditions, deux relevés
 s'écartaient de 20 à 86 % sur une même version.
 
+Le 2026-11-27, le relevé qui ajoute la 13.4.1 vient d'une machine virtuelle
+partagée, plus bruitée : l'étendue du total entre les 15 passes y est de
+20 à 24 % en médiane. Deux relevés complets faits à la suite s'y recoupent
+pourtant à 2,8 % près (0,6 % en médiane) : la médiane des passes tient. Les
+chiffres d'une machine ne se comparent pas à ceux d'une autre ; `run.sh`
+remesure toutes les versions à chaque relevé pour cette raison.
+
 Comparez donc les tendances entre versions, pas les nanosecondes exactes,
 et ne concluez rien d'un écart de moins de 3 %. Le paquet de référence est
 un seul cas, le pire pour la couche 7 : sa charge est chiffrée, aucun
