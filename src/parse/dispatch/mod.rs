@@ -27,7 +27,10 @@
 //!   toutes les sondes (#184, #185), et que l'oracle du fuzz recopie ;
 //! - une sonde n'est tentee que si le premier octet du payload peut lui
 //!   convenir ([`first_bytes`]) : les regles ecartees auraient echoue, et le
-//!   verdict reste celui d'un parcours de toute la table.
+//!   verdict reste celui d'un parcours de toute la table. Trois cas ne sont
+//!   pas filtres : une regle terminale, toujours visitee a son rang ; un
+//!   port declare par Decode As ; un payload de
+//!   [`PROVEN_BELOW`](first_bytes::PROVEN_BELOW) octets ou plus.
 
 use std::num::NonZero;
 
