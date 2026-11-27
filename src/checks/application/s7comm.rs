@@ -362,6 +362,7 @@ pub fn extract_s7_protocol_version(packet: &[u8]) -> Result<S7ProtocolVersion, S
 /// `s7_start` is the absolute offset computed from the COTP header
 /// (`4 + cotp.length + 1`); the reported error values keep the absolute
 /// packet offsets, like the historical inline extraction.
+#[inline]
 pub fn extract_s7_header(packet: &[u8], s7_start: usize) -> Result<S7Header, S7CommParseError> {
     let base_end = checked_offset(s7_start, S7_BASE_HEADER_LENGTH, "S7 base header")?;
     validate_s7_header_length(base_end, packet.len())?;
@@ -413,6 +414,7 @@ pub fn extract_s7_header(packet: &[u8], s7_start: usize) -> Result<S7Header, S7C
 /// frame 11):
 /// `+0` spec type, `+1` length, `+2` syntax id, `+3` transport size,
 /// `+4..+5` count, `+6..+7` DB number, `+8` area, `+9..+11` address.
+#[inline]
 pub fn extract_parameter_item(
     data: &[u8],
     offset: usize,

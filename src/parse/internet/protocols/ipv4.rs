@@ -131,6 +131,7 @@ impl<'a> TryFrom<&'a [u8]> for Ipv4Packet<'a> {
     ///
     /// # Returns
     /// * `Result<Ipv4Packet, Ipv4Error>` - The parsed IPv4 packet or an error
+    #[inline]
     fn try_from(data: &'a [u8]) -> Result<Self, Self::Error> {
         validate_ipv4_min_length(data)?;
 
