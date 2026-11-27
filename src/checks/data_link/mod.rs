@@ -89,7 +89,11 @@ mod tests {
     #[test]
     fn vlan_stack_length_treats_overflowing_tag_count_as_too_short() {
         let frame = [0u8; 64];
-        for tags in [usize::MAX, usize::MAX / VLAN_TAG_LEN, 1 << 62] {
+        for tags in [
+            usize::MAX,
+            usize::MAX / VLAN_TAG_LEN,
+            1 << (usize::BITS - 2),
+        ] {
             assert!(matches!(
                 validate_data_link_vlan_stack_length(&frame, tags),
                 Err(DataLinkError::DataLinkTooShort {

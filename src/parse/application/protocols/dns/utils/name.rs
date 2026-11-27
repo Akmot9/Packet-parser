@@ -33,12 +33,27 @@ const MAX_POINTER_JUMPS: usize = 8;
 /// pointeurs compris (RFC 1035 §3.1), est refusé :
 /// [`DnsQueryParseError::OutOfBoundParse`].
 pub fn parse_dns_name(message: &[u8], start: usize) -> Result<(String, usize), DnsQueryParseError> {
+    // Premier parcours : le nom est valide et son texte mesure, sans rien
+    // allouer. Un label UTF-8 se rend tel quel, et un point separe deux
+    // labels.
+    let mut text_len = 0usize;
+    let next = walk_dns_name(message, start, |label| text_len += label.len() + 1)?;
+
     // Allocation justifiée (METHODE_AJOUT_PROTOCOLE.md) : un nom DNS est
     // découpé en labels potentiellement non contigus (compression) — il doit
-    // être reconstruit, pas emprunté.
-    let mut labels: Vec<String> = Vec::new();
-    let next = walk_dns_name(message, start, |label| labels.push(label_text(label)))?;
-    Ok((labels.join("."), next))
+    // être reconstruit, pas emprunté. Une seule, a la taille du texte : seul
+    // un label echappe, plus long que ses octets, la fait grandir.
+    let mut name = String::with_capacity(text_len.saturating_sub(1));
+    let mut first = true;
+    // Second parcours, des memes octets : il ne peut plus echouer.
+    let _ = walk_dns_name(message, start, |label| {
+        if !first {
+            name.push('.');
+        }
+        first = false;
+        push_label_text(&mut name, label);
+    });
+    Ok((name, next))
 }
 
 /// `true` quand chaque label du nom à `start` est de l'UTF-8, donc rendu tel
@@ -120,11 +135,13 @@ fn walk_dns_name<'m>(
 /// tel quel ; un autre prend la forme de presentation de la RFC 1035 §5.1 :
 /// l'ASCII graphique tel quel, `.` et `\` precedes de `\`, tout autre octet
 /// en `\DDD` decimal. `Jägermeister` en Latin-1 devient `J\228germeister`.
-fn label_text(bytes: &[u8]) -> String {
-    if let Ok(text) = core::str::from_utf8(bytes) {
-        return text.to_owned();
+/// Le texte s'ajoute a `text`, sans chaine intermediaire.
+fn push_label_text(text: &mut String, bytes: &[u8]) {
+    if let Ok(label) = core::str::from_utf8(bytes) {
+        text.push_str(label);
+        return;
     }
-    let mut text = String::with_capacity(bytes.len() * 2);
+    text.reserve(bytes.len() * 2);
     for &byte in bytes {
         match byte {
             b'.' | b'\\' => {
@@ -132,10 +149,15 @@ fn label_text(bytes: &[u8]) -> String {
                 text.push(char::from(byte));
             }
             0x21..=0x7E => text.push(char::from(byte)),
-            _ => text.push_str(&format!("\\{byte:03}")),
+            // Trois chiffres decimaux, zeros de tete compris.
+            _ => {
+                text.push('\\');
+                for divisor in [100, 10, 1] {
+                    text.push(char::from(b'0' + byte / divisor % 10));
+                }
+            }
         }
     }
-    text
 }
 
 /// Resource record brut (RFC 1035 §4.1.3), partagé par les sections answer,
@@ -342,6 +364,43 @@ mod tests {
         let result = parse_dns_name(&pointing(60), 200);
 
         assert!(matches!(result, Err(DnsQueryParseError::OutOfBoundParse)));
+    }
+
+    /// La forme de presentation d'un label hors UTF-8 (RFC 1035 §5.1), pour
+    /// chacun des 256 octets : celle que rendait `format!("\\{byte:03}")`.
+    /// L'octet 0xFF qui suit garde le label hors UTF-8 quel que soit le
+    /// premier.
+    #[test]
+    fn test_escaped_label_text_matches_the_formatted_form() {
+        for byte in 0..=u8::MAX {
+            let expected = match byte {
+                b'.' | b'\\' => format!("\\{}", char::from(byte)),
+                0x21..=0x7E => char::from(byte).to_string(),
+                _ => format!("\\{byte:03}"),
+            };
+
+            let mut text = String::new();
+            push_label_text(&mut text, &[byte, 0xFF]);
+
+            assert_eq!(text, format!("{expected}\\255"), "octet {byte:#04x}");
+        }
+    }
+
+    /// Le texte d'un nom : labels UTF-8 tels quels, un point entre deux
+    /// labels, y compris derriere un pointeur et a cote d'un label echappe.
+    #[test]
+    fn test_parse_dns_name_joins_labels_with_dots() {
+        // Racine seule : nom vide.
+        assert_eq!(parse_dns_name(&[0], 0).unwrap(), (String::new(), 1));
+
+        let mut data = vec![2, b'a', 0xE9, 3, b'o', b'r', b'g', 0];
+        let suffix = data.len();
+        data.extend_from_slice(&[1, b'x', 2, 0xC3, 0xA9, 0xC0, 0x00]);
+
+        let (name, offset) = parse_dns_name(&data, suffix).unwrap();
+
+        assert_eq!(name, "x.\u{e9}.a\\233.org");
+        assert_eq!(offset, data.len());
     }
 
     #[test]

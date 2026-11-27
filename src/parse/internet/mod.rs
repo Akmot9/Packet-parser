@@ -132,8 +132,8 @@ impl<'a> Internet<'a> {
     ) -> Result<Self, InternetError> {
         match protocol {
             NetworkProtocol::Arp => Ok(Self::from_arp(ArpPacket::try_from(payload)?)),
-            NetworkProtocol::Ipv4 => Ok(Self::from_ipv4(ipv4::Ipv4Packet::try_from(payload)?)),
-            NetworkProtocol::Ipv6 => Ok(Self::from_ipv6(ipv6::Ipv6Packet::try_from(payload)?)),
+            NetworkProtocol::Ipv4 => Self::try_from_ipv4(payload),
+            NetworkProtocol::Ipv6 => Self::try_from_ipv6(payload),
             NetworkProtocol::Profinet => {
                 // Toute trame RT est valide par son Frame ID ; seul un Frame
                 // ID DCP doit porter un message DCP lisible (#133).
@@ -157,6 +157,21 @@ impl<'a> Internet<'a> {
         }
     }
 
+    /// Le bras IPv4 de [`try_from_network_parts`](Self::try_from_network_parts),
+    /// que le moteur appelle directement : en ligne, la couche s'ecrit a
+    /// sa place dans le flux au lieu de passer par un `Result` de 208
+    /// octets commun a tous les protocoles.
+    #[inline(always)]
+    pub(crate) fn try_from_ipv4(payload: &'a [u8]) -> Result<Self, InternetError> {
+        Ok(Self::from_ipv4(ipv4::Ipv4Packet::try_from(payload)?))
+    }
+
+    /// Le bras IPv6, comme [`try_from_ipv4`](Self::try_from_ipv4).
+    #[inline(always)]
+    pub(crate) fn try_from_ipv6(payload: &'a [u8]) -> Result<Self, InternetError> {
+        Ok(Self::from_ipv6(ipv6::Ipv6Packet::try_from(payload)?))
+    }
+
     fn from_arp(arp_packet: ArpPacket) -> Self {
         Internet {
             source: Some(arp_packet.sender_protocol_addr),
@@ -170,6 +185,7 @@ impl<'a> Internet<'a> {
         }
     }
 
+    #[inline(always)]
     fn from_ipv4(ipv4_packet: ipv4::Ipv4Packet<'a>) -> Self {
         let payload_protocol = if ipv4_packet.is_fragmented() {
             None
@@ -179,9 +195,9 @@ impl<'a> Internet<'a> {
 
         Internet {
             source: Some(IpAddr::V4(ipv4_packet.source_addr)),
-            source_type: Some(IpType::from_addr(&IpAddr::V4(ipv4_packet.source_addr))),
+            source_type: Some(IpType::from_ipv4(&ipv4_packet.source_addr)),
             destination: Some(IpAddr::V4(ipv4_packet.dest_addr)),
-            destination_type: Some(IpType::from_addr(&IpAddr::V4(ipv4_packet.dest_addr))),
+            destination_type: Some(IpType::from_ipv4(&ipv4_packet.dest_addr)),
             protocol_name: "IPv4",
             payload_protocol,
             payload: ipv4_packet.payload,
@@ -189,12 +205,13 @@ impl<'a> Internet<'a> {
         }
     }
 
+    #[inline(always)]
     fn from_ipv6(ipv6_packet: ipv6::Ipv6Packet<'a>) -> Self {
         Internet {
             source: Some(IpAddr::V6(ipv6_packet.source_addr)),
-            source_type: Some(IpType::from_addr(&IpAddr::V6(ipv6_packet.source_addr))),
+            source_type: Some(IpType::from_ipv6(&ipv6_packet.source_addr)),
             destination: Some(IpAddr::V6(ipv6_packet.dest_addr)),
-            destination_type: Some(IpType::from_addr(&IpAddr::V6(ipv6_packet.dest_addr))),
+            destination_type: Some(IpType::from_ipv6(&ipv6_packet.dest_addr)),
             protocol_name: "IPv6",
             payload_protocol: ipv6_packet
                 .transport_protocol

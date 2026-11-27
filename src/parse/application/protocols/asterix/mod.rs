@@ -213,104 +213,191 @@ impl<'a> TryFrom<&'a [u8]> for AsterixPacket<'a> {
     type Error = AsterixError;
 
     fn try_from(payload: &'a [u8]) -> Result<Self, Self::Error> {
-        let mut blocks = Vec::new();
-        let mut rest = payload;
-        // Un buffer vide n'est pas un datagramme : au moins un bloc.
-        loop {
-            let (category, length) = read_block_header(rest)?;
-            let uap = uap_for(category).ok_or(AsterixError::UnsupportedCategory(category))?;
-            let body = &rest[ASTERIX_BLOCK_HEADER_LEN..length];
-            let records = parse_records(uap, body)?;
-            blocks.push(AsterixDataBlock {
-                category,
-                // `read_block_header` borne `length` par un u16.
-                length: u16::try_from(length).unwrap_or(u16::MAX),
-                records,
-            });
-            rest = &rest[length..];
-            if rest.is_empty() {
-                break;
-            }
-        }
-        Ok(AsterixPacket { blocks })
+        let mut decoded = Decoded::default();
+        walk_datagram(payload, &mut decoded)?;
+        Ok(AsterixPacket {
+            blocks: decoded.blocks,
+        })
     }
 }
 
-/// Decoupe les records d'un data block jusqu'a son dernier octet.
-fn parse_records<'a>(
-    uap: &'static Uap,
-    body: &'a [u8],
-) -> Result<Vec<AsterixRecord<'a>>, AsterixError> {
-    let mut records = Vec::new();
-    let mut rest = body;
-    while !rest.is_empty() {
-        let (record, consumed) = parse_record(uap, rest)?;
-        records.push(record);
-        rest = &rest[consumed..];
+impl AsterixPacket<'_> {
+    /// Sonde a l'aveugle sur UDP : le datagramme se decoupe-t-il en entier
+    /// selon les UAP connus ? Meme parcours que le decodeur, donc meme
+    /// decision que `try_from(payload).is_ok()`, sans rien construire ni
+    /// allouer.
+    pub(crate) fn is_blind_udp_match(payload: &[u8]) -> bool {
+        walk_datagram(payload, &mut Discard).is_ok()
     }
-    if records.is_empty() {
-        // Inatteignable : `read_block_header` exige un corps non vide. Garde
-        // le sens du type d'erreur si cette borne bouge.
-        return Err(AsterixError::BlockNotConsumed {
-            category: uap.category,
+}
+
+/// Destinataire du decoupage d'un datagramme. Le decodeur et la sonde
+/// partagent le meme parcours ([`walk_datagram`]) et ne different que par
+/// ce qu'ils en retiennent : l'un et l'autre acceptent donc exactement les
+/// memes octets.
+trait Sink<'a> {
+    /// Debut d'un record : son FSPEC, deja borne par l'UAP, annonce
+    /// `count` items.
+    fn expect_items(&mut self, count: usize);
+    fn item(&mut self, item: AsterixItem<'a>);
+    /// Fin d'un record : les items remis depuis le precedent sont les siens.
+    fn record(&mut self, category: u8, fspec: &'a [u8]);
+    /// Fin d'un data block : les records remis depuis le precedent sont
+    /// les siens.
+    fn block(&mut self, category: u8, length: u16);
+}
+
+/// Le decodeur : chaque record emporte ses items, chaque bloc ses records.
+#[derive(Default)]
+struct Decoded<'a> {
+    blocks: Vec<AsterixDataBlock<'a>>,
+    records: Vec<AsterixRecord<'a>>,
+    items: Vec<AsterixItem<'a>>,
+}
+
+impl<'a> Sink<'a> for Decoded<'a> {
+    fn expect_items(&mut self, count: usize) {
+        // Une allocation par record, a sa taille, au lieu de la croissance
+        // par doublement de `push` (4, 8, 16, 32 items).
+        self.items.reserve_exact(count);
+    }
+
+    fn item(&mut self, item: AsterixItem<'a>) {
+        self.items.push(item);
+    }
+
+    fn record(&mut self, category: u8, fspec: &'a [u8]) {
+        self.records.push(AsterixRecord {
+            category,
+            fspec,
+            items: std::mem::take(&mut self.items),
         });
     }
-    Ok(records)
+
+    fn block(&mut self, category: u8, length: u16) {
+        self.blocks.push(AsterixDataBlock {
+            category,
+            length,
+            records: std::mem::take(&mut self.records),
+        });
+    }
+}
+
+/// La sonde : seule la decision compte.
+struct Discard;
+
+impl<'a> Sink<'a> for Discard {
+    fn expect_items(&mut self, _count: usize) {}
+
+    fn item(&mut self, _item: AsterixItem<'a>) {}
+
+    fn record(&mut self, _category: u8, _fspec: &'a [u8]) {}
+
+    fn block(&mut self, _category: u8, _length: u16) {}
+}
+
+/// Decoupe un datagramme en data blocks jusqu'a son dernier octet, et
+/// chaque bloc en records.
+fn walk_datagram<'a, S: Sink<'a>>(payload: &'a [u8], sink: &mut S) -> Result<(), AsterixError> {
+    let mut rest = payload;
+    // Un buffer vide n'est pas un datagramme : au moins un bloc.
+    loop {
+        let (category, length) = read_block_header(rest)?;
+        let uap = uap_for(category).ok_or(AsterixError::UnsupportedCategory(category))?;
+        let mut body = &rest[ASTERIX_BLOCK_HEADER_LEN..length];
+        if body.is_empty() {
+            // Inatteignable : `read_block_header` exige un corps non vide.
+            // Garde le sens du type d'erreur si cette borne bouge.
+            return Err(AsterixError::BlockNotConsumed { category });
+        }
+        // Les records, jusqu'au dernier octet du bloc.
+        while !body.is_empty() {
+            let consumed = walk_record(uap, body, sink)?;
+            body = &body[consumed..];
+        }
+        // `read_block_header` borne `length` par un u16.
+        sink.block(category, u16::try_from(length).unwrap_or(u16::MAX));
+        rest = &rest[length..];
+        if rest.is_empty() {
+            return Ok(());
+        }
+    }
 }
 
 /// Decoupe un record : son FSPEC, puis chaque item annonce, dans l'ordre
-/// des FRN. Rend le record et le nombre d'octets consommes.
-fn parse_record<'a>(
+/// des FRN. Remet les items et le record a `sink`, rend le nombre d'octets
+/// consommes.
+fn walk_record<'a, S: Sink<'a>>(
     uap: &'static Uap,
     buf: &'a [u8],
-) -> Result<(AsterixRecord<'a>, usize), AsterixError> {
+    sink: &mut S,
+) -> Result<usize, AsterixError> {
     let category = uap.category;
     let fspec_len = fx_extent(buf).ok_or(AsterixError::FspecOverflow { category })?;
-    let fspec = &buf[..fspec_len];
-    let uap = select_uap(uap, fspec, &buf[fspec_len..]);
+    let (fspec, mut rest) = buf.split_at(fspec_len);
+    let uap = select_uap(uap, fspec, rest);
     if fspec_len > uap.max_fspec_octets() {
         return Err(AsterixError::FspecOverflow { category });
     }
-    let mut items = Vec::new();
-    let mut pos = fspec_len;
+    // Un item par bit de presence, le bit 1 de chaque octet etant le FX.
+    sink.expect_items(
+        fspec
+            .iter()
+            .map(|octet| (octet & 0xfe).count_ones() as usize)
+            .sum(),
+    );
+    let mut empty = true;
     for (octet_index, octet) in fspec.iter().enumerate() {
-        for bit in 0..7u8 {
-            if octet & (0x80 >> bit) == 0 {
-                continue;
-            }
-            // Sept FRN par octet ; `octet_index` < 7 et `bit` < 7, donc
-            // le FRN tient dans un u8.
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "`octet_index` < 7 : le FRN tient dans un u8"
-            )]
-            let frn = (octet_index * 7) as u8 + bit + 1;
-            let spec = uap
-                .item(frn)
-                .ok_or(AsterixError::UnknownFrn { category, frn })?;
-            let len = match spec.format {
-                ItemFormat::Rfs => rfs_len(uap, spec, fspec, &buf[pos..])?,
-                _ => item_len(uap, spec, &buf[pos..])?,
+        for rank in presence_bits(*octet) {
+            // Sept FRN par octet, numerotes a partir de 1.
+            let index = octet_index * 7 + rank;
+            let Some(Some(spec)) = uap.items.get(index) else {
+                return Err(AsterixError::UnknownFrn {
+                    category,
+                    frn: frn_of(index),
+                });
             };
-            items.push(AsterixItem {
-                frn,
+            let (data, tail) = match spec.format {
+                // Quatre items sur cinq du corpus : longueur fixe, sans
+                // appel. Trop court, `item_len` rend l'erreur.
+                ItemFormat::Fixed(len) if len <= rest.len() => rest.split_at(len),
+                ItemFormat::Rfs => rest.split_at(rfs_len(uap, spec, fspec, rest)?),
+                _ => rest.split_at(item_len(uap, spec, rest)?),
+            };
+            sink.item(AsterixItem {
+                frn: frn_of(index),
                 id: spec.id,
-                data: &buf[pos..pos + len],
+                data,
             });
-            pos += len;
+            empty = false;
+            rest = tail;
         }
     }
-    if items.is_empty() {
+    if empty {
         return Err(AsterixError::EmptyRecord { category });
     }
-    Ok((
-        AsterixRecord {
-            category,
-            fspec,
-            items,
-        },
-        pos,
-    ))
+    sink.record(category, fspec);
+    Ok(buf.len() - rest.len())
+}
+
+/// Le FRN d'un rang dans l'UAP. Sature : un rang hors du u8 n'a pas d'item,
+/// le FSPEC d'un UAP connu tenant en sept octets.
+fn frn_of(index: usize) -> u8 {
+    u8::try_from(index + 1).unwrap_or(u8::MAX)
+}
+
+/// Les bits de presence poses d'un octet de FSPEC ou de primary subfield,
+/// par rang : 0 pour le bit 8 (poids fort, premier annonce) a 6 pour le
+/// bit 2. Le bit 1 est le FX, pas une presence.
+fn presence_bits(octet: u8) -> impl Iterator<Item = usize> {
+    let mut pending = u32::from(octet & 0xfe);
+    std::iter::from_fn(move || {
+        // Le bit pose de poids le plus fort : du numero 7 (rang 0) au
+        // numero 1 (rang 6).
+        let top = pending.checked_ilog2()?;
+        pending &= !(1 << top);
+        Some(7 - top as usize)
+    })
 }
 
 /// L'UAP du record quand la categorie en a plusieurs : CAT 001 lit le bit
@@ -379,53 +466,62 @@ fn walk_compound<'a>(
         actual: buf.len(),
     };
     let primary_len = fx_extent(buf).ok_or_else(|| truncated(buf.len() + 1))?;
-    let primary = &buf[..primary_len];
-    let mut pos = primary_len;
+    let (primary, mut rest) = buf.split_at(primary_len);
     for (octet_index, octet) in primary.iter().enumerate() {
-        for bit in 0..7u8 {
-            if octet & (0x80 >> bit) == 0 {
-                continue;
-            }
-            let index = octet_index * 7 + usize::from(bit);
-            let unknown = AsterixError::UnknownSubfield {
-                item,
-                // Numerotation a partir de 1, comme la specification ;
-                // `index` est borne par la longueur du primary subfield.
-                subfield: u8::try_from(index + 1).unwrap_or(u8::MAX),
+        for rank in presence_bits(*octet) {
+            let index = octet_index * 7 + rank;
+            let (data, tail) = match subfields.get(index) {
+                // Le cas courant : longueur fixe, sans appel. Trop court,
+                // `subfield_len` rend l'erreur.
+                Some(Subfield::Fixed(len)) if *len <= rest.len() => rest.split_at(*len),
+                _ => rest.split_at(subfield_len(buf, rest, subfields, index, item)?),
             };
-            let rest = &buf[pos..];
-            let sub_truncated = |needed: usize| AsterixError::TruncatedItem {
-                item,
-                needed: pos + needed,
-                actual: buf.len(),
-            };
-            // Les erreurs des formes extensibles comptent depuis le debut du
-            // sous-champ : les ramener au debut de l'item.
-            let rebase = |error: AsterixError| match error {
-                AsterixError::TruncatedItem { item, needed, .. } => AsterixError::TruncatedItem {
-                    item,
-                    needed: pos + needed,
-                    actual: buf.len(),
-                },
-                other => other,
-            };
-            let len = match subfields.get(index).ok_or(unknown.clone())? {
-                Subfield::Spare => return Err(unknown),
-                Subfield::Fixed(len) => ensure(rest, *len, sub_truncated)?,
-                Subfield::Variable => {
-                    fx_extent(rest).ok_or_else(|| sub_truncated(rest.len() + 1))?
-                }
-                Subfield::Repetitive(each) => repetitive_len(rest, *each, sub_truncated)?,
-                Subfield::Extended(extents) => extended_len(rest, extents, item).map_err(rebase)?,
-                Subfield::RepetitiveFx(each) => {
-                    repetitive_fx_len(rest, *each, item).map_err(rebase)?
-                }
-            };
-            visit(index, &rest[..len]);
-            pos += len;
+            visit(index, data);
+            rest = tail;
         }
     }
-    Ok(pos)
+    Ok(buf.len() - rest.len())
+}
+
+/// Longueur du sous-champ d'index `index` (a partir de 0) de l'item compose
+/// `buf`, dont il occupe le debut de `rest`, fin de `buf`.
+fn subfield_len(
+    buf: &[u8],
+    rest: &[u8],
+    subfields: &'static [Subfield],
+    index: usize,
+    item: &'static str,
+) -> Result<usize, AsterixError> {
+    let pos = buf.len() - rest.len();
+    let unknown = || AsterixError::UnknownSubfield {
+        item,
+        // Numerotation a partir de 1, comme la specification ;
+        // `index` est borne par la longueur du primary subfield.
+        subfield: u8::try_from(index + 1).unwrap_or(u8::MAX),
+    };
+    let sub_truncated = |needed: usize| AsterixError::TruncatedItem {
+        item,
+        needed: pos + needed,
+        actual: buf.len(),
+    };
+    // Les erreurs des formes extensibles comptent depuis le debut du
+    // sous-champ : les ramener au debut de l'item.
+    let rebase = |error: AsterixError| match error {
+        AsterixError::TruncatedItem { item, needed, .. } => AsterixError::TruncatedItem {
+            item,
+            needed: pos + needed,
+            actual: buf.len(),
+        },
+        other => other,
+    };
+    match subfields.get(index).ok_or_else(unknown)? {
+        Subfield::Spare => Err(unknown()),
+        Subfield::Fixed(len) => ensure(rest, *len, sub_truncated),
+        Subfield::Variable => fx_extent(rest).ok_or_else(|| sub_truncated(rest.len() + 1)),
+        Subfield::Repetitive(each) => repetitive_len(rest, *each, sub_truncated),
+        Subfield::Extended(extents) => extended_len(rest, extents, item).map_err(rebase),
+        Subfield::RepetitiveFx(each) => repetitive_fx_len(rest, *each, item).map_err(rebase),
+    }
 }
 
 fn ensure(
@@ -735,6 +831,86 @@ mod tests {
         );
     }
 
+    /// Octets synthetiques : les erreurs d'un sous-champ comptent depuis le
+    /// debut de l'item compose, quelle que soit sa forme.
+    #[test]
+    fn test_compound_subfield_errors_count_from_the_start_of_the_item() {
+        for (bytes, expected) in [
+            // I048/130 : SRL et APD annonces, APD absent.
+            (
+                &[0x30, 0x00, 0x06, 0x02, 0x82, 0xaa][..],
+                AsterixError::TruncatedItem {
+                    item: "I048/130",
+                    needed: 3,
+                    actual: 2,
+                },
+            ),
+            // Primary subfield dont le FX ne retombe pas.
+            (
+                &[0x30, 0x00, 0x05, 0x02, 0x83][..],
+                AsterixError::TruncatedItem {
+                    item: "I048/130",
+                    needed: 2,
+                    actual: 1,
+                },
+            ),
+            // Huitieme sous-champ : I048/130 n'en definit que sept.
+            (
+                &[0x30, 0x00, 0x08, 0x02, 0x81, 0x80, 0xaa, 0xbb][..],
+                AsterixError::UnknownSubfield {
+                    item: "I048/130",
+                    subfield: 8,
+                },
+            ),
+            // I048/120 (FRN 20) : CAL, puis RDS repetitif, REP 2 pour six
+            // octets.
+            (
+                &[
+                    0x30, 0x00, 0x10, 0x01, 0x01, 0x04, 0xc0, 0x11, 0x22, 0x02, 0xa1, 0xa2, 0xa3,
+                    0xa4, 0xa5, 0xa6,
+                ][..],
+                AsterixError::TruncatedItem {
+                    item: "I048/120",
+                    needed: 16,
+                    actual: 10,
+                },
+            ),
+            // I021/110 (FRN 34) : TIS, extensible a un seul extent, absent
+            // puis au FX pose.
+            (
+                &[0x15, 0x00, 0x09, 0x01, 0x01, 0x01, 0x01, 0x04, 0x80][..],
+                AsterixError::TruncatedItem {
+                    item: "I021/110",
+                    needed: 2,
+                    actual: 1,
+                },
+            ),
+            (
+                &[0x15, 0x00, 0x0a, 0x01, 0x01, 0x01, 0x01, 0x04, 0x80, 0x01][..],
+                AsterixError::ExtentOverflow { item: "I021/110" },
+            ),
+        ] {
+            assert_eq!(
+                AsterixPacket::try_from(bytes),
+                Err(expected),
+                "{bytes:02x?}"
+            );
+        }
+
+        // La forme valide de I048/120 : CAL sur deux octets, puis un RDS.
+        let datagram = [
+            0x30, 0x00, 0x10, 0x01, 0x01, 0x04, 0xc0, 0x11, 0x22, 0x01, 0xa1, 0xa2, 0xa3, 0xa4,
+            0xa5, 0xa6,
+        ];
+        let packet = AsterixPacket::try_from(&datagram[..]).expect("I048/120");
+        let record = &packet.blocks[0].records[0];
+        assert_eq!(record.subfield("I048/120", 1), Some(&[0x11, 0x22][..]));
+        assert_eq!(
+            record.subfield("I048/120", 2),
+            Some(&[0x01, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6][..])
+        );
+    }
+
     #[test]
     fn test_repetitive_and_explicit_items() {
         // I048/250 (FRN 10) avec REP 2 (17 octets), puis I048/SP (FRN 27)
@@ -917,6 +1093,192 @@ mod tests {
                 "{bytes:02x?}"
             );
         }
+    }
+
+    /// Pour chaque octet, les rangs de ses bits de presence tels qu'un test
+    /// bit a bit les lirait, du bit 8 au bit 2 ; le FX n'en est pas un.
+    #[test]
+    fn test_presence_bits_lists_set_bits_from_the_most_significant() {
+        assert_eq!(presence_bits(0x82).collect::<Vec<_>>(), [0, 6]);
+        assert_eq!(presence_bits(0x01).count(), 0);
+        for octet in 0..=u8::MAX {
+            let expected: Vec<usize> = (0..7).filter(|bit| octet & (0x80 >> bit) != 0).collect();
+            assert_eq!(
+                presence_bits(octet).collect::<Vec<_>>(),
+                expected,
+                "{octet:#04x}"
+            );
+        }
+    }
+
+    /// Datagrammes synthetiques des tests ci-dessus, pour les formes que le
+    /// corpus ne porte pas (RFS, UAP des pistes de CAT 001) ou peu.
+    const SYNTHETIC: [&[u8]; 9] = [
+        &MINIMAL_048,
+        // Deux blocs : 034 (deux records) puis 048.
+        &[
+            0x22, 0x00, 0x0a, 0x80, 0x00, 0x01, 0xc0, 0x00, 0x01, 0x01, 0x30, 0x00, 0x06, 0x80,
+            0x19, 0xc9,
+        ],
+        // Compose : I048/130, SRL et APD.
+        &[0x30, 0x00, 0x07, 0x02, 0x82, 0xaa, 0xbb],
+        // Repetitif (I048/250, REP 1) puis explicite (I048/SP).
+        &[
+            0x30, 0x00, 0x13, 0x01, 0x21, 0x01, 0x04, 0x01, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+            0x11, 0x11, 0x03, 0xde, 0xad,
+        ],
+        // Extensible borne : I048/020, six extents.
+        &[0x30, 0x00, 0x0a, 0x20, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00],
+        // Repetitif FX : I062/510, trois unites de trois octets.
+        &[
+            0x3e, 0x00, 0x10, 0x01, 0x01, 0x01, 0x08, 0x0b, 0x03, 0x81, 0x0c, 0x00, 0x01, 0x0d,
+            0x00, 0x02,
+        ],
+        // RFS : CAT 002, I002/020 puis I002/000.
+        &[
+            0x02, 0x00, 0x0c, 0x81, 0x02, 0x00, 0x01, 0x02, 0x03, 0x07, 0x02, 0x01,
+        ],
+        // CAT 001 : un plot, puis une piste.
+        &[
+            0x01, 0x00, 0x0b, 0xe0, 0x00, 0x01, 0x00, 0x11, 0x22, 0x33, 0x44,
+        ],
+        &[0x01, 0x00, 0x09, 0xe0, 0x00, 0x01, 0x80, 0x0f, 0xff],
+    ];
+
+    /// Les payloads de transport des captures de
+    /// `pcaps_exemple/protocols/asterix/`, par capture, et son flux brut
+    /// `cat21_re.ast`. Vide hors du depot : l'archive publiee n'embarque
+    /// pas le corpus.
+    fn corpus_payloads() -> Vec<Vec<Vec<u8>>> {
+        use pcap_file::pcap::PcapReader;
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("pcaps_exemple/protocols/asterix");
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            return Vec::new();
+        };
+        let mut paths: Vec<_> = entries.map(|entry| entry.unwrap().path()).collect();
+        paths.sort();
+        let mut captures = Vec::new();
+        for path in paths {
+            match path.extension().and_then(|extension| extension.to_str()) {
+                Some("ast") => captures.push(vec![std::fs::read(&path).unwrap()]),
+                Some("pcap") => {
+                    let mut reader = PcapReader::new(std::fs::File::open(&path).unwrap()).unwrap();
+                    let link_type = crate::LinkType::from(u32::from(reader.header().datalink));
+                    let mut payloads = Vec::new();
+                    while let Some(packet) = reader.next_raw_packet() {
+                        let packet = packet.unwrap();
+                        let payload = crate::parse(link_type, &packet.data)
+                            .ok()
+                            .and_then(|flow| flow.transport)
+                            .and_then(|transport| transport.payload);
+                        if let Some(payload) = payload {
+                            payloads.push(payload.to_vec());
+                        }
+                    }
+                    captures.push(payloads);
+                }
+                _ => {}
+            }
+        }
+        captures
+    }
+
+    /// La sonde et le decodeur rendent la meme decision ; rend celle-ci.
+    fn assert_probe_agrees(bytes: &[u8]) -> bool {
+        let decoded = AsterixPacket::try_from(bytes).is_ok();
+        assert_eq!(
+            AsterixPacket::is_blind_udp_match(bytes),
+            decoded,
+            "{bytes:02x?}"
+        );
+        decoded
+    }
+
+    /// Troncatures et alterations d'un octet (bit FX, bit de poids fort,
+    /// valeurs extremes, increment), aux positions espacees de `step`.
+    /// Rend le nombre de variantes acceptees et refusees.
+    fn assert_probe_agrees_on_mutations(bytes: &[u8], step: usize) -> (usize, usize) {
+        let (mut accepted, mut rejected) = (0, 0);
+        let mut check = |candidate: &[u8]| {
+            if assert_probe_agrees(candidate) {
+                accepted += 1;
+            } else {
+                rejected += 1;
+            }
+        };
+        let mut mutated = bytes.to_vec();
+        for position in (0..bytes.len()).step_by(step) {
+            check(&bytes[..position]);
+            let original = bytes[position];
+            for value in [
+                original ^ 0x01,
+                original ^ 0x80,
+                0x00,
+                0xff,
+                original.wrapping_add(1),
+            ] {
+                mutated[position] = value;
+                check(&mutated);
+            }
+            mutated[position] = original;
+        }
+        // Un octet de plus, puis le datagramme deux fois de suite.
+        mutated.push(0x00);
+        check(&mutated);
+        mutated.pop();
+        mutated.extend_from_slice(bytes);
+        check(&mutated);
+        (accepted, rejected)
+    }
+
+    /// La sonde du dispatch (`is_blind_udp_match`) ne construit rien : elle
+    /// doit rendre, pour tout buffer, la decision de `try_from`. Verifie
+    /// sur les datagrammes synthetiques (chaque octet a chacune de ses 256
+    /// valeurs) et sur les trames reelles du corpus et leurs mutations.
+    #[test]
+    fn test_probe_agrees_with_the_decoder() {
+        assert_probe_agrees(&[]);
+        for datagram in SYNTHETIC {
+            assert!(assert_probe_agrees(datagram), "{datagram:02x?}");
+            let mut mutated = datagram.to_vec();
+            for position in 0..datagram.len() {
+                assert_probe_agrees(&datagram[..position]);
+                for value in 0..=u8::MAX {
+                    mutated[position] = value;
+                    assert_probe_agrees(&mutated);
+                }
+                mutated[position] = datagram[position];
+            }
+        }
+
+        let captures = corpus_payloads();
+        if captures.is_empty() {
+            return;
+        }
+        let (mut frames, mut decoded) = (0, 0);
+        let (mut accepted, mut rejected) = (0, 0);
+        for payloads in &captures {
+            for (index, payload) in payloads.iter().enumerate() {
+                frames += 1;
+                decoded += usize::from(assert_probe_agrees(payload));
+                // Mutations : les premieres trames de chaque capture, puis
+                // une sur 97 ; au plus 64 positions par trame.
+                if index < 24 || index % 97 == 0 {
+                    let step = payload.len().div_ceil(64).max(1);
+                    let (ok, ko) = assert_probe_agrees_on_mutations(payload, step);
+                    accepted += ok;
+                    rejected += ko;
+                }
+            }
+        }
+        // Le corpus est bien celui du depot, et les mutations exercent les
+        // deux decisions.
+        assert!(frames > 50_000, "{frames} trames");
+        assert!(decoded > 44_000, "{decoded} datagrammes decodes");
+        assert!(accepted > 10_000, "{accepted} mutations acceptees");
+        assert!(rejected > 10_000, "{rejected} mutations refusees");
     }
 
     /// Octets synthetiques : CAT 001, le bit TYP de I001/020 choisit l'UAP.

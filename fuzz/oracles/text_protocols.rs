@@ -34,9 +34,9 @@ pub const NNTP_ONLY_VERBS: [&str; 7] = [
     "NEWNEWS",
 ];
 
-/// Miroir de `is_text_protocol_port` : ports standards de la famille texte,
-/// ou un verbe distinctif est du contenu en transit (corps DATA, article),
-/// jamais une commande d'un autre protocole.
+/// Miroir de `TEXT_PROTOCOL_PORTS` (`src/parse/dispatch/ports.rs`) : ports
+/// standards de la famille texte, ou un verbe distinctif est du contenu en
+/// transit (corps DATA, article), jamais une commande d'un autre protocole.
 pub const TEXT_PROTOCOL_PORTS: [u16; 4] = [21, 25, 587, 119];
 
 /// Port de chaque etiquette texte, pour les regles a port de la table.

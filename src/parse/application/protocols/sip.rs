@@ -28,10 +28,10 @@ use std::convert::TryFrom;
 
 use crate::{
     checks::application::sip::{
-        extract_sip_content_length, extract_sip_cseq, extract_sip_header_line,
-        extract_sip_status_code, extract_sip_text, is_sip_header, is_sip_version, known_sip_method,
-        sip_header_alias, sip_header_lines, split_sip_head, strip_status_line_version,
-        validate_sip_request_uri,
+        SipCoreHeader, extract_sip_content_length, extract_sip_cseq, extract_sip_header_line,
+        extract_sip_status_code, extract_sip_text, is_sip_version, known_sip_method,
+        sip_core_header, sip_header_alias, sip_header_lines, split_sip_head, split_sip_header_line,
+        split_sip_start_line, strip_status_line_version, validate_sip_request_uri,
     },
     errors::application::sip::SipError,
 };
@@ -147,7 +147,7 @@ impl<'a> SipMessage<'a> {
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct SipHeaders<'a> {
     // Lignes d'en-tete, sans la ligne de depart ni la ligne vide finale.
-    // Chaque ligne logique est passee par `extract_sip_header_line` au
+    // Chaque ligne logique est passee par `split_sip_header_line` au
     // parsing.
     block: &'a str,
 }
@@ -221,7 +221,7 @@ impl<'a> TryFrom<&'a [u8]> for SipMessage<'a> {
     fn try_from(payload: &'a [u8]) -> Result<Self, SipError> {
         let (head, rest) = split_sip_head(payload)?;
         let head = extract_sip_text(head)?;
-        let (start, block) = head.split_once("\r\n").unwrap_or((head, ""));
+        let (start, block) = split_sip_start_line(head);
         let start_line = parse_start_line(start)?;
 
         let mut via = None;
@@ -231,22 +231,24 @@ impl<'a> TryFrom<&'a [u8]> for SipMessage<'a> {
         let mut cseq = None;
         let mut content_length = None;
         for line in sip_header_lines(block) {
-            let (name, value) = extract_sip_header_line(line)?;
-            let slot = match () {
-                _ if is_sip_header(name, "Via") => &mut via,
-                _ if is_sip_header(name, "From") => &mut from,
-                _ if is_sip_header(name, "To") => &mut to,
-                _ if is_sip_header(name, "Call-ID") => &mut call_id,
-                _ if is_sip_header(name, "CSeq") => &mut cseq,
-                _ if is_sip_header(name, "Content-Length") => &mut content_length,
-                // Les autres en-tetes sont valides, et lus par `headers`.
-                _ => continue,
+            let (name, value) = split_sip_header_line(line)?;
+            // Les autres en-tetes sont valides, et lus par `headers`.
+            let Some(header) = sip_core_header(name) else {
+                continue;
+            };
+            let slot = match header {
+                SipCoreHeader::Via => &mut via,
+                SipCoreHeader::From => &mut from,
+                SipCoreHeader::To => &mut to,
+                SipCoreHeader::CallId => &mut call_id,
+                SipCoreHeader::Cseq => &mut cseq,
+                SipCoreHeader::ContentLength => &mut content_length,
             };
             // La premiere occurrence gagne : le Via du haut est celui du
             // dernier saut.
             if slot.is_none() {
-                *slot = Some(value);
-            } else if is_sip_header(name, "Content-Length") {
+                *slot = Some(value.trim());
+            } else if header == SipCoreHeader::ContentLength {
                 // Seul un champ a liste se repete (§7.3.1) ; deux
                 // Content-Length laisseraient la fin du corps au hasard
                 // (#383).
@@ -296,9 +298,234 @@ impl<'a> TryFrom<&'a [u8]> for SipMessage<'a> {
     }
 }
 
+/// Le decodeur tel qu'il lisait la tete : `CRLF CRLF` par fenetres, lignes
+/// par `str::find`, chaque nom compare aux six en-tetes lus et a leur forme
+/// compacte. La reference des tests differentiels, ici et dans ceux du
+/// dispatch.
+#[cfg(test)]
+pub(crate) mod reference {
+    use super::*;
+
+    fn split_sip_head(payload: &[u8]) -> Result<(&[u8], &[u8]), SipError> {
+        let index = payload
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .ok_or(SipError::MissingHeaderTerminator)?;
+        Ok((&payload[..index], &payload[index + 4..]))
+    }
+
+    pub(crate) fn extract_sip_header_line(line: &str) -> Result<(&str, &str), SipError> {
+        let (name, value) = line.split_once(':').ok_or(SipError::InvalidHeader)?;
+        let name = name.trim_end_matches([' ', '\t']);
+        let is_token = |byte: u8| {
+            byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'-' | b'.' | b'!' | b'%' | b'*' | b'_' | b'+' | b'`' | b'\'' | b'~'
+                )
+        };
+        if name.is_empty() || !name.bytes().all(is_token) {
+            return Err(SipError::InvalidHeader);
+        }
+        Ok((name, value.trim()))
+    }
+
+    pub(crate) fn sip_header_lines(block: &str) -> impl Iterator<Item = &str> {
+        let mut rest = block;
+        std::iter::from_fn(move || {
+            if rest.is_empty() {
+                return None;
+            }
+            let mut searched = 0;
+            loop {
+                let Some(offset) = rest[searched..].find("\r\n") else {
+                    let line = rest;
+                    rest = "";
+                    return Some(line);
+                };
+                let end = searched + offset;
+                let next = end + 2;
+                if matches!(rest.as_bytes().get(next), Some(b' ' | b'\t')) {
+                    searched = next;
+                    continue;
+                }
+                let line = &rest[..end];
+                rest = &rest[next..];
+                return Some(line);
+            }
+        })
+    }
+
+    fn is_sip_header(name: &str, long: &str) -> bool {
+        name.eq_ignore_ascii_case(long)
+            || sip_header_alias(long).is_some_and(|alias| name.eq_ignore_ascii_case(alias))
+    }
+
+    pub(crate) fn parse(payload: &[u8]) -> Result<SipMessage<'_>, SipError> {
+        let (head, rest) = split_sip_head(payload)?;
+        let head = extract_sip_text(head)?;
+        let (start, block) = head.split_once("\r\n").unwrap_or((head, ""));
+        let start_line = parse_start_line(start)?;
+
+        let mut via = None;
+        let mut from = None;
+        let mut to = None;
+        let mut call_id = None;
+        let mut cseq = None;
+        let mut content_length = None;
+        for line in sip_header_lines(block) {
+            let (name, value) = extract_sip_header_line(line)?;
+            let slot = match () {
+                _ if is_sip_header(name, "Via") => &mut via,
+                _ if is_sip_header(name, "From") => &mut from,
+                _ if is_sip_header(name, "To") => &mut to,
+                _ if is_sip_header(name, "Call-ID") => &mut call_id,
+                _ if is_sip_header(name, "CSeq") => &mut cseq,
+                _ if is_sip_header(name, "Content-Length") => &mut content_length,
+                _ => continue,
+            };
+            if slot.is_none() {
+                *slot = Some(value);
+            } else if is_sip_header(name, "Content-Length") {
+                return Err(SipError::DuplicateHeader("Content-Length"));
+            }
+        }
+
+        let via = via.ok_or(SipError::MissingHeader("Via"))?;
+        let from = from.ok_or(SipError::MissingHeader("From"))?;
+        let to = to.ok_or(SipError::MissingHeader("To"))?;
+        let call_id = call_id.ok_or(SipError::MissingHeader("Call-ID"))?;
+        let (sequence, cseq_method) =
+            extract_sip_cseq(cseq.ok_or(SipError::MissingHeader("CSeq"))?)?;
+        if let SipStartLine::Request { method, .. } = start_line
+            && method != cseq_method
+        {
+            return Err(SipError::CseqMethodMismatch {
+                request: known_sip_method(method).unwrap_or_default(),
+                cseq: known_sip_method(cseq_method).unwrap_or_default(),
+            });
+        }
+        let content_length = content_length.map(extract_sip_content_length).transpose()?;
+        let body = match content_length {
+            Some(length) => {
+                let length = usize::try_from(length).unwrap_or(usize::MAX);
+                &rest[..rest.len().min(length)]
+            }
+            None => rest,
+        };
+
+        Ok(SipMessage {
+            start_line,
+            headers: SipHeaders { block },
+            via,
+            from,
+            to,
+            call_id,
+            cseq: SipCseq {
+                sequence,
+                method: cseq_method,
+            },
+            content_length,
+            body,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Le decodeur rend la valeur ou l'erreur de sa reference, et la vue
+    /// sur les en-tetes les memes paires ; rend vrai pour un message decode.
+    /// Les lignes logiques et leur lecture sont aussi comparees sur tout
+    /// payload en UTF-8, decode ou non.
+    fn agrees_with_the_reference(payload: &[u8]) -> bool {
+        let decoded = SipMessage::try_from(payload);
+        assert_eq!(decoded, reference::parse(payload), "{payload:?}");
+        if let Ok(message) = &decoded {
+            let expected: Vec<(&str, &str)> = reference::sip_header_lines(message.headers.block)
+                .filter_map(|line| reference::extract_sip_header_line(line).ok())
+                .collect();
+            let pairs: Vec<(&str, &str)> = message.headers.iter().collect();
+            assert_eq!(pairs, expected, "{payload:?}");
+        }
+        if let Ok(text) = std::str::from_utf8(payload) {
+            let expected: Vec<&str> = reference::sip_header_lines(text).collect();
+            let lines: Vec<&str> = sip_header_lines(text).collect();
+            assert_eq!(lines, expected, "{payload:?}");
+            for line in lines {
+                assert_eq!(
+                    extract_sip_header_line(line),
+                    reference::extract_sip_header_line(line),
+                    "{line:?}"
+                );
+            }
+        }
+        decoded.is_ok()
+    }
+
+    /// Sur les messages des RFC, un message a en-tetes replies et des refus,
+    /// leurs troncatures, des fins de ligne et des blancs inseres a chaque
+    /// position, et chaque octet remplace par les octets qui comptent pour
+    /// la tete : le decodeur rend ce que rendait la lecture d'origine.
+    #[test]
+    fn test_decoder_agrees_with_the_reference() {
+        let folded = replace(
+            RFC_INVITE,
+            "Max-Forwards: 70\r\n",
+            "Subject: I know you're there,\r\n   pick up the phone\r\n\tand talk\r\nl : 3\r\n",
+        );
+        let seeds: [&[u8]; 7] = [
+            RFC_INVITE,
+            RFC_RINGING_COMPACT,
+            &folded,
+            b"OPTIONS sip:carol@chicago.com SIP/2.0\r\nv:a\r\nf:b\r\nt:c\r\ni:d\r\nCSeq:1 OPTIONS\r\n\r\n",
+            b"sip/2.0 200 OK\r\nVIA: a\r\nfrom: b\r\nTO: c\r\ncall-id: d\r\ncseq: 7 BYE\r\nContent-Length: 0\r\ncontent-length: 0\r\n\r\n",
+            b"NOTIFY * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nNT: upnp:rootdevice\r\n\r\n",
+            b"REGISTER sip:caf\xc3\xa9.example SIP/2.0\r\nVia: \xe2\x82\xac\r\nFrom: a\r\nTo: b\r\nCall-ID: c\r\nCSeq: 2 REGISTER\r\n\r\ncorps",
+        ];
+        let (mut accepted, mut checked) = (0, 0);
+        let mut check = |payload: &[u8]| {
+            accepted += usize::from(agrees_with_the_reference(payload));
+            checked += 1;
+        };
+        check(b"");
+        for seed in seeds {
+            check(seed);
+            let mut mutated = seed.to_vec();
+            for position in 0..seed.len() {
+                check(&seed[..position]);
+                let original = seed[position];
+                for value in [
+                    b'\r',
+                    b'\n',
+                    b':',
+                    b' ',
+                    b'\t',
+                    b'v',
+                    b'L',
+                    b'1',
+                    0x00,
+                    0x0c,
+                    0x80,
+                    original ^ 0x20,
+                    original.wrapping_add(1),
+                ] {
+                    mutated[position] = value;
+                    check(&mutated);
+                }
+                mutated[position] = original;
+                for inserted in [&b"\r\n"[..], b"\r\n\r\n", b"\r\n ", b"\r", b":", b" "] {
+                    let mut longer = seed[..position].to_vec();
+                    longer.extend_from_slice(inserted);
+                    longer.extend_from_slice(&seed[position..]);
+                    check(&longer);
+                }
+            }
+        }
+        assert!(checked > 30_000, "{checked} payloads");
+        assert!(accepted > 10_000, "{accepted} messages decodes");
+    }
 
     /// Synthetique : l'INVITE d'exemple de RFC 3261 §24.2 (F1, Alice vers
     /// Bob). La RFC ne montre pas le SDP d'Alice : le corps de 128 octets

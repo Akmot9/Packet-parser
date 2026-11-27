@@ -16,18 +16,143 @@ pub fn parse_payload_as_utf8(payload: &[u8]) -> Result<&str, HttpParseError> {
     std::str::from_utf8(payload).map_err(|_| HttpParseError::InvalidUtf8)
 }
 
-/// Coupe le payload autour du premier `CRLF CRLF` : la tete (ligne de depart
-/// et en-tetes) et le corps, en octets. Sans separateur, tout le payload est
-/// la tete et le corps est vide. Seule la tete est ensuite validee en UTF-8
-/// (#176) : le corps peut etre binaire (image, gzip).
-pub fn split_head_body_bytes(payload: &[u8]) -> (&[u8], &[u8]) {
-    let separator = HEAD_BODY_SEPARATOR.as_bytes();
-    match payload
-        .windows(separator.len())
-        .position(|window| window == separator)
-    {
-        Some(index) => (&payload[..index], &payload[index + separator.len()..]),
-        None => (payload, &[]),
+/// L'octet de poids faible, puis de poids fort, de chaque octet d'un mot.
+pub(crate) const LOW_BITS: u64 = 0x0101_0101_0101_0101;
+pub(crate) const HIGH_BITS: u64 = 0x8080_8080_8080_8080;
+
+/// Indice du premier octet `needle` de `haystack`, lu par mots de huit
+/// octets : une instruction par octet, la ou une boucle octet par octet,
+/// `windows` ou le `find` de `str` en coutent de cinq a dix sur les lignes
+/// d'une tete HTTP.
+///
+/// `word ^ pattern` annule les octets egaux a `needle` ; `(x - LOW_BITS) &
+/// !x & HIGH_BITS` leve alors le bit fort de chaque octet nul. Une retenue
+/// peut le lever a tort sur un octet valant 1, mais seulement au-dessus d'un
+/// octet nul : le bit leve le plus bas designe toujours le premier octet
+/// egal, et lui seul est lu.
+pub(crate) fn find_byte(haystack: &[u8], needle: u8) -> Option<usize> {
+    let pattern = LOW_BITS * u64::from(needle);
+    let mut rest = haystack;
+    let mut index = 0;
+    while let Some((word, after)) = rest.split_first_chunk::<8>() {
+        let x = u64::from_le_bytes(*word) ^ pattern;
+        let found = x.wrapping_sub(LOW_BITS) & !x & HIGH_BITS;
+        if found != 0 {
+            return Some(index + (found.trailing_zeros() / 8) as usize);
+        }
+        rest = after;
+        index += 8;
+    }
+    rest.iter()
+        .position(|byte| *byte == needle)
+        .map(|position| index + position)
+}
+
+/// Indice du premier `CRLF` de `text` : ce que rend `str::find("\r\n")`
+/// sur du texte, sans le chercheur de sous-chaine de la bibliotheque.
+pub(crate) fn find_crlf(text: &[u8]) -> Option<usize> {
+    let mut from = 0;
+    loop {
+        let carriage_return = from + find_byte(text.get(from..)?, b'\r')?;
+        if text.get(carriage_return + 1) == Some(&b'\n') {
+            return Some(carriage_return);
+        }
+        from = carriage_return + 1;
+    }
+}
+
+/// Les lignes de `text` : ce que rend `text.split("\r\n")`, la derniere
+/// ligne, vide ou non, comprise.
+pub(crate) fn crlf_lines(text: &str) -> impl Iterator<Item = &str> {
+    let mut rest = Some(text);
+    std::iter::from_fn(move || {
+        let text = rest?;
+        let end = find_crlf(text.as_bytes());
+        rest = end.and_then(|end| text.get(end + 2..));
+        match end {
+            Some(end) => text.get(..end),
+            None => Some(text),
+        }
+    })
+}
+
+/// Indice du premier `CRLF CRLF` de `payload`, la fin d'une tete HTTP, SIP
+/// ou SSDP. Un `CRLF` que ne suit pas un second ne peut en ouvrir un autre
+/// avant deux octets : la recherche reprend apres lui.
+pub(crate) fn find_head_end(payload: &[u8]) -> Option<usize> {
+    let mut from = 0;
+    loop {
+        let line_end = from + find_crlf(payload.get(from..)?)?;
+        if payload.get(line_end + 2..line_end + 4) == Some(b"\r\n") {
+            return Some(line_end);
+        }
+        from = line_end + 2;
+    }
+}
+
+/// Un message HTTP coupe autour de son premier `CRLF CRLF`, et ce que la
+/// lecture de ses lignes a etabli en chemin.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct HttpHead<'a> {
+    /// La tete, ligne de depart et en-tetes, sans le separateur ; tout le
+    /// payload quand il n'en porte pas. Elle seule est ensuite validee en
+    /// UTF-8 (#176) : le corps peut etre binaire (image, gzip).
+    pub head: &'a [u8],
+    /// Ce qui suit le separateur ; vide sans lui.
+    pub body: &'a [u8],
+    /// Longueur de la ligne de depart, son `CRLF` exclu.
+    pub start_line: usize,
+    /// Faux quand une ligne d'en-tete non vide ne porte pas de `:`, ce que
+    /// refuse `extract_header_line`.
+    pub headers_are_valid: bool,
+}
+
+/// Coupe le payload autour du premier `CRLF CRLF` en lisant ses lignes une
+/// seule fois : la fin de la tete est le premier `CRLF` qu'un autre suit
+/// aussitot, et chaque ligne d'en-tete croisee en chemin est validee. Chercher
+/// le separateur, puis relire la tete ligne par ligne, coutait deux parcours.
+pub(crate) fn split_http_head(payload: &[u8]) -> HttpHead<'_> {
+    let Some(start_line) = find_crlf(payload) else {
+        return HttpHead {
+            head: payload,
+            body: &[],
+            start_line: payload.len(),
+            headers_are_valid: true,
+        };
+    };
+    let mut headers_are_valid = true;
+    // Le `CRLF` qui ferme la derniere ligne lue.
+    let mut line_end = start_line;
+    loop {
+        let rest = payload.get(line_end + 2..).unwrap_or_default();
+        match find_crlf(rest) {
+            // Une ligne vide : le second `CRLF` du separateur.
+            Some(0) => {
+                return HttpHead {
+                    head: payload.get(..line_end).unwrap_or_default(),
+                    body: rest
+                        .get(HEAD_BODY_SEPARATOR.len() / 2..)
+                        .unwrap_or_default(),
+                    start_line,
+                    headers_are_valid,
+                };
+            }
+            Some(length) => {
+                let line = rest.get(..length).unwrap_or_default();
+                headers_are_valid &= find_byte(line, b':').is_some();
+                line_end += 2 + length;
+            }
+            // La derniere ligne, sans `CRLF` : tout le payload est la tete.
+            None => {
+                headers_are_valid &= rest.is_empty() || find_byte(rest, b':').is_some();
+                return HttpHead {
+                    head: payload,
+                    body: &[],
+                    start_line,
+                    headers_are_valid,
+                };
+            }
+        }
     }
 }
 
@@ -72,18 +197,19 @@ pub fn require_uri(part: Option<&str>) -> Result<&str, HttpParseError> {
 /// let arbitrary text be classified as an HTTP request line.
 pub fn require_version(part: Option<&str>) -> Result<&str, HttpParseError> {
     let version = part.ok_or(HttpParseError::MissingVersion)?;
-    let invalid = || HttpParseError::InvalidVersion(version.to_string());
 
-    let digits = version.strip_prefix("HTTP/").ok_or_else(invalid)?;
-    let (major, minor) = match digits.split_once('.') {
-        Some((major, minor)) => (major, Some(minor)),
-        None => (digits, None),
+    // `HTTP/x` ou `HTTP/x.y`, chacun un chiffre ASCII : lus en un motif
+    // d'octets, la ou `strip_prefix` puis `split_once('.')` coutaient 160
+    // instructions par message.
+    let is_valid = match version.as_bytes() {
+        [b'H', b'T', b'T', b'P', b'/', major] => major.is_ascii_digit(),
+        [b'H', b'T', b'T', b'P', b'/', major, b'.', minor] => {
+            major.is_ascii_digit() && minor.is_ascii_digit()
+        }
+        _ => false,
     };
-
-    let is_single_digit =
-        |part: &str| part.len() == 1 && part.starts_with(|c: char| c.is_ascii_digit());
-    if !is_single_digit(major) || minor.is_some_and(|minor| !is_single_digit(minor)) {
-        return Err(invalid());
+    if !is_valid {
+        return Err(HttpParseError::InvalidVersion(version.to_string()));
     }
     Ok(version)
 }
@@ -215,15 +341,200 @@ mod tests {
     }
 
     #[test]
-    fn test_split_head_body_bytes() {
+    fn test_split_http_head() {
         assert_eq!(
-            split_head_body_bytes(b"HTTP/1.1 200 OK\r\nA: b\r\n\r\n\xff\xfe"),
-            (&b"HTTP/1.1 200 OK\r\nA: b"[..], &b"\xff\xfe"[..])
+            split_http_head(b"HTTP/1.1 200 OK\r\nA: b\r\n\r\n\xff\xfe"),
+            HttpHead {
+                head: b"HTTP/1.1 200 OK\r\nA: b",
+                body: b"\xff\xfe",
+                start_line: 15,
+                headers_are_valid: true,
+            }
         );
         assert_eq!(
-            split_head_body_bytes(b"HTTP/1.1 200 OK\r\n"),
-            (&b"HTTP/1.1 200 OK\r\n"[..], &b""[..])
+            split_http_head(b"HTTP/1.1 200 OK\r\n"),
+            HttpHead {
+                head: b"HTTP/1.1 200 OK\r\n",
+                body: b"",
+                start_line: 15,
+                headers_are_valid: true,
+            }
         );
+        assert_eq!(
+            split_http_head(b"GET / HTTP/1.1\r\nA: b\r\nsans deux-points\r\n\r\ncorps: x"),
+            HttpHead {
+                head: b"GET / HTTP/1.1\r\nA: b\r\nsans deux-points",
+                body: b"corps: x",
+                start_line: 14,
+                headers_are_valid: false,
+            }
+        );
+    }
+
+    /// Chaque sequence de `length` octets pris dans `alphabet`.
+    fn sequences(alphabet: &[u8], length: usize, visit: &mut impl FnMut(&[u8])) {
+        let mut digits = vec![0; length];
+        let mut sequence = vec![alphabet[0]; length];
+        loop {
+            visit(&sequence);
+            let mut position = 0;
+            loop {
+                let Some(digit) = digits.get_mut(position) else {
+                    return;
+                };
+                *digit = (*digit + 1) % alphabet.len();
+                sequence[position] = alphabet[*digit];
+                if *digit != 0 {
+                    break;
+                }
+                position += 1;
+            }
+        }
+    }
+
+    /// La recherche par mots rend l'indice de `position`, sur toutes les
+    /// sequences courtes d'un alphabet qui porte l'octet cherche et ceux
+    /// qu'une retenue pourrait confondre avec lui (`needle ^ 1`, `needle ^
+    /// 0x80`), puis autour des frontieres de mots.
+    #[test]
+    fn find_byte_is_the_position_of_the_first_equal_byte() {
+        for needle in [b'\r', b':', 0x00, 0x01, 0x7f, 0x80, 0xff] {
+            let alphabet = [
+                needle,
+                needle ^ 1,
+                needle ^ 0x80,
+                b'a',
+                needle.wrapping_add(1),
+            ];
+            let mut checked = 0;
+            for length in 0..=7 {
+                sequences(&alphabet, length, &mut |haystack| {
+                    assert_eq!(
+                        find_byte(haystack, needle),
+                        haystack.iter().position(|byte| *byte == needle),
+                        "{needle:#04x} dans {haystack:02x?}"
+                    );
+                    checked += 1;
+                });
+            }
+            assert!(checked > 90_000, "{checked} sequences");
+
+            // Un octet cherche, puis deux, a chaque position de 40 octets de
+            // chaque octet de remplissage.
+            for filler in alphabet.into_iter().skip(1) {
+                for length in 0..40 {
+                    let mut haystack = vec![filler; length];
+                    assert_eq!(find_byte(&haystack, needle), None);
+                    for first in 0..length {
+                        haystack[first] = needle;
+                        assert_eq!(find_byte(&haystack, needle), Some(first));
+                        for second in first + 1..length {
+                            haystack[second] = needle;
+                            assert_eq!(find_byte(&haystack, needle), Some(first));
+                            haystack[second] = filler;
+                        }
+                        haystack[first] = filler;
+                    }
+                }
+            }
+        }
+    }
+
+    /// `crlf_lines` rend les lignes de `str::split("\r\n")`, la derniere
+    /// comprise, vide ou non : son seul appelant, la tete SSDP, ne finit
+    /// jamais par `CRLF` et ne peut pas montrer cette partie du contrat.
+    #[test]
+    fn crlf_lines_are_the_pieces_of_a_split() {
+        let mut checked = 0;
+        for length in 0..=10 {
+            sequences(b"\r\na", length, &mut |text| {
+                let text = core::str::from_utf8(text).expect("sequence ASCII");
+                assert_eq!(
+                    crlf_lines(text).collect::<Vec<_>>(),
+                    text.split("\r\n").collect::<Vec<_>>(),
+                    "{text:?}"
+                );
+                checked += 1;
+            });
+        }
+        assert!(checked > 88_000, "{checked} sequences");
+    }
+
+    /// `find_crlf` et `find_head_end` rendent l'indice de la premiere
+    /// occurrence, comme la recherche par fenetres qu'ils remplacent : sur
+    /// toutes les sequences de CR, de LF et de texte jusqu'a dix octets, puis
+    /// sur des lignes plus longues qu'un mot.
+    #[test]
+    fn line_end_searches_are_the_first_occurrence() {
+        fn first(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+            haystack
+                .windows(needle.len())
+                .position(|window| window == needle)
+        }
+        // La tete coupee en un parcours est celle de la recherche du
+        // separateur, puis de la lecture de ses lignes par `split`.
+        fn check(text: &[u8]) {
+            assert_eq!(find_crlf(text), first(text, b"\r\n"), "{text:?}");
+            assert_eq!(find_head_end(text), first(text, b"\r\n\r\n"), "{text:?}");
+            let (head, body) = match first(text, b"\r\n\r\n") {
+                Some(index) => (&text[..index], &text[index + 4..]),
+                None => (text, &b""[..]),
+            };
+            let lines = core::str::from_utf8(head).expect("sequence ASCII");
+            let mut lines = lines.split("\r\n");
+            let start_line = lines.next().unwrap_or_default().len();
+            let headers_are_valid = lines
+                .take_while(|line| !line.is_empty())
+                .all(|line| extract_header_line(line).is_ok());
+            assert_eq!(
+                split_http_head(text),
+                HttpHead {
+                    head,
+                    body,
+                    start_line,
+                    headers_are_valid
+                },
+                "{text:?}"
+            );
+        }
+        let mut checked = 0;
+        for length in 0..=10 {
+            sequences(b"\r\na", length, &mut |text| {
+                check(text);
+                checked += 1;
+            });
+        }
+        for length in 0..=8 {
+            sequences(b"\r\n:a", length, &mut |text| {
+                check(text);
+                checked += 1;
+            });
+        }
+        assert!(checked > 170_000, "{checked} sequences");
+
+        // Des fins de ligne a chaque position de lignes de 0 a 20 octets.
+        for line in 0..=20 {
+            for ending in [
+                &b"\r\n"[..],
+                b"\r\n\r\n",
+                b"\r",
+                b"\n",
+                b"\r\r\n",
+                b"\r\n\r",
+                b"\n\r\n",
+            ] {
+                for lines in 1..=3 {
+                    let mut text = Vec::new();
+                    for _ in 0..lines {
+                        text.resize(text.len() + line, b'x');
+                        text.extend_from_slice(ending);
+                    }
+                    check(&text);
+                    text.extend_from_slice(b"\r\n\r\nbody");
+                    check(&text);
+                }
+            }
+        }
     }
 
     #[test]
@@ -259,6 +570,70 @@ mod tests {
     fn test_require_version() {
         assert_eq!(require_version(Some("HTTP/1.1")), Ok("HTTP/1.1"));
         assert_eq!(require_version(None), Err(HttpParseError::MissingVersion));
+    }
+
+    /// La lecture d'origine de la version : prefixe, puis coupe au point.
+    fn reference_require_version(part: Option<&str>) -> Result<&str, HttpParseError> {
+        let version = part.ok_or(HttpParseError::MissingVersion)?;
+        let invalid = || HttpParseError::InvalidVersion(version.to_string());
+
+        let digits = version.strip_prefix("HTTP/").ok_or_else(invalid)?;
+        let (major, minor) = match digits.split_once('.') {
+            Some((major, minor)) => (major, Some(minor)),
+            None => (digits, None),
+        };
+
+        let is_single_digit =
+            |part: &str| part.len() == 1 && part.starts_with(|c: char| c.is_ascii_digit());
+        if !is_single_digit(major) || minor.is_some_and(|minor| !is_single_digit(minor)) {
+            return Err(invalid());
+        }
+        Ok(version)
+    }
+
+    /// Le motif d'octets rend ce que rendait la lecture d'origine : sur
+    /// `HTTP/` suivi de toute suite de quatre caracteres au plus (chiffres
+    /// ASCII et arabes, point, lettre, blanc), et sur chaque octet du
+    /// prefixe altere.
+    #[test]
+    fn test_require_version_agrees_with_the_reference() {
+        let alphabet = ['0', '9', '.', '/', 'a', ' ', '\u{0663}', '\u{ff11}'];
+        let mut suffixes = vec![String::new()];
+        let mut start = 0;
+        for _ in 0..4 {
+            let end = suffixes.len();
+            for index in start..end {
+                for character in alphabet {
+                    let mut longer = suffixes[index].clone();
+                    longer.push(character);
+                    suffixes.push(longer);
+                }
+            }
+            start = end;
+        }
+        let (mut accepted, mut checked) = (0, 0);
+        let mut check = |version: &str| {
+            let expected = reference_require_version(Some(version));
+            assert_eq!(require_version(Some(version)), expected, "{version:?}");
+            accepted += usize::from(expected.is_ok());
+            checked += 1;
+        };
+        for suffix in &suffixes {
+            for prefix in ["HTTP/", "HTTP", "http/", "HTTP/1.1", " HTTP/", "H"] {
+                check(&format!("{prefix}{suffix}"));
+            }
+        }
+        for version in ["HTTP/1.1", "HTTP/2", "HTTP/0.9"] {
+            for position in 0..version.len() {
+                for value in 0..=0x7f_u8 {
+                    let mut bytes = version.as_bytes().to_vec();
+                    bytes[position] = value;
+                    check(core::str::from_utf8(&bytes).expect("ASCII"));
+                }
+            }
+        }
+        assert!(checked > 25_000, "{checked} versions");
+        assert!(accepted > 50, "{accepted} versions valides");
     }
 
     #[test]

@@ -37,6 +37,7 @@ pub enum NetworkProtocol {
 }
 
 impl NetworkProtocol {
+    #[inline]
     pub(crate) const fn from_link_protocol(protocol: u16) -> Self {
         match protocol {
             0x0800 => Self::Ipv4,
@@ -328,6 +329,7 @@ impl Hash for Ieee80211Link<'_> {
 }
 
 impl From<Ethertype> for NetworkProtocol {
+    #[inline]
     fn from(ethertype: Ethertype) -> Self {
         Self::from_link_protocol(ethertype.0)
     }
@@ -382,6 +384,7 @@ impl Hash for LinkLayer<'_> {
 
 impl<'a> LinkLayer<'a> {
     /// Wraps an Ethernet II / 802.1Q frame in the generic link-layer model.
+    #[inline]
     pub fn ethernet(frame: DataLink<'a>) -> Self {
         Self::ethernet_as(LinkType::ETHERNET, frame)
     }
@@ -389,6 +392,7 @@ impl<'a> LinkLayer<'a> {
     /// Wraps an Ethernet frame carried inside another LINKTYPE (an 802.3br
     /// express mPacket once its preamble, SMD and trailing mCRC are removed).
     /// `link_type` is the one the capture declared, not a normalized value.
+    #[inline]
     pub(crate) fn ethernet_as(link_type: LinkType, frame: DataLink<'a>) -> Self {
         Self {
             link_type,

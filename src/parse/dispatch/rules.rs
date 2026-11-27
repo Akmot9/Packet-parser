@@ -10,7 +10,6 @@
 use super::ports::*;
 use super::probes::ProbeId;
 use crate::parse::application::protocol::ApplicationProtocol;
-use crate::parse::transport::Transport;
 use crate::parse::transport::protocols::TransportProtocol;
 
 /// Transport requis par une regle.
@@ -38,11 +37,11 @@ impl Guard {
 pub(super) struct Rule {
     pub(super) label: ApplicationProtocol,
     pub(super) guard: Guard,
-    pub(super) ports: Option<fn(Option<u16>) -> bool>,
+    pub(super) ports: Option<Ports>,
     /// Ports qui interdisent la regle : sur les ports standards de la
     /// famille des protocoles textuels, un verbe distinctif est souvent du
     /// *contenu* (corps SMTP DATA, article NNTP) — le port l'emporte.
-    pub(super) ports_veto: Option<fn(Option<u16>) -> bool>,
+    pub(super) ports_veto: Option<Ports>,
     pub(super) probe: ProbeId,
     /// Regle terminale : si son port matche, le verdict est definitif meme
     /// quand la sonde echoue (mDNS : le port 5353 est reserve, RFC 6762 —
@@ -64,7 +63,7 @@ pub(super) const fn rule(label: ApplicationProtocol, guard: Guard, probe: ProbeI
 pub(super) const fn port_rule(
     label: ApplicationProtocol,
     guard: Guard,
-    ports: fn(Option<u16>) -> bool,
+    ports: Ports,
     probe: ProbeId,
 ) -> Rule {
     Rule {
@@ -88,13 +87,13 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Snmp,
         Guard::Udp,
-        is_snmp_udp_port,
+        SNMP_UDP_PORTS,
         ProbeId::Snmp,
     ),
     port_rule(
         ApplicationProtocol::Dhcpv6,
         Guard::Udp,
-        is_dhcpv6_udp_port,
+        DHCPV6_UDP_PORTS,
         ProbeId::Dhcpv6,
     ),
     // DHCP et SRVLOC sur leurs ports, avant les sondes aveugles de DIS et
@@ -105,7 +104,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Dhcp,
         Guard::Udp,
-        is_dhcp_udp_port,
+        DHCP_UDP_PORTS,
         ProbeId::Dhcp,
     ),
     // SLP circule sur UDP et TCP 427 : une regle par transport, comme
@@ -113,13 +112,13 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Srvloc,
         Guard::Udp,
-        is_srvloc_port,
+        SRVLOC_PORTS,
         ProbeId::Srvloc,
     ),
     port_rule(
         ApplicationProtocol::Srvloc,
         Guard::Tcp,
-        is_srvloc_port,
+        SRVLOC_PORTS,
         ProbeId::Srvloc,
     ),
     // Signature assez forte pour le probing aveugle sur TCP, et doit gagner
@@ -128,7 +127,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Cotp,
         Guard::Tcp,
-        is_iso_tsap_tcp_port,
+        ISO_TSAP_TCP_PORTS,
         ProbeId::CotpTpkt,
     ),
     // FTP, SMTP et NNTP partagent la meme forme de reponse ("code SP texte
@@ -136,19 +135,19 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Ftp,
         Guard::Tcp,
-        is_ftp_tcp_port,
+        FTP_TCP_PORTS,
         ProbeId::Ftp,
     ),
     port_rule(
         ApplicationProtocol::Smtp,
         Guard::Tcp,
-        is_smtp_tcp_port,
+        SMTP_TCP_PORTS,
         ProbeId::Smtp,
     ),
     port_rule(
         ApplicationProtocol::Nntp,
         Guard::Tcp,
-        is_nntp_tcp_port,
+        NNTP_TCP_PORTS,
         ProbeId::Nntp,
     ),
     // Detection hors port standard (issue #66) : certains verbes
@@ -160,7 +159,7 @@ pub(super) static RULES: &[Rule] = &[
         label: ApplicationProtocol::Ftp,
         guard: Guard::Tcp,
         ports: None,
-        ports_veto: Some(is_text_protocol_port),
+        ports_veto: Some(TEXT_PROTOCOL_PORTS),
         probe: ProbeId::FtpUnambiguous,
         terminal_on_port: false,
     },
@@ -168,7 +167,7 @@ pub(super) static RULES: &[Rule] = &[
         label: ApplicationProtocol::Smtp,
         guard: Guard::Tcp,
         ports: None,
-        ports_veto: Some(is_text_protocol_port),
+        ports_veto: Some(TEXT_PROTOCOL_PORTS),
         probe: ProbeId::SmtpUnambiguous,
         terminal_on_port: false,
     },
@@ -176,7 +175,7 @@ pub(super) static RULES: &[Rule] = &[
         label: ApplicationProtocol::Nntp,
         guard: Guard::Tcp,
         ports: None,
-        ports_veto: Some(is_text_protocol_port),
+        ports_veto: Some(TEXT_PROTOCOL_PORTS),
         probe: ProbeId::NntpUnambiguous,
         terminal_on_port: false,
     },
@@ -185,7 +184,7 @@ pub(super) static RULES: &[Rule] = &[
     Rule {
         label: ApplicationProtocol::Mdns,
         guard: Guard::Udp,
-        ports: Some(is_mdns_udp_port),
+        ports: Some(MDNS_UDP_PORTS),
         ports_veto: None,
         probe: ProbeId::Mdns,
         terminal_on_port: true,
@@ -196,7 +195,7 @@ pub(super) static RULES: &[Rule] = &[
     Rule {
         label: ApplicationProtocol::Llmnr,
         guard: Guard::Udp,
-        ports: Some(is_llmnr_udp_port),
+        ports: Some(LLMNR_UDP_PORTS),
         ports_veto: None,
         probe: ProbeId::Llmnr,
         terminal_on_port: true,
@@ -205,7 +204,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Ssdp,
         Guard::Udp,
-        is_ssdp_udp_port,
+        SSDP_UDP_PORTS,
         ProbeId::Ssdp,
     ),
     // NetBIOS : name service sur UDP 137, datagram service sur UDP 138
@@ -214,32 +213,32 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Nbns,
         Guard::Udp,
-        is_nbns_udp_port,
+        NBNS_UDP_PORTS,
         ProbeId::Nbns,
     ),
     port_rule(
         ApplicationProtocol::Nbds,
         Guard::Udp,
-        is_nbds_udp_port,
+        NBDS_UDP_PORTS,
         ProbeId::Nbds,
     ),
     port_rule(
         ApplicationProtocol::Nbss,
         Guard::Tcp,
-        is_nbss_tcp_port,
+        NBSS_TCP_PORTS,
         ProbeId::Nbss,
     ),
     // OpenVPN : datagramme nu sur UDP 1194, prefixe de longueur sur TCP.
     port_rule(
         ApplicationProtocol::OpenVpn,
         Guard::Udp,
-        is_openvpn_port,
+        OPENVPN_PORTS,
         ProbeId::OpenVpnUdp,
     ),
     port_rule(
         ApplicationProtocol::OpenVpn,
         Guard::Tcp,
-        is_openvpn_port,
+        OPENVPN_PORTS,
         ProbeId::OpenVpnTcp,
     ),
     // AMS : sur TCP, chaque message est precede de l'en-tete AMS/TCP de
@@ -248,13 +247,13 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Ams,
         Guard::Tcp,
-        is_ams_tcp_port,
+        AMS_TCP_PORTS,
         ProbeId::AmsTcp,
     ),
     port_rule(
         ApplicationProtocol::Ams,
         Guard::Udp,
-        is_ams_udp_port,
+        AMS_UDP_PORTS,
         ProbeId::Ams,
     ),
     // QUIC 1-RTT (Short Header) : en-tete volontairement opaque (RFC 9000
@@ -262,7 +261,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Quic,
         Guard::Udp,
-        is_quic_udp_port,
+        QUIC_UDP_PORTS,
         ProbeId::QuicShortHeader,
     ),
     // QUIC a en-tete long sur UDP 443 (#299) : la v1 et le Version
@@ -271,7 +270,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Quic,
         Guard::Udp,
-        is_quic_udp_port,
+        QUIC_UDP_PORTS,
         ProbeId::QuicLongHeaderPort,
     ),
     // Priorites de port sur sondes par ailleurs aveugles : le port ne suffit
@@ -279,7 +278,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::OpcUa,
         Guard::Tcp,
-        is_opcua_tcp_port,
+        OPCUA_TCP_PORTS,
         ProbeId::Opcua,
     ),
     // DNS : la forme datagramme n'existe que sur UDP, et TCP prefixe chaque
@@ -289,13 +288,13 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Dns,
         Guard::Tcp,
-        is_dns_port,
+        DNS_PORTS,
         ProbeId::DnsTcp,
     ),
     port_rule(
         ApplicationProtocol::Dns,
         Guard::Udp,
-        is_dns_port,
+        DNS_PORTS,
         ProbeId::Dns,
     ),
     // PTP (IEEE 1588) : UDP 319 et 320 (annexes D et E). Garde par port : un
@@ -305,7 +304,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Ptp,
         Guard::Udp,
-        is_ptp_port,
+        PTP_PORTS,
         ProbeId::Ptp,
     ),
     // DIS (IEEE 1278.1) : pas de port IANA, 3000 par usage. Sur ce port, la
@@ -315,7 +314,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Dis,
         Guard::Udp,
-        is_dis_udp_port,
+        DIS_UDP_PORTS,
         ProbeId::DisLenient,
     ),
     // RADIUS (RFC 2865) sur ses ports : 1812/1813, les anciens 1645/1646,
@@ -323,7 +322,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Radius,
         Guard::Udp,
-        is_radius_udp_port,
+        RADIUS_UDP_PORTS,
         ProbeId::Radius,
     ),
     // BACnet/IP (ASHRAE 135, annexe J) sur ses ports 47808 a 47823 ; la
@@ -331,7 +330,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::BacnetIp,
         Guard::Udp,
-        is_bacnet_udp_port,
+        BACNET_UDP_PORTS,
         ProbeId::Bacnet,
     ),
     // Valmet DNA (reseau de process Metso/Valmet, proprietaire) : UDP 2517
@@ -343,7 +342,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::ValmetDna,
         Guard::Udp,
-        is_valmet_dna_udp_port,
+        VALMET_DNA_UDP_PORTS,
         ProbeId::ValmetDna,
     ),
     // RDP (MS-RDPBCGR) : TCP 3389. Garde par port : TPKT, COTP et MCS sont
@@ -353,7 +352,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Rdp,
         Guard::Tcp,
-        is_rdp_tcp_port,
+        RDP_TCP_PORTS,
         ProbeId::Rdp,
     ),
     // IEC 60870-5-104 : TCP 2404. Garde par port : `0x68` et une longueur
@@ -362,7 +361,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Iec104,
         Guard::Tcp,
-        is_iec104_tcp_port,
+        IEC104_TCP_PORTS,
         ProbeId::Iec104,
     ),
     // Java RMI (JRMP) : TCP 1099, le registre (IANA `rmiregistry`). Sur ce
@@ -374,7 +373,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::JavaRmi,
         Guard::Tcp,
-        is_java_rmi_tcp_port,
+        JAVA_RMI_TCP_PORTS,
         ProbeId::JavaRmi,
     ),
     // PostgreSQL sur son port : decodage et forme compatible suffisent — un
@@ -385,7 +384,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::PostgreSql,
         Guard::Tcp,
-        is_postgresql_tcp_port,
+        POSTGRESQL_TCP_PORTS,
         ProbeId::PostgresqlPort,
     ),
     // IKE (RFC 7296, RFC 2408) : UDP 500, et UDP 4500 derriere le marqueur
@@ -395,7 +394,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Ike,
         Guard::Udp,
-        is_ike_udp_port,
+        IKE_UDP_PORTS,
         ProbeId::Ike,
     ),
     // ESP dans UDP 4500 (RFC 3948 §2.1) : SPI non nul en tete, la suite ne
@@ -405,13 +404,13 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Esp,
         Guard::Udp,
-        is_nat_t_udp_port,
+        NAT_T_UDP_PORTS,
         ProbeId::EspNatT,
     ),
     port_rule(
         ApplicationProtocol::NatKeepalive,
         Guard::Udp,
-        is_nat_t_udp_port,
+        NAT_T_UDP_PORTS,
         ProbeId::NatKeepalive,
     ),
     // STANAG 5066 SIS : TCP 5066 (port IANA). Garde par port : le preambule
@@ -421,7 +420,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Stanag5066,
         Guard::Tcp,
-        is_stanag5066_tcp_port,
+        STANAG5066_TCP_PORTS,
         ProbeId::Stanag5066,
     ),
     // Modbus/TCP sur TCP 502 (IANA `mbap`) : l'enveloppe MBAP suffit quand le
@@ -430,13 +429,13 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Umas,
         Guard::Tcp,
-        is_modbus_tcp_port,
+        MODBUS_TCP_PORTS,
         ProbeId::Umas,
     ),
     port_rule(
         ApplicationProtocol::ModbusTcp,
         Guard::Tcp,
-        is_modbus_tcp_port,
+        MODBUS_TCP_PORTS,
         ProbeId::ModbusTcp,
     ),
     // Modbus sur UDP 502 (#257) : hors de la specification « Modbus
@@ -449,7 +448,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::ModbusUdp,
         Guard::Udp,
-        is_modbus_udp_port,
+        MODBUS_UDP_PORTS,
         ProbeId::ModbusTcp,
     ),
     // Skinny (SCCP Cisco, #370) : TCP 2000 (IANA `cisco-sccp`). Garde par
@@ -460,7 +459,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Skinny,
         Guard::Tcp,
-        is_skinny_tcp_port,
+        SKINNY_TCP_PORTS,
         ProbeId::Skinny,
     ),
     // LDAP (#372) : TCP 389 et 3268 (catalogue global d'Active Directory),
@@ -471,13 +470,13 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Ldap,
         Guard::Tcp,
-        is_ldap_tcp_port,
+        LDAP_TCP_PORTS,
         ProbeId::Ldap,
     ),
     port_rule(
         ApplicationProtocol::Ldap,
         Guard::Udp,
-        is_ldap_udp_port,
+        LDAP_UDP_PORTS,
         ProbeId::Ldap,
     ),
     // Syslog (#374) : UDP 514, un message par datagramme ; TCP 514 et 601,
@@ -489,13 +488,13 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Syslog,
         Guard::Udp,
-        is_syslog_udp_port,
+        SYSLOG_UDP_PORTS,
         ProbeId::Syslog,
     ),
     port_rule(
         ApplicationProtocol::Syslog,
         Guard::Tcp,
-        is_syslog_tcp_port,
+        SYSLOG_TCP_PORTS,
         ProbeId::SyslogTcp,
     ),
     // Kerberos V5 (#379) : UDP 88, un message par datagramme ; TCP 88, des
@@ -507,13 +506,13 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Kerberos,
         Guard::Udp,
-        is_kerberos_port,
+        KERBEROS_PORTS,
         ProbeId::Kerberos,
     ),
     port_rule(
         ApplicationProtocol::Kerberos,
         Guard::Tcp,
-        is_kerberos_port,
+        KERBEROS_PORTS,
         ProbeId::KerberosTcp,
     ),
     // ONC RPC (#381) : le portmapper (111) et NFS (2049), en UDP (un message
@@ -526,13 +525,13 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::OncRpc,
         Guard::Udp,
-        is_oncrpc_port,
+        ONCRPC_PORTS,
         ProbeId::OncRpc,
     ),
     port_rule(
         ApplicationProtocol::OncRpc,
         Guard::Tcp,
-        is_oncrpc_port,
+        ONCRPC_PORTS,
         ProbeId::OncRpcTcp,
     ),
     // WireGuard : UDP 51820, le port des exemples de `wg(8)` — aucun port
@@ -545,7 +544,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::WireGuard,
         Guard::Udp,
-        is_wireguard_udp_port,
+        WIREGUARD_UDP_PORTS,
         ProbeId::WireGuardPort,
     ),
     // NTP (RFC 5905) : UDP 123, en derniere regle de port — la place
@@ -554,7 +553,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Ntp,
         Guard::Udp,
-        is_ntp_udp_port,
+        NTP_UDP_PORTS,
         ProbeId::Ntp,
     ),
     // --- cascade aveugle, dans son ordre historique,
@@ -701,7 +700,7 @@ pub(super) static RULES: &[Rule] = &[
     port_rule(
         ApplicationProtocol::Capwap,
         Guard::Udp,
-        is_capwap_udp_port,
+        CAPWAP_UDP_PORTS,
         ProbeId::Capwap,
     ),
     // RTCP (RFC 3550 §6, #354), derniere sonde UDP : des paquets de type 200 a
@@ -721,15 +720,3 @@ pub(super) static RULES: &[Rule] = &[
     // MQTT (TCP) en dernier : en-tete fixe peu discriminant.
     rule(ApplicationProtocol::Mqtt, Guard::Tcp, ProbeId::Mqtt),
 ];
-
-/// Un des deux ports touche-t-il une regle terminale de la table (port
-/// reserve par RFC) ? Source unique : la table elle-meme.
-pub(super) fn matches_terminal_reserved_port(transport: &Transport<'_>) -> bool {
-    RULES.iter().any(|rule| {
-        rule.terminal_on_port
-            && rule.guard.admits(transport.protocol)
-            && rule.ports.is_some_and(|ports| {
-                ports(transport.source_port) || ports(transport.destination_port)
-            })
-    })
-}

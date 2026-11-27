@@ -15,22 +15,32 @@
 //! Invariants :
 //! - une regle a port n'etiquette que si **port et contenu** concordent — le
 //!   port seul ne decide jamais (fin de l'override OPC UA, issue #25) ;
-//! - chaque sonde s'execute **au plus une fois** par payload : les echecs
-//!   sont memoises par [`ProbeId`] (fin du double sondage PostgreSQL et
-//!   SNMP, issue #29) ;
+//! - chaque sonde s'execute **au plus une fois** par payload : une sonde
+//!   qui echoue retire de la visite les regles suivantes qui la portent (fin
+//!   du double sondage PostgreSQL et SNMP, issue #29) ;
 //! - chaque sonde juge les octets que son decodeur lira : le payload entier,
 //!   que les decodeurs exigent souvent pave jusqu'au dernier octet (SNMP,
 //!   Modbus/TCP, ASTERIX...) ou couvert par une longueur declaree (NBSS,
 //!   DNS sur TCP, TLS...). Seules les sondes des protocoles texte (FTP, SMTP,
 //!   NNTP, HTTP), qui valident tout le texte en UTF-8, ne lisent que
 //!   [`PROBE_CAP`](probes::PROBE_CAP) octets : la borne de l'issue #20, qui plafonnait jadis
-//!   toutes les sondes (#184, #185), et que l'oracle du fuzz recopie.
+//!   toutes les sondes (#184, #185), et que l'oracle du fuzz recopie ;
+//! - une sonde n'est tentee que si le premier octet du payload peut lui
+//!   convenir ([`first_bytes`]) : les regles ecartees auraient echoue, et le
+//!   verdict reste celui d'un parcours de toute la table. Trois cas ne sont
+//!   pas filtres : une regle terminale, toujours visitee a son rang ; un
+//!   port declare par Decode As ; un payload de
+//!   [`PROVEN_BELOW`](first_bytes::PROVEN_BELOW) octets ou plus.
+
+use std::num::NonZero;
 
 use super::application::Application;
 use super::transport::Transport;
 use super::transport::protocols::TransportProtocol;
 use crate::parse::application::protocol::ApplicationProtocol;
 
+mod first_bytes;
+mod index;
 mod ports;
 mod probes;
 mod rules;
@@ -38,7 +48,7 @@ mod rules;
 mod tests;
 
 use probes::{ProbeId, ProbeMask, run_probe};
-use rules::{Guard, RULES, matches_terminal_reserved_port};
+use rules::Guard;
 
 /// Declare l'enum et `ALL` depuis une seule liste, comme
 /// `application_protocols!` : une variante ne peut pas manquer a `ALL`
@@ -285,22 +295,83 @@ impl DecodeAsProtocol {
 /// Classifie le payload d'une couche transport. `None` signifie « rien a
 /// sonder » (pas de payload, payload vide, ou port mDNS sans contenu mDNS) ;
 /// un payload sonde sans succes reste etiquete `"Unknown"`.
+#[inline]
 pub(super) fn classify(
     transport: &Transport<'_>,
     decode_as: &[(u16, DecodeAsProtocol)],
 ) -> Option<Application> {
     let payload = transport.payload?;
-    if payload.is_empty() {
-        return None;
+    let first = *payload.first()?;
+    classify_payload(transport, payload, first, decode_as)
+}
+
+/// L'oracle du prefiltre, en build de debug : chaque regle de la liste que
+/// le premier octet ecarte, quels que soient les ports, voit sa sonde
+/// rejouee, et elle doit refuser. Les tests, le corpus de reference et les
+/// cibles de fuzz verifient ainsi chaque ensemble declare sur chaque payload
+/// qu'ils classent.
+#[cfg(debug_assertions)]
+fn assert_excluded_probes_reject(
+    list: &index::RuleList,
+    worth_visiting: index::RuleSet,
+    payload: &[u8],
+    first: u8,
+) {
+    for (rank, listed) in list.rules().iter().enumerate() {
+        if worth_visiting >> rank & 1 == 0 {
+            debug_assert!(
+                !run_probe(listed.rule.probe, payload),
+                "la sonde {} accepte un payload dont elle exclut le premier octet {first:#04x}",
+                listed.rule.label,
+            );
+        }
     }
-    let mut failed_probes: ProbeMask = 0;
+}
+
+/// La table, sur un payload non vide, dont `first` est le premier octet.
+/// Hors de [`classify`] : un segment sans payload (un ACK nu, un quart des
+/// trames du corpus) ne paie pas l'entree de la fonction qui parcourt la
+/// table, ses registres sauves et son cadre de pile.
+#[inline(never)]
+fn classify_payload(
+    transport: &Transport<'_>,
+    payload: &[u8],
+    first: u8,
+    decode_as: &[(u16, DecodeAsProtocol)],
+) -> Option<Application> {
+    debug_assert_eq!(payload.first(), Some(&first));
+    // Les ports sont lus une fois : l'index donne, pour chacun, les regles
+    // de ce transport qu'il ouvre et celles qu'il interdit.
+    let list = index::list_for(transport.protocol);
+    let source = list.port_effect(transport.source_port);
+    let destination = list.port_effect(transport.destination_port);
+    let opened = source.opens | destination.opens;
+    let vetoed = source.vetoes | destination.vetoes;
+
+    // Les regles a visiter : celles sans garde de port et celles qu'un des
+    // deux ports ouvre, moins celles qu'un des deux ports interdit. La garde
+    // de transport est deja appliquee, la liste ne porte que les regles de
+    // ce transport.
+    let mut pending = (list.portless | opened) & !vetoed;
+
+    // Le premier octet ecarte les regles dont la sonde le refuse a coup sur
+    // (voir `first_bytes`) : sur un payload que rien ne reconnait, il ne
+    // reste que quelques sondes a tenter. Decode As, plus bas, n'est pas
+    // filtre.
+    if payload.len() < first_bytes::PROVEN_BELOW {
+        let worth_visiting = list.worth_visiting(first);
+        #[cfg(debug_assertions)]
+        assert_excluded_probes_reject(list, worth_visiting, payload, first);
+        pending &= worth_visiting;
+    }
 
     // Ports declares par l'appelant (« Decode As ») : evalues avant la
     // table, port ET contenu, garde de transport conservee. Un echec est
-    // memoise comme ceux de la table. Les ports que la table declare
-    // terminaux (mDNS 5353, LLMNR 5355 — reserves par leurs RFC) ne sont
-    // jamais contournables : « etendre les gardes sans les remplacer ».
-    if !decode_as.is_empty() && !matches_terminal_reserved_port(transport) {
+    // memoise : la table ne rejoue pas la sonde. Les ports que la table
+    // declare terminaux (mDNS 5353, LLMNR 5355 — reserves par leurs RFC) ne
+    // sont jamais contournables : « etendre les gardes sans les remplacer ».
+    if !decode_as.is_empty() && opened & list.terminal == 0 {
+        let mut failed_probes: ProbeMask = 0;
         for (port, protocol) in decode_as {
             if transport.source_port != Some(*port) && transport.destination_port != Some(*port) {
                 continue;
@@ -315,33 +386,27 @@ pub(super) fn classify(
             }
             failed_probes |= bit;
         }
+        if failed_probes != 0 {
+            pending &= !list.already_failed(failed_probes);
+        }
     }
-    for rule in RULES {
-        if !rule.guard.admits(transport.protocol) {
-            continue;
-        }
-        if let Some(ports) = rule.ports
-            && !(ports(transport.source_port) || ports(transport.destination_port))
-        {
-            continue;
-        }
-        if let Some(veto) = rule.ports_veto
-            && (veto(transport.source_port) || veto(transport.destination_port))
-        {
-            continue;
-        }
 
-        let bit = rule.probe.bit();
-        let matched = failed_probes & bit == 0 && run_probe(rule.probe, payload);
-        if matched {
+    // Du bit le plus faible au plus fort : l'ordre de la table.
+    while let Some(set) = NonZero::new(pending) {
+        let listed = list.first(set);
+        let rule = listed.rule;
+
+        if run_probe(rule.probe, payload) {
             return Some(Application {
                 protocol: rule.label,
             });
         }
-        failed_probes |= bit;
         if rule.terminal_on_port {
             return None;
         }
+        // La sonde a echoue : la regle est visitee, et les regles suivantes
+        // qui portent la meme sonde ne la rejouent pas.
+        pending &= listed.left;
     }
 
     Some(Application {

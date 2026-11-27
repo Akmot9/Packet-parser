@@ -12,13 +12,29 @@ use super::application::custom;
 use super::data_link::stp::BpduPacket;
 use super::internet::Internet;
 use super::transport::Transport;
-use super::{CorruptedLayer, DEFAULT_CONFIG, PacketFlow, ParseConfig, dispatch, link, tunnel};
+use super::transport::protocols::TransportProtocol;
+use super::{CorruptedLayer, PacketFlow, ParseConfig, dispatch, link, tunnel};
 use crate::parse::application::protocol::ApplicationProtocol;
 use crate::{
-    LinkLayer, NetworkProtocol, ParseError,
+    DataLink, LinkLayer, LinkType, NetworkProtocol, ParseError,
     errors::{internet::InternetError, transport::TransportError},
     timing::{NoTiming, Stage, TimingSink},
 };
+
+/// Ce que l'etape L4 vient d'ecrire dans le flux : la suite du pipeline
+/// s'aiguille dessus sans relire la couche transport.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum L4 {
+    /// Un segment TCP.
+    Tcp,
+    /// Un segment TCP porteur d'une anomalie semantique (voir
+    /// `TcpPacket::anomaly`).
+    AnomalousTcp,
+    /// Un datagramme UDP.
+    Udp,
+    /// Rien, ou la couche d'un autre protocole IP.
+    Other,
+}
 
 impl<'a> PacketFlow<'a> {
     fn parse_application_from_transport(
@@ -42,35 +58,104 @@ impl<'a> PacketFlow<'a> {
         }
     }
 
-    /// Parses the internet layer from the data-link layer, dispatching on the
-    /// EtherType. An unknown EtherType yields `(None, None)`; a known
-    /// EtherType with a corrupt payload yields `(None, Some(corruption))` —
-    /// never a hard error, so the data-link information is preserved.
+    /// Le flux d'une trame dont seule la couche liaison est lue : le point
+    /// de depart que [`fill_layers_into`](Self::fill_layers_into) complete
+    /// sur place.
     #[inline(always)]
-    fn parse_l3(
-        network_protocol: NetworkProtocol,
-        network_payload: &'a [u8],
-    ) -> (Option<Internet<'a>>, Option<CorruptedLayer>) {
-        match Internet::try_from_network_parts(network_protocol, network_payload) {
-            Ok(internet) => (Some(internet), None),
-            Err(InternetError::UnsupportedProtocol) => (None, None),
-            Err(e) => (None, Some(CorruptedLayer::from(e))),
+    fn from_link(data_link: LinkLayer<'a>) -> Self {
+        PacketFlow {
+            data_link,
+            internet: None,
+            transport: None,
+            application: None,
+            inner: None,
+            corrupted: None,
         }
     }
 
+    /// Parses the internet layer from the data-link layer, dispatching on the
+    /// EtherType. An unknown EtherType leaves `internet` and `corrupted`
+    /// empty; a known EtherType with a corrupt payload is reported in
+    /// `corrupted` — never a hard error, so the data-link information is
+    /// preserved.
+    ///
+    /// IPv4 et IPv6 en ligne droite : chacun ecrit sa couche directement
+    /// dans le flux. Les autres protocoles passent par
+    /// [`Internet::try_from_network_parts`], hors ligne.
     #[inline(always)]
-    fn parse_l4(
-        internet: Option<&Internet<'a>>,
-    ) -> (Option<Transport<'a>>, Option<CorruptedLayer>) {
-        match internet {
-            Some(internet) => {
-                match Transport::try_from_parts(internet.payload_protocol, internet.payload) {
-                    Ok(transport) => (Some(transport), None),
-                    Err(TransportError::UnsupportedProtocol) => (None, None),
-                    Err(e) => (None, Some(CorruptedLayer::from(e))),
-                }
+    fn fill_l3(&mut self, network_protocol: NetworkProtocol, network_payload: &'a [u8]) {
+        match network_protocol {
+            NetworkProtocol::Ipv4 => self.set_l3(Internet::try_from_ipv4(network_payload)),
+            NetworkProtocol::Ipv6 => self.set_l3(Internet::try_from_ipv6(network_payload)),
+            other => self.fill_l3_other(other, network_payload),
+        }
+    }
+
+    #[inline(never)]
+    fn fill_l3_other(&mut self, network_protocol: NetworkProtocol, network_payload: &'a [u8]) {
+        self.set_l3(Internet::try_from_network_parts(
+            network_protocol,
+            network_payload,
+        ));
+    }
+
+    #[inline(always)]
+    fn set_l3(&mut self, parsed: Result<Internet<'a>, InternetError>) {
+        match parsed {
+            Ok(internet) => self.internet = Some(internet),
+            Err(InternetError::UnsupportedProtocol) => {}
+            Err(e) => self.corrupted = Some(CorruptedLayer::from(e)),
+        }
+    }
+
+    /// La couche transport, lue dans la charge de la couche internet. Sans
+    /// couche internet il n'y a rien a lire, et `corrupted` garde ce que
+    /// l'etape L3 y a mis : les deux etapes ne signalent jamais ensemble.
+    ///
+    /// TCP et UDP en ligne droite, comme IPv4 et IPv6 dans
+    /// [`fill_l3`](Self::fill_l3) ; les autres protocoles passent par
+    /// [`Transport::try_from_parts`], hors ligne.
+    #[inline(always)]
+    fn fill_l4(&mut self) -> L4 {
+        let Some(internet) = &self.internet else {
+            return L4::Other;
+        };
+        let payload = internet.payload;
+        match internet.payload_protocol {
+            Some(TransportProtocol::Tcp) => {
+                let parsed = Transport::try_from_tcp(payload);
+                let read = match &parsed {
+                    Ok(transport) if transport.is_anomalous_tcp() => L4::AnomalousTcp,
+                    Ok(_) => L4::Tcp,
+                    Err(_) => L4::Other,
+                };
+                self.set_l4(parsed);
+                read
             }
-            None => (None, None),
+            Some(TransportProtocol::Udp) => {
+                let parsed = Transport::try_from_udp(payload);
+                let read = if parsed.is_ok() { L4::Udp } else { L4::Other };
+                self.set_l4(parsed);
+                read
+            }
+            other => {
+                self.fill_l4_other(other, payload);
+                L4::Other
+            }
+        }
+    }
+
+    #[inline(never)]
+    fn fill_l4_other(&mut self, payload_protocol: Option<TransportProtocol>, payload: &'a [u8]) {
+        self.set_l4(Transport::try_from_parts(payload_protocol, payload));
+    }
+
+    #[inline(always)]
+    fn set_l4(&mut self, parsed: Result<Transport<'a>, TransportError>) {
+        match parsed {
+            Ok(transport) => self.transport = Some(transport),
+            Err(TransportError::UnsupportedProtocol) => {}
+            Err(e) => self.corrupted = Some(CorruptedLayer::from(e)),
         }
     }
 
@@ -81,61 +166,60 @@ impl<'a> PacketFlow<'a> {
     /// pile conforme.
     ///
     /// Fonction froide, hors du pipeline commun : tisser ce cas dans
-    /// `parse_l4` et dans l'etape L7 coutait ~10 ns a CHAQUE segment TCP
+    /// `fill_l4` et dans l'etape L7 coutait ~10 ns a CHAQUE segment TCP
     /// (mesure sur le paquet de reference), pour un cas qui ne se presente
     /// presque jamais. Le chemin chaud n'en garde qu'un branchement.
     #[cold]
     #[inline(never)]
-    fn anomalous_tcp_flow(
-        data_link: LinkLayer<'a>,
-        internet: Option<Internet<'a>>,
-        transport: Transport<'a>,
-        l3_corruption: Option<CorruptedLayer>,
-    ) -> Self {
-        let anomaly = match &transport.details {
-            Some(crate::TransportDetails::Tcp(tcp)) => tcp.anomaly(),
+    fn report_tcp_anomaly(&mut self) {
+        let anomaly = match &self.transport {
+            Some(Transport {
+                details: Some(crate::TransportDetails::Tcp(tcp)),
+                ..
+            }) => tcp.anomaly(),
             _ => None,
         };
         let l4_corruption =
             anomaly.map(|anomaly| CorruptedLayer::from(TransportError::from(anomaly)));
-        PacketFlow {
-            data_link,
-            internet,
-            transport: Some(transport),
-            application: None,
-            inner: None,
-            corrupted: l3_corruption.or(l4_corruption),
-        }
+        self.corrupted = self.corrupted.take().or(l4_corruption);
     }
 
     /// If the transport layer encapsulates a tunnel (e.g. CAPWAP), record the
     /// tunnel name as THIS flow's application protocol and parse the inner
     /// packet into `inner`. Otherwise, best-effort application detection.
     #[inline(always)]
-    fn parse_l7_and_inner(
-        internet: Option<&Internet<'a>>,
-        transport: Option<&Transport<'a>>,
-        depth: u8,
-        config: &ParseConfig,
-    ) -> (Option<Application>, Option<Box<PacketFlow<'a>>>) {
+    fn fill_l7_and_inner(&mut self, l4: L4, depth: u8, config: &ParseConfig) {
         // Tunnels au niveau IP d'abord (GRE, IP-in-IP) : leur detection ne
         // depend pas de la couche transport — GRE n'en a pas, et elle ne
-        // doit pas reposer sur le Transport creux du fourre-tout L4.
-        if let Some(internet) = internet
+        // doit pas reposer sur le Transport creux du fourre-tout L4. Sous
+        // un segment TCP ou un datagramme UDP, le protocole IP n'est pas
+        // celui d'un de ces tunnels : rien a chercher.
+        if l4 == L4::Other
+            && let Some(internet) = &self.internet
             && let Some((tunnel_name, inner_flow)) =
                 tunnel::detect_inner_l3(internet, depth, config)
         {
-            return (
-                Some(Application {
-                    protocol: tunnel_name,
-                }),
-                Some(Box::new(inner_flow)),
-            );
+            self.application = Some(Application {
+                protocol: tunnel_name,
+            });
+            self.inner = Some(inner_flow);
+            return;
         }
 
-        match transport {
-            Some(transport) => Self::application_and_inner(transport, depth, config),
-            None => (None, None),
+        if let Some(transport) = &self.transport {
+            if l4 == L4::Tcp {
+                // Aucun tunnel n'est porte par TCP : la table de dispatch
+                // seule, et `inner` reste vide.
+                debug_assert!(tunnel::detect_inner(transport, depth, config).is_none());
+                self.application = Self::parse_application_from_transport(transport, config);
+            } else {
+                let (application, inner) = Self::application_and_inner(transport, depth, config);
+                self.application = application;
+                self.inner = inner;
+            }
+        }
+        if self.application.is_none() {
+            self.application = Self::detect_stp(&self.data_link);
         }
     }
 
@@ -158,7 +242,7 @@ impl<'a> PacketFlow<'a> {
                 Some(Application {
                     protocol: tunnel_name,
                 }),
-                Some(Box::new(inner_flow)),
+                Some(inner_flow),
             ),
             None => (
                 Self::parse_application_from_transport(transport, config),
@@ -191,31 +275,91 @@ impl<'a> PacketFlow<'a> {
         })
     }
 
-    /// Parses the shared L3/L4/L7 pipeline from a normalized link decoder
-    /// output. `depth` bounds tunnel nesting.
-    pub(crate) fn parse_decoded(
-        decoded: link::DecodedLink<'a>,
-        depth: u8,
+    /// Une trame entiere : la couche liaison selon `link_type`, puis le
+    /// pipeline L3/L4/L7.
+    ///
+    /// La trame Ethernet II sans tag ni PPPoE, le cas courant, est lue en
+    /// ligne et ecrite directement dans le flux. Tout le reste — autre
+    /// LINKTYPE, tags VLAN, PPPoE, trame trop courte — passe hors ligne par
+    /// [`link::decode`], qui lit aussi ce cas courant de la meme facon
+    /// ([`DataLink::untagged`]).
+    #[inline(always)]
+    pub(crate) fn parse_frame(
+        link_type: LinkType,
+        bytes: &'a [u8],
+        config: &ParseConfig,
     ) -> Result<Self, ParseError> {
-        Self::parse_decoded_with(decoded, depth, &DEFAULT_CONFIG)
+        if link_type == LinkType::ETHERNET
+            && let Some(frame) = DataLink::untagged(bytes)
+        {
+            return Self::parse_decoded_with(
+                link::DecodedLink::new(LinkLayer::ethernet(frame)),
+                0,
+                config,
+            );
+        }
+        Self::parse_other_frame(link_type, bytes, config)
+    }
+
+    #[inline(never)]
+    fn parse_other_frame(
+        link_type: LinkType,
+        bytes: &'a [u8],
+        config: &ParseConfig,
+    ) -> Result<Self, ParseError> {
+        Self::parse_decoded_with(link::decode(link_type, bytes)?, 0, config)
     }
 
     /// Variante avec la configuration de l'appelant : ports declares
     /// (« Decode As ») et parseurs ajoutes (#319), propages jusqu'au dispatch
     /// applicatif, y compris dans les tunnels.
+    #[inline(always)]
     pub(crate) fn parse_decoded_with(
         decoded: link::DecodedLink<'a>,
         depth: u8,
         config: &ParseConfig,
     ) -> Result<Self, ParseError> {
-        Self::parse_decoded_into(decoded, depth, config, &mut NoTiming)
+        let (data_link, network_protocol, network_payload) = decoded.into_parts();
+        let mut flow = Self::from_link(data_link);
+        flow.fill_layers(network_protocol, network_payload, depth, config);
+        Ok(flow)
     }
 
-    /// Le pipeline L3/L4/L7, unique : le chemin normal le traverse avec
-    /// [`NoTiming`] (chaque etape se reduit a son corps), [`parse_timed`](super::parse_timed)
-    /// avec un [`ParseTiming`](crate::timing::ParseTiming). `l7` inclut la
-    /// detection de tunnel et le parsing recursif des paquets encapsules,
-    /// qui eux ne sont pas chronometres separement.
+    /// Le flux interne d'un tunnel, lu dans la boite ou le flux externe le
+    /// garde : le pipeline l'y complete sur place, au lieu de le construire
+    /// sur la pile et de recopier ses 472 octets jusqu'a elle.
+    pub(crate) fn boxed_from_decoded(
+        decoded: link::DecodedLink<'a>,
+        depth: u8,
+        config: &ParseConfig,
+    ) -> Box<Self> {
+        let (data_link, network_protocol, network_payload) = decoded.into_parts();
+        let mut flow = Box::new(Self::from_link(data_link));
+        flow.fill_layers(network_protocol, network_payload, depth, config);
+        flow
+    }
+
+    /// Le pipeline du chemin normal, hors ligne et sans mesure : une seule
+    /// instance, que `parse`, `parse_with` et les tunnels appellent sur le
+    /// flux qu'ils viennent de creer.
+    #[inline(never)]
+    fn fill_layers(
+        &mut self,
+        network_protocol: NetworkProtocol,
+        network_payload: &'a [u8],
+        depth: u8,
+        config: &ParseConfig,
+    ) {
+        self.fill_layers_into(
+            network_protocol,
+            network_payload,
+            depth,
+            config,
+            &mut NoTiming,
+        );
+    }
+
+    /// Le pipeline chronometre de [`parse_timed`](super::parse_timed).
     #[inline(always)]
     pub(crate) fn parse_decoded_into(
         decoded: link::DecodedLink<'a>,
@@ -224,34 +368,38 @@ impl<'a> PacketFlow<'a> {
         sink: &mut impl TimingSink,
     ) -> Result<Self, ParseError> {
         let (data_link, network_protocol, network_payload) = decoded.into_parts();
-        let (internet, l3_corruption) = sink.time(Stage::L3, || {
-            Self::parse_l3(network_protocol, network_payload)
-        });
-        let (transport, l4_corruption) = sink.time(Stage::L4, || Self::parse_l4(internet.as_ref()));
-        let transport = match transport {
-            Some(transport) if transport.is_anomalous_tcp() => {
-                return Ok(Self::anomalous_tcp_flow(
-                    data_link,
-                    internet,
-                    transport,
-                    l3_corruption,
-                ));
-            }
-            transport => transport,
-        };
-        let (application, inner) = sink.time(Stage::L7, || {
-            let (application, inner) =
-                Self::parse_l7_and_inner(internet.as_ref(), transport.as_ref(), depth, config);
-            (application.or_else(|| Self::detect_stp(&data_link)), inner)
-        });
+        let mut flow = Self::from_link(data_link);
+        flow.fill_layers_into(network_protocol, network_payload, depth, config, sink);
+        Ok(flow)
+    }
 
-        Ok(PacketFlow {
-            data_link,
-            internet,
-            transport,
-            application,
-            inner,
-            corrupted: l3_corruption.or(l4_corruption),
-        })
+    /// Le pipeline L3/L4/L7, unique : le chemin normal le traverse avec
+    /// [`NoTiming`] (chaque etape se reduit a son corps), [`parse_timed`](super::parse_timed)
+    /// avec un [`ParseTiming`](crate::timing::ParseTiming). `l7` inclut la
+    /// detection de tunnel et le parsing recursif des paquets encapsules,
+    /// qui eux ne sont pas chronometres separement.
+    ///
+    /// Chaque etape ecrit sa couche a sa place dans le flux. Rendues par
+    /// valeur d'une etape a l'autre, la couche internet (208 octets) etait
+    /// recopiee trois fois et la couche transport deux (mesure sur un
+    /// segment TCP sans charge).
+    #[inline(always)]
+    fn fill_layers_into(
+        &mut self,
+        network_protocol: NetworkProtocol,
+        network_payload: &'a [u8],
+        depth: u8,
+        config: &ParseConfig,
+        sink: &mut impl TimingSink,
+    ) {
+        sink.time(Stage::L3, || {
+            self.fill_l3(network_protocol, network_payload);
+        });
+        let l4 = sink.time(Stage::L4, || self.fill_l4());
+        if l4 == L4::AnomalousTcp {
+            self.report_tcp_anomaly();
+            return;
+        }
+        sink.time(Stage::L7, || self.fill_l7_and_inner(l4, depth, config));
     }
 }

@@ -4,7 +4,7 @@
 // This file may not be copied, modified, or distributed except according to those terms.
 
 use crate::{
-    checks::application::{TextOctetFault, find_text_line_fault},
+    checks::application::{TextOctetFault, find_text_line_fault, http::find_crlf},
     errors::application::ftp::FtpParseError,
 };
 
@@ -60,10 +60,9 @@ pub fn validate_payload_characters(payload: &str) -> Result<(), FtpParseError> {
 /// Splits off the first CRLF-terminated line, returning the line (without the
 /// CRLF) and the remainder of the payload.
 pub fn split_first_line(payload: &str) -> Result<(&str, &str), FtpParseError> {
-    match payload.find("\r\n") {
-        Some(index) => Ok((&payload[..index], &payload[index + 2..])),
-        None => Err(FtpParseError::IncompleteLine),
-    }
+    find_crlf(payload.as_bytes())
+        .and_then(|index| Some((payload.get(..index)?, payload.get(index + 2..)?)))
+        .ok_or(FtpParseError::IncompleteLine)
 }
 
 /// Requires the command verb to be a known FTP command, returning it borrowed.

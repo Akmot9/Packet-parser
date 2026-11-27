@@ -115,9 +115,148 @@ fn parse_reply<'a>(
     Err(FtpParseError::MissingReplyTerminator)
 }
 
+/// Le decodeur tel qu'il coupait sa premiere ligne par `str::find` : la
+/// reference des tests differentiels, ici et dans ceux du dispatch.
+#[cfg(test)]
+pub(crate) mod reference {
+    use super::*;
+
+    fn split_first_line(payload: &str) -> Result<(&str, &str), FtpParseError> {
+        match payload.find("\r\n") {
+            Some(index) => Ok((&payload[..index], &payload[index + 2..])),
+            None => Err(FtpParseError::IncompleteLine),
+        }
+    }
+
+    fn parse_reply_code(line: &str) -> Result<(u16, u8, &str), FtpParseError> {
+        let bytes = line.as_bytes();
+        if bytes.len() < 4 || !bytes[..3].iter().all(u8::is_ascii_digit) {
+            return Err(FtpParseError::InvalidReplyCode(line.to_string()));
+        }
+        let separator = bytes[3];
+        if separator != b' ' && separator != b'-' {
+            return Err(FtpParseError::InvalidReplyCode(line.to_string()));
+        }
+        let code: u16 = line[..3].parse().expect("validated ASCII digits");
+        if !(100..=599).contains(&code) {
+            return Err(FtpParseError::InvalidReplyCode(line.to_string()));
+        }
+        Ok((code, separator, &line[4..]))
+    }
+
+    pub(crate) fn parse_ftp_message(payload: &[u8]) -> Result<FtpMessage<'_>, FtpParseError> {
+        validate_ftp_payload_not_empty(payload)?;
+
+        let payload_str = parse_payload_as_utf8(payload)?;
+        validate_payload_characters(payload_str)?;
+        let (first_line, rest) = split_first_line(payload_str)?;
+
+        if looks_like_reply(first_line) {
+            let (code, separator, text) = parse_reply_code(first_line)?;
+            if separator == b' ' {
+                return Ok(FtpMessage::Reply {
+                    code,
+                    lines: vec![text],
+                });
+            }
+
+            let mut lines = vec![text];
+            let mut remainder = rest;
+            while !remainder.is_empty() {
+                let (line, next) = split_first_line(remainder)?;
+                remainder = next;
+                match parse_reply_code(line) {
+                    Ok((line_code, b' ', line_text)) if line_code == code => {
+                        lines.push(line_text);
+                        return Ok(FtpMessage::Reply { code, lines });
+                    }
+                    Ok((line_code, b'-', line_text)) if line_code == code => {
+                        lines.push(line_text);
+                    }
+                    _ => lines.push(line),
+                }
+            }
+            return Err(FtpParseError::MissingReplyTerminator);
+        }
+
+        let mut parts = first_line.splitn(2, ' ');
+        let verb = require_known_command(parts.next().unwrap_or(""))?;
+        let args = parts.next().map(str::trim).filter(|s| !s.is_empty());
+        validate_command_syntax(verb, args, first_line)?;
+
+        Ok(FtpMessage::Command { verb, args })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Le decodeur rend le message ou l'erreur de sa reference : sur les
+    /// trames du corpus et des commandes a arguments, leurs troncatures, des
+    /// fins de ligne inserees a chaque position et chaque octet remplace par
+    /// les octets qui comptent pour une ligne de commande ou de reponse.
+    #[test]
+    fn test_decoder_agrees_with_the_reference() {
+        let seeds: [&[u8]; 10] = [
+            WELCOME_REPLY,
+            USER_COMMAND,
+            PASSWORD_REQUIRED_REPLY,
+            FEAT_REPLY,
+            PWD_REPLY,
+            b"211-Features:\r\n211-MDTM\r\n299 autre code\r\n211 End\r\n211 trop\r\n",
+            b"PORT 192,168,0,1,19,137\r\n",
+            b"EPRT |2|2001:db8::1|5282|\r\nNOOP\r\n",
+            b"quit\r\n",
+            b"RETR caf\xc3\xa9.txt\r\n",
+        ];
+        let (mut accepted, mut checked) = (0, 0);
+        let mut check = |payload: &[u8]| {
+            let decoded = parse_ftp_message(payload);
+            assert_eq!(
+                decoded,
+                reference::parse_ftp_message(payload),
+                "{payload:?}"
+            );
+            accepted += usize::from(decoded.is_ok());
+            checked += 1;
+        };
+        check(b"");
+        for seed in seeds {
+            check(seed);
+            let mut mutated = seed.to_vec();
+            for position in 0..seed.len() {
+                check(&seed[..position]);
+                let original = seed[position];
+                for value in [
+                    b'\r',
+                    b'\n',
+                    b' ',
+                    b'-',
+                    b'\t',
+                    b'2',
+                    b'9',
+                    b'P',
+                    0x00,
+                    0x80,
+                    original ^ 0x20,
+                    original.wrapping_add(1),
+                ] {
+                    mutated[position] = value;
+                    check(&mutated);
+                }
+                mutated[position] = original;
+                for inserted in [&b"\r\n"[..], b"\r", b"211 ", b"211-", b" "] {
+                    let mut longer = seed[..position].to_vec();
+                    longer.extend_from_slice(inserted);
+                    longer.extend_from_slice(&seed[position..]);
+                    check(&longer);
+                }
+            }
+        }
+        assert!(checked > 5_000, "{checked} payloads");
+        assert!(accepted > 1_000, "{accepted} messages decodes");
+    }
 
     // Trames reelles : pcaps_exemple/ftp.pcap (session FTP complete vers
     // 192.168.0.193:21).

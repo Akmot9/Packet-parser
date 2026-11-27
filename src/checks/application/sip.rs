@@ -11,7 +11,10 @@
 //! d'en-tete qui sont des tokens, et un CSeq `numero methode` avec un numero
 //! sous 2^31 (§8.1.1.5).
 
-use crate::errors::application::sip::SipError;
+use crate::{
+    checks::application::http::{find_byte, find_crlf, find_head_end},
+    errors::application::sip::SipError,
+};
 
 /// La seule version de SIP (RFC 3261 §7.1), comparee sans la casse.
 pub const SIP_VERSION: &str = "SIP/2.0";
@@ -91,11 +94,16 @@ pub fn may_start_sip(payload: &[u8]) -> bool {
 /// le suit. Le separateur est obligatoire : un datagramme porte le message
 /// entier, et sur TCP une tete coupee par le segment ne prouve pas SIP.
 pub fn split_sip_head(payload: &[u8]) -> Result<(&[u8], &[u8]), SipError> {
-    let index = payload
-        .windows(HEAD_TERMINATOR.len())
-        .position(|window| window == HEAD_TERMINATOR)
-        .ok_or(SipError::MissingHeaderTerminator)?;
+    let index = find_head_end(payload).ok_or(SipError::MissingHeaderTerminator)?;
     Ok((&payload[..index], &payload[index + HEAD_TERMINATOR.len()..]))
+}
+
+/// La ligne de depart et le bloc des en-tetes d'une tete : autour de son
+/// premier `CRLF`, ou toute la tete et un bloc vide.
+pub fn split_sip_start_line(head: &str) -> (&str, &str) {
+    find_crlf(head.as_bytes())
+        .and_then(|end| Some((head.get(..end)?, head.get(end + 2..)?)))
+        .unwrap_or((head, ""))
 }
 
 /// La tete est du texte UTF-8 (RFC 3261 §7 : `TEXT-UTF8`).
@@ -166,12 +174,29 @@ fn is_token_byte(byte: u8) -> bool {
 /// puis la valeur, blancs peripheriques exclus. La valeur d'un en-tete
 /// replie garde ses `CRLF` et ses blancs interieurs.
 pub fn extract_sip_header_line(line: &str) -> Result<(&str, &str), SipError> {
-    let (name, value) = line.split_once(':').ok_or(SipError::InvalidHeader)?;
-    let name = name.trim_end_matches([' ', '\t']);
-    if name.is_empty() || !name.bytes().all(is_token_byte) {
+    let (name, value) = split_sip_header_line(line)?;
+    Ok((name, value.trim()))
+}
+
+/// Le nom valide d'une ligne d'en-tete logique et sa valeur telle qu'elle
+/// suit le `:`, blancs compris : le decodeur ne rogne que les valeurs qu'il
+/// garde.
+pub fn split_sip_header_line(line: &str) -> Result<(&str, &str), SipError> {
+    let colon = find_byte(line.as_bytes(), b':').ok_or(SipError::InvalidHeader)?;
+    let (Some(mut name), Some(value)) = (line.as_bytes().get(..colon), line.get(colon + 1..))
+    else {
+        return Err(SipError::InvalidHeader);
+    };
+    while let [start @ .., b' ' | b'\t'] = name {
+        name = start;
+    }
+    if name.is_empty() || !name.iter().copied().all(is_token_byte) {
         return Err(SipError::InvalidHeader);
     }
-    Ok((name, value.trim()))
+    // Un nom fait de tokens est de l'ASCII : la coupe tombe sur un
+    // caractere.
+    let name = line.get(..name.len()).ok_or(SipError::InvalidHeader)?;
+    Ok((name, value))
 }
 
 /// Les lignes logiques du bloc d'en-tetes : une ligne qui commence par un
@@ -185,7 +210,7 @@ pub fn sip_header_lines(block: &str) -> impl Iterator<Item = &str> {
         }
         let mut searched = 0;
         loop {
-            let Some(offset) = rest[searched..].find("\r\n") else {
+            let Some(offset) = rest.as_bytes().get(searched..).and_then(find_crlf) else {
                 let line = rest;
                 rest = "";
                 return Some(line);
@@ -217,11 +242,64 @@ pub fn sip_header_alias(name: &str) -> Option<&'static str> {
     })
 }
 
-/// Vrai si `name`, lu sur le fil, designe l'en-tete `long` ou sa forme
-/// compacte. Les noms sont insensibles a la casse (§7.3.1).
-pub fn is_sip_header(name: &str, long: &str) -> bool {
-    name.eq_ignore_ascii_case(long)
-        || sip_header_alias(long).is_some_and(|alias| name.eq_ignore_ascii_case(alias))
+/// Un en-tete que le decodeur lit : les cinq obligatoires (§8.1.1) et
+/// Content-Length.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SipCoreHeader {
+    Via,
+    From,
+    To,
+    CallId,
+    Cseq,
+    ContentLength,
+}
+
+impl SipCoreHeader {
+    /// Le nom long de l'en-tete, celui de [`SIP_COMPACT_FORMS`].
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Via => "Via",
+            Self::From => "From",
+            Self::To => "To",
+            Self::CallId => "Call-ID",
+            Self::Cseq => "CSeq",
+            Self::ContentLength => "Content-Length",
+        }
+    }
+}
+
+/// L'en-tete que designe `name`, lu sur le fil : son nom long ou sa forme
+/// compacte, sans la casse (§7.3.1) ; `None` pour tout autre en-tete.
+///
+/// Un seul aiguillage par ligne, sur la longueur du nom. Comparer le nom a
+/// chacun des six, et chercher pour chacun sa forme compacte dans
+/// [`SIP_COMPACT_FORMS`], coutait un tiers du decodage d'un message.
+pub fn sip_core_header(name: &str) -> Option<SipCoreHeader> {
+    use SipCoreHeader::{CallId, ContentLength, Cseq, From, To, Via};
+    let name = name.as_bytes();
+    let candidates: &[SipCoreHeader] = match name {
+        // Les formes compactes ; CSeq n'en a pas.
+        [letter] => {
+            return match letter.to_ascii_lowercase() {
+                b'v' => Some(Via),
+                b'f' => Some(From),
+                b't' => Some(To),
+                b'i' => Some(CallId),
+                b'l' => Some(ContentLength),
+                _ => None,
+            };
+        }
+        [_, _] => &[To],
+        [_, _, _] => &[Via],
+        [_, _, _, _] => &[From, Cseq],
+        _ if name.len() == CallId.name().len() => &[CallId],
+        _ if name.len() == ContentLength.name().len() => &[ContentLength],
+        _ => &[],
+    };
+    candidates
+        .iter()
+        .copied()
+        .find(|header| name.eq_ignore_ascii_case(header.name().as_bytes()))
 }
 
 /// CSeq : `1*DIGIT LWS Method` (§20.16), numero sous 2^31 (§8.1.1.5) et
@@ -255,6 +333,83 @@ pub fn extract_sip_content_length(value: &str) -> Result<u32, SipError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La reconnaissance d'origine d'un en-tete : `name` designe `long` ou
+    /// sa forme compacte, cherchee dans [`SIP_COMPACT_FORMS`].
+    fn reference_is_sip_header(name: &str, long: &str) -> bool {
+        name.eq_ignore_ascii_case(long)
+            || sip_header_alias(long).is_some_and(|alias| name.eq_ignore_ascii_case(alias))
+    }
+
+    /// L'aiguillage rend l'en-tete que trouvait la comparaison aux six noms
+    /// dans l'ordre du decodeur : sur les noms et les formes compactes du
+    /// registre, dans chaque casse, chaque octet seul, et chaque nom lu
+    /// alteree d'un octet, allonge ou raccourci.
+    #[test]
+    fn core_header_is_the_long_name_or_its_compact_form() {
+        const CORE: [SipCoreHeader; 6] = [
+            SipCoreHeader::Via,
+            SipCoreHeader::From,
+            SipCoreHeader::To,
+            SipCoreHeader::CallId,
+            SipCoreHeader::Cseq,
+            SipCoreHeader::ContentLength,
+        ];
+        fn check(name: &str) -> bool {
+            let expected = CORE
+                .into_iter()
+                .find(|header| reference_is_sip_header(name, header.name()));
+            assert_eq!(sip_core_header(name), expected, "{name:?}");
+            expected.is_some()
+        }
+
+        let mut names: Vec<String> = SIP_COMPACT_FORMS
+            .iter()
+            .flat_map(|(compact, long)| [compact.to_string(), long.to_string()])
+            .collect();
+        names.extend(CORE.map(|header| header.name().to_string()));
+        names.extend(["Max-Forwards", "Contact", "", "Vi", "Viaa", "CSeqq"].map(String::from));
+        let (mut found, mut checked) = (0, 0);
+        for name in &names {
+            let mut variants = vec![
+                name.clone(),
+                name.to_ascii_lowercase(),
+                name.to_ascii_uppercase(),
+                format!("{name} "),
+                format!("{name}x"),
+            ];
+            variants.push(name.chars().skip(1).collect());
+            for position in 0..name.len() {
+                for value in [b'a', b'V', b'-', b' ', b'k', b'K', 0x7f] {
+                    let mut bytes = name.clone().into_bytes();
+                    bytes[position] = value;
+                    variants.extend(String::from_utf8(bytes));
+                }
+                // U+212A, le kelvin, que seule une comparaison Unicode
+                // rapprocherait de `k`.
+                let mut kelvin = name.clone();
+                kelvin.replace_range(position..=position, "\u{212a}");
+                variants.push(kelvin);
+            }
+            for variant in variants {
+                found += usize::from(check(&variant));
+                checked += 1;
+            }
+        }
+        for byte in 0..=0x7f_u8 {
+            found += usize::from(check(&char::from(byte).to_string()));
+            checked += 1;
+        }
+        assert!(checked > 2_000, "{checked} noms");
+        assert!(found > 60, "{found} en-tetes reconnus");
+        // Chaque en-tete lu est reconnu sous ses deux formes.
+        for header in CORE {
+            assert_eq!(sip_core_header(header.name()), Some(header));
+            if let Some(compact) = sip_header_alias(header.name()) {
+                assert_eq!(sip_core_header(compact), Some(header));
+            }
+        }
+    }
 
     #[test]
     fn every_method_is_a_token_and_every_compact_form_one_letter() {

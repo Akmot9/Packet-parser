@@ -67,6 +67,7 @@ pub struct TcpPacket<'a> {
 impl<'a> TryFrom<&'a [u8]> for TcpPacket<'a> {
     type Error = TcpError;
 
+    #[inline]
     fn try_from(packet: &'a [u8]) -> Result<Self, Self::Error> {
         validate_tcp_min_length(packet)?;
 

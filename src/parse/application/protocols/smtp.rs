@@ -116,9 +116,151 @@ fn parse_reply<'a>(
     Err(SmtpParseError::MissingReplyTerminator)
 }
 
+/// Le decodeur tel qu'il coupait les lignes par `str::find` : la reference
+/// des tests differentiels, ici et dans ceux du dispatch.
+#[cfg(test)]
+pub(crate) mod reference {
+    use super::*;
+
+    fn split_first_line(payload: &str) -> Result<(&str, &str), SmtpParseError> {
+        match payload.find("\r\n") {
+            Some(index) => Ok((&payload[..index], &payload[index + 2..])),
+            None => Err(SmtpParseError::IncompleteLine),
+        }
+    }
+
+    fn parse_reply_code(line: &str) -> Result<(u16, Option<u8>, &str), SmtpParseError> {
+        let bytes = line.as_bytes();
+        if bytes.len() < 3 || !bytes[..3].iter().all(u8::is_ascii_digit) {
+            return Err(SmtpParseError::InvalidReplyCode(line.to_string()));
+        }
+        let code: u16 = line[..3].parse().expect("validated ASCII digits");
+        if !(200..=599).contains(&code) {
+            return Err(SmtpParseError::InvalidReplyCode(line.to_string()));
+        }
+        match bytes.get(3).copied() {
+            None => Ok((code, None, "")),
+            Some(separator @ (b' ' | b'-')) => Ok((code, Some(separator), &line[4..])),
+            Some(_) => Err(SmtpParseError::InvalidReplyCode(line.to_string())),
+        }
+    }
+
+    pub(crate) fn parse_smtp_message(payload: &[u8]) -> Result<SmtpMessage<'_>, SmtpParseError> {
+        if payload.is_empty() {
+            return Err(SmtpParseError::EmptyPayload);
+        }
+
+        let payload_str = parse_payload_as_utf8(payload)?;
+        validate_payload_characters(payload_str)?;
+        let (first_line, rest) = split_first_line(payload_str)?;
+
+        if looks_like_reply(first_line) {
+            let (code, separator, text) = parse_reply_code(first_line)?;
+            if separator != Some(b'-') {
+                return Ok(SmtpMessage::Reply {
+                    code,
+                    lines: vec![text],
+                });
+            }
+
+            let mut lines = vec![text];
+            let mut remainder = rest;
+            while !remainder.is_empty() {
+                let (line, next) = split_first_line(remainder)?;
+                remainder = next;
+                match parse_reply_code(line) {
+                    Ok((line_code, Some(b' ') | None, line_text)) if line_code == code => {
+                        lines.push(line_text);
+                        return Ok(SmtpMessage::Reply { code, lines });
+                    }
+                    Ok((line_code, Some(b'-'), line_text)) if line_code == code => {
+                        lines.push(line_text);
+                    }
+                    _ => {
+                        return Err(SmtpParseError::InvalidMultilineReply(line.to_string()));
+                    }
+                }
+            }
+            return Err(SmtpParseError::MissingReplyTerminator);
+        }
+
+        let mut parts = first_line.splitn(2, ' ');
+        let verb = require_known_command(parts.next().unwrap_or(""))?;
+        let args = parts.next().map(str::trim).filter(|s| !s.is_empty());
+        validate_command_syntax(verb, args, first_line)?;
+
+        Ok(SmtpMessage::Command { verb, args })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Le decodeur rend le message ou l'erreur de sa reference : sur les
+    /// trames du corpus et des commandes, leurs troncatures, des fins de
+    /// ligne inserees a chaque position et chaque octet remplace par les
+    /// octets qui comptent pour une ligne de commande ou de reponse.
+    #[test]
+    fn test_decoder_agrees_with_the_reference() {
+        let seeds: [&[u8]; 9] = [
+            BANNER_REPLY,
+            EHLO_COMMAND,
+            EHLO_REPLY,
+            MAIL_FROM_COMMAND,
+            RCPT_TO_COMMAND,
+            DATA_REPLY,
+            b"250\r\n",
+            b"250-a\r\n250\r\n250 trop\r\n",
+            b"quit\r\nNOOP\r\n",
+        ];
+        let (mut accepted, mut checked) = (0, 0);
+        let mut check = |payload: &[u8]| {
+            let decoded = parse_smtp_message(payload);
+            assert_eq!(
+                decoded,
+                reference::parse_smtp_message(payload),
+                "{payload:?}"
+            );
+            accepted += usize::from(decoded.is_ok());
+            checked += 1;
+        };
+        check(b"");
+        for seed in seeds {
+            check(seed);
+            let mut mutated = seed.to_vec();
+            for position in 0..seed.len() {
+                check(&seed[..position]);
+                let original = seed[position];
+                for value in [
+                    b'\r',
+                    b'\n',
+                    b' ',
+                    b'-',
+                    b'\t',
+                    b'2',
+                    b'9',
+                    b'<',
+                    0x00,
+                    0x80,
+                    original ^ 0x20,
+                    original.wrapping_add(1),
+                ] {
+                    mutated[position] = value;
+                    check(&mutated);
+                }
+                mutated[position] = original;
+                for inserted in [&b"\r\n"[..], b"\r", b"250 ", b"250-", b" "] {
+                    let mut longer = seed[..position].to_vec();
+                    longer.extend_from_slice(inserted);
+                    longer.extend_from_slice(&seed[position..]);
+                    check(&longer);
+                }
+            }
+        }
+        assert!(checked > 5_000, "{checked} payloads");
+        assert!(accepted > 1_000, "{accepted} messages decodes");
+    }
 
     // Trames reelles :
     // pcaps_exemple/protocols/smtp/smtp_control.pcapng. Les numeros originaux

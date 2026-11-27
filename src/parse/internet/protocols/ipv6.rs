@@ -125,6 +125,7 @@ impl<'a> TryFrom<&'a [u8]> for Ipv6Packet<'a> {
     ///
     /// # Returns
     /// * `Result<Ipv6Packet, Ipv6Error>` - The parsed IPv6 packet or an error
+    #[inline]
     fn try_from(data: &'a [u8]) -> Result<Self, Self::Error> {
         validate_ipv6_header_length(data)?;
 

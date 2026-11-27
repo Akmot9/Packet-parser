@@ -86,26 +86,8 @@ impl<'a> Transport<'a> {
     ) -> Result<Self, TransportError> {
         // println!("debug try_from_parts: {:?}", payload_protocol);
         match payload_protocol {
-            Some(TransportProtocol::Tcp) => {
-                let tcp_packet = TcpPacket::try_from(payload)?;
-                Ok(Transport {
-                    protocol: TransportProtocol::Tcp,
-                    source_port: Some(tcp_packet.header.source_port),
-                    destination_port: Some(tcp_packet.header.destination_port),
-                    payload: Some(tcp_packet.payload),
-                    details: Some(TransportDetails::Tcp(tcp_packet)),
-                })
-            }
-            Some(TransportProtocol::Udp) => {
-                let udp_packet = UdpPacket::try_from(payload)?;
-                Ok(Transport {
-                    protocol: TransportProtocol::Udp,
-                    source_port: Some(udp_packet.source_port),
-                    destination_port: Some(udp_packet.destination_port),
-                    payload: Some(udp_packet.payload),
-                    details: Some(TransportDetails::Udp(udp_packet)),
-                })
-            }
+            Some(TransportProtocol::Tcp) => Self::try_from_tcp(payload),
+            Some(TransportProtocol::Udp) => Self::try_from_udp(payload),
             // ICMP n'a ni port ni session : il est atteint par le numero de
             // protocole IP (1), jamais par probing. Un message illisible ne
             // doit pas faire echouer tout le flux — le protocole reste
@@ -156,6 +138,37 @@ impl<'a> Transport<'a> {
             }),
             None => Err(TransportError::UnsupportedProtocol),
         }
+    }
+}
+
+impl<'a> Transport<'a> {
+    /// Le bras TCP de [`try_from_parts`](Self::try_from_parts), que le
+    /// moteur appelle directement : en ligne, la couche s'ecrit a sa place
+    /// dans le flux au lieu de passer par un `Result` commun a tous les
+    /// protocoles.
+    #[inline(always)]
+    pub(crate) fn try_from_tcp(payload: &'a [u8]) -> Result<Self, TransportError> {
+        let tcp_packet = TcpPacket::try_from(payload)?;
+        Ok(Transport {
+            protocol: TransportProtocol::Tcp,
+            source_port: Some(tcp_packet.header.source_port),
+            destination_port: Some(tcp_packet.header.destination_port),
+            payload: Some(tcp_packet.payload),
+            details: Some(TransportDetails::Tcp(tcp_packet)),
+        })
+    }
+
+    /// Le bras UDP, comme [`try_from_tcp`](Self::try_from_tcp).
+    #[inline(always)]
+    pub(crate) fn try_from_udp(payload: &'a [u8]) -> Result<Self, TransportError> {
+        let udp_packet = UdpPacket::try_from(payload)?;
+        Ok(Transport {
+            protocol: TransportProtocol::Udp,
+            source_port: Some(udp_packet.source_port),
+            destination_port: Some(udp_packet.destination_port),
+            payload: Some(udp_packet.payload),
+            details: Some(TransportDetails::Udp(udp_packet)),
+        })
     }
 }
 

@@ -85,23 +85,59 @@ use crate::parse::transport::protocols::esp::EspPacket;
 /// Recopie par l'oracle FTP du fuzz : voir [`FTP_ONLY_VERBS`].
 pub(super) const PROBE_CAP: usize = 18 * 1024;
 
-/// Masque de memoisation de [`classify`](super::classify) : un bit par [`ProbeId`].
+/// Les sondes qui ont echoue sur les ports declares (« Decode As ») de
+/// [`classify`](super::classify) : un bit par [`ProbeId`]. La table, elle,
+/// memoise ses echecs par regle (voir [`super::index`]).
 pub(super) type ProbeMask = u128;
 
-/// Identite d'une sonde de contenu. Deux regles peuvent partager la meme
-/// sonde (port prioritaire puis repli aveugle) : la memoisation par identite
-/// garantit qu'elle ne s'execute qu'une fois par payload. Un bit du masque
-/// [`ProbeMask`] par identifiant.
-///
-/// Limite : 128 identifiants (`ProbeMask::BITS`). Une variante s'ajoute en
-/// fin d'enum et devient [`ProbeId::LAST`]. L'assertion qui suit l'enum
-/// refuse de compiler au-dela de la limite, et le test
-/// `probe_count_is_the_number_of_variants` verifie que `LAST` est bien la
-/// derniere variante (#212). Au-dela, `1 << 128` paniquerait en debug et
-/// replierait le bit sur celui de `Snmp` en release.
-#[derive(Clone, Copy)]
-#[repr(u32)]
-pub(super) enum ProbeId {
+/// Declare [`ProbeId`] et la table [`PROBES`] depuis une seule liste, comme
+/// `decode_as_protocols!` : une sonde ne peut pas manquer a la table, ni y
+/// etre a un autre rang que son identifiant.
+macro_rules! probe_ids {
+    ($($(#[$doc:meta])* $variant:ident),+ $(,)?) => {
+        /// Identite d'une sonde de contenu. Deux regles peuvent partager la
+        /// meme sonde (port prioritaire puis repli aveugle) : la memoisation
+        /// par identite garantit qu'elle ne s'execute qu'une fois par
+        /// payload. Un bit du masque [`ProbeMask`] par identifiant, pour les
+        /// echecs de Decode As.
+        ///
+        /// Limite : 128 identifiants (`ProbeMask::BITS`). Une variante
+        /// s'ajoute en fin de liste et devient [`ProbeId::LAST`].
+        /// L'assertion qui suit la liste refuse de compiler au-dela de la
+        /// limite, et [`PROBES`], qui a `COUNT` cases, quand `LAST` n'est pas
+        /// la derniere variante ; le test
+        /// `probe_count_is_the_number_of_variants` le verifie aussi (#212).
+        /// Au-dela, `1 << 128` paniquerait en debug et replierait le bit sur
+        /// celui de `Snmp` en release.
+        #[derive(Clone, Copy)]
+        #[repr(u32)]
+        pub(super) enum ProbeId {
+            $(
+                $(#[$doc])*
+                $variant,
+            )+
+        }
+
+        /// La fonction de chaque sonde, au rang de son identifiant : le bras
+        /// de [`probe_body`] pour cette sonde, et lui seul. Une fonction par
+        /// sonde plutot qu'un `match` integre dans la boucle de
+        /// [`classify`](super::classify) : la boucle reste courte, et un
+        /// payload ne paie que les sondes qu'il traverse. Integre, le
+        /// `match` laissait le compilateur sortir de la boucle les calculs
+        /// invariants de tous les decodeurs : une centaine d'instructions
+        /// par payload, meme reconnu a la premiere sonde.
+        static PROBES: [fn(&[u8]) -> bool; ProbeId::COUNT as usize] = [
+            $({
+                fn probe(payload: &[u8]) -> bool {
+                    probe_body(ProbeId::$variant, payload)
+                }
+                probe
+            }),+
+        ];
+    };
+}
+
+probe_ids![
     Snmp,
     Dhcpv6,
     S7Comm,
@@ -231,7 +267,7 @@ pub(super) enum ProbeId {
     /// ONC RPC sur TCP : des fragments d'enregistrement qui pavent le
     /// segment, le dernier pouvant etre coupe (#381).
     OncRpcTcp,
-}
+];
 
 impl ProbeId {
     /// La derniere variante de l'enum : a deplacer quand une sonde s'ajoute.
@@ -250,10 +286,20 @@ const _: () = assert!(
     "ProbeId depasse la largeur du masque de memoisation (ProbeMask)"
 );
 
-/// Sonde `probe` sur le payload reel. Les sondes des protocoles texte ne
-/// lisent que [`PROBE_CAP`] octets ; toutes les autres jugent les octets que
-/// leur decodeur lira (#184, #185).
+/// Sonde `probe` sur le payload reel : la fonction de la sonde, par
+/// [`PROBES`].
 pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
+    PROBES[probe as usize](payload)
+}
+
+/// Le corps de chaque sonde. Les sondes des protocoles texte ne lisent que
+/// [`PROBE_CAP`] octets ; toutes les autres jugent les octets que leur
+/// decodeur lira (#184, #185).
+///
+/// Toujours integre : chaque fonction de [`PROBES`] l'appelle avec sa sonde
+/// en constante, et il n'en reste que le bras de cette sonde.
+#[inline(always)]
+pub(super) fn probe_body(probe: ProbeId, payload: &[u8]) -> bool {
     let text = &payload[..payload.len().min(PROBE_CAP)];
     match probe {
         // Le message doit paver exactement le datagramme ou le segment.
@@ -296,7 +342,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         ProbeId::NtpBlind => NtpPacket::is_blind_udp_match(payload),
         // Tous les data blocks doivent paver le datagramme jusqu'a son
         // dernier octet.
-        ProbeId::Asterix => AsterixPacket::try_from(payload).is_ok(),
+        ProbeId::Asterix => AsterixPacket::is_blind_udp_match(payload),
         // Des messages complets doivent paver le segment, sur un seul reseau
         // (#288).
         ProbeId::Bitcoin => BitcoinPacket::is_tcp_match(payload),
@@ -342,7 +388,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         // preambule (#307), apres HTTP, pour qu'une reponse HTTP dont le
         // corps cite une banniere reste HTTP.
         ProbeId::Ssh => payload.starts_with(SSH_PREFIX) && SshPacket::try_from(payload).is_ok(),
-        ProbeId::SshAfterLines => SshPacket::try_from(payload).is_ok(),
+        ProbeId::SshAfterLines => SshPacket::is_tcp_match(payload),
         // Requete ou reponse (#176) : la tete, jusqu'au premier CRLF CRLF,
         // est validee en UTF-8 et ligne par ligne ; sans separateur, tout le
         // prefixe est la tete. Chaque decodeur est precede de sa garde a cout
@@ -362,7 +408,14 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
         // Les MBAP doivent paver le segment, tous en UMAS (#295).
         ProbeId::Umas => UmasPacket::is_tcp_match(payload),
         ProbeId::ModbusTcp => ModbusTcpPacket::try_from(payload).is_ok(),
-        ProbeId::ModbusTcpBlind => ModbusTcpPacket::is_blind_tcp_match(payload),
+        // Garde a cout constant : le decodeur lit d'abord le MBAP de tete et
+        // refuse un identifiant de protocole non nul (octets 2 et 3). Sans
+        // elle, tout segment TCP non reconnu payait l'entree du decodeur, son
+        // Vec et sa valeur d'erreur : 62 instructions sur le paquet de
+        // reference.
+        ProbeId::ModbusTcpBlind => {
+            matches!(payload, [_, _, 0, 0, ..]) && ModbusTcpPacket::is_blind_tcp_match(payload)
+        }
         // La longueur de l'en-tete long doit tenir dans le datagramme.
         ProbeId::QuicLongHeader => QuicPacket::is_blind_udp_match(payload),
         // Les paquets doivent paver le segment.
@@ -429,7 +482,7 @@ pub(super) fn run_probe(probe: ProbeId, payload: &[u8]) -> bool {
 /// verbe est valide avec la syntaxe FTP. POST est exclu du set NNTP (HTTP).
 ///
 /// L'oracle de `fuzz/oracles/text_protocols.rs` (#108) recopie cette liste,
-/// les ports de [`is_text_protocol_port`](super::ports::is_text_protocol_port) et [`is_ftp_tcp_port`](super::ports::is_ftp_tcp_port), et
+/// les ports de [`TEXT_PROTOCOL_PORTS`](super::ports::TEXT_PROTOCOL_PORTS) et [`FTP_TCP_PORTS`](super::ports::FTP_TCP_PORTS), et
 /// [`PROBE_CAP`] : toute modification s'y reporte. Elargir la detection sans
 /// lui fait echouer le fuzzing nocturne sur un comportement voulu ; la
 /// restreindre le relache en silence.

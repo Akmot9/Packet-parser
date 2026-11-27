@@ -14,8 +14,8 @@ use std::convert::TryFrom;
 use crate::{
     checks::application::ssh::{
         extract_ssh_identification_line, extract_ssh_protocol_version,
-        extract_ssh_software_and_comments, locate_ssh_identification, validate_ssh_min_length,
-        validate_ssh_prefix, validate_ssh_printable,
+        extract_ssh_software_and_comments, find_ssh_identification, locate_ssh_identification,
+        validate_ssh_min_length, validate_ssh_prefix, validate_ssh_printable,
     },
     errors::application::ssh::SshError,
 };
@@ -54,6 +54,14 @@ impl<'a> TryFrom<&'a [u8]> for SshPacket<'a> {
     fn try_from(payload: &'a [u8]) -> Result<Self, SshError> {
         validate_ssh_min_length(payload)?;
         let identification = locate_ssh_identification(payload)?;
+        Self::from_identification(identification)
+    }
+}
+
+impl<'a> SshPacket<'a> {
+    /// La chaine d'identification qui ouvre `identification`, une fois les
+    /// lignes de preambule passees.
+    fn from_identification(identification: &'a [u8]) -> Result<Self, SshError> {
         validate_ssh_min_length(identification)?;
         validate_ssh_prefix(identification)?;
 
@@ -68,6 +76,23 @@ impl<'a> TryFrom<&'a [u8]> for SshPacket<'a> {
             software_version,
             comments,
         })
+    }
+
+    /// La sonde du dispatch : la decision de [`TryFrom::try_from`], par les
+    /// memes controles, sans construire l'erreur d'un segment qui n'est pas
+    /// du SSH. Tout segment TCP non reconnu qui s'ouvre par un octet de
+    /// texte la paie.
+    pub(crate) fn is_tcp_match(payload: &[u8]) -> bool {
+        validate_ssh_min_length(payload).is_ok()
+            && find_ssh_identification(payload).is_some_and(Self::opens)
+    }
+
+    /// Vrai si `identification` s'ouvre par une chaine d'identification
+    /// valide. Hors ligne : le refus de la sonde, de loin son issue la plus
+    /// frequente, ne paie pas le cadre de pile du decodeur.
+    #[inline(never)]
+    fn opens(identification: &[u8]) -> bool {
+        SshPacket::from_identification(identification).is_ok()
     }
 }
 
@@ -244,5 +269,62 @@ mod tests {
             result.unwrap_err(),
             SshError::NonPrintableByte { offset: 12 }
         );
+    }
+
+    /// La sonde du dispatch (`is_tcp_match`) rend, pour tout segment, la
+    /// decision de `try_from` : sur les bannieres du corpus, des bannieres
+    /// precedees de lignes, des refus, leurs troncatures et chaque valeur de
+    /// chacun de leurs octets.
+    #[test]
+    fn test_probe_agrees_with_the_decoder() {
+        let seeds: [&[u8]; 12] = [
+            OPENSSH_UBUNTU,
+            CISCO,
+            PUTTY,
+            OPENSSH_RASPBIAN,
+            b"SSH-1.99-Server\n",
+            b"Welcome\r\nSSH-2.0-OpenSSH_9.6\r\n",
+            b"Hello\r\n\tcaf\xc3\xa9\r\n\r\nSSH-1.99-Server\n",
+            b"Welcome\r\nSSH-3.0-Bad\r\nSSH-2.0-Good\r\n",
+            b"SSH-2.0-OpenSSH_8.9p1",
+            b"SSH-2.0-\n",
+            b"Welcome\r\nSSH-2.0-\n",
+            b"GET /index.html HTTP/1.1\r\n",
+        ];
+        let (mut accepted, mut refused) = (0, 0);
+        let mut check = |payload: &[u8]| {
+            let decoded = SshPacket::try_from(payload).is_ok();
+            assert_eq!(SshPacket::is_tcp_match(payload), decoded, "{payload:?}");
+            if decoded {
+                accepted += 1;
+            } else {
+                refused += 1;
+            }
+        };
+        check(b"");
+        for seed in seeds {
+            check(seed);
+            let mut mutated = seed.to_vec();
+            for position in 0..seed.len() {
+                check(&seed[..position]);
+                for value in 0..=u8::MAX {
+                    mutated[position] = value;
+                    check(&mutated);
+                }
+                mutated[position] = seed[position];
+            }
+            // Ce qui suit la banniere ne change rien, binaire compris.
+            mutated.extend_from_slice(b"\x00\x01\xff suite\r\n");
+            check(&mutated);
+        }
+        // Une identification sans fin de ligne, puis au-dela de sa borne.
+        let mut long = b"motd\r\nSSH-2.0-".to_vec();
+        long.resize(300, b'x');
+        check(&long);
+        long.push(b'\n');
+        check(&long);
+
+        assert!(accepted > 10_000, "{accepted} segments acceptes");
+        assert!(refused > 20_000, "{refused} segments refuses");
     }
 }

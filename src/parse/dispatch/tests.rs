@@ -3,6 +3,9 @@
 // Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
 // This file may not be copied, modified, or distributed except according to those terms.
 
+use super::first_bytes::{FirstBytes, PROVEN_BELOW, first_bytes};
+use super::index::RuleSet;
+use super::ports::Ports;
 use super::probes::*;
 use super::rules::*;
 use super::*;
@@ -317,6 +320,81 @@ fn modbus_is_lenient_on_port_502_and_strict_elsewhere() {
     };
     assert_eq!(declared(udp), Some("ModbusUDP"));
     assert_eq!(declared(tcp), Some("Unknown"));
+}
+
+/// La garde du bras `ModbusTcpBlind` (identifiant de protocole nul aux
+/// octets 2 et 3) ne refuse rien que la sonde aveugle accepte : le bras rend
+/// la decision de `is_blind_tcp_match` sur des ADU construits, sur les
+/// payloads du corpus, sur leurs troncatures et sur chaque valeur de leurs
+/// huit premiers octets.
+#[test]
+fn modbus_blind_guard_never_refuses_what_the_probe_accepts() {
+    use crate::parse::application::protocols::modbus_tcp::ModbusTcpPacket;
+
+    // Rend la decision commune du bras et de la sonde sans garde.
+    fn agree(payload: &[u8]) -> bool {
+        let expected = ModbusTcpPacket::is_blind_tcp_match(payload);
+        assert_eq!(
+            run_probe(ProbeId::ModbusTcpBlind, payload),
+            expected,
+            "{payload:02x?}"
+        );
+        expected
+    }
+    // Troncatures de l'en-tete, puis chaque valeur de ses octets.
+    fn agree_on_variants(payload: &[u8], accepted: &mut usize, rejected: &mut usize) {
+        let mut check = |candidate: &[u8]| {
+            if agree(candidate) {
+                *accepted += 1;
+            } else {
+                *rejected += 1;
+            }
+        };
+        check(payload);
+        for length in 0..payload.len().min(16) {
+            check(&payload[..length]);
+        }
+        let mut mutated = payload.to_vec();
+        for index in 0..payload.len().min(8) {
+            for value in 0..=u8::MAX {
+                mutated[index] = value;
+                check(&mutated);
+            }
+            mutated[index] = payload[index];
+        }
+    }
+
+    let seeds: [&[u8]; 5] = [
+        // Read Holding Registers : requete, reponse, puis les deux a la suite.
+        &[0x00, 0xd1, 0, 0, 0, 6, 0x01, 0x03, 0x00, 0x01, 0x00, 0x01],
+        &[0x00, 0xd1, 0, 0, 0, 5, 0x01, 0x03, 0x02, 0x12, 0x34],
+        &[
+            0x00, 0xd1, 0, 0, 0, 6, 0x01, 0x03, 0x00, 0x01, 0x00, 0x01, 0x00, 0xd2, 0, 0, 0, 5,
+            0x01, 0x03, 0x02, 0x12, 0x34,
+        ],
+        // Write Single Coil, puis une exception.
+        &[0x12, 0x34, 0, 0, 0, 6, 0xff, 0x05, 0x00, 0x10, 0xff, 0x00],
+        &[0x00, 0x01, 0, 0, 0, 3, 0x01, 0x83, 0x02],
+    ];
+    let (mut accepted, mut rejected) = (0, 0);
+    for seed in seeds {
+        assert!(agree(seed), "{seed:02x?}");
+        agree_on_variants(seed, &mut accepted, &mut rejected);
+    }
+    assert!(accepted > 2_000, "{accepted} variantes acceptees");
+    assert!(rejected > 2_000, "{rejected} variantes refusees");
+
+    // Le corpus, absent de l'archive publiee : chaque payload, et les
+    // variantes d'un sur sept.
+    let corpus = corpus_payloads(64);
+    let mut recognised = 0;
+    for (index, payload) in corpus.iter().enumerate() {
+        recognised += usize::from(agree(payload));
+        if index % 7 == 0 {
+            agree_on_variants(payload, &mut accepted, &mut rejected);
+        }
+    }
+    assert!(corpus.is_empty() || recognised > 100, "{recognised} ADU");
 }
 
 /// #164 : sur UDP 123, le decodeur NTP tolerant ; sur tout autre port,
@@ -1047,6 +1125,519 @@ fn port_rules_carry_a_transport_guard() {
             rule.label
         );
     }
+}
+
+/// Les listes par transport de l'index sont la table filtree par la garde
+/// de transport, dans l'ordre de la table, pour chaque numero de protocole
+/// IP : la boucle de `classify` visite les memes regles qu'en parcourant
+/// `RULES`.
+#[test]
+fn transport_lists_are_the_table_filtered_by_its_guards() {
+    for number in 0..=u8::MAX {
+        let protocol = TransportProtocol::from_u8(number);
+        let expected: Vec<&Rule> = RULES
+            .iter()
+            .filter(|rule| rule.guard.admits(protocol))
+            .collect();
+        let listed = index::list_for(protocol).rules();
+        assert_eq!(listed.len(), expected.len(), "{protocol:?}");
+        for (listed, expected) in listed.iter().map(|listed| listed.rule).zip(expected) {
+            assert!(
+                listed.label == expected.label
+                    && listed.probe as u32 == expected.probe as u32
+                    && listed.ports.is_some() == expected.ports.is_some()
+                    && listed.ports_veto.is_some() == expected.ports_veto.is_some()
+                    && listed.terminal_on_port == expected.terminal_on_port,
+                "{protocol:?} : {} au rang de {}",
+                listed.label,
+                expected.label
+            );
+        }
+    }
+    // Les trois listes existent : TCP et UDP ont leurs regles, les autres
+    // protocoles seulement les regles `Guard::Any`.
+    assert!(index::list_for(TransportProtocol::Tcp).rules().len() > 4);
+    assert!(index::list_for(TransportProtocol::Udp).rules().len() > 4);
+    assert!(
+        index::list_for(TransportProtocol::Sctp)
+            .rules()
+            .iter()
+            .all(|listed| matches!(listed.rule.guard, Guard::Any))
+    );
+}
+
+/// Les regles de `list` que retient `keep`, en ensemble.
+fn rule_set(list: &index::RuleList, keep: impl Fn(&Rule) -> bool) -> RuleSet {
+    list.rules()
+        .iter()
+        .enumerate()
+        .filter(|(_, listed)| keep(listed.rule))
+        .fold(0, |set, (rank, _)| set | 1 << rank)
+}
+
+/// L'index des ports dit de chaque port ce qu'en disent la garde et le veto
+/// de chaque regle : les 65 536 ports et le port inconnu, pour les trois
+/// listes. Avec `transport_lists_are_the_table_filtered_by_its_guards`, les
+/// regles que `classify` visite sont celles que retient un parcours de
+/// `RULES`.
+#[test]
+fn port_effects_are_the_port_guards_and_vetoes_of_each_rule() {
+    for protocol in [
+        TransportProtocol::Tcp,
+        TransportProtocol::Udp,
+        TransportProtocol::Sctp,
+    ] {
+        let list = index::list_for(protocol);
+        assert_eq!(
+            list.portless,
+            rule_set(list, |rule| rule.ports.is_none()),
+            "{protocol:?}"
+        );
+        assert_eq!(
+            list.terminal,
+            rule_set(list, |rule| rule.terminal_on_port && rule.ports.is_some()),
+            "{protocol:?}"
+        );
+        let unknown = list.port_effect(None);
+        assert_eq!((unknown.opens, unknown.vetoes), (0, 0), "{protocol:?}");
+
+        // Par regle, les ports de sa garde et de son veto : une passe sur
+        // les ports par regle, plutot qu'une passe sur les regles par port.
+        let mut opens: Vec<RuleSet> = vec![0; usize::from(u16::MAX) + 1];
+        let mut vetoes: Vec<RuleSet> = vec![0; usize::from(u16::MAX) + 1];
+        for (rank, rule) in list.rules().iter().map(|listed| listed.rule).enumerate() {
+            for port in 0..=u16::MAX {
+                if rule.ports.is_some_and(|ports| ports.contains(port)) {
+                    opens[usize::from(port)] |= 1 << rank;
+                }
+                if rule.ports_veto.is_some_and(|ports| ports.contains(port)) {
+                    vetoes[usize::from(port)] |= 1 << rank;
+                }
+            }
+        }
+        for port in 0..=u16::MAX {
+            let effect = list.port_effect(Some(port));
+            assert_eq!(
+                (effect.opens, effect.vetoes),
+                (opens[usize::from(port)], vetoes[usize::from(port)]),
+                "{protocol:?}, port {port}"
+            );
+        }
+    }
+    // Les listes ne sont pas vides de ports : 53 ouvre une regle sur chaque
+    // transport, 21 en ouvre une et en interdit trois sur TCP.
+    let dns = |protocol| index::list_for(protocol).port_effect(Some(53)).opens;
+    assert_eq!(dns(TransportProtocol::Tcp).count_ones(), 1);
+    assert_eq!(dns(TransportProtocol::Udp).count_ones(), 1);
+    let ftp = index::list_for(TransportProtocol::Tcp).port_effect(Some(21));
+    assert_eq!((ftp.opens.count_ones(), ftp.vetoes.count_ones()), (1, 3));
+}
+
+/// La memoisation des echecs : les jumelles d'une regle sont les regles non
+/// terminales qui la suivent dans sa liste et portent sa sonde, et rien
+/// d'autre. Une regle retiree a tort de la visite changerait un verdict ;
+/// une regle terminale retiree ne rendrait plus `None` a son rang.
+#[test]
+fn twins_are_the_later_rules_that_carry_the_same_probe() {
+    for protocol in [
+        TransportProtocol::Tcp,
+        TransportProtocol::Udp,
+        TransportProtocol::Sctp,
+    ] {
+        let list = index::list_for(protocol);
+        let same_probe = |listed: &index::Listed, other: &Rule| {
+            other.probe as u32 == listed.rule.probe as u32 && !other.terminal_on_port
+        };
+        for (rank, listed) in list.rules().iter().enumerate() {
+            let later = list
+                .rules()
+                .iter()
+                .enumerate()
+                .filter(|(later, other)| *later > rank && same_probe(listed, other.rule))
+                .fold(0, |set, (later, _)| set | 1 << later);
+            // L'echec retire la regle et ses jumelles, et laisse le reste.
+            assert_eq!(
+                listed.left,
+                !(1 << rank | later),
+                "{protocol:?}, rang {rank}"
+            );
+            // Un echec vu par Decode As retire les memes regles, ou
+            // qu'elles soient dans la liste.
+            assert_eq!(
+                list.already_failed(listed.rule.probe.bit()),
+                rule_set(list, |other| same_probe(listed, other)),
+                "{protocol:?}, rang {rank}"
+            );
+        }
+        assert_eq!(list.already_failed(0), 0);
+        assert_eq!(
+            list.already_failed(ProbeMask::MAX),
+            rule_set(list, |rule| !rule.terminal_on_port)
+        );
+        // Aucune regle terminale de la table ne partage sa sonde : une
+        // sonde ne s'execute donc qu'une fois par payload, regles
+        // terminales comprises.
+        for (rank, listed) in list.rules().iter().enumerate() {
+            if listed.rule.terminal_on_port {
+                assert!(
+                    list.rules().iter().enumerate().all(|(other, twin)| {
+                        other == rank || twin.rule.probe as u32 != listed.rule.probe as u32
+                    }),
+                    "{protocol:?} : la regle terminale {} partage sa sonde",
+                    listed.rule.label
+                );
+            }
+        }
+    }
+    // La table a des sondes partagees : SNMP et RADIUS sur UDP, UMAS sur
+    // TCP, chacune sur son port puis a l'aveugle.
+    let twinned = |protocol| {
+        index::list_for(protocol)
+            .rules()
+            .iter()
+            .filter(|listed| listed.left.count_zeros() > 1)
+            .count()
+    };
+    assert!(twinned(TransportProtocol::Udp) >= 2);
+    assert!(twinned(TransportProtocol::Tcp) >= 1);
+}
+
+/// `Ports::first_from`, dont l'index tire la liste des ports cites, rend le
+/// plus petit port de la famille a partir du plancher : pour chaque famille
+/// de la table et quelques familles limites, a chaque plancher.
+#[test]
+fn ports_first_from_is_the_smallest_port_from_the_floor() {
+    let mut families: Vec<Ports> = RULES
+        .iter()
+        .flat_map(|rule| [rule.ports, rule.ports_veto])
+        .flatten()
+        .collect();
+    assert!(families.len() > 40);
+    families.extend([
+        Ports::Among(&[]),
+        Ports::Among(&[0]),
+        Ports::Among(&[u16::MAX, 7, 0, 7]),
+        Ports::Range(0, 0),
+        Ports::Range(0, u16::MAX),
+        Ports::Range(65_000, u16::MAX),
+        Ports::Range(9, 3),
+    ]);
+    for (index, family) in families.into_iter().enumerate() {
+        let mut expected = None;
+        for floor in (0..=u16::MAX).rev() {
+            if family.contains(floor) {
+                expected = Some(floor);
+            }
+            assert_eq!(
+                family.first_from(floor),
+                expected,
+                "famille {index}, plancher {floor}"
+            );
+        }
+    }
+}
+
+/// `classify` telle qu'elle s'ecrivait avant l'index : un parcours de
+/// `RULES`, la garde de transport, la garde et le veto de port de chaque
+/// regle evalues sur les deux ports, les echecs memoises par sonde.
+fn classify_by_scanning_the_table(
+    transport: &Transport<'_>,
+    decode_as: &[(u16, DecodeAsProtocol)],
+) -> Option<Application> {
+    let payload = transport.payload?;
+    if payload.is_empty() {
+        return None;
+    }
+    let on = |ports: Ports| {
+        [transport.source_port, transport.destination_port]
+            .into_iter()
+            .flatten()
+            .any(|port| ports.contains(port))
+    };
+    let mut failed: Vec<u32> = Vec::new();
+    let on_terminal_port = RULES.iter().any(|rule| {
+        rule.terminal_on_port && rule.guard.admits(transport.protocol) && rule.ports.is_some_and(on)
+    });
+    if !decode_as.is_empty() && !on_terminal_port {
+        for (port, protocol) in decode_as {
+            if transport.source_port != Some(*port) && transport.destination_port != Some(*port) {
+                continue;
+            }
+            let (label, guard, probe) = protocol.rule(transport.protocol);
+            if !guard.admits(transport.protocol) {
+                continue;
+            }
+            if !failed.contains(&(probe as u32)) && run_probe(probe, payload) {
+                return Some(Application { protocol: label });
+            }
+            failed.push(probe as u32);
+        }
+    }
+    for rule in RULES {
+        if !rule.guard.admits(transport.protocol) {
+            continue;
+        }
+        if rule.ports.is_some_and(|ports| !on(ports)) {
+            continue;
+        }
+        if rule.ports_veto.is_some_and(on) {
+            continue;
+        }
+        if !failed.contains(&(rule.probe as u32)) && run_probe(rule.probe, payload) {
+            return Some(Application {
+                protocol: rule.label,
+            });
+        }
+        failed.push(rule.probe as u32);
+        if rule.terminal_on_port {
+            return None;
+        }
+    }
+    Some(Application {
+        protocol: ApplicationProtocol::Unknown,
+    })
+}
+
+/// Des payloads que des regles differentes reconnaissent, par leur port ou
+/// a l'aveugle, et d'autres que rien ne reconnait.
+fn differential_payloads() -> Vec<Vec<u8>> {
+    let mut payloads: Vec<Vec<u8>> = [
+        // Requete mDNS : mDNS sur 5353, DNS sur 53, terminale sur 5355.
+        "000000000001000000000000045f687474045f746370056c6f63616c00000c0001",
+        // La meme, prefixee de sa longueur : DNS sur TCP 53.
+        "0021000000000001000000000000045f687474045f746370056c6f63616c00000c0001",
+        // NTP, reconnu sur 123 et a l'aveugle.
+        concat!(
+            "d9000afa00000000000102900000000000000000000000000000000000000000",
+            "0000000000000000c50204ecec42ee92"
+        ),
+        // Modbus : une lecture, puis UMAS.
+        "00d100000006010300010001",
+        "000100000004005a0002",
+        // IKE_SA_INIT, ESP dans UDP, NAT-keepalive.
+        "62f94c9887715a34000000000000000000202208000000000000001c",
+        "cbb7a0c6000000012b0f39c7",
+        "ff",
+        // Java RMI : en-tete de flux, DgcAck.
+        "4a524d4900024b",
+        "54bfcb98ab000001a1e8ed9c5b8007",
+        // WireGuard, donnees de transport.
+        "0400000006f47dab03000000000000001956e2b6651dd4f59cb23092a0d09671",
+        // SNMPv1 GetRequest, communaute `public`.
+        "302602010004067075626c6963a019020101020100020100300e300c06082b060102010101000500",
+        // Record TLS : une alerte.
+        "15030300020100",
+    ]
+    .into_iter()
+    .map(|fixture| hex::decode(fixture).expect("fixture"))
+    .collect();
+    payloads.extend(
+        [
+            &b"PASV\r\n"[..],
+            b"EHLO client.example\r\n",
+            b"ARTICLE 12345\r\n",
+            b"220 Service ready\r\n",
+            b"QUIT\r\n",
+            b"GET / HTTP/1.1\r\nHost: a\r\n\r\n",
+            b"SSH-2.0-OpenSSH_9.6\r\n",
+            b"M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\n\r\n",
+            b"<34>Oct 11 22:14:15 mymachine su: 'su root' failed\n",
+            b"\x00",
+        ]
+        .map(<[u8]>::to_vec),
+    );
+    // Du bruit deterministe, de plusieurs tailles.
+    let mut state = 0x9e37_79b9_u32;
+    for length in [1, 8, 48, 300] {
+        payloads.push(
+            (0..length)
+                .map(|_| {
+                    state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                    state.to_be_bytes()[0]
+                })
+                .collect(),
+        );
+    }
+    payloads
+}
+
+/// La table des sondes rend, pour chaque sonde de la table et de Decode As,
+/// ce que rend son bras de `probe_body` : chaque fonction est au rang de son
+/// identifiant.
+#[test]
+fn probe_table_runs_the_arm_of_each_probe() {
+    let payloads = differential_payloads();
+    let declared = DecodeAsProtocol::ALL.iter().flat_map(|protocol| {
+        [TransportProtocol::Tcp, TransportProtocol::Udp].map(|transport| protocol.rule(transport).2)
+    });
+    let mut accepted = std::collections::BTreeSet::new();
+    for probe in RULES.iter().map(|rule| rule.probe).chain(declared) {
+        for payload in &payloads {
+            let expected = probe_body(probe, payload);
+            assert_eq!(
+                run_probe(probe, payload),
+                expected,
+                "sonde {}, payload {}",
+                probe as u32,
+                hex::encode(payload)
+            );
+            if expected {
+                accepted.insert(probe as u32);
+            }
+        }
+    }
+    // Des sondes differentes acceptent des payloads differents : une table
+    // decalee d'un rang ne passerait pas.
+    assert!(accepted.len() > 15, "{accepted:?}");
+}
+
+/// `classify` rend ce que rend un parcours de `RULES`, pour chaque couple
+/// de ports que cite la table (plus un port ephemere et le port inconnu),
+/// sur TCP, UDP et un protocole que seules les regles `Guard::Any`
+/// admettent, avec et sans Decode As ; puis pour chaque valeur du premier
+/// octet de chaque payload, que le prefiltre lit et que le parcours ignore.
+#[test]
+fn classify_agrees_with_a_scan_of_the_table() {
+    let payloads = differential_payloads();
+    let mut labels = std::collections::BTreeSet::new();
+    let mut compared = 0_u32;
+    let mut check = |payloads: &[Vec<u8>],
+                     protocol,
+                     source_port,
+                     destination_port,
+                     decode_as: &[_]| {
+        for payload in payloads {
+            let transport = Transport {
+                protocol,
+                source_port,
+                destination_port,
+                payload: Some(payload),
+                details: None,
+            };
+            let expected = classify_by_scanning_the_table(&transport, decode_as);
+            assert_eq!(
+                classify(&transport, decode_as),
+                expected,
+                "{protocol:?} {source_port:?} -> {destination_port:?}, {} Decode As, payload {}",
+                decode_as.len(),
+                hex::encode(payload)
+            );
+            labels.insert(expected.map(|application| application.protocol.label()));
+            compared += 1;
+        }
+    };
+
+    // Les ports que cite une regle de ce transport, le port inconnu et un
+    // port ephemere.
+    let cited_ports = |protocol| {
+        let mut ports = vec![None, Some(40_000)];
+        for rule in RULES.iter().filter(|rule| rule.guard.admits(protocol)) {
+            for family in [rule.ports, rule.ports_veto].into_iter().flatten() {
+                let mut floor = 0;
+                while let Some(port) = family.first_from(floor) {
+                    ports.push(Some(port));
+                    let Some(next) = port.checked_add(1) else {
+                        break;
+                    };
+                    floor = next;
+                }
+            }
+        }
+        ports.sort_unstable();
+        ports.dedup();
+        ports
+    };
+    let protocols = [
+        TransportProtocol::Tcp,
+        TransportProtocol::Udp,
+        TransportProtocol::Sctp,
+    ];
+
+    for protocol in protocols {
+        let ports = cited_ports(protocol);
+        for source_port in &ports {
+            for destination_port in &ports {
+                check(&payloads, protocol, *source_port, *destination_port, &[]);
+            }
+        }
+    }
+
+    // Decode As : chaque protocole declare sur un port ephemere, sur un port
+    // que la table garde et sur un port terminal ; une declaration en
+    // double ; et tous les protocoles sur le meme port, dont les echecs se
+    // memoisent d'une declaration a l'autre puis dans la table.
+    let everything: Vec<(u16, DecodeAsProtocol)> = DecodeAsProtocol::ALL
+        .iter()
+        .map(|protocol| (40_000, *protocol))
+        .collect();
+    let ports = [None, Some(40_000), Some(53), Some(502), Some(5353)];
+    for protocol in [TransportProtocol::Tcp, TransportProtocol::Udp] {
+        for source_port in ports {
+            for destination_port in ports {
+                check(
+                    &payloads,
+                    protocol,
+                    source_port,
+                    destination_port,
+                    &everything,
+                );
+                for declared in DecodeAsProtocol::ALL {
+                    for port in [40_000, 53, 5353] {
+                        let twice = [(port, *declared), (port, *declared)];
+                        check(
+                            &payloads,
+                            protocol,
+                            source_port,
+                            destination_port,
+                            &twice[..1],
+                        );
+                        check(&payloads, protocol, source_port, destination_port, &twice);
+                    }
+                }
+            }
+        }
+    }
+
+    // Le premier octet : chaque payload avec chacune des 256 valeurs en
+    // tete, sans port, sur un port ephemere ou tout est declare par Decode
+    // As, et sur les ports qui changent le verdict du payload d'origine,
+    // ports terminaux compris.
+    for payload in &payloads {
+        let variants: Vec<Vec<u8>> = (0..=u8::MAX)
+            .map(|first| {
+                let mut variant = payload.clone();
+                variant[0] = first;
+                variant
+            })
+            .collect();
+        for protocol in protocols {
+            let verdict = |port| {
+                classify_by_scanning_the_table(
+                    &Transport {
+                        protocol,
+                        source_port: None,
+                        destination_port: port,
+                        payload: Some(payload),
+                        details: None,
+                    },
+                    &[],
+                )
+            };
+            let unguarded = verdict(None);
+            check(&variants, protocol, None, None, &[]);
+            check(&variants, protocol, Some(40_000), None, &everything);
+            for port in cited_ports(protocol) {
+                if verdict(port) != unguarded {
+                    check(&variants, protocol, None, port, &[]);
+                }
+            }
+        }
+    }
+
+    // Le test compare des verdicts varies, pas seulement `Unknown`.
+    assert!(compared > 400_000, "{compared} comparaisons");
+    assert!(labels.contains(&None), "aucun verdict terminal");
+    assert!(labels.len() > 15, "{labels:?}");
 }
 
 /// SIP (#342) : sonde aveugle sur TCP comme sur UDP, sur tout port, disjointe
@@ -1830,6 +2421,105 @@ fn http_guards_never_refuse_what_the_decoders_accept() {
     assert!(accepted > 2_000, "{accepted} cas acceptes seulement");
 }
 
+/// Les sondes texte qui ne passent pas par `try_from` rendent la decision de
+/// leur decodeur : sur les payloads du corpus, leurs troncatures et des
+/// alterations de leurs octets (fins de ligne, separateurs, casse, binaire).
+/// Hors du depot, le corpus est vide et seuls les tests de chaque decodeur
+/// couvrent sa sonde.
+#[test]
+fn text_probes_agree_with_their_decoders_on_the_corpus() {
+    use crate::parse::application::protocols::ssh::SshPacket;
+    use crate::parse::application::protocols::{ftp, http, sip, smtp, ssdp};
+
+    // La decision du decodeur, sur le payload que la sonde recoit.
+    type Decoder = fn(&[u8]) -> bool;
+    let probes: [(ProbeId, Decoder); 6] = [
+        (ProbeId::SshAfterLines, |payload| {
+            SshPacket::try_from(payload).is_ok()
+        }),
+        // Les decodeurs HTTP rendent aussi la valeur et l'erreur de leur
+        // reference, qui lit la tete par les chercheurs de `str`.
+        (ProbeId::Http, |payload| {
+            let text = &payload[..payload.len().min(PROBE_CAP)];
+            let request = http::reference::parse_http_request(text);
+            let response = http::reference::parse_http_response(text);
+            assert_eq!(http::parse_http_request(text), request, "{text:?}");
+            assert_eq!(http::parse_http_response(text), response, "{text:?}");
+            request.is_ok() || response.is_ok()
+        }),
+        // De meme pour SIP, dont la reference compare chaque nom d'en-tete
+        // aux six qu'elle lit.
+        (ProbeId::Sip, |payload| {
+            let text = &payload[..payload.len().min(PROBE_CAP)];
+            let message = sip::reference::parse(text);
+            assert_eq!(sip::SipMessage::try_from(text), message, "{text:?}");
+            message.is_ok()
+        }),
+        // Et pour SSDP, sur le datagramme entier.
+        (ProbeId::Ssdp, |payload| {
+            let packet = ssdp::reference::parse(payload);
+            assert_eq!(ssdp::SsdpPacket::try_from(payload), packet, "{payload:?}");
+            packet.is_ok()
+        }),
+        // FTP et SMTP : leurs references coupent les lignes par `str::find`.
+        (ProbeId::Ftp, |payload| {
+            let text = &payload[..payload.len().min(PROBE_CAP)];
+            let message = ftp::reference::parse_ftp_message(text);
+            assert_eq!(ftp::parse_ftp_message(text), message, "{text:?}");
+            message.is_ok()
+        }),
+        (ProbeId::Smtp, |payload| {
+            let text = &payload[..payload.len().min(PROBE_CAP)];
+            let message = smtp::reference::parse_smtp_message(text);
+            assert_eq!(smtp::parse_smtp_message(text), message, "{text:?}");
+            message.is_ok()
+        }),
+    ];
+    let mut accepted = [0_usize; 6];
+    let mut check = |payload: &[u8]| {
+        for (index, (probe, decoder)) in probes.iter().enumerate() {
+            let expected = decoder(payload);
+            assert_eq!(run_probe(*probe, payload), expected, "{payload:02x?}");
+            accepted[index] += usize::from(expected);
+        }
+    };
+
+    let corpus = corpus_payloads(96);
+    for (index, payload) in corpus.iter().enumerate() {
+        check(payload);
+        // Les variantes d'un payload sur trois parmi ceux qui s'ouvrent
+        // comme du texte, et d'un payload binaire sur seize.
+        let opens_as_text = payload
+            .first()
+            .is_some_and(|byte| byte.is_ascii_graphic() || byte.is_ascii_whitespace());
+        if index % if opens_as_text { 3 } else { 16 } != 0 {
+            continue;
+        }
+        let step = payload.len().div_ceil(32).max(1);
+        let mut mutated = payload.clone();
+        for position in (0..payload.len()).step_by(step) {
+            check(&payload[..position]);
+            let original = payload[position];
+            for value in [b'\r', b'\n', b' ', b':', b'S', 0x00, 0x80, original ^ 0x20] {
+                mutated[position] = value;
+                check(&mutated);
+            }
+            mutated[position] = original;
+        }
+        // Une ligne de preambule devant le payload, puis le debut d'une
+        // banniere SSH, que la premiere ligne d'un payload texte complete.
+        for prefix in [&b"motd\r\n"[..], b"SSH-2.0-", b"motd\r\nSSH-2.0-"] {
+            let mut prefixed = prefix.to_vec();
+            prefixed.extend_from_slice(payload);
+            check(&prefixed);
+        }
+    }
+    assert!(
+        corpus.is_empty() || accepted.iter().all(|count| *count > 50),
+        "{accepted:?} payloads acceptes"
+    );
+}
+
 /// AMS (#290) : sur TCP 48898, l'en-tete AMS/TCP de 6 octets precede chaque
 /// message ; la regle UDP 48899 lit l'en-tete AMS nu. Chaque transport n'a
 /// que sa forme, Decode As compris.
@@ -1973,4 +2663,602 @@ fn oncrpc_is_named_on_its_ports_only() {
     assert_eq!(label(Tcp, 49152, 671, &record, &declared), Some("ONC RPC"));
     assert_eq!(label(Udp, 49152, 671, &record, &declared), Some("Unknown"));
     assert_eq!(label(Tcp, 49152, 671, &message, &declared), Some("Unknown"));
+}
+
+/// Les sondes des regles de la table, une fois chacune.
+fn table_probes() -> Vec<ProbeId> {
+    let mut probes: Vec<ProbeId> = Vec::new();
+    for rule in RULES {
+        if probes
+            .iter()
+            .all(|probe| *probe as u32 != rule.probe as u32)
+        {
+            probes.push(rule.probe);
+        }
+    }
+    probes
+}
+
+/// Les valeurs d'un ensemble de premiers octets.
+fn members(set: FirstBytes) -> Vec<u8> {
+    (0..=u8::MAX).filter(|byte| set.contains(*byte)).collect()
+}
+
+/// L'index du prefiltre dit de chaque premier octet ce qu'en disent les
+/// ensembles declares : une regle vaut la visite si sa sonde peut accepter
+/// l'octet, ou si elle est terminale. Une regle terminale ecartee ne
+/// rendrait plus `None` a son rang.
+#[test]
+fn first_byte_index_is_the_declared_sets_and_the_terminal_rules() {
+    for protocol in [
+        TransportProtocol::Tcp,
+        TransportProtocol::Udp,
+        TransportProtocol::Sctp,
+    ] {
+        let list = index::list_for(protocol);
+        for first in 0..=u8::MAX {
+            assert_eq!(
+                list.worth_visiting(first),
+                rule_set(list, |rule| {
+                    rule.terminal_on_port || first_bytes(rule.probe).contains(first)
+                }),
+                "{protocol:?}, premier octet {first:#04x}"
+            );
+            assert_eq!(
+                list.worth_visiting(first) & list.terminal,
+                list.terminal,
+                "{protocol:?}, premier octet {first:#04x}"
+            );
+        }
+    }
+    // Les ensembles ne sont pas tous pleins : un octet nul ecarte la
+    // plupart des regles sans port de TCP et d'UDP, et aucun octet ne les
+    // garde toutes.
+    for protocol in [TransportProtocol::Tcp, TransportProtocol::Udp] {
+        let list = index::list_for(protocol);
+        let kept = |first| (list.worth_visiting(first) & list.portless).count_ones();
+        assert!(kept(0x00) < 8, "{protocol:?} : {}", kept(0x00));
+        assert!(
+            (0..=u8::MAX).all(|first| kept(first) < list.portless.count_ones()),
+            "{protocol:?}"
+        );
+    }
+    // Une sonde de Decode As seul n'a pas d'ensemble : rien ne le lirait.
+    let in_table: Vec<u32> = table_probes()
+        .into_iter()
+        .map(|probe| probe as u32)
+        .collect();
+    for protocol in DecodeAsProtocol::ALL {
+        for transport in [TransportProtocol::Tcp, TransportProtocol::Udp] {
+            let probe = protocol.rule(transport).2;
+            assert!(
+                in_table.contains(&(probe as u32)) || members(first_bytes(probe)).len() == 256,
+                "{protocol:?} : ensemble declare pour une sonde hors table"
+            );
+        }
+    }
+}
+
+/// Les payloads TCP et UDP des captures de `pcaps_exemple/`, les
+/// `per_capture` premiers de chaque capture. Vide hors du depot : l'archive
+/// publiee n'embarque pas le corpus.
+fn corpus_payloads(per_capture: usize) -> Vec<Vec<u8>> {
+    use pcap_file::pcap::PcapReader;
+    use pcap_file::pcapng::{Block, PcapNgReader};
+    use std::io::{Read, Seek};
+
+    fn walk(directory: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            return;
+        };
+        for path in entries.flatten().map(|entry| entry.path()) {
+            if path.is_dir() {
+                walk(&path, files);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("pcaps_exemple"),
+        &mut files,
+    );
+    files.sort();
+
+    let mut payloads = Vec::new();
+    for path in files {
+        let Ok(mut file) = std::fs::File::open(&path) else {
+            continue;
+        };
+        let mut magic = [0_u8; 4];
+        if file.read_exact(&mut magic).is_err() || file.rewind().is_err() {
+            continue;
+        }
+        let wanted = payloads.len().saturating_add(per_capture);
+        // Garde le payload de la trame ; rend `false` quand la capture a
+        // donne son compte.
+        let mut keep = |link_type: crate::LinkType, frame: &[u8]| {
+            let payload = crate::parse(link_type, frame)
+                .ok()
+                .and_then(|flow| flow.transport)
+                .filter(|transport| {
+                    matches!(
+                        transport.protocol,
+                        TransportProtocol::Tcp | TransportProtocol::Udp
+                    )
+                })
+                .and_then(|transport| transport.payload)
+                .filter(|payload| !payload.is_empty());
+            if let Some(payload) = payload {
+                payloads.push(payload.to_vec());
+            }
+            payloads.len() < wanted
+        };
+        let reader = std::io::BufReader::new(file);
+        if magic == [0x0A, 0x0D, 0x0D, 0x0A] {
+            let Ok(mut reader) = PcapNgReader::new(reader) else {
+                continue;
+            };
+            // Le type de lien de chaque interface de la section courante.
+            let mut link_types = Vec::new();
+            while let Some(Ok(block)) = reader.next_block() {
+                let more = match block {
+                    Block::SectionHeader(_) => {
+                        link_types.clear();
+                        true
+                    }
+                    Block::InterfaceDescription(interface) => {
+                        link_types.push(crate::LinkType::from(u32::from(interface.linktype)));
+                        true
+                    }
+                    Block::EnhancedPacket(packet) => {
+                        match link_types.get(packet.interface_id as usize) {
+                            Some(link_type) => keep(*link_type, &packet.data),
+                            None => false,
+                        }
+                    }
+                    _ => true,
+                };
+                if !more {
+                    break;
+                }
+            }
+        } else if let Ok(mut reader) = PcapReader::new(reader) {
+            let link_type = crate::LinkType::from(u32::from(reader.header().datalink));
+            while let Some(Ok(packet)) = reader.next_raw_packet() {
+                if !keep(link_type, &packet.data) {
+                    break;
+                }
+            }
+        }
+    }
+    payloads
+}
+
+/// Des payloads pour les sondes restreintes que les premieres trames des
+/// captures n'exercent pas.
+fn first_byte_fixtures() -> Vec<Vec<u8>> {
+    [
+        // Bitcoin : un `verack` mainnet, sans charge.
+        "f9beb4d976657261636b000000000000000000005df6e0e2",
+        // SLPv2 : un SrvRqst, trame du corpus.
+        concat!(
+            "0201000042200000003853d80002656e00000017736572766963653a64697265",
+            "63746f72792d6167656e74000744454641554c54000000000002000000000000",
+            "0000"
+        ),
+        // QUIC v1 a l'aveugle : un Initial, trame du corpus.
+        concat!(
+            "c5000000010008fdc28ad4630b64b00040161aa014d420c596c29668d4d2c299",
+            "fa8ebf913aec7b6b"
+        ),
+    ]
+    .into_iter()
+    .map(|fixture| hex::decode(fixture).expect("fixture"))
+    .collect()
+}
+
+/// Le filet des ensembles de `first_bytes` : pour chaque sonde restreinte de
+/// la table, les payloads qu'elle accepte (ceux des captures de
+/// `pcaps_exemple/`, et des payloads construits pour les sondes que le
+/// corpus n'exerce pas) ne sont jamais acceptes avec un premier octet hors
+/// de l'ensemble declare, quand cet octet prend chacune des 256 valeurs. Un
+/// ensemble trop etroit changerait une etiquette en silence.
+#[test]
+fn first_byte_sets_hold_on_accepted_payloads() {
+    let mut payloads = differential_payloads();
+    payloads.extend(first_byte_fixtures());
+    let built = payloads.len();
+    payloads.extend(corpus_payloads(256));
+    let with_corpus = payloads.len() > built;
+
+    let narrowed: Vec<(ProbeId, FirstBytes)> = table_probes()
+        .into_iter()
+        .map(|probe| (probe, first_bytes(probe)))
+        .filter(|(_, set)| members(*set).len() < 256)
+        .collect();
+    assert!(narrowed.len() > 40, "{} sondes restreintes", narrowed.len());
+
+    // Par sonde : les premiers octets des payloads acceptes, et le nombre de
+    // payloads dont les 256 variantes ont ete rejouees.
+    let mut accepted = vec![[false; 256]; narrowed.len()];
+    let mut explored = vec![0_u32; narrowed.len()];
+    let mut rejected_outside_the_set = 0_u32;
+    for payload in &payloads {
+        let mut variant = payload.clone();
+        for (index, (probe, set)) in narrowed.iter().enumerate() {
+            if !run_probe(*probe, payload) {
+                continue;
+            }
+            let original = payload[0];
+            assert!(
+                set.contains(original),
+                "la sonde {} accepte le premier octet {original:#04x}, hors de son ensemble : {}",
+                *probe as u32,
+                hex::encode(payload)
+            );
+            // Un payload de plus n'apprend rien d'une sonde deja rejouee
+            // sur ce premier octet : la borne garde le test court.
+            if explored[index] >= 24 && accepted[index][usize::from(original)] {
+                continue;
+            }
+            accepted[index][usize::from(original)] = true;
+            explored[index] += 1;
+            for first in 0..=u8::MAX {
+                if set.contains(first) {
+                    continue;
+                }
+                variant[0] = first;
+                assert!(
+                    !run_probe(*probe, &variant),
+                    "la sonde {} accepte le premier octet {first:#04x}, hors de son ensemble : {}",
+                    *probe as u32,
+                    hex::encode(&variant)
+                );
+                rejected_outside_the_set += 1;
+            }
+            variant[0] = original;
+        }
+    }
+
+    // Chaque sonde restreinte a ete exercee sur un payload qu'elle accepte.
+    let unexercised: Vec<u32> = narrowed
+        .iter()
+        .zip(&explored)
+        .filter(|(_, explored)| **explored == 0)
+        .map(|((probe, _), _)| *probe as u32)
+        .collect();
+    if with_corpus {
+        assert!(
+            unexercised.is_empty(),
+            "sondes sans payload accepte : {unexercised:?}"
+        );
+    }
+    // Sans le corpus, les payloads construits en exercent encore une part.
+    assert!(narrowed.len() - unexercised.len() > 15, "{unexercised:?}");
+    assert!(
+        rejected_outside_the_set > 3_000,
+        "{rejected_outside_the_set}"
+    );
+}
+
+/// Les ensembles sont prouves sous `PROVEN_BELOW` octets : au-dela, rien
+/// n'est ecarte. Un StartupMessage PostgreSQL de 16 Mio s'ouvre par sa
+/// longueur, `01 00 00 00`, et l'ensemble de la sonde ne contient pas 0x01.
+#[test]
+fn first_byte_filter_stops_at_the_proven_payload_size() {
+    assert!(!first_bytes(ProbeId::Postgresql).contains(0x01));
+    assert!(first_bytes(ProbeId::Postgresql).contains(0x00));
+
+    let startup = |length: usize| {
+        let mut payload = Vec::with_capacity(length);
+        payload.extend_from_slice(&u32::try_from(length).expect("u32").to_be_bytes());
+        payload.extend_from_slice(&196_608_u32.to_be_bytes());
+        payload.extend_from_slice(b"user\0");
+        payload.resize(length - 2, b'a');
+        payload.extend_from_slice(&[0, 0]);
+        payload
+    };
+    for (length, first) in [(PROVEN_BELOW - 1, 0x00), (PROVEN_BELOW, 0x01)] {
+        let payload = startup(length);
+        assert_eq!(payload[0], first);
+        let transport = tcp_transport(&payload);
+        let label = classify(&transport, &[]).map(|application| application.protocol.label());
+        assert_eq!(label, Some("PostgreSQL"), "{length} octets");
+        assert_eq!(
+            classify(&transport, &[]),
+            classify_by_scanning_the_table(&transport, &[]),
+            "{length} octets"
+        );
+    }
+}
+
+/// Les ensembles de `first_bytes.rs` couvrent ce que le controle du premier
+/// octet de chaque decodeur accepte, appele ici directement sur les 256
+/// valeurs. Les deux tiers de ces ensembles sont des litteraux recopies : un
+/// decodeur elargi sans le sien (un type de message de plus, une version)
+/// echoue ici, avant de changer une etiquette en silence, alors que ses
+/// propres tests, qui appellent `try_from` et non `classify`, restent verts.
+#[test]
+fn first_byte_sets_cover_what_the_decoder_checks_accept() {
+    use crate::checks::application as checks;
+    use crate::errors::application::java_rmi::JavaRmiError;
+    use crate::errors::application::srvloc::SrvlocPacketParseError;
+    use crate::parse::application::protocols;
+
+    let any = |accepts: &dyn Fn(u8) -> bool| (u8::MIN..=u8::MAX).any(accepts);
+    let covers = |check: &str, probes: &[ProbeId], accepts: &dyn Fn(u8) -> bool| {
+        let mut accepted = 0;
+        for byte in u8::MIN..=u8::MAX {
+            if !accepts(byte) {
+                continue;
+            }
+            accepted += 1;
+            for probe in probes {
+                assert!(
+                    first_bytes(*probe).contains(byte),
+                    "{check} accepte {byte:#04x}, hors de l'ensemble de la sonde {}",
+                    *probe as usize
+                );
+            }
+        }
+        assert!(accepted > 0, "{check} n'accepte aucun octet");
+    };
+
+    covers("la version TPKT de S7Comm", &[ProbeId::S7Comm], &|byte| {
+        checks::s7comm::validate_tpkt_version(byte).is_ok()
+    });
+    covers("l'en-tete TPKT de RDP", &[ProbeId::Rdp], &|byte| {
+        checks::rdp::validate_tpkt_header(byte, 0).is_ok()
+    });
+    covers("les octets de depart DNP3", &[ProbeId::Dnp3], &|byte| {
+        any(&|second| checks::dnp3::validate_start_bytes([byte, second]).is_ok())
+    });
+    covers(
+        "le type de message OPC UA",
+        &[ProbeId::Opcua, ProbeId::OpcuaBlind],
+        &|byte| {
+            any(&|second| {
+                any(&|third| checks::opcua::extract_message_type([byte, second, third]).is_ok())
+            })
+        },
+    );
+    covers(
+        "la commande EtherNet/IP",
+        &[ProbeId::EthernetIp, ProbeId::EthernetIpTcp],
+        &|byte| {
+            any(&|high| {
+                protocols::ethernet_ip::EtherNetIpCommand::try_from(u16::from_le_bytes([
+                    byte, high,
+                ]))
+                .is_ok()
+            })
+        },
+    );
+    covers(
+        "le type de message PostgreSQL",
+        &[ProbeId::Postgresql, ProbeId::PostgresqlPort],
+        &|byte| checks::postgresql::extract_message_type(byte).is_ok(),
+    );
+    covers("l'etiquette ASN.1 de SNMP", &[ProbeId::Snmp], &|byte| {
+        checks::snmp::validate_tag("message", byte, checks::snmp::ASN1_SEQUENCE_TAG).is_ok()
+    });
+    covers("le type de contenu TLS", &[ProbeId::Tls], &|byte| {
+        protocols::tls::TlsContentType::try_from(byte).is_ok()
+    });
+    covers(
+        "le type de message Java RMI",
+        &[ProbeId::JavaRmi],
+        &|byte| {
+            !matches!(
+                protocols::java_rmi::JavaRmiPacket::try_from(&[byte][..]),
+                Err(JavaRmiError::UnknownMessageType(_))
+            )
+        },
+    );
+    covers("le type et les drapeaux MQTT", &[ProbeId::Mqtt], &|byte| {
+        checks::mqtt::parse_packet_type(byte)
+            .and_then(|kind| checks::mqtt::validate_fixed_header_flags(kind, byte))
+            .is_ok()
+    });
+    covers(
+        "les drapeaux NTP",
+        &[ProbeId::Ntp, ProbeId::NtpBlind],
+        &|byte| checks::ntp::extract_flags(&byte).is_ok(),
+    );
+    covers("la magie Valmet DNA", &[ProbeId::ValmetDnaBlind], &|byte| {
+        any(&|low| checks::valmet_dna::validate_magic(u16::from_be_bytes([byte, low])).is_ok())
+    });
+    covers("la categorie ASTERIX", &[ProbeId::Asterix], &|byte| {
+        protocols::asterix::uap::uap_for(byte).is_some()
+    });
+    covers(
+        "la version DIS",
+        &[ProbeId::Dis, ProbeId::DisLenient],
+        &|byte| checks::dis::extract_version(byte).is_ok(),
+    );
+    covers("le code RADIUS", &[ProbeId::Radius], &|byte| {
+        checks::radius::validate_code(byte).is_ok()
+    });
+    covers("le type BVLC de BACnet", &[ProbeId::Bacnet], &|byte| {
+        checks::bacnet::validate_bvlc_type(byte).is_ok()
+    });
+    covers("l'operation DHCP", &[ProbeId::Dhcp], &|byte| {
+        checks::dhcp::validate_operation(byte).is_ok()
+    });
+    covers(
+        "le premier octet d'un en-tete long QUIC",
+        &[ProbeId::QuicLongHeader, ProbeId::QuicLongHeaderPort],
+        &|byte| checks::quic::extract_first_byte(byte).is_ok(),
+    );
+    covers(
+        "l'en-tete court QUIC",
+        &[ProbeId::QuicShortHeader],
+        &|byte| checks::quic::is_plausible_short_header(&[byte; 1500]),
+    );
+    covers(
+        "les invariants de l'en-tete long QUIC",
+        &[ProbeId::QuicLongHeaderPort],
+        &|byte| {
+            let mut datagram = [0; 64];
+            datagram[0] = byte;
+            datagram[1..5].copy_from_slice(&[0xfa, 0xce, 0xb0, 0x02]);
+            checks::quic::is_invariant_long_header(&datagram)
+        },
+    );
+    covers(
+        "le type de message WireGuard",
+        &[ProbeId::WireGuardBlind, ProbeId::WireGuardPort],
+        &|byte| {
+            (0..2048).any(|length| checks::wireguard::validate_message_length(byte, length).is_ok())
+        },
+    );
+    covers("le type de message DHCPv6", &[ProbeId::Dhcpv6], &|byte| {
+        checks::dhcpv6::validate_dhcpv6_message_type(byte).is_ok()
+    });
+    covers("l'octet de depart IEC 104", &[ProbeId::Iec104], &|byte| {
+        checks::iec104::validate_start_byte(byte).is_ok()
+    });
+    covers(
+        "le preambule STANAG 5066",
+        &[ProbeId::Stanag5066],
+        &|byte| any(&|second| checks::stanag5066::validate_preamble([byte, second]).is_ok()),
+    );
+    covers("le type de message NBSS", &[ProbeId::Nbss], &|byte| {
+        checks::netbios::extract_nbss_message_type(byte).is_ok()
+    });
+    covers("le type de message NBDS", &[ProbeId::Nbds], &|byte| {
+        checks::netbios::extract_nbds_message_type(byte).is_ok()
+    });
+    covers("la version SLP", &[ProbeId::Srvloc], &|byte| {
+        !matches!(
+            protocols::srvloc::SrvlocPacket::try_from(&[byte, 1, 0, 0, 0, 0, 0, 0][..]),
+            Err(SrvlocPacketParseError::UnsupportedVersion(_))
+        )
+    });
+
+    // Les gardes des sondes texte lisent plus d'un octet : chaque debut
+    // qu'elles acceptent, l'initiale de chaque mot remplacee par les 256
+    // valeurs.
+    let starts = |accepts: &dyn Fn(&[u8]) -> bool, tails: &[&[u8]]| {
+        let mut first = [false; 256];
+        let mut payload = Vec::new();
+        for byte in u8::MIN..=u8::MAX {
+            for tail in tails {
+                payload.clear();
+                payload.push(byte);
+                payload.extend_from_slice(tail);
+                first[usize::from(byte)] |= accepts(&payload);
+            }
+        }
+        first
+    };
+    // Et ce qui peut preceder ce debut : un, deux ou trois octets, les deux
+    // derniers pris parmi les octets de continuation d'UTF-8 quand il y en a
+    // trois (les blancs Unicode qu'un decodeur saute, le texte d'un
+    // preambule).
+    let leads = |accepts: &dyn Fn(&[u8]) -> bool, text: &[u8]| {
+        let mut first = [false; 256];
+        let mut payload = Vec::new();
+        let mut try_lead = |lead: &[u8]| {
+            payload.clear();
+            payload.extend_from_slice(lead);
+            payload.extend_from_slice(text);
+            first[usize::from(lead[0])] |= accepts(&payload);
+        };
+        for byte in u8::MIN..=u8::MAX {
+            try_lead(&[byte]);
+            for second in u8::MIN..=u8::MAX {
+                try_lead(&[byte, second]);
+            }
+            for second in 0x80..=0xbf {
+                for third in 0x80..=0xbf {
+                    try_lead(&[byte, second, third]);
+                }
+            }
+        }
+        first
+    };
+    let either = |a: [bool; 256], b: [bool; 256]| {
+        move |byte: u8| a[usize::from(byte)] || b[usize::from(byte)]
+    };
+
+    let http_guard = |payload: &[u8]| {
+        checks::http::may_start_request(payload) || checks::http::may_start_response(payload)
+    };
+    let request: &[u8] = b"GET / HTTP/1.1\r\nHost: a\r\n\r\n";
+    covers(
+        "la garde HTTP",
+        &[ProbeId::Http],
+        &either(
+            starts(
+                &http_guard,
+                &[
+                    b"ET / HTTP/1.1\r\n\r\n",
+                    b"EAD / HTTP/1.1\r\n\r\n",
+                    b"OST / HTTP/1.1\r\n\r\n",
+                    b"UT / HTTP/1.1\r\n\r\n",
+                    b"ELETE / HTTP/1.1\r\n\r\n",
+                    b"ONNECT a:1 HTTP/1.1\r\n\r\n",
+                    b"PTIONS * HTTP/1.1\r\n\r\n",
+                    b"RACE / HTTP/1.1\r\n\r\n",
+                    b"ATCH / HTTP/1.1\r\n\r\n",
+                    b"TTP/1.1 200 OK\r\n\r\n",
+                ],
+            ),
+            leads(&http_guard, request),
+        ),
+    );
+    covers(
+        "la garde SIP",
+        &[ProbeId::Sip],
+        &either(
+            starts(
+                &checks::sip::may_start_sip,
+                &[
+                    b"IP/2.0 200 OK\r\n",
+                    b"NVITE sip:a SIP/2.0\r\n",
+                    b"CK sip:a SIP/2.0\r\n",
+                    b"PTIONS sip:a SIP/2.0\r\n",
+                    b"YE sip:a SIP/2.0\r\n",
+                    b"ANCEL sip:a SIP/2.0\r\n",
+                    b"EGISTER sip:a SIP/2.0\r\n",
+                    b"RACK sip:a SIP/2.0\r\n",
+                    b"UBSCRIBE sip:a SIP/2.0\r\n",
+                    b"OTIFY sip:a SIP/2.0\r\n",
+                    b"UBLISH sip:a SIP/2.0\r\n",
+                    b"NFO sip:a SIP/2.0\r\n",
+                    b"EFER sip:a SIP/2.0\r\n",
+                    b"ESSAGE sip:a SIP/2.0\r\n",
+                    b"PDATE sip:a SIP/2.0\r\n",
+                ],
+            ),
+            leads(&checks::sip::may_start_sip, b"INVITE sip:a SIP/2.0\r\n"),
+        ),
+    );
+    let after_lines = |payload: &[u8]| checks::ssh::locate_ssh_identification(payload).is_ok();
+    covers(
+        "l'identification SSH apres d'autres lignes",
+        &[ProbeId::SshAfterLines],
+        &either(
+            starts(&after_lines, &[b"SH-2.0-OpenSSH_9.6\r\n"]),
+            leads(&after_lines, b"\r\nSSH-2.0-OpenSSH_9.6\r\n"),
+        ),
+    );
+    for (family, probe, verbs) in [
+        ("FTP", ProbeId::FtpUnambiguous, &FTP_ONLY_VERBS[..]),
+        ("SMTP", ProbeId::SmtpUnambiguous, &SMTP_ONLY_VERBS[..]),
+        ("NNTP", ProbeId::NntpUnambiguous, &NNTP_ONLY_VERBS[..]),
+    ] {
+        let tails: Vec<Vec<u8>> = verbs
+            .iter()
+            .map(|verb| [&verb.as_bytes()[1..], b" x\r\n"].concat())
+            .collect();
+        let tails: Vec<&[u8]> = tails.iter().map(Vec::as_slice).collect();
+        let accepted = starts(&|payload: &[u8]| starts_with_one_of(payload, verbs), &tails);
+        covers(&format!("un verbe propre a {family}"), &[probe], &|byte| {
+            accepted[usize::from(byte)]
+        });
+    }
 }

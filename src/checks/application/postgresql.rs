@@ -64,7 +64,9 @@ pub fn validate_typed_message_available(
 ) -> Result<usize, PostgreSqlError> {
     validate_message_length(length)?;
 
-    let expected = 1usize + length as usize;
+    // L'octet de type puis la longueur declaree : sur 32 bits, une longueur
+    // pleine depasse `usize` avec lui, et la taille attendue sature.
+    let expected = 1usize.saturating_add(length as usize);
     if payload.len() < expected {
         return Err(PostgreSqlError::LengthMismatch {
             expected,
@@ -383,6 +385,20 @@ mod tests {
         assert_eq!(
             extract_untyped_frame(&payload),
             Ok((8, POSTGRESQL_PROTOCOL_VERSION_3_0, 8))
+        );
+    }
+
+    /// Une longueur de 32 bits pleins : avec l'octet de type, la taille
+    /// attendue depasse `usize` sur une cible 32 bits. Elle y sature ;
+    /// l'addition debordait (panique avec les controles de debordement).
+    #[test]
+    fn extract_typed_frame_saturates_on_a_full_32_bit_length() {
+        assert_eq!(
+            extract_typed_frame(&[b'Q', 0xff, 0xff, 0xff, 0xff]),
+            Err(PostgreSqlError::LengthMismatch {
+                expected: 1_usize.saturating_add(u32::MAX as usize),
+                actual: 5
+            })
         );
     }
 

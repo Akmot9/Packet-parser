@@ -6,6 +6,101 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
 
 ## [Non publie]
 
+### Change
+
+- **Vitesse de `parse`** (#393) : revue de performance de tout le chemin
+  de parsing, a comportement constant. Sur le corpus `pcaps_exemple/`
+  entier (399 095 trames), `parse` execute 1 061 instructions par trame
+  contre 3 248 (callgrind, profil `release` de la crate) et alloue 0,35
+  fois par trame contre 2,06. Par cas, en instructions par trame :
+
+  | Trame | Avant | Apres |
+  |---|---:|---:|
+  | Paquet de reference (IPv6/TCP, 1 208 octets chiffres) | 5 556 | 800 |
+  | Segment TCP sans charge | 1 053 | 583 |
+  | Enregistrement TLS | 3 923 | 682 |
+  | Requete HTTP | 11 348 | 2 402 |
+  | Requete DNS | 8 409 | 4 101 |
+  | Datagramme UDP non reconnu | 4 170 | 764 |
+  | Trame VXLAN | 2 189 | 1 326 |
+
+  Sans LTO, le profil par defaut de cargo que voit un projet qui depend de
+  la crate (et celui de `tools/verbench`) : corpus 3 380 -> 1 153, paquet
+  de reference 5 440 -> 815, segment TCP sans charge 1 197 -> 606.
+
+  En temps, sur le bench du depot (`benches/`, deux passes alternees sur
+  une meme machine, la meilleure de chaque) : paquet de reference
+  368 -> 79 ns, segment TCP sans charge 88 -> 51 ns, TLS 309 -> 61 ns, DNS
+  620 -> 260 ns, VXLAN 208 -> 120 ns, segment de 60 000 octets non reconnu
+  439 -> 71 ns, ASTERIX multi-blocs 2,44 µs -> 381 ns, sous-ensemble du
+  corpus 297 -> 106 ns par trame. Les trois trames corrompues du bench
+  passent de 85-96 ns a 47-58 ns.
+
+  - **Table de dispatch** : une liste de regles par transport et un index
+    des ports, derives de `RULES` a la compilation (`RULES` reste la seule
+    source declarative) ; les regles a visiter tiennent dans un ensemble de
+    bits parcouru dans l'ordre de la table ; une fonction par sonde,
+    appelee par une table.
+  - **Prefiltre sur le premier octet** (`dispatch/first_bytes.rs`) : pour
+    52 des 79 sondes, l'ensemble des premiers octets qu'elle peut accepter,
+    avec sa preuve lue dans le decodeur. Sur un payload TCP que rien ne
+    reconnait, 3 sondes s'executent au lieu de 23 ; 1 a 3 au lieu de 17 en
+    UDP. En build de debug, `classify` rejoue chaque sonde ecartee et
+    verifie qu'elle refuse : les tests, le corpus et les cibles de fuzz en
+    sont l'oracle continu. **Un decodeur qui se met a accepter un autre
+    premier octet doit elargir son ensemble** :
+    `first_byte_sets_cover_what_the_decoder_checks_accept` echoue sinon.
+  - **Moteur et couches 2 a 4** : chaque etape ecrit sa couche a sa place
+    dans le `PacketFlow` au lieu de la rendre par valeur (la couche
+    internet, 208 octets, etait recopiee trois fois) ; IPv4, IPv6, TCP, UDP
+    et la trame Ethernet II sans tag sont lus en ligne droite ; `IpType`
+    se lit en un aiguillage ; aucun tunnel n'est cherche sous TCP, un seul
+    test sous UDP ; le flux interne d'un tunnel est construit dans sa
+    `Box`.
+  - **Sondes sans decodage** : la sonde ASTERIX ne remplit plus de `Vec`
+    qu'elle jette (un seul parcours, que le decodeur public partage) ; la
+    sonde SSH des lignes de preambule ne construit plus d'erreur ; la sonde
+    Modbus/TCP aveugle est gardee par l'identifiant de protocole.
+  - **Protocoles texte** : HTTP, SIP, SSDP, FTP et SMTP lisent leurs lignes
+    par mots de huit octets au lieu des chercheurs de `str`, la tete HTTP
+    en un seul parcours. Les trames SIP de `ndpi_sip_hello.pcapng` passent
+    de 6 594 a 2 496 instructions.
+  - **DNS** : un nom se decode en une allocation, sans `format!` ; une
+    requete alloue 5 fois au lieu de 20.
+
+  Aucune etiquette, aucune valeur decodee, aucune erreur ne change, et
+  l'API publique non plus (`PacketFlow` fait toujours 472 octets). Verifie
+  par l'empreinte de la sortie de `parse` sur le corpus et sur 4 millions
+  de trames mutees, celle de `classify_payload` sur 8,7 millions de
+  payloads mutes et sur chaque payload du corpus avec ses 256 premiers
+  octets, toutes identiques avant et apres ; par un fuzz differentiel
+  contre l'arbre d'avant la revue (`parse`, `parse_with`,
+  `classify_payload` et les decodeurs texte) ; et par les tests
+  differentiels ajoutes, 2 073 tests en tout. Seul ecart connu, de cout et
+  non de resultat : un G-PDU GTP-U dont le paquet interne est corrompu
+  alloue une fois, contre zero, pour 1 441 instructions contre 4 827.
+
+### Corrige
+
+- **Debordement d'entier sur cible 32 bits** : deux decodeurs
+  additionnaient en `usize` une longueur declaree de 32 bits et quelques
+  octets d'en-tete. Compilee pour une cible 32 bits avec les controles de
+  debordement (build de debug, `overflow-checks`), la crate paniquait dans
+  `parse` sur un segment TCP de cinq octets, `Q ff ff ff ff`, que la sonde
+  PostgreSQL lit sans garde de port, et sur un segment NMF de neuf octets,
+  `00 01 00 02 ff ff ff ff 0f`. Sans ces controles, l'addition bouclait et
+  l'erreur du decodeur portait une longueur fausse. Les deux additions
+  saturent ; rien ne change sur une cible 64 bits. Le cas NMF a ete releve
+  par un audit de la revue de performance, le cas PostgreSQL en passant
+  ses empreintes sur `i686-unknown-linux-gnu` : la suite de tests y passe
+  en entier, et l'empreinte de `parse` sur le corpus et sur 4 millions de
+  trames mutees y est celle du 64 bits. Un balayage de 90 millions
+  d'entrees a champs de longueur pleins (quatre puis huit octets a 0xff a
+  chaque position des trames et des payloads du corpus) n'y trouve pas
+  d'autre debordement. Un seul resultat depend de la largeur du pointeur,
+  et le decodeur le documente : en 32 bits, GIOP refuse un message dont la
+  taille declaree deborde `usize`, qu'il accepte tronque en 64 bits.
+
 ### Documentation
 
 - Comparaison mesuree avec `etherparse` et `pnet_packet`, de la couche 2 a la
@@ -14,6 +109,12 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   utile, `parse` prend 94 a 115 ns, contre 65 a 79 ns pour la lecture par
   vues d'`etherparse` et 39 a 57 ns pour `pnet_packet`. Rien ne change dans
   la crate.
+- Cette comparaison est refaite apres la revue de performance (#393), sur
+  une autre machine, les trois crates dans la meme passe : sur les trames
+  sans charge utile, `parse` prend 35 a 58 ns, contre 59 a 68 ns pour la
+  lecture par vues d'`etherparse` et 29 a 44 ns pour `pnet_packet`. La
+  13.4.0 publiee y prend 73 a 86 ns : `parse` passe sous `etherparse`. Sur
+  les captures entieres, 69 a 143 ns contre 158 a 382 ns.
 
 ### Outillage
 
@@ -46,6 +147,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   HTTP (11.7.0 a 11.8.1, #214, #249) aurait perdu son etiquette.
 - **README** : 51 cibles de fuzz chaque nuit, et non 39 (le compte datait
   de #272).
+
+### Interne
+
+- **Bench** : trois trames de plus dans le groupe `frame`, `http`, `sip`
+  et `s7comm`. Aucun de ces decodeurs n'y avait de trame : un gain ou une
+  regression sur ces chemins ne se voyait pas.
+- **Tests sur cible 32 bits** : `cargo test --target
+  i686-unknown-linux-gnu` compile et passe. Un test ecrivait `1 << 62` sur
+  un `usize`.
 
 ## [13.4.0] - 2026-11-23
 

@@ -1,0 +1,454 @@
+// Copyright (c) 2026 Cyprien Avico avicocyprien@yahoo.com
+//
+// Licensed under the MIT License <LICENSE-MIT or http://opensource.org/licenses/MIT>.
+// This file may not be copied, modified, or distributed except according to those terms.
+
+//! Index de la table, derive de [`RULES`] a la compilation : une liste de
+//! regles par transport et, pour chaque port que cite une de ses regles,
+//! les regles qu'il ouvre et celles qu'il interdit. [`RULES`] reste la seule
+//! source ; rien ne se declare ici.
+//!
+//! [`classify`](super::classify) lit les deux ports une fois, en tire
+//! l'ensemble des regles a visiter, et ne parcourt que celles-la, dans
+//! l'ordre de la table. Une sonde qui echoue en retire les regles suivantes
+//! qui la portent : la memoisation des echecs est ce meme ensemble. Le
+//! premier octet du payload en retire d'abord les regles dont la sonde le
+//! refuse a coup sur ([`first_bytes`]).
+
+use std::num::NonZero;
+
+use super::first_bytes::first_bytes;
+use super::ports::Ports;
+use super::probes::ProbeMask;
+use super::rules::{RULES, Rule};
+use crate::parse::transport::protocols::TransportProtocol;
+
+/// Un ensemble de regles d'une liste : le bit `n` est la regle de rang `n`.
+/// Le bit de poids faible est la premiere regle de la table : parcourir les
+/// bits du plus faible au plus fort suit l'ordre de la table.
+///
+/// Limite : 64 regles par transport, verifiee a la compilation. Au-dela,
+/// passer a `u128`.
+pub(super) type RuleSet = u64;
+
+/// Ce qu'un port fait aux regles d'une liste.
+#[derive(Clone, Copy)]
+pub(super) struct PortEffect {
+    /// Les regles dont la garde de port reconnait ce port.
+    pub(super) opens: RuleSet,
+    /// Les regles dont le veto de port reconnait ce port.
+    pub(super) vetoes: RuleSet,
+}
+
+impl PortEffect {
+    /// Un port qu'aucune regle ne cite, ou un port inconnu.
+    const NONE: Self = Self {
+        opens: 0,
+        vetoes: 0,
+    };
+}
+
+/// Une regle d'une liste, et ce que l'echec de sa sonde laisse a visiter.
+#[derive(Clone, Copy)]
+pub(super) struct Listed {
+    pub(super) rule: &'static Rule,
+    /// Les regles qu'il reste a visiter quand la sonde de celle-ci echoue :
+    /// toutes, sauf elle-meme et ses jumelles, les regles suivantes de la
+    /// liste qui portent la meme sonde et ne la rejouent donc pas. Une regle
+    /// terminale n'est jamais jumelle : son verdict, `None`, doit etre rendu
+    /// a son rang, et elle rejoue la sonde, qui echoue de nouveau.
+    pub(super) left: RuleSet,
+}
+
+/// Nombre de pages de ports d'une liste, la page vide comprise : une
+/// puissance de deux, pour qu'un numero de page se borne par un masque. TCP
+/// et UDP en occupent une quinzaine chacun.
+const PAGE_CAPACITY: usize = 32;
+const _: () = assert!(PAGE_CAPACITY.is_power_of_two());
+
+/// Les regles de la table qu'un transport admet, et l'effet des ports sur
+/// elles.
+pub(super) struct RuleList {
+    /// Les regles dont la garde de transport admet ce transport, dans
+    /// l'ordre de la table, puis du bourrage jusqu'a la largeur de
+    /// [`RuleSet`] : le rang d'un bit d'un ensemble y est toujours un indice
+    /// valide, sans test de borne. Aucun ensemble de l'index ne designe une
+    /// case de bourrage.
+    listed: [Listed; RuleSet::BITS as usize],
+    /// Nombre de regles, bourrage exclu.
+    len: usize,
+    /// Les regles sans garde de port : a visiter quels que soient les ports.
+    pub(super) portless: RuleSet,
+    /// Les regles terminales a garde de port : leurs ports sont reserves.
+    pub(super) terminal: RuleSet,
+    /// Pour chaque premier octet d'un payload, les regles qui valent une
+    /// visite : voir [`RuleList::worth_visiting`].
+    by_first_byte: [RuleSet; 256],
+    /// Pour l'octet de poids fort d'un port, sa page dans `slots`. La page 0
+    /// est celle des ports qu'aucune regle ne cite.
+    pages: [u8; 256],
+    /// Par page, pour l'octet de poids faible d'un port, le rang de son
+    /// effet dans `effects`. Un octet par rang : au plus 255 ports cites et
+    /// [`PAGE_CAPACITY`] pages par transport, verifie a la compilation.
+    slots: [[u8; 256]; PAGE_CAPACITY],
+    /// Les effets des ports cites ; au rang 0, celui d'un port qu'aucune
+    /// regle ne cite. Une case par valeur d'octet : un rang y est toujours
+    /// un indice valide.
+    effects: [PortEffect; 256],
+}
+
+impl RuleList {
+    /// Les regles de la liste, dans l'ordre de la table.
+    pub(super) fn rules(&self) -> &[Listed] {
+        self.listed.get(..self.len).unwrap_or(&[])
+    }
+
+    /// La premiere regle de `pending` dans l'ordre de la table : celle de
+    /// son bit le plus faible.
+    pub(super) fn first(&self, pending: NonZero<RuleSet>) -> &Listed {
+        &self.listed[pending.trailing_zeros() as usize]
+    }
+
+    /// Les regles qui valent une visite quand le payload commence par
+    /// `first` : celles dont la sonde peut accepter cet octet
+    /// ([`first_bytes`]), et toutes les regles terminales, dont le verdict,
+    /// `None`, se rend a leur rang quand leur sonde echoue. Les autres
+    /// echoueraient sans rien changer au verdict : ne pas les visiter rend
+    /// le meme resultat.
+    pub(super) fn worth_visiting(&self, first: u8) -> RuleSet {
+        self.by_first_byte[usize::from(first)]
+    }
+
+    /// L'effet de `port` sur les regles de la liste : trois lectures, sans
+    /// recherche ni test de borne.
+    pub(super) fn port_effect(&self, port: Option<u16>) -> PortEffect {
+        let Some(port) = port else {
+            return PortEffect::NONE;
+        };
+        let [high, low] = port.to_be_bytes();
+        // Le masque ne change aucun numero de page, tous sous
+        // `PAGE_CAPACITY` : il dispense du test de borne.
+        let page = usize::from(self.pages[usize::from(high)]) % PAGE_CAPACITY;
+        self.effects[usize::from(self.slots[page][usize::from(low)])]
+    }
+
+    /// Les regles de la liste qu'il ne reste pas a visiter quand les sondes
+    /// de `failed` ont deja echoue : celles qui portent une de ces sondes,
+    /// hors regles terminales (voir [`Listed::left`]).
+    pub(super) fn already_failed(&self, failed: ProbeMask) -> RuleSet {
+        self.rules()
+            .iter()
+            .enumerate()
+            .filter(|(_, listed)| {
+                !listed.rule.terminal_on_port && failed & listed.rule.probe.bit() != 0
+            })
+            .fold(0, |set, (rank, _)| set | 1 << rank)
+    }
+}
+
+/// Nombre de regles dont la garde de transport admet `protocol`.
+const fn admitted_count(protocol: TransportProtocol) -> usize {
+    let mut count = 0;
+    let mut index = 0;
+    while index < RULES.len() {
+        if RULES[index].guard.admits(protocol) {
+            count += 1;
+        }
+        index += 1;
+    }
+    count
+}
+
+/// Les regles dont la garde de transport admet `protocol`, dans l'ordre de
+/// la table. `N` vaut [`admitted_count`] : une autre valeur ne compile pas.
+const fn admitted<const N: usize>(protocol: TransportProtocol) -> [&'static Rule; N] {
+    assert!(
+        N <= RuleSet::BITS as usize,
+        "trop de regles pour un transport : elargir RuleSet"
+    );
+    let mut rules = [&RULES[0]; N];
+    let mut rank = 0;
+    let mut index = 0;
+    while index < RULES.len() {
+        if RULES[index].guard.admits(protocol) {
+            rules[rank] = &RULES[index];
+            rank += 1;
+        }
+        index += 1;
+    }
+    assert!(rank == N);
+    rules
+}
+
+/// Chaque regle avec ce que son echec laisse a visiter : tout, sauf elle
+/// et ses jumelles, les regles non terminales qui la suivent et portent la
+/// meme sonde. Au-dela des regles, du bourrage : une case qu'aucun ensemble
+/// ne designe, et dont l'echec ne laisserait rien a visiter.
+const fn listed(rules: &[&'static Rule]) -> [Listed; RuleSet::BITS as usize] {
+    let mut list = [Listed {
+        rule: &RULES[0],
+        left: 0,
+    }; RuleSet::BITS as usize];
+    let mut rank = 0;
+    while rank < rules.len() {
+        let mut settled: RuleSet = 1 << rank;
+        let mut later = rank + 1;
+        while later < rules.len() {
+            if rules[later].probe as u32 == rules[rank].probe as u32
+                && !rules[later].terminal_on_port
+            {
+                settled |= 1 << later;
+            }
+            later += 1;
+        }
+        list[rank] = Listed {
+            rule: rules[rank],
+            left: !settled,
+        };
+        rank += 1;
+    }
+    list
+}
+
+/// Le plus petit port, a partir de `floor`, que cite la famille.
+const fn first_port_from(ports: Option<Ports>, floor: u16) -> Option<u16> {
+    match ports {
+        Some(ports) => ports.first_from(floor),
+        None => None,
+    }
+}
+
+/// Le plus petit de deux ports eventuels.
+const fn earliest(left: Option<u16>, right: Option<u16>) -> Option<u16> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(if right < left { right } else { left }),
+        (Some(port), None) | (None, Some(port)) => Some(port),
+        (None, None) => None,
+    }
+}
+
+/// Le plus petit port, a partir de `floor`, que cite la garde ou le veto
+/// d'une des regles.
+const fn next_cited_port(rules: &[&Rule], floor: u16) -> Option<u16> {
+    let mut next = None;
+    let mut rank = 0;
+    while rank < rules.len() {
+        next = earliest(next, first_port_from(rules[rank].ports, floor));
+        next = earliest(next, first_port_from(rules[rank].ports_veto, floor));
+        rank += 1;
+    }
+    next
+}
+
+/// Nombre de ports distincts que citent les regles.
+const fn cited_port_count(rules: &[&Rule]) -> usize {
+    let mut count = 0;
+    let mut floor = 0;
+    while let Some(port) = next_cited_port(rules, floor) {
+        count += 1;
+        if port == u16::MAX {
+            break;
+        }
+        floor = port + 1;
+    }
+    count
+}
+
+/// Les ports distincts que citent les regles, tries. `P` vaut
+/// [`cited_port_count`] : une autre valeur ne compile pas.
+const fn cited_ports<const P: usize>(rules: &[&Rule]) -> [u16; P] {
+    let mut ports = [0; P];
+    let mut count = 0;
+    let mut floor = 0;
+    while let Some(port) = next_cited_port(rules, floor) {
+        ports[count] = port;
+        count += 1;
+        if port == u16::MAX {
+            break;
+        }
+        floor = port + 1;
+    }
+    assert!(count == P);
+    ports
+}
+
+/// La famille reconnait-elle `port` ?
+const fn cites(ports: Option<Ports>, port: u16) -> bool {
+    match ports {
+        Some(ports) => ports.contains(port),
+        None => false,
+    }
+}
+
+/// L'effet de chaque port de `ports` sur les regles, un rang plus loin : le
+/// rang 0 reste celui d'un port qu'aucune regle ne cite. `E` depasse le
+/// nombre de ports ; les cases au-dela restent sans effet.
+const fn port_effects<const E: usize>(rules: &[&Rule], ports: &[u16]) -> [PortEffect; E] {
+    assert!(ports.len() < E, "trop de ports cites");
+    let mut effects = [PortEffect::NONE; E];
+    let mut at = 0;
+    while at < ports.len() {
+        let mut rank = 0;
+        while rank < rules.len() {
+            if cites(rules[rank].ports, ports[at]) {
+                effects[at + 1].opens |= 1 << rank;
+            }
+            if cites(rules[rank].ports_veto, ports[at]) {
+                effects[at + 1].vetoes |= 1 << rank;
+            }
+            rank += 1;
+        }
+        at += 1;
+    }
+    effects
+}
+
+/// L'octet de poids fort de `port`, en indice.
+const fn high_byte(port: u16) -> usize {
+    (port >> 8) as usize
+}
+
+/// L'octet de poids faible de `port`, en indice.
+const fn low_byte(port: u16) -> usize {
+    (port & 0xff) as usize
+}
+
+/// Pour chaque octet de poids fort, la page de ses ports : numerotees a
+/// partir de 1 dans l'ordre des ports, 0 quand aucun port de `ports` n'a cet
+/// octet. `ports` est trie.
+const fn port_pages(ports: &[u16]) -> [u8; 256] {
+    let mut pages = [0; 256];
+    let mut last: u8 = 0;
+    let mut at = 0;
+    while at < ports.len() {
+        let high = high_byte(ports[at]);
+        if pages[high] == 0 {
+            assert!(last < u8::MAX, "trop de pages de ports");
+            last += 1;
+            pages[high] = last;
+        }
+        at += 1;
+    }
+    pages
+}
+
+/// Nombre de pages, la page vide comprise.
+const fn page_count(ports: &[u16]) -> usize {
+    let pages = port_pages(ports);
+    let mut count = 1;
+    let mut high = 0;
+    while high < pages.len() {
+        if pages[high] != 0 {
+            count += 1;
+        }
+        high += 1;
+    }
+    count
+}
+
+/// Par page, pour chaque octet de poids faible, le rang de l'effet du port
+/// dans [`port_effects`] : son rang dans `ports` plus un, 0 pour un port
+/// absent de `ports`. `G` vaut au moins [`page_count`] ; les pages au-dela
+/// restent vides.
+const fn port_slots<const G: usize>(ports: &[u16]) -> [[u8; 256]; G] {
+    assert!(
+        page_count(ports) <= G,
+        "trop de pages de ports : elargir PAGE_CAPACITY"
+    );
+    let pages = port_pages(ports);
+    let mut slots = [[0; 256]; G];
+    let mut effect: u8 = 0;
+    let mut at = 0;
+    while at < ports.len() {
+        assert!(effect < u8::MAX, "trop de ports cites");
+        effect += 1;
+        slots[pages[high_byte(ports[at])] as usize][low_byte(ports[at])] = effect;
+        at += 1;
+    }
+    slots
+}
+
+/// Les regles sans garde de port.
+const fn portless(rules: &[&Rule]) -> RuleSet {
+    let mut set = 0;
+    let mut rank = 0;
+    while rank < rules.len() {
+        if rules[rank].ports.is_none() {
+            set |= 1 << rank;
+        }
+        rank += 1;
+    }
+    set
+}
+
+/// Les regles terminales a garde de port.
+const fn terminal(rules: &[&Rule]) -> RuleSet {
+    let mut set = 0;
+    let mut rank = 0;
+    while rank < rules.len() {
+        if rules[rank].terminal_on_port && rules[rank].ports.is_some() {
+            set |= 1 << rank;
+        }
+        rank += 1;
+    }
+    set
+}
+
+/// Par premier octet, les regles dont la sonde peut l'accepter, et les
+/// regles terminales.
+const fn by_first_byte(rules: &[&Rule]) -> [RuleSet; 256] {
+    let mut sets = [0; 256];
+    let mut rank = 0;
+    while rank < rules.len() {
+        let accepted = first_bytes(rules[rank].probe);
+        let mut byte = u8::MIN;
+        loop {
+            if rules[rank].terminal_on_port || accepted.contains(byte) {
+                sets[byte as usize] |= 1 << rank;
+            }
+            if byte == u8::MAX {
+                break;
+            }
+            byte += 1;
+        }
+        rank += 1;
+    }
+    sets
+}
+
+/// La liste des regles qu'admet un transport, calculee a la compilation.
+macro_rules! rule_list {
+    ($protocol:expr) => {{
+        const RULE_COUNT: usize = admitted_count($protocol);
+        const LISTED: [&Rule; RULE_COUNT] = admitted($protocol);
+        const PORT_COUNT: usize = cited_port_count(&LISTED);
+        const PORTS: [u16; PORT_COUNT] = cited_ports(&LISTED);
+        RuleList {
+            listed: listed(&LISTED),
+            len: RULE_COUNT,
+            portless: portless(&LISTED),
+            terminal: terminal(&LISTED),
+            by_first_byte: by_first_byte(&LISTED),
+            pages: port_pages(&PORTS),
+            slots: port_slots(&PORTS),
+            effects: port_effects(&LISTED, &PORTS),
+        }
+    }};
+}
+
+static TCP: RuleList = rule_list!(TransportProtocol::Tcp);
+static UDP: RuleList = rule_list!(TransportProtocol::Udp);
+/// Ni TCP ni UDP : une garde ne distingue pas ces protocoles entre eux, et
+/// n'en admet que les regles `Guard::Any`. `Hopopt` les represente tous.
+static OTHER: RuleList = rule_list!(TransportProtocol::Hopopt);
+
+/// Les regles de la table dont la garde admet `protocol` : la boucle de
+/// [`classify`](super::classify) ne visite pas les regles de l'autre
+/// transport.
+pub(super) fn list_for(protocol: TransportProtocol) -> &'static RuleList {
+    match protocol {
+        TransportProtocol::Tcp => &TCP,
+        TransportProtocol::Udp => &UDP,
+        _ => &OTHER,
+    }
+}
