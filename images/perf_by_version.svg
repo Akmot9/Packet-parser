@@ -1,27 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 320" width="760" height="320" role="img" aria-label="Time to parse the reference packet, by published version, from 1.0.0 (1462 ns) to 13.4.0 (715 ns)">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 320" width="760" height="320" role="img" aria-label="Time to parse the reference packet, by published version, from 1.0.0 (953 ns) to 13.4.1 (275 ns)">
 <style>.bg{fill:#fcfcfb;stroke:#e4e3df}.t1{fill:#0b0b0b}.t2{fill:#52514e}.grid{stroke:#e4e3df}.line{stroke:#2a78d6}.dot{fill:#2a78d6;stroke:#fcfcfb}text{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:12px}.title{font-size:15px;font-weight:600}@media (prefers-color-scheme:dark){.bg{fill:#1a1a19;stroke:#383835}.t1{fill:#f0efec}.t2{fill:#c3c2b7}.grid{stroke:#383835}.line{stroke:#3987e5}.dot{fill:#3987e5;stroke:#1a1a19}}</style>
 <rect class="bg" x="0.5" y="0.5" width="759" height="319" rx="8"/>
 <text class="title t1" x="16" y="26">Time to parse one reference packet, by published version</text>
-<text class="t2" x="16" y="44">Nanoseconds, lower is better. One laptop: read the trend, not the exact figures.</text>
+<text class="t2" x="16" y="44">Nanoseconds, lower is better. One machine: read the trend, not the exact figures.</text>
 <line class="grid" x1="52" y1="280.0" x2="736" y2="280.0"/>
 <text class="t2" x="44" y="284.0" text-anchor="end">0</text>
-<line class="grid" x1="52" y1="172.0" x2="736" y2="172.0"/>
-<text class="t2" x="44" y="176.0" text-anchor="end">1 000</text>
+<line class="grid" x1="52" y1="208.0" x2="736" y2="208.0"/>
+<text class="t2" x="44" y="212.0" text-anchor="end">500</text>
+<line class="grid" x1="52" y1="136.0" x2="736" y2="136.0"/>
+<text class="t2" x="44" y="140.0" text-anchor="end">1 000</text>
 <line class="grid" x1="52" y1="64.0" x2="736" y2="64.0"/>
-<text class="t2" x="44" y="68.0" text-anchor="end">2 000</text>
+<text class="t2" x="44" y="68.0" text-anchor="end">1 500</text>
 <text class="t2" x="52.0" y="300" text-anchor="middle">1.x</text>
-<text class="t2" x="257.2" y="300" text-anchor="middle">2.x</text>
-<text class="t2" x="325.6" y="300" text-anchor="middle">4.x</text>
-<text class="t2" x="380.3" y="300" text-anchor="middle">8.x</text>
-<text class="t2" x="503.4" y="300" text-anchor="middle">11.x</text>
-<text class="t2" x="640.2" y="300" text-anchor="middle">12.x</text>
-<polyline class="line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="52.0,122.1 65.7,126.1 79.4,120.8 93.0,124.4 106.7,123.8 120.4,114.7 134.1,110.5 147.8,116.6 161.4,115.2 175.1,115.2 188.8,116.3 202.5,114.5 216.2,113.7 229.8,108.5 243.5,193.6 257.2,243.4 270.9,243.6 284.6,243.5 298.2,243.2 311.9,243.5 325.6,243.9 339.3,240.0 353.0,239.0 366.6,239.0 380.3,237.1 394.0,237.3 407.7,235.8 421.4,236.3 435.0,235.4 448.7,235.4 462.4,226.0 476.1,224.3 489.8,223.3 503.4,223.0 517.1,222.8 530.8,221.9 544.5,222.9 558.2,219.7 571.8,216.3 585.5,138.6 599.2,136.9 612.9,135.5 626.6,212.7 640.2,212.5 653.9,210.3 667.6,208.9 681.3,203.5 695.0,204.8 708.6,200.5 722.3,198.6 736.0,202.8"/>
-<circle class="dot" cx="52.0" cy="122.1" r="4" stroke-width="2"/>
-<text class="t1" x="60.0" y="108.1" text-anchor="start">1.0.0: 1 462 ns</text>
-<circle class="dot" cx="325.6" cy="243.9" r="4" stroke-width="2"/>
-<text class="t1" x="325.6" y="263.9" text-anchor="middle">4.0.0: 334 ns</text>
-<circle class="dot" cx="585.5" cy="138.6" r="4" stroke-width="2"/>
-<text class="t1" x="577.5" y="128.6" text-anchor="end">11.7.0: 1 309 ns</text>
-<circle class="dot" cx="736.0" cy="202.8" r="4" stroke-width="2"/>
-<text class="t1" x="736.0" y="222.8" text-anchor="end">13.4.0: 715 ns</text>
+<text class="t2" x="253.2" y="300" text-anchor="middle">2.x</text>
+<text class="t2" x="320.2" y="300" text-anchor="middle">4.x</text>
+<text class="t2" x="373.9" y="300" text-anchor="middle">8.x</text>
+<text class="t2" x="494.6" y="300" text-anchor="middle">11.x</text>
+<text class="t2" x="628.7" y="300" text-anchor="middle">12.x</text>
+<polyline class="line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="52.0,142.8 65.4,140.3 78.8,134.8 92.2,135.3 105.6,138.6 119.1,132.7 132.5,131.8 145.9,132.8 159.3,133.0 172.7,133.1 186.1,131.4 199.5,131.7 212.9,130.7 226.4,128.4 239.8,196.8 253.2,233.3 266.6,233.6 280.0,233.8 293.4,232.9 306.8,233.3 320.2,233.8 333.6,231.0 347.1,230.6 360.5,230.5 373.9,229.5 387.3,229.9 400.7,229.2 414.1,229.0 427.5,228.3 440.9,228.3 454.4,219.1 467.8,217.5 481.2,216.9 494.6,215.3 508.0,215.2 521.4,216.6 534.8,216.2 548.2,213.0 561.6,207.7 575.1,112.4 588.5,112.4 601.9,109.1 615.3,206.8 628.7,203.1 642.1,205.0 655.5,201.8 668.9,201.4 682.4,200.9 695.8,199.1 709.2,194.9 722.6,192.6 736.0,240.4"/>
+<circle class="dot" cx="52.0" cy="142.8" r="4" stroke-width="2"/>
+<text class="t1" x="60.0" y="128.8" text-anchor="start">1.0.0: 953 ns</text>
+<circle class="dot" cx="280.0" cy="233.8" r="4" stroke-width="2"/>
+<text class="t1" x="280.0" y="253.8" text-anchor="middle">2.0.2: 321 ns</text>
+<circle class="dot" cx="575.1" cy="112.4" r="4" stroke-width="2"/>
+<text class="t1" x="567.1" y="102.4" text-anchor="end">11.7.0: 1 164 ns</text>
+<circle class="dot" cx="736.0" cy="240.4" r="4" stroke-width="2"/>
+<text class="t1" x="736.0" y="260.4" text-anchor="end">13.4.1: 275 ns</text>
 </svg>
