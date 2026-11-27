@@ -440,6 +440,26 @@ mod tests {
         }
     }
 
+    /// `crlf_lines` rend les lignes de `str::split("\r\n")`, la derniere
+    /// comprise, vide ou non : son seul appelant, la tete SSDP, ne finit
+    /// jamais par `CRLF` et ne peut pas montrer cette partie du contrat.
+    #[test]
+    fn crlf_lines_are_the_pieces_of_a_split() {
+        let mut checked = 0;
+        for length in 0..=10 {
+            sequences(b"\r\na", length, &mut |text| {
+                let text = core::str::from_utf8(text).expect("sequence ASCII");
+                assert_eq!(
+                    crlf_lines(text).collect::<Vec<_>>(),
+                    text.split("\r\n").collect::<Vec<_>>(),
+                    "{text:?}"
+                );
+                checked += 1;
+            });
+        }
+        assert!(checked > 88_000, "{checked} sequences");
+    }
+
     /// `find_crlf` et `find_head_end` rendent l'indice de la premiere
     /// occurrence, comme la recherche par fenetres qu'ils remplacent : sur
     /// toutes les sequences de CR, de LF et de texte jusqu'a dix octets, puis

@@ -76,7 +76,7 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   octets, toutes identiques avant et apres ; par un fuzz differentiel
   contre l'arbre d'avant la revue (`parse`, `parse_with`,
   `classify_payload` et les decodeurs texte) ; et par les tests
-  differentiels ajoutes, 2 070 tests en tout. Seul ecart connu, de cout et
+  differentiels ajoutes, 2 071 tests en tout. Seul ecart connu, de cout et
   non de resultat : un G-PDU GTP-U dont le paquet interne est corrompu
   alloue une fois, contre zero, pour 1 441 instructions contre 4 827.
 
