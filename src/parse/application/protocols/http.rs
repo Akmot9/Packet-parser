@@ -142,7 +142,8 @@ fn split_message(payload: &[u8]) -> Result<(&str, HttpHeaders<'_>, &[u8]), HttpP
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct HttpHeaders<'a> {
     // Lignes de headers, sans la request line ni la ligne vide finale. Chaque
-    // ligne est passee par `extract_header_line` au parsing.
+    // ligne est validee au parsing, par `split_http_head` : elle porte un
+    // `:`, ce qu'exige `extract_header_line`.
     block: &'a str,
 }
 
@@ -191,8 +192,8 @@ impl<'a> TryFrom<&'a [u8]> for HttpRequest<'a> {
 /// Parses an HTTP request from a given payload without copying packet bytes.
 ///
 /// There is deliberately no up-front length pre-check: `HttpParseError` has
-/// no "empty payload" variant, and every access below is bounded (`find`,
-/// `split`, `split_whitespace` — no indexing), so an empty payload safely
+/// no "empty payload" variant, and every access below is bounded (`get`,
+/// `split_whitespace` — no indexing), so an empty payload safely
 /// flows through the chain and fails with `MissingMethod`.
 pub fn parse_http_request(payload: &[u8]) -> Result<HttpRequest<'_>, HttpParseError> {
     let (request_line, headers, body_bytes) = split_message(payload)?;

@@ -224,11 +224,12 @@ pub(super) const fn first_bytes(probe: ProbeId) -> FirstBytes {
 
         // `locate_ssh_identification` : le segment s'ouvre par `SSH_PREFIX`
         // (un `S`, dans la plage imprimable ci-dessous) ou par une ligne de
-        // preambule. `prelude_line_length` refuse tout octet de controle
-        // ASCII hors TAB, et CR ailleurs que devant LF : l'octet 0 est TAB,
-        // le CR d'une ligne vide, ou le premier octet d'une ligne validee
-        // en UTF-8, donc hors controle un octet de 0x20 a 0x7E ou l'octet de
-        // tete d'une sequence, de 0xC2 a 0xF4.
+        // preambule. `find_ssh_identification` arrete le texte d'une ligne
+        // au premier octet de controle ASCII hors TAB (`ENDS_PRELUDE_TEXT`)
+        // et n'y admet CR que devant LF : l'octet 0 est TAB, le CR d'une
+        // ligne vide, ou le premier octet d'une ligne validee en UTF-8, donc
+        // hors controle un octet de 0x20 a 0x7E ou l'octet de tete d'une
+        // sequence, de 0xC2 a 0xF4.
         ProbeId::SshAfterLines => FirstBytes::only(b"\t\r")
             .or(FirstBytes::range(0x20, 0x7E))
             .or(FirstBytes::range(0xC2, 0xF4)),

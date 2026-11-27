@@ -147,7 +147,7 @@ impl<'a> SipMessage<'a> {
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct SipHeaders<'a> {
     // Lignes d'en-tete, sans la ligne de depart ni la ligne vide finale.
-    // Chaque ligne logique est passee par `extract_sip_header_line` au
+    // Chaque ligne logique est passee par `split_sip_header_line` au
     // parsing.
     block: &'a str,
 }

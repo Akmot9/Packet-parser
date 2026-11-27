@@ -115,9 +115,8 @@ fn parse_reply<'a>(
     Err(FtpParseError::MissingReplyTerminator)
 }
 
-/// Le decodeur tel qu'il coupait les lignes par `str::find` et construisait
-/// une erreur pour chaque ligne de suite sans code : la reference des tests
-/// differentiels, ici et dans ceux du dispatch.
+/// Le decodeur tel qu'il coupait sa premiere ligne par `str::find` : la
+/// reference des tests differentiels, ici et dans ceux du dispatch.
 #[cfg(test)]
 pub(crate) mod reference {
     use super::*;
