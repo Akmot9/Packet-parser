@@ -246,9 +246,13 @@ mod checks {
         let record_type = bytes[0];
         let (length, content, consumed) = sized(bytes)?;
         if content.len() < length as usize {
+            // L'octet de type et la taille, puis la longueur declaree : sur
+            // 32 bits, une taille pleine depasse `usize` avec eux, et la
+            // longueur attendue sature.
+            let header = consumed - content.len();
             return Err(truncated(
                 record_type,
-                consumed + length as usize - content.len(),
+                header.saturating_add(length as usize),
                 bytes.len(),
             ));
         }
@@ -524,6 +528,26 @@ mod tests {
             parse("02 02 ffff"),
             Err(NmfError::InvalidString { record_type: 2 })
         );
+    }
+
+    /// Une taille de 32 bits pleins : avec l'octet de type et la taille, la
+    /// longueur attendue depasse `usize` sur une cible 32 bits. Elle y
+    /// sature ; l'addition debordait (panique avec les controles de
+    /// debordement, longueur fausse sans eux).
+    #[test]
+    fn synthetic_truncated_record_of_a_full_32_bit_size() {
+        let parse = |text: &str| NmfSegment::try_from(hex(text).as_slice()).map(|_| ());
+        for record_type in [0x02, 0x04, 0x08, 0x09] {
+            assert_eq!(
+                parse(&format!("{record_type:02x} ffffffff0f")),
+                Err(NmfError::TruncatedRecord {
+                    record_type,
+                    expected: 6_usize.saturating_add(u32::MAX as usize),
+                    actual: 6
+                }),
+                "type {record_type:#04x}"
+            );
+        }
     }
 
     #[test]
