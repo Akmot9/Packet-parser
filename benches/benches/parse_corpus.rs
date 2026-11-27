@@ -148,7 +148,7 @@ fn bench_frames(c: &mut Criterion) {
         "en-tete TCP tronque : couche transport absente"
     );
 
-    let cases: [(&str, Frame); 10] = [
+    let cases: [(&str, Frame); 13] = [
         (
             "tcp_pure_ack",
             first_frame("protocols/tcp/tcp_handshake.pcapng", |flow| {
@@ -168,6 +168,25 @@ fn bench_frames(c: &mut Criterion) {
         (
             "dns",
             first_frame("protocols/dns/dns.pcap", |flow| has_label(flow, "DNS")),
+        ),
+        // Trois decodeurs que seul leur protocole traverse : sans leur trame,
+        // un gain ou une regression sur ces chemins ne se voyait pas.
+        (
+            "http",
+            first_frame("The-Ultimate-PCAP.pcapng", |flow| has_label(flow, "HTTP")),
+        ),
+        (
+            "sip",
+            first_frame("protocols/sip/ndpi_sip_hello.pcapng", |flow| {
+                has_label(flow, "SIP")
+            }),
+        ),
+        (
+            "s7comm",
+            first_frame(
+                "protocols/s7comm/s7comm_downloading_block_db1.pcap",
+                |flow| has_label(flow, "S7Comm"),
+            ),
         ),
         (
             "vxlan_tunnel",
