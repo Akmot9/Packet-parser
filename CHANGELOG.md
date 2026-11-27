@@ -76,9 +76,30 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   octets, toutes identiques avant et apres ; par un fuzz differentiel
   contre l'arbre d'avant la revue (`parse`, `parse_with`,
   `classify_payload` et les decodeurs texte) ; et par les tests
-  differentiels ajoutes, 2 071 tests en tout. Seul ecart connu, de cout et
+  differentiels ajoutes, 2 073 tests en tout. Seul ecart connu, de cout et
   non de resultat : un G-PDU GTP-U dont le paquet interne est corrompu
   alloue une fois, contre zero, pour 1 441 instructions contre 4 827.
+
+### Corrige
+
+- **Debordement d'entier sur cible 32 bits** : deux decodeurs
+  additionnaient en `usize` une longueur declaree de 32 bits et quelques
+  octets d'en-tete. Compilee pour une cible 32 bits avec les controles de
+  debordement (build de debug, `overflow-checks`), la crate paniquait dans
+  `parse` sur un segment TCP de cinq octets, `Q ff ff ff ff`, que la sonde
+  PostgreSQL lit sans garde de port, et sur un segment NMF de neuf octets,
+  `00 01 00 02 ff ff ff ff 0f`. Sans ces controles, l'addition bouclait et
+  l'erreur du decodeur portait une longueur fausse. Les deux additions
+  saturent ; rien ne change sur une cible 64 bits. Le cas NMF a ete releve
+  par un audit de la revue de performance, le cas PostgreSQL en passant
+  ses empreintes sur `i686-unknown-linux-gnu` : la suite de tests y passe
+  en entier, et l'empreinte de `parse` sur le corpus et sur 4 millions de
+  trames mutees y est celle du 64 bits. Un balayage de 90 millions
+  d'entrees a champs de longueur pleins (quatre puis huit octets a 0xff a
+  chaque position des trames et des payloads du corpus) n'y trouve pas
+  d'autre debordement. Un seul resultat depend de la largeur du pointeur,
+  et le decodeur le documente : en 32 bits, GIOP refuse un message dont la
+  taille declaree deborde `usize`, qu'il accepte tronque en 64 bits.
 
 ### Documentation
 
@@ -88,6 +109,12 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   utile, `parse` prend 94 a 115 ns, contre 65 a 79 ns pour la lecture par
   vues d'`etherparse` et 39 a 57 ns pour `pnet_packet`. Rien ne change dans
   la crate.
+- Cette comparaison est refaite apres la revue de performance (#393), sur
+  une autre machine, les trois crates dans la meme passe : sur les trames
+  sans charge utile, `parse` prend 35 a 58 ns, contre 59 a 68 ns pour la
+  lecture par vues d'`etherparse` et 29 a 44 ns pour `pnet_packet`. La
+  13.4.0 publiee y prend 73 a 86 ns : `parse` passe sous `etherparse`. Sur
+  les captures entieres, 69 a 143 ns contre 158 a 382 ns.
 
 ### Outillage
 
@@ -120,6 +147,15 @@ Le format suit l'esprit de [Keep a Changelog](https://keepachangelog.com/fr/1.1.
   HTTP (11.7.0 a 11.8.1, #214, #249) aurait perdu son etiquette.
 - **README** : 51 cibles de fuzz chaque nuit, et non 39 (le compte datait
   de #272).
+
+### Interne
+
+- **Bench** : trois trames de plus dans le groupe `frame`, `http`, `sip`
+  et `s7comm`. Aucun de ces decodeurs n'y avait de trame : un gain ou une
+  regression sur ces chemins ne se voyait pas.
+- **Tests sur cible 32 bits** : `cargo test --target
+  i686-unknown-linux-gnu` compile et passe. Un test ecrivait `1 << 62` sur
+  un `usize`.
 
 ## [13.4.0] - 2026-11-23
 

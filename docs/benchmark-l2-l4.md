@@ -1,6 +1,9 @@
 # L2-L4 benchmark against etherparse and pnet_packet
 
-> Measured on 23 November 2026, on `packet_parser` 13.4.0 (issue #375).
+> Measured on 27 November 2026, on `packet_parser` 13.4.0 plus the
+> performance review of #393, not yet released. First measured on
+> 23 November 2026 on 13.4.0 as published (issue #375), on another machine:
+> the figures of the two measures do not compare, the ratios do.
 
 How fast is `packet_parser` from Ethernet to TCP, UDP and ICMP, next to the
 two crates Rust programs usually pick for that job,
@@ -10,20 +13,24 @@ numbers, how to redo them, and what they do not say.
 
 ## Reading the numbers
 
-- **On frames with no payload, `parse` takes 94 to 115 ns.** That is the
-  comparison on equal scope, since there is no layer 7 to read. It is 1.4
-  to 1.6 times the cost of reading every header through the views of
-  `etherparse` (65 to 79 ns), 2 to 2.8 times the cost of reading every field
-  through `pnet_packet` (39 to 57 ns), and 2.4 to 7.7 times **faster** than
-  `etherparse::PacketHeaders` (264 to 820 ns).
-- **On whole captures, `parse` takes 190 to 470 ns**, because it then also
+- **On frames with no payload, `parse` takes 35 to 58 ns.** That is the
+  comparison on equal scope, since there is no layer 7 to read. It is 0.6
+  to 0.9 times the cost of reading every header through the views of
+  `etherparse` (59 to 68 ns), 1.1 to 2 times the cost of reading every field
+  through `pnet_packet` (29 to 44 ns), and 4.8 to 7.5 times **faster** than
+  `etherparse::PacketHeaders` (198 to 430 ns).
+- **On whole captures, `parse` takes 69 to 143 ns**, because it then also
   names the application protocol and decodes its header, which the two other
   crates do not do. That figure is the price of the whole job, not of
-  layers 2 to 4: the ratio to `pnet_packet` on these tables (5 to 13) compares
+  layers 2 to 4: the ratio to `pnet_packet` on these tables (2 to 4) compares
   two different jobs.
+- **Before the performance review of #393**, 13.4.0 as published took 73 to
+  86 ns on the frames with no payload and 158 to 382 ns on whole captures,
+  on the same machine and with the same bench: above the view-based decode
+  of `etherparse`, where `parse` is now below it.
 - **`packet_parser` has no slicing level.** A program that only needs to
-  find the transport payload, and reads no field, pays 8 to 36 ns with the
-  other two crates and 94 ns or more with `parse`.
+  find the transport payload, and reads no field, pays 5 to 28 ns with the
+  other two crates and 35 ns or more with `parse`.
 - `etherparse::PacketHeaders` is slow for a reason that has nothing to do
   with parsing: the value it returns weighs 9,504 bytes (its IPv6 extension
   headers are stored inline), and it is written for every frame. Reading the
@@ -66,10 +73,10 @@ lists the frames left out and what each crate read in them.
 
 ## Machine and versions
 
-- CPU: Intel(R) Core(TM) i7-10875H CPU @ 2.30GHz, one core, governor `powersave`
-- OS: Linux 6.8.0-59-generic
-- Compiler: rustc 1.99.1 (58cf8f9c3 2026-10-13), profile `opt-level = 3`, `lto = "fat"`, `codegen-units = 1`
-- Crates: packet_parser 13.4.0 (this repository), etherparse 0.21.0, pnet_packet 0.35.0, criterion 0.8.2
+- CPU: Intel(R) Xeon(R) Processor @ 2.10GHz, one core of a virtual machine, governor not exposed
+- OS: Linux 6.18.44-fc-v880
+- Compiler: rustc 1.97.0 (2d8144b78 2026-07-07), profile `opt-level = 3`, `lto = "fat"`, `codegen-units = 1`
+- Crates: packet_parser 13.4.0 plus #393 (this repository), etherparse 0.21.0, pnet_packet 0.35.0, criterion 0.8.2
 
 ## Frames measured
 
@@ -83,67 +90,67 @@ lists the frames left out and what each crate read in them.
 
 | Crate | Call | Level | ns per frame | ± | M frames/s | Gbit/s | packet_parser = 1 |
 |---|---|---|---:|---:|---:|---:|---:|
-| etherparse | `SlicedPacket::from_ethernet` | slicing | 25.5 | 1.13 | 39.2 | 28.0 | 0.13 |
-| pnet_packet | views, fields not read | slicing | 12.0 | 0.99 | 83.3 | 59.5 | 0.06 |
-| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 267.2 | 6.93 | 3.7 | 2.7 | 1.39 |
-| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 68.9 | 1.88 | 14.5 | 10.4 | 0.36 |
-| pnet_packet | views, every accessor | full decode, L2-L4 | 42.3 | 1.02 | 23.6 | 16.9 | 0.22 |
-| **packet_parser** | `parse` | full decode, L2-L7 | 192.8 | 2.62 | 5.2 | 3.7 | 1.00 |
+| etherparse | `SlicedPacket::from_ethernet` | slicing | 16.9 | 0.97 | 59.3 | 42.3 | 0.24 |
+| pnet_packet | views, fields not read | slicing | 9.1 | 1.18 | 110.2 | 78.6 | 0.13 |
+| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 184.6 | 21.26 | 5.4 | 3.9 | 2.68 |
+| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 57.5 | 6.85 | 17.4 | 12.4 | 0.83 |
+| pnet_packet | views, every accessor | full decode, L2-L4 | 32.3 | 3.42 | 30.9 | 22.1 | 0.47 |
+| **packet_parser** | `parse` | full decode, L2-L7 | 69.0 | 6.60 | 14.5 | 10.4 | 1.00 |
 
 The 90,914 TCP frames of this corpus that carry no payload:
 
 | Crate | Call | Level | ns per frame | ± | M frames/s | packet_parser = 1 |
 |---|---|---|---:|---:|---:|---:|
-| etherparse | `SlicedPacket::from_ethernet` | slicing | 35.7 | 5.24 | 28.0 | 0.31 |
-| pnet_packet | views, fields not read | slicing | 20.2 | 2.06 | 49.5 | 0.18 |
-| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 281.3 | 13.41 | 3.6 | 2.45 |
-| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 78.9 | 6.14 | 12.7 | 0.69 |
-| pnet_packet | views, every accessor | full decode, L2-L4 | 56.5 | 6.49 | 17.7 | 0.49 |
-| **packet_parser** | `parse` | full decode, L2-L7 | 114.7 | 6.90 | 8.7 | 1.00 |
+| etherparse | `SlicedPacket::from_ethernet` | slicing | 28.1 | 3.87 | 35.6 | 0.60 |
+| pnet_packet | views, fields not read | slicing | 16.6 | 3.10 | 60.3 | 0.35 |
+| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 227.1 | 14.67 | 4.4 | 4.83 |
+| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 68.1 | 4.82 | 14.7 | 1.45 |
+| pnet_packet | views, every accessor | full decode, L2-L4 | 43.6 | 5.73 | 22.9 | 0.93 |
+| **packet_parser** | `parse` | full decode, L2-L7 | 47.0 | 4.66 | 21.3 | 1.00 |
 
 ## Corpus `ultimate`: 25,174 frames
 
 | Crate | Call | Level | ns per frame | ± | M frames/s | Gbit/s | packet_parser = 1 |
 |---|---|---|---:|---:|---:|---:|---:|
-| etherparse | `SlicedPacket::from_ethernet` | slicing | 26.2 | 1.49 | 38.2 | 93.1 | 0.06 |
-| pnet_packet | views, fields not read | slicing | 10.3 | 0.33 | 97.5 | 237.7 | 0.02 |
-| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 764.8 | 24.83 | 1.3 | 3.2 | 1.63 |
-| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 64.2 | 3.28 | 15.6 | 38.0 | 0.14 |
-| pnet_packet | views, every accessor | full decode, L2-L4 | 37.1 | 1.32 | 26.9 | 65.6 | 0.08 |
-| **packet_parser** | `parse` | full decode, L2-L7 | 470.2 | 22.14 | 2.1 | 5.2 | 1.00 |
+| etherparse | `SlicedPacket::from_ethernet` | slicing | 29.2 | 2.72 | 34.2 | 83.4 | 0.20 |
+| pnet_packet | views, fields not read | slicing | 16.6 | 3.85 | 60.4 | 147.3 | 0.12 |
+| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 459.7 | 46.79 | 2.2 | 5.3 | 3.21 |
+| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 60.1 | 5.05 | 16.6 | 40.6 | 0.42 |
+| pnet_packet | views, every accessor | full decode, L2-L4 | 39.8 | 4.56 | 25.1 | 61.3 | 0.28 |
+| **packet_parser** | `parse` | full decode, L2-L7 | 143.0 | 19.52 | 7.0 | 17.0 | 1.00 |
 
 The 5,935 TCP frames of this corpus that carry no payload:
 
 | Crate | Call | Level | ns per frame | ± | M frames/s | packet_parser = 1 |
 |---|---|---|---:|---:|---:|---:|
-| etherparse | `SlicedPacket::from_ethernet` | slicing | 24.6 | 0.26 | 40.6 | 0.23 |
-| pnet_packet | views, fields not read | slicing | 9.7 | 0.02 | 103.5 | 0.09 |
-| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 819.6 | 23.65 | 1.2 | 7.67 |
-| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 67.4 | 0.25 | 14.8 | 0.63 |
-| pnet_packet | views, every accessor | full decode, L2-L4 | 38.8 | 0.12 | 25.8 | 0.36 |
-| **packet_parser** | `parse` | full decode, L2-L7 | 106.9 | 0.65 | 9.4 | 1.00 |
+| etherparse | `SlicedPacket::from_ethernet` | slicing | 18.5 | 2.41 | 54.0 | 0.32 |
+| pnet_packet | views, fields not read | slicing | 5.4 | 0.56 | 184.3 | 0.09 |
+| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 430.1 | 79.81 | 2.3 | 7.46 |
+| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 65.6 | 7.28 | 15.3 | 1.14 |
+| pnet_packet | views, every accessor | full decode, L2-L4 | 28.6 | 5.51 | 35.0 | 0.49 |
+| **packet_parser** | `parse` | full decode, L2-L7 | 57.7 | 9.62 | 17.3 | 1.00 |
 
 ## Corpus `subset`: 731 frames
 
 | Crate | Call | Level | ns per frame | ± | M frames/s | Gbit/s | packet_parser = 1 |
 |---|---|---|---:|---:|---:|---:|---:|
-| etherparse | `SlicedPacket::from_ethernet` | slicing | 19.7 | 0.11 | 50.8 | 40.8 | 0.05 |
-| pnet_packet | views, fields not read | slicing | 9.3 | 0.65 | 107.4 | 86.3 | 0.02 |
-| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 265.6 | 3.76 | 3.8 | 3.0 | 0.67 |
-| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 61.4 | 0.24 | 16.3 | 13.1 | 0.15 |
-| pnet_packet | views, every accessor | full decode, L2-L4 | 31.5 | 0.53 | 31.8 | 25.5 | 0.08 |
-| **packet_parser** | `parse` | full decode, L2-L7 | 396.5 | 4.22 | 2.5 | 2.0 | 1.00 |
+| etherparse | `SlicedPacket::from_ethernet` | slicing | 15.0 | 0.60 | 66.7 | 53.5 | 0.14 |
+| pnet_packet | views, fields not read | slicing | 5.7 | 0.25 | 174.9 | 140.5 | 0.05 |
+| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 198.6 | 31.54 | 5.0 | 4.0 | 1.90 |
+| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 49.9 | 8.56 | 20.0 | 16.1 | 0.48 |
+| pnet_packet | views, every accessor | full decode, L2-L4 | 30.8 | 3.02 | 32.5 | 26.1 | 0.29 |
+| **packet_parser** | `parse` | full decode, L2-L7 | 104.4 | 19.72 | 9.6 | 7.7 | 1.00 |
 
 The 167 TCP frames of this corpus that carry no payload:
 
 | Crate | Call | Level | ns per frame | ± | M frames/s | packet_parser = 1 |
 |---|---|---|---:|---:|---:|---:|
-| etherparse | `SlicedPacket::from_ethernet` | slicing | 19.0 | 0.28 | 52.7 | 0.20 |
-| pnet_packet | views, fields not read | slicing | 7.8 | 0.22 | 127.5 | 0.08 |
-| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 264.2 | 6.16 | 3.8 | 2.80 |
-| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 64.6 | 0.58 | 15.5 | 0.69 |
-| pnet_packet | views, every accessor | full decode, L2-L4 | 39.0 | 0.43 | 25.6 | 0.41 |
-| **packet_parser** | `parse` | full decode, L2-L7 | 94.2 | 1.44 | 10.6 | 1.00 |
+| etherparse | `SlicedPacket::from_ethernet` | slicing | 15.3 | 1.90 | 65.5 | 0.43 |
+| pnet_packet | views, fields not read | slicing | 4.7 | 0.33 | 214.9 | 0.13 |
+| etherparse | `PacketHeaders::from_ethernet_slice` | full decode, L2-L4 | 198.0 | 16.77 | 5.1 | 5.61 |
+| etherparse | `SlicedPacket`, then `to_header` on each view | full decode, L2-L4 | 59.0 | 2.71 | 17.0 | 1.67 |
+| pnet_packet | views, every accessor | full decode, L2-L4 | 30.2 | 1.25 | 33.1 | 0.86 |
+| **packet_parser** | `parse` | full decode, L2-L7 | 35.3 | 3.85 | 28.3 | 1.00 |
 
 ## One frame per family
 
@@ -151,12 +158,12 @@ ns per frame.
 
 | Frame | `slice_etherparse` | `slice_pnet` | `full_etherparse` | `full_etherparse_slices` | `full_pnet` | `full_packet_parser` |
 |---|---:|---:|---:|---:|---:|---:|
-| TCP over IPv4, no payload | 18.8 | 6.4 | 264.8 | 64.3 | 38.5 | 88.7 |
-| TCP over IPv4, 1,000 bytes or more | 18.7 | 6.4 | 260.0 | 63.8 | 37.7 | 875.4 |
-| UDP over IPv4, DNS | 18.2 | 6.3 | 249.5 | 49.1 | 31.2 | 358.2 |
-| TCP over IPv6 | 25.1 | 6.7 | 1127.5 | 78.4 | 32.0 | 107.6 |
-| ICMP | 18.1 | 5.7 | 260.5 | 54.5 | 30.4 | 85.4 |
-| UDP under an 802.1Q tag | 25.1 | 7.3 | 1111.8 | 53.8 | 25.1 | 522.6 |
+| TCP over IPv4, no payload | 11.4 | 4.2 | 182.4 | 75.8 | 32.1 | 36.2 |
+| TCP over IPv4, 1,000 bytes or more | 14.8 | 4.4 | 196.8 | 60.9 | 31.2 | 176.7 |
+| UDP over IPv4, DNS | 15.8 | 4.4 | 185.3 | 45.0 | 28.1 | 143.7 |
+| TCP over IPv6 | 19.5 | 5.1 | 614.3 | 62.9 | 27.4 | 61.1 |
+| ICMP | 14.2 | 3.7 | 225.1 | 49.4 | 22.8 | 37.4 |
+| UDP under an 802.1Q tag | 19.3 | 5.3 | 608.9 | 42.3 | 18.6 | 164.5 |
 
 ## What each crate does, and where the comparison stops
 
@@ -182,8 +189,9 @@ ns per frame.
 - **In `subset` and `ultimate`, some frames are tunnels**: `parse` decodes
   the inner flow as well, the two others stop at the outer UDP header.
 - **Checksums** are verified by none of the three.
-- **One machine, a laptop**, with the `powersave` governor: the ratios hold
-  better than the absolute figures. Slicing times of a few nanoseconds move
-  by 10 to 20 % from one run to the next.
+- **One machine, a shared virtual machine**: the ratios hold better than the
+  absolute figures. The median absolute deviation given in the tables is
+  often 10 % of the value and reaches 20 %: a figure moves by as much from
+  one run to the next.
 - The competing crates are dependencies of `tools/compare` only, never of
   `packet_parser`.
